@@ -31,6 +31,7 @@ export class SettingsPanel {
   private captureToken = 0;
   private captureTimer = 0;
   private note: HTMLDivElement | null = null;
+  private desc: HTMLDivElement;
 
   constructor(private deps: SettingsDeps) {
     this.el = h('div', 'ma-layer ma-modal-layer ma-settings');
@@ -38,10 +39,7 @@ export class SettingsPanel {
     this.el.setAttribute('aria-label', 'Settings');
     const panel = h('div', 'ma-panel ma-panel-wide');
     const head = h('div', 'ma-panel-head');
-    const ht = h('div');
-    ht.appendChild(h('div', 'ma-eyebrow', 'Options'));
-    ht.appendChild(h('div', 'ma-panel-title', 'Settings'));
-    head.appendChild(ht);
+    head.appendChild(h('div', 'ma-panel-title', 'Settings'));
     const tabs = h('div', 'ma-tabs');
     tabs.dataset.navRow = '';
     tabs.setAttribute('role', 'tablist');
@@ -55,6 +53,10 @@ export class SettingsPanel {
     panel.appendChild(head);
     this.body = h('div', 'ma-panel-body');
     panel.appendChild(this.body);
+    // One description line for the focused row (instead of grey subtitles under every row)
+    this.desc = h('div', 'ma-desc');
+    panel.appendChild(this.desc);
+    this.body.addEventListener('focusin', () => queueMicrotask(() => this.syncDesc()));
     const foot = h('div', 'ma-panel-foot');
     const hints = h('div', 'ma-foot-hints');
     for (const [k, t] of [['↑↓', 'Select'], ['←→', 'Adjust'], ['Q / E', 'Tabs'], ['Esc', 'Back']]) {
@@ -76,6 +78,20 @@ export class SettingsPanel {
   open(tab: SettingsTab = 'display') { this.cancelCapture(); this.selectTab(tab, false); }
   close() { this.cancelCapture(); }
   currentTab() { return this.tab; }
+
+  /** True when cycling `dir` from the current tab would wrap around. */
+  atEdge(dir: number) {
+    const i = TABS.findIndex(t => t.id === this.tab);
+    return dir < 0 ? i === 0 : i === TABS.length - 1;
+  }
+
+  private syncDesc() {
+    const a = document.activeElement as HTMLElement | null;
+    const row = a && this.body.contains(a) ? a.closest('.ma-row') : null;
+    const d = row?.querySelector('.ma-row-desc')?.textContent ?? '';
+    const text = d || (this.tab === 'keys' ? 'Select a slot, then press a key or mouse button. Esc cancels, Backspace clears.' : '');
+    if (this.desc.textContent !== text) this.desc.textContent = text;
+  }
 
   cycleTab(dir: number) {
     const i = TABS.findIndex(t => t.id === this.tab);
@@ -140,6 +156,7 @@ export class SettingsPanel {
       const items = this.body.querySelectorAll<HTMLElement>('[data-nav]');
       items[Math.min(focusedIdx, items.length - 1)]?.focus({ preventScroll: true });
     }
+    this.syncDesc();
   }
 
   private cycleTabTo(tab: SettingsTab) { this.selectTab(tab, true); this.tabButtons.get(tab)?.focus({ preventScroll: true }); }
@@ -169,7 +186,7 @@ export class SettingsPanel {
       });
       b.setAttribute('aria-pressed', String(id === q));
       if (id === q) b.classList.add('is-selected');
-      b.addEventListener('focus', () => { const d = row.querySelector('.ma-row-desc'); if (d) d.textContent = QUALITY_INFO[id].desc; });
+      b.addEventListener('focus', () => { const d = row.querySelector('.ma-row-desc'); if (d) d.textContent = QUALITY_INFO[id].desc; this.syncDesc(); });
       b.addEventListener('blur', () => { const d = row.querySelector('.ma-row-desc'); if (d) d.textContent = QUALITY_INFO[this.deps.get().quality].desc; });
       seg.appendChild(b);
     }
@@ -231,7 +248,7 @@ export class SettingsPanel {
     this.note = info;
     for (const g of ACTION_GROUPS) {
       const sec = h('div', 'ma-keys-group');
-      sec.appendChild(h('div', 'ma-eyebrow ma-keys-title', g.title));
+      sec.appendChild(h('div', 'ma-keys-title', g.title));
       for (const a of g.actions) {
         const row = h('div', 'ma-keyrow');
         row.dataset.navRow = '';

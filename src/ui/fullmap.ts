@@ -32,12 +32,11 @@ export class FullMap {
     this.el.setAttribute('aria-label', 'City map');
     const head = h('div', 'ma-map-head');
     const titles = h('div', 'ma-map-titles');
-    titles.appendChild(h('div', 'ma-eyebrow', 'Port Meridian'));
     titles.appendChild(h('div', 'ma-map-title', 'City map'));
     head.appendChild(titles);
     this.readout = h('div', 'ma-map-readout');
     head.appendChild(this.readout);
-    const close = button('ma-btn ma-btn-ghost', 'Close', { onClick: () => { this.sound('back'); this.onClose(); } });
+    const close = button('ma-btn ma-btn-ghost ma-map-close', 'Close', { onClick: () => { this.sound('back'); this.onClose(); } });
     close.appendChild(h('kbd', 'ma-key', 'Esc'));
     head.appendChild(close);
     this.el.appendChild(head);
@@ -49,7 +48,7 @@ export class FullMap {
     this.stage.appendChild(this.canvas);
     body.appendChild(this.stage);
     const legend = h('div', 'ma-map-legend');
-    legend.appendChild(h('div', 'ma-eyebrow', 'Legend'));
+    legend.appendChild(h('div', 'ma-label', 'Legend'));
     const list = h('div', 'ma-legend-list');
     for (const kind of BLIP_KINDS) {
       const row = h('div', 'ma-legend-row');
@@ -62,7 +61,7 @@ export class FullMap {
     }
     legend.appendChild(list);
     const districts = h('div', 'ma-legend-districts');
-    districts.appendChild(h('div', 'ma-eyebrow', 'Districts'));
+    districts.appendChild(h('div', 'ma-label', 'Districts'));
     for (const d of Object.values(DISTRICT_INFO)) {
       const row = h('div', 'ma-legend-row');
       const sw = h('span', 'ma-swatch');
@@ -254,14 +253,14 @@ export class FullMap {
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
         drawBlip(ctx, b.kind, p.x, p.y, br, t, !!b.pulse);
       }
-      ctx.font = '600 11px Inter, "Helvetica Neue", Arial, sans-serif';
+      ctx.font = '700 14px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
       ctx.textAlign = 'left';
       for (const b of s.blips) {
         if (!b.label || b.kind === 'waypoint') continue;
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
-        ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.85)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
-        ctx.fillStyle = '#fcf2d9'; ctx.fillText(b.label, p.x + br + 5, p.y);
+        ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(6,18,21,0.9)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
+        ctx.fillStyle = '#fff3dc'; ctx.fillText(b.label, p.x + br + 5, p.y);
       }
       ctx.textAlign = 'center';
       const wp = this.localWaypoint;

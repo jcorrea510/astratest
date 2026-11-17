@@ -50,17 +50,18 @@ export class Wheel {
     grad.appendChild(svg('stop', { offset: '1', 'stop-color': '#ffc37e', 'stop-opacity': '0.38' }));
     defs.appendChild(grad);
     this.svgRoot.appendChild(defs);
-    this.svgRoot.appendChild(svg('circle', { r: R_OUT + 14 }, 'ma-wheel-halo'));
+    this.svgRoot.appendChild(svg('circle', { r: R_OUT + 10 }, 'ma-wheel-halo'));
+    this.svgRoot.appendChild(svg('circle', { r: R_OUT + 4 }, 'ma-wheel-ring'));
     this.slotLayer = svg('g');
     this.svgRoot.appendChild(this.slotLayer);
     this.svgRoot.appendChild(svg('circle', { r: R_IN - 8 }, 'ma-wheel-hub'));
     this.svgRoot.appendChild(svg('circle', { r: R_IN - 16 }, 'ma-wheel-hub-line'));
-    this.needle = svg('circle', { r: 5, cx: 0, cy: -(R_IN - 8) }, 'ma-wheel-needle');
+    this.needle = svg('circle', { r: 6, cx: 0, cy: -(R_IN - 8) }, 'ma-wheel-needle');
     this.svgRoot.appendChild(this.needle);
-    this.centerName = svg('text', { x: 0, y: -4, 'text-anchor': 'middle' }, 'ma-wheel-name');
-    this.centerDetail = svg('text', { x: 0, y: 22, 'text-anchor': 'middle' }, 'ma-wheel-detail');
-    this.centerHint = svg('text', { x: 0, y: 46, 'text-anchor': 'middle' }, 'ma-wheel-hint');
-    this.centerHint.textContent = 'RELEASE TO EQUIP';
+    this.centerName = svg('text', { x: 0, y: -22, 'text-anchor': 'middle' }, 'ma-wheel-name');
+    this.centerDetail = svg('text', { x: 0, y: 20, 'text-anchor': 'middle' }, 'ma-wheel-detail');
+    this.centerHint = svg('text', { x: 0, y: 48, 'text-anchor': 'middle' }, 'ma-wheel-hint');
+    this.centerHint.textContent = 'Release to equip';
     this.svgRoot.append(this.centerName, this.centerDetail, this.centerHint);
     this.el.appendChild(this.svgRoot);
   }
@@ -79,14 +80,11 @@ export class Wheel {
       const g = svg('g', {}, 'ma-wheel-slot' + (s.enabled ? '' : ' is-disabled'));
       g.appendChild(svg('path', { d: n === 1 ? sectorPath(0, Math.PI * 2 - 0.0001, R_IN, R_OUT) : sectorPath(a - half, a + half, R_IN, R_OUT, gap) }, 'ma-wheel-sector'));
       const c = polar(a, R_MID);
-      const icon = svg('svg', { x: c.x - 38, y: c.y - 30, width: 76, height: 38, viewBox: '0 0 64 32' }, 'ma-wheel-icon');
+      const icon = svg('svg', { x: c.x - 46, y: c.y - 34, width: 92, height: 46, viewBox: '0 0 64 32' }, 'ma-wheel-icon');
       icon.appendChild(svg('path', { d: WEAPON_PATHS[s.icon] ?? WEAPON_PATHS.fists, 'fill-rule': 'evenodd', fill: 'currentColor' }));
       g.appendChild(icon);
-      const label = svg('text', { x: c.x, y: c.y + 22, 'text-anchor': 'middle' }, 'ma-wheel-label');
-      label.textContent = s.label.toUpperCase();
-      g.appendChild(label);
-      const det = svg('text', { x: c.x, y: c.y + 38, 'text-anchor': 'middle' }, 'ma-wheel-slot-detail');
-      det.textContent = s.enabled ? s.detail : 'Empty';
+      const det = svg('text', { x: c.x, y: c.y + 32, 'text-anchor': 'middle' }, 'ma-wheel-slot-detail');
+      det.textContent = s.enabled ? s.detail : '—';
       g.appendChild(det);
       g.addEventListener('pointerenter', () => this.highlight(i));
       this.slotLayer.appendChild(g);
@@ -126,9 +124,9 @@ export class Wheel {
     this.highlighted = i;
     this.groups[i].classList.add('is-active');
     const s = this.slots[i];
-    this.centerName.textContent = s.label.toUpperCase();
+    this.centerName.textContent = s.label;
     this.centerDetail.textContent = s.enabled ? s.detail : 'Not carried';
-    this.centerHint.textContent = s.enabled ? 'RELEASE TO EQUIP' : 'UNAVAILABLE';
+    this.centerHint.textContent = s.enabled ? 'Release to equip' : 'Unavailable';
     if (!silent) this.sound('hover');
     const a = slotAngle(i, this.slots.length);
     if (Math.hypot(this.acc.x, this.acc.y) <= WHEEL_DEADZONE) {

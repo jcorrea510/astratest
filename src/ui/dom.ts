@@ -39,6 +39,24 @@ export function prefersReducedMotion(): boolean {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
+/**
+ * Plain-sentence help text ("press F to get in, Hold Right Mouse to aim") with recognised key names turned into
+ * key caps. Explicit [Key] markup is honoured too.
+ */
+const KEY_WORDS = /(\[[^\]]{1,14}\]|\b(?:WASD|W\/S|Left Mouse|Right Mouse|Shift|Space|Esc|Tab|Enter|Ctrl)\b|\b[A-Z](?= to )|(?<=\b[Pp]ress )[A-Z0-9]\b)/g;
+export function renderHintText(target: HTMLElement, text: string) {
+  target.textContent = '';
+  let last = 0;
+  for (const m of text.matchAll(KEY_WORDS)) {
+    const i = m.index ?? 0;
+    if (i > last) target.appendChild(document.createTextNode(text.slice(last, i)));
+    const k = m[0].startsWith('[') ? m[0].slice(1, -1) : m[0];
+    target.appendChild(h('kbd', 'ma-key', k));
+    last = i + m[0].length;
+  }
+  if (last < text.length) target.appendChild(document.createTextNode(text.slice(last)));
+}
+
 /** Renders "[F] to drive" style text with key caps. */
 export function renderKeyText(target: HTMLElement, text: string) {
   target.textContent = '';

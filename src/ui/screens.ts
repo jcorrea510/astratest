@@ -91,43 +91,61 @@ export function titleArtSvg(prefix = 'maT'): string {
 </svg>`;
 }
 
-export function wordmark(cls = ''): HTMLElement {
-  const w = h('div', `ma-wordmark ${cls}`);
-  w.appendChild(h('div', 'ma-wm-1', 'Meridian'));
-  w.appendChild(h('div', 'ma-wm-2', 'Afterglow'));
+let logoSeq = 0;
+
+/**
+ * The MERIDIAN AFTERGLOW lockup: two justified lines of heavy condensed italic with a hard outline, a block
+ * drop shadow and the striped-sun cut lines through AFTERGLOW. Built as SVG so the outline stays crisp at any size.
+ */
+export function logo(cls = ''): HTMLElement {
+  const id = `maLogo${++logoSeq}`;
+  const w = h('div', `ma-logo ${cls}`);
+  w.setAttribute('role', 'img');
+  w.setAttribute('aria-label', 'Meridian Afterglow');
+  const line = (y: number, text: string, size: number, fill: string, extra = '') =>
+    `<text x="500" y="${y}" font-size="${size}" text-anchor="middle" textLength="940" lengthAdjust="spacingAndGlyphs" fill="${fill}" ${extra}>${text}</text>`;
+  const lines = (fill1: string, fill2: string, extra = '') => line(232, 'MERIDIAN', 262, fill1, extra) + line(470, 'AFTERGLOW', 262, fill2, extra);
+  w.innerHTML = `<svg viewBox="0 0 1000 520" aria-hidden="true">
+<defs>
+<linearGradient id="${id}Sun" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffd39a"/><stop offset="0.62" stop-color="#ffd39a"/><stop offset="0.62" stop-color="#ff9b6a"/><stop offset="1" stop-color="#ff9b6a"/>
+</linearGradient>
+<mask id="${id}Cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="520"><rect width="1000" height="520" fill="#fff"/>
+<rect x="0" y="404" width="1000" height="7" fill="#000"/><rect x="0" y="426" width="1000" height="10" fill="#000"/><rect x="0" y="452" width="1000" height="13" fill="#000"/></mask>
+</defs>
+<g class="ma-logo-type" transform="rotate(-4 500 260)">
+<g class="ma-logo-drop" transform="translate(14 16)">${lines('#0b2226', '#0b2226', 'stroke="#0b2226" stroke-width="22" stroke-linejoin="round"')}</g>
+<g class="ma-logo-stroke">${lines('#0b2226', '#0b2226', 'stroke="#0b2226" stroke-width="22" stroke-linejoin="round"')}</g>
+<g class="ma-logo-fill">${line(232, 'MERIDIAN', 262, '#fff3dc')}<g mask="url(#${id}Cut)">${line(470, 'AFTERGLOW', 262, `url(#${id}Sun)`)}</g></g>
+</g></svg>`;
   return w;
 }
 
-export function monogram(): HTMLElement {
-  const m = h('div', 'ma-monogram');
-  m.innerHTML = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="22" r="11" fill="#ffc37e"/><rect x="4" y="24" width="32" height="2" fill="#12363a"/><rect x="4" y="28.5" width="32" height="2.6" fill="#12363a"/><rect x="2" y="33" width="36" height="7" fill="#12363a"/></svg>';
-  return m;
-}
-
-export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement } {
+/** Loading tips, rotated while the loading screen is up. Keys are filled in by the UI from live bindings. */
+export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement; tipBox: HTMLDivElement } {
   const el = h('div', 'ma-layer ma-loading');
   el.setAttribute('role', 'progressbar');
   el.setAttribute('aria-valuemin', '0'); el.setAttribute('aria-valuemax', '100');
   el.innerHTML = titleArtSvg('maL');
   el.appendChild(h('div', 'ma-loading-shade'));
-  const inner = h('div', 'ma-loading-inner');
-  inner.appendChild(wordmark('ma-wordmark-sm'));
+  el.appendChild(logo('ma-logo-loading'));
+  const tipBox = h('div', 'ma-loading-tipbox');
+  tipBox.appendChild(h('div', 'ma-loading-tiptag', 'Tip'));
+  const tip = h('div', 'ma-loading-tip');
+  tipBox.appendChild(tip);
+  el.appendChild(tipBox);
+  const foot = h('div', 'ma-loading-foot');
   const row = h('div', 'ma-loading-row');
   const label = h('div', 'ma-loading-label', 'Loading');
   const pct = h('div', 'ma-loading-pct', '0%');
   row.append(label, pct);
-  inner.appendChild(row);
+  foot.appendChild(row);
   const bar = h('div', 'ma-loading-bar');
   const fill = h('div', 'ma-loading-fill');
   bar.appendChild(fill);
-  inner.appendChild(bar);
-  el.appendChild(inner);
-  const tipBox = h('div', 'ma-loading-tipbox');
-  tipBox.appendChild(h('div', 'ma-eyebrow', 'Street smarts'));
-  const tip = h('div', 'ma-loading-tip');
-  tipBox.appendChild(tip);
-  inner.appendChild(tipBox);
-  return { el, fill, pct, label, tip };
+  foot.appendChild(bar);
+  el.appendChild(foot);
+  return { el, fill, pct, label, tip, tipBox };
 }
 
 export function buildMobileGate(): HTMLDivElement {
@@ -135,9 +153,7 @@ export function buildMobileGate(): HTMLDivElement {
   el.innerHTML = titleArtSvg('maM');
   el.appendChild(h('div', 'ma-mobile-shade'));
   const box = h('div', 'ma-mobile-box');
-  box.appendChild(monogram());
-  box.appendChild(wordmark('ma-wordmark-md'));
-  box.appendChild(h('div', 'ma-mobile-rule'));
+  box.appendChild(logo('ma-logo-mobile'));
   box.appendChild(h('div', 'ma-mobile-head', 'Port Meridian is waiting on a bigger screen.'));
   box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow is built for a computer with a keyboard and mouse, or a gamepad. Open this page in Chrome, Safari or Firefox on your desktop or laptop to play.'));
   const url = h('div', 'ma-mobile-url', location.href.split('#')[0]);
@@ -156,24 +172,28 @@ export function buildMobileGate(): HTMLDivElement {
   return el;
 }
 
-export function buildDeath(): { el: HTMLDivElement; word: HTMLDivElement; eyebrow: HTMLDivElement; detail: HTMLDivElement } {
+export function buildDeath(): { el: HTMLDivElement; word: HTMLDivElement; detail: HTMLDivElement } {
   const el = h('div', 'ma-death');
   el.setAttribute('role', 'alert');
+  el.appendChild(h('div', 'ma-death-fx'));
+  el.appendChild(h('div', 'ma-death-vignette'));
   const band = h('div', 'ma-death-band');
-  const eyebrow = h('div', 'ma-eyebrow ma-death-eyebrow');
   const word = h('div', 'ma-death-word');
   const detail = h('div', 'ma-death-detail');
-  band.append(eyebrow, word, h('div', 'ma-death-rule'), detail);
+  band.append(word, detail);
   el.appendChild(band);
-  return { el, word, eyebrow, detail };
+  return { el, word, detail };
 }
 
-export function buildCard(): { el: HTMLDivElement; eyebrow: HTMLDivElement; title: HTMLDivElement; sub: HTMLDivElement } {
+export function buildCard(): { el: HTMLDivElement; title: HTMLDivElement; name: HTMLDivElement; sub: HTMLDivElement; reward: HTMLDivElement } {
   const el = h('div', 'ma-card');
   el.setAttribute('aria-live', 'assertive');
-  const eyebrow = h('div', 'ma-eyebrow ma-card-eyebrow');
+  const band = h('div', 'ma-card-band');
   const title = h('div', 'ma-card-title');
+  const name = h('div', 'ma-card-name');
   const sub = h('div', 'ma-card-sub');
-  el.append(eyebrow, title, h('div', 'ma-card-rule'), sub);
-  return { el, eyebrow, title, sub };
+  const reward = h('div', 'ma-card-reward');
+  band.append(title, name, sub, reward);
+  el.appendChild(band);
+  return { el, title, name, sub, reward };
 }

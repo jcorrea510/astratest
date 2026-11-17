@@ -35,10 +35,7 @@ export class ControlsPanel {
     this.el.setAttribute('aria-label', 'Controls');
     const panel = h('div', 'ma-panel ma-panel-wide');
     const head = h('div', 'ma-panel-head');
-    const ht = h('div');
-    ht.appendChild(h('div', 'ma-eyebrow', 'How to play'));
-    ht.appendChild(h('div', 'ma-panel-title', 'Controls'));
-    head.appendChild(ht);
+    head.appendChild(h('div', 'ma-panel-title', 'Controls'));
     panel.appendChild(head);
     this.scroller = h('div', 'ma-panel-body ma-controls-body');
     this.kbCol = h('div', 'ma-controls-col');
@@ -76,7 +73,7 @@ export class ControlsPanel {
     this.kbCol.appendChild(h('div', 'ma-controls-head', 'Keyboard & mouse'));
     this.kbCol.appendChild(this.line('Look / Aim direction', ['Mouse'], 'ma-kb'));
     for (const g of ACTION_GROUPS) {
-      this.kbCol.appendChild(h('div', 'ma-eyebrow ma-controls-group', g.title));
+      this.kbCol.appendChild(h('div', 'ma-controls-group', g.title));
       for (const a of g.actions) this.kbCol.appendChild(this.line(ACTION_LABELS[a], s.bindings[a].map(keyLabel), 'ma-kb'));
     }
     this.scroller.scrollTop = 0;

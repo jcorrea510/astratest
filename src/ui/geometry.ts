@@ -20,6 +20,21 @@ export function clampToRadius(p: { x: number; y: number }, r: number): boolean {
   return true;
 }
 
+/**
+ * Pulls a point (relative to the origin) back along its ray from the origin until it lies inside the box
+ * [minX, maxX] x [minY, maxY] (the box must contain the origin). Returns true if it was clamped.
+ */
+export function clampToBox(p: { x: number; y: number }, minX: number, maxX: number, minY: number, maxY: number): boolean {
+  let k = 1;
+  if (p.x > maxX) k = Math.min(k, maxX / p.x);
+  if (p.x < minX) k = Math.min(k, minX / p.x);
+  if (p.y > maxY) k = Math.min(k, maxY / p.y);
+  if (p.y < minY) k = Math.min(k, minY / p.y);
+  if (k >= 1) return false;
+  p.x *= k; p.y *= k;
+  return true;
+}
+
 /** Full-map view: a non-rotated top-down view centred on (cx, cz) at `scale` pixels per metre. */
 export interface MapView { cx: number; cz: number; scale: number; w: number; h: number }
 export function mapWorldToScreen(v: MapView, x: number, z: number) {

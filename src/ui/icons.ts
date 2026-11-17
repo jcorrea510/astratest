@@ -42,10 +42,24 @@ export function weaponSvg(icon: WeaponIcon, cls = 'ma-icon'): string {
   return `<svg class="${cls}" viewBox="0 0 64 32" aria-hidden="true"><path fill-rule="evenodd" fill="currentColor" d="${d}"/></svg>`;
 }
 
-/** Heat "flare": an original rank chevron with a spark above it (deliberately not a star). */
-export const FLARE_SVG = '<svg class="ma-flare-svg" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path class="ma-flare-fill" d="M3 15.5L12 7.5L21 15.5V20.5L12 12.5L3 20.5Z"/>' +
-  '<path class="ma-flare-fill" d="M12 0.8L14.2 3.6L12 6.4L9.8 3.6Z"/></svg>';
+/** Heat emblem: an original rooftop beacon (dome light on a bar with three rays). Deliberately not a star. */
+export const FLARE_SVG = '<svg class="ma-flare-svg" viewBox="-2 -2 28 28" aria-hidden="true">' +
+  '<path class="ma-flare-ray" d="M12 1.2V4.4M3.6 4.6L5.9 6.9M20.4 4.6L18.1 6.9"/>' +
+  '<path class="ma-flare-fill" d="M5.6 15.6V13.2A6.4 6.4 0 0 1 18.4 13.2V15.6ZM3.2 17.4H20.8V21.6H3.2Z"/></svg>';
+
+/** Small inline glyphs used across menus. */
+export const CHECK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5L6.5 12L13 4.5"/></svg>';
+export const LOCK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4 7V5a4 4 0 0 1 8 0v2h1v8H3V7zm2 0h4V5a2 2 0 0 0-4 0z"/></svg>';
+export const WRENCH_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.8 2.6a5.4 5.4 0 0 0-5.3 7L3.4 17.7a2.1 2.1 0 0 0 3 3l8.1-8.1a5.4 5.4 0 0 0 7-5.3l-3.2 3.2-2.9-.6-.6-2.9z"/></svg>';
+
+/** Guesses a weapon/item icon for a shop item id or label (falls back to null). */
+export function guessIcon(text: string): WeaponIcon | null {
+  const t = text.toLowerCase();
+  for (const k of ['pistol', 'smg', 'shotgun', 'rifle', 'medkit', 'armor'] as WeaponIcon[]) if (t.includes(k)) return k;
+  if (t.includes('vest') || t.includes('kevlar') || t.includes('armour')) return 'armor';
+  if (t.includes('med') || t.includes('health') || t.includes('first aid')) return 'medkit';
+  return null;
+}
 
 export const BLIP_KINDS: MinimapBlip['kind'][] = ['mission', 'target', 'checkpoint', 'waypoint', 'safehouse', 'shop', 'arms', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
 export const BLIP_LABELS: Record<MinimapBlip['kind'], string> = {

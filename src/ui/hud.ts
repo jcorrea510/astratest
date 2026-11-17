@@ -1,17 +1,30 @@
 /** In-game HUD. update() runs every frame and only touches the DOM when a value changes. */
 import type { CityMap } from '../world/citymap';
 import type { HudState, WeaponIcon } from './contracts';
-import { FLARE_SVG, weaponSvg } from './icons';
+import { FLARE_SVG, WRENCH_SVG, weaponSvg } from './icons';
 import { formatMoney, formatTimer } from './geometry';
-import { h, setClass, TextSlot, prefersReducedMotion } from './dom';
+import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
 import type { CityPainter } from './mapdraw';
+
+/** Briefly shows an element (adds .is-visible), restarting the timer on every call. */
+class Popup {
+  private timer = 0;
+  constructor(readonly el: HTMLElement) {}
+  show(ms: number) {
+    window.clearTimeout(this.timer);
+    this.el.classList.add('is-visible');
+    this.timer = window.setTimeout(() => this.el.classList.remove('is-visible'), ms);
+  }
+  hide() { window.clearTimeout(this.timer); this.el.classList.remove('is-visible'); }
+}
 
 export class Hud {
   readonly el: HTMLDivElement;
   readonly minimap: Minimap;
+  /** Objective line; lives in the notice layer's bottom stack (under dialogue) so the two never overlap. */
+  readonly objectiveEl: HTMLDivElement;
   private money: TextSlot;
-  private moneyEl: HTMLDivElement;
   private moneyDelta: HTMLDivElement;
   private moneyShown = 0;
   private moneyFrom = 0;
@@ -25,32 +38,41 @@ export class Hud {
   private weaponIconEl: HTMLDivElement;
   private weaponIcon: WeaponIcon | null = null;
   private weaponName: TextSlot;
+  private weaponNameLast: string | null = null;
+  private weaponPop: Popup;
   private ammoEl: HTMLDivElement;
   private ammoClip: TextSlot;
   private ammoReserve: TextSlot;
-  private objectiveEl: HTMLDivElement;
   private objectiveText: TextSlot;
   private objectiveLast: string | null = '\u0000';
+  private objectiveShownAt = 0;
   private timerEl: HTMLDivElement;
   private timerText: TextSlot;
+  private robberyEl: HTMLDivElement;
+  private robberyLabel: TextSlot;
+  private robberyCash: TextSlot;
+  private robberyFill: HTMLDivElement;
+  private robberyLast = -1;
+  private locEl: HTMLDivElement;
+  private locPop: Popup;
+  private locVehicle: TextSlot;
   private district: TextSlot;
   private street: TextSlot;
+  private locLast = { district: '', street: '', vehicle: '' as string | null, at: 0 };
   private clock: TextSlot;
+  private radarEl: HTMLDivElement;
   private healthFill: HTMLDivElement;
-  private healthGhost: HTMLDivElement;
   private armorFill: HTMLDivElement;
-  private staminaRow: HTMLDivElement;
+  private staminaEl: HTMLDivElement;
   private staminaFill: HTMLDivElement;
   private vitalsEl: HTMLDivElement;
-  private vehicleEl: HTMLDivElement;
-  private vehicleName: TextSlot;
+  private speedoEl: HTMLDivElement;
   private speed: TextSlot;
-  private gauge: SVGPathElement;
+  private speedBar: HTMLDivElement;
   private vehHealthFill: HTMLDivElement;
-  private radioEl: HTMLDivElement;
+  private radioPop: Popup;
   private radioName: TextSlot;
   private radioLast: string | null = null;
-  private radioTimer = 0;
   private crosshair: HTMLDivElement;
   private hitmarker: HTMLDivElement;
   private promptEl: HTMLDivElement;
@@ -61,34 +83,41 @@ export class Hud {
   private fps: TextSlot;
   private last = new Map<string, number | string | boolean | null>();
   private reduced = prefersReducedMotion();
+  private started = false;
 
   constructor(_city: CityMap, painter: CityPainter) {
     this.el = h('div', 'ma-hud');
 
-    // Top centre: objective + mission timer
-    const tc = h('div', 'ma-hud-tc');
-    this.objectiveEl = h('div', 'ma-objective');
-    this.objectiveEl.appendChild(h('div', 'ma-eyebrow ma-objective-label', 'Objective'));
-    const ot = h('div', 'ma-objective-text');
-    this.objectiveText = new TextSlot(ot);
-    this.objectiveEl.appendChild(ot);
-    tc.appendChild(this.objectiveEl);
-    this.timerEl = h('div', 'ma-timer');
-    const tt = h('span', 'ma-timer-text');
-    this.timerText = new TextSlot(tt);
-    this.timerEl.appendChild(tt);
-    tc.appendChild(this.timerEl);
-    this.el.appendChild(tc);
+    // Top centre: radio station popup
+    const radio = h('div', 'ma-radio');
+    radio.appendChild(h('span', 'ma-radio-icon'));
+    const rn = h('span', 'ma-radio-name');
+    this.radioName = new TextSlot(rn);
+    radio.appendChild(rn);
+    this.radioPop = new Popup(radio);
+    this.el.appendChild(radio);
 
-    // Top right: money, heat, weapon
+    // Top right: money, weapon, heat
     const tr = h('div', 'ma-hud-tr');
-    this.moneyEl = h('div', 'ma-money');
-    const mv = h('span', 'ma-money-value');
+    const moneyEl = h('div', 'ma-money');
+    const mv = h('div', 'ma-money-value');
     this.money = new TextSlot(mv);
-    this.moneyEl.appendChild(mv);
     this.moneyDelta = h('div', 'ma-money-delta');
-    this.moneyEl.appendChild(this.moneyDelta);
-    tr.appendChild(this.moneyEl);
+    moneyEl.append(mv, this.moneyDelta);
+    tr.appendChild(moneyEl);
+    this.weaponEl = h('div', 'ma-weapon');
+    this.weaponIconEl = h('div', 'ma-weapon-icon');
+    const wn = h('div', 'ma-weapon-name');
+    this.weaponName = new TextSlot(wn);
+    this.weaponPop = new Popup(wn);
+    this.ammoEl = h('div', 'ma-ammo');
+    const ac = h('span', 'ma-ammo-clip'), ar = h('span', 'ma-ammo-reserve');
+    this.ammoClip = new TextSlot(ac); this.ammoReserve = new TextSlot(ar);
+    this.ammoEl.append(ac, h('span', 'ma-ammo-sep', '/'), ar);
+    const wrow = h('div', 'ma-weapon-row');
+    wrow.append(this.ammoEl, this.weaponIconEl);
+    this.weaponEl.append(wrow, wn);
+    tr.appendChild(this.weaponEl);
     this.heatEl = h('div', 'ma-heat');
     this.heatEl.setAttribute('aria-label', 'Heat level');
     for (let i = 0; i < 5; i++) {
@@ -98,79 +127,78 @@ export class Hud {
       this.flares.push(f);
     }
     tr.appendChild(this.heatEl);
-    this.weaponEl = h('div', 'ma-weapon');
-    this.weaponIconEl = h('div', 'ma-weapon-icon');
-    const wmeta = h('div', 'ma-weapon-meta');
-    const wn = h('div', 'ma-weapon-name');
-    this.weaponName = new TextSlot(wn);
-    this.ammoEl = h('div', 'ma-ammo');
-    const ac = h('span', 'ma-ammo-clip'), ar = h('span', 'ma-ammo-reserve');
-    this.ammoClip = new TextSlot(ac); this.ammoReserve = new TextSlot(ar);
-    this.ammoEl.append(ac, ar, h('span', 'ma-ammo-reload', 'Reloading'));
-    wmeta.append(wn, this.ammoEl);
-    this.weaponEl.append(wmeta, this.weaponIconEl);
-    tr.appendChild(this.weaponEl);
     this.el.appendChild(tr);
 
-    // Bottom left: minimap + location + vitals
+    // Bottom left: radar with the vitals strip hugging its bottom edge
     const bl = h('div', 'ma-hud-bl');
+    this.radarEl = h('div', 'ma-radar');
+    const ck = h('div', 'ma-radar-clock');
+    this.clock = new TextSlot(ck);
+    this.radarEl.appendChild(ck);
     this.minimap = new Minimap(painter);
-    bl.appendChild(this.minimap.el);
-    const side = h('div', 'ma-hud-side');
-    const loc = h('div', 'ma-location');
-    const ck = h('div', 'ma-clock'), di = h('div', 'ma-district'), st = h('div', 'ma-street');
-    this.clock = new TextSlot(ck); this.district = new TextSlot(di); this.street = new TextSlot(st);
-    loc.append(ck, di, st);
-    side.appendChild(loc);
+    this.radarEl.appendChild(this.minimap.el);
     this.vitalsEl = h('div', 'ma-vitals');
-    const mkBar = (cls: string, label: string) => {
-      const row = h('div', `ma-bar ${cls}`);
-      row.appendChild(h('span', 'ma-bar-label', label));
-      const track = h('div', 'ma-bar-track');
-      const ghost = h('div', 'ma-bar-ghost');
-      const fill = h('div', 'ma-bar-fill');
-      track.append(ghost, fill);
-      row.appendChild(track);
-      this.vitalsEl.appendChild(row);
-      return { row, fill, ghost };
+    const mkBar = (cls: string) => {
+      const track = h('div', `ma-vbar ${cls}`);
+      const fill = h('div', 'ma-vbar-fill');
+      track.append(fill, h('div', 'ma-vbar-notches'));
+      this.vitalsEl.appendChild(track);
+      return fill;
     };
-    const hb = mkBar('ma-bar-health', 'Health');
-    this.healthFill = hb.fill; this.healthGhost = hb.ghost;
-    const ab = mkBar('ma-bar-armor', 'Armor');
-    this.armorFill = ab.fill;
-    const sb = mkBar('ma-bar-stamina', 'Stamina');
-    this.staminaRow = sb.row; this.staminaFill = sb.fill;
-    side.appendChild(this.vitalsEl);
-    bl.appendChild(side);
+    this.healthFill = mkBar('ma-vbar-health');
+    this.armorFill = mkBar('ma-vbar-armor');
+    this.radarEl.appendChild(this.vitalsEl);
+    this.staminaEl = h('div', 'ma-stamina');
+    this.staminaFill = h('div', 'ma-stamina-fill');
+    this.staminaEl.appendChild(this.staminaFill);
+    this.radarEl.appendChild(this.staminaEl);
+    bl.appendChild(this.radarEl);
     this.el.appendChild(bl);
 
-    // Bottom right: vehicle
+    // Bottom right: mission bars, location popup, speedometer (bottom-up)
     const br = h('div', 'ma-hud-br');
-    this.radioEl = h('div', 'ma-radio');
-    this.radioEl.appendChild(h('div', 'ma-eyebrow', 'Now tuned'));
-    const rn = h('div', 'ma-radio-name');
-    this.radioName = new TextSlot(rn);
-    this.radioEl.appendChild(rn);
-    br.appendChild(this.radioEl);
-    this.vehicleEl = h('div', 'ma-vehicle');
-    const vn = h('div', 'ma-vehicle-name');
-    this.vehicleName = new TextSlot(vn);
-    const gaugeWrap = h('div', 'ma-gauge');
-    gaugeWrap.innerHTML = '<svg viewBox="0 0 120 120" aria-hidden="true"><path class="ma-gauge-track" pathLength="100" d="M24.6 95.4A50 50 0 1 1 95.4 95.4"/><path class="ma-gauge-fill" pathLength="100" d="M24.6 95.4A50 50 0 1 1 95.4 95.4"/></svg>';
-    this.gauge = gaugeWrap.querySelector('.ma-gauge-fill') as SVGPathElement;
+    this.speedoEl = h('div', 'ma-speedo');
     const sp = h('div', 'ma-speed');
     const spv = h('span', 'ma-speed-value');
     this.speed = new TextSlot(spv);
     sp.append(spv, h('span', 'ma-speed-unit', 'km/h'));
-    gaugeWrap.appendChild(sp);
-    const vh = h('div', 'ma-bar ma-bar-vehicle');
-    vh.appendChild(h('span', 'ma-bar-label', 'Body'));
-    const vt = h('div', 'ma-bar-track');
-    this.vehHealthFill = h('div', 'ma-bar-fill');
-    vt.appendChild(this.vehHealthFill);
-    vh.appendChild(vt);
-    this.vehicleEl.append(vn, gaugeWrap, vh);
-    br.appendChild(this.vehicleEl);
+    const sbar = h('div', 'ma-speed-bar');
+    this.speedBar = h('div', 'ma-speed-bar-fill');
+    sbar.appendChild(this.speedBar);
+    const body = h('div', 'ma-body');
+    const wr = h('span', 'ma-body-icon'); wr.innerHTML = WRENCH_SVG;
+    const bt = h('div', 'ma-body-track');
+    this.vehHealthFill = h('div', 'ma-body-fill');
+    bt.appendChild(this.vehHealthFill);
+    body.append(wr, bt);
+    this.speedoEl.append(sp, sbar, body);
+    br.appendChild(this.speedoEl);
+
+    this.locEl = h('div', 'ma-loc');
+    const lv = h('div', 'ma-loc-vehicle'), ld = h('div', 'ma-loc-district'), ls = h('div', 'ma-loc-street');
+    this.locVehicle = new TextSlot(lv); this.district = new TextSlot(ld); this.street = new TextSlot(ls);
+    this.locEl.append(lv, ld, ls);
+    this.locPop = new Popup(this.locEl);
+    br.appendChild(this.locEl);
+
+    const bars = h('div', 'ma-infobars');
+    this.timerEl = h('div', 'ma-infobar ma-timer');
+    this.timerEl.appendChild(h('span', 'ma-infobar-label', 'Time'));
+    const tt = h('span', 'ma-infobar-value');
+    this.timerText = new TextSlot(tt);
+    this.timerEl.appendChild(tt);
+    bars.appendChild(this.timerEl);
+    this.robberyEl = h('div', 'ma-infobar ma-robbery');
+    const rl = h('span', 'ma-infobar-label');
+    this.robberyLabel = new TextSlot(rl);
+    const rtrack = h('div', 'ma-robbery-track');
+    this.robberyFill = h('div', 'ma-robbery-fill');
+    rtrack.appendChild(this.robberyFill);
+    const rc = h('span', 'ma-infobar-value ma-robbery-cash');
+    this.robberyCash = new TextSlot(rc);
+    this.robberyEl.append(rl, rtrack, rc);
+    bars.appendChild(this.robberyEl);
+    br.appendChild(bars);
     this.el.appendChild(br);
 
     // Centre: crosshair + hit marker
@@ -184,10 +212,16 @@ export class Hud {
 
     // Bottom centre: interact prompt
     this.promptEl = h('div', 'ma-prompt');
-    const pk = h('kbd', 'ma-key'), pt = h('span', 'ma-prompt-text');
+    const pk = h('kbd', 'ma-key ma-key-lg'), pt = h('span', 'ma-prompt-text');
     this.promptKey = new TextSlot(pk); this.promptText = new TextSlot(pt);
     this.promptEl.append(pk, pt);
     this.el.appendChild(this.promptEl);
+
+    // Objective (mounted by the UI into the bottom stack)
+    this.objectiveEl = h('div', 'ma-objective');
+    const ot = h('div', 'ma-objective-text');
+    this.objectiveText = new TextSlot(ot);
+    this.objectiveEl.appendChild(ot);
 
     this.fpsEl = h('div', 'ma-fps');
     this.fps = new TextSlot(this.fpsEl);
@@ -198,6 +232,16 @@ export class Hud {
     if (this.last.get(key) === v) return false;
     this.last.set(key, v);
     return true;
+  }
+
+  /** Store hold-up meter (null hides it). */
+  robbery(s: { label: string; progress: number; cash: number } | null) {
+    setClass(this.robberyEl, 'is-visible', !!s);
+    if (!s) { this.robberyLast = -1; return; }
+    this.robberyLabel.set(s.label);
+    this.robberyCash.set(formatMoney(s.cash));
+    const p = Math.round(Math.max(0, Math.min(1, s.progress)) * 400) / 400;
+    if (p !== this.robberyLast) { this.robberyLast = p; this.robberyFill.style.transform = `scaleX(${p})`; }
   }
 
   update(s: HudState, showFps: boolean) {
@@ -232,11 +276,19 @@ export class Hud {
       this.heatShown = filled;
     }
     setClass(this.heatEl, 'is-visible', filled > 0);
-    setClass(this.heatEl, 'is-flash', s.heatFlash && filled > 0);
+    const flash = s.heatFlash && filled > 0;
+    setClass(this.heatEl, 'is-flash', flash);
+    setClass(this.radarEl, 'is-wanted', filled > 0);
+    setClass(this.radarEl, 'is-searching', flash);
 
-    // Weapon
+    // Weapon: the name pops up briefly whenever the weapon changes
     if (s.weaponIcon !== this.weaponIcon) { this.weaponIcon = s.weaponIcon; this.weaponIconEl.innerHTML = weaponSvg(s.weaponIcon); }
-    this.weaponName.set(s.weaponName);
+    if (s.weaponName !== this.weaponNameLast) {
+      const first = this.weaponNameLast === null;
+      this.weaponNameLast = s.weaponName;
+      this.weaponName.set(s.weaponName);
+      if (!first) this.weaponPop.show(2200);
+    }
     const melee = s.ammoClip < 0;
     setClass(this.ammoEl, 'is-hidden', melee);
     if (!melee) {
@@ -246,12 +298,17 @@ export class Hud {
       setClass(this.ammoEl, 'is-reloading', s.reloading);
     }
 
-    // Objective
+    // Objective: re-animates when it really changes (not for counters ticking within the same line)
     if (s.objective !== this.objectiveLast) {
+      const prev = this.objectiveLast;
       this.objectiveLast = s.objective;
       if (s.objective) {
         this.objectiveText.set(s.objective);
-        this.objectiveEl.classList.remove('is-visible'); void this.objectiveEl.offsetWidth;
+        const sameFamily = !!prev && prev !== '\u0000' && prev.slice(0, 8) === s.objective.slice(0, 8);
+        if (!sameFamily && now - this.objectiveShownAt > 600) {
+          this.objectiveEl.classList.remove('is-visible'); void this.objectiveEl.offsetWidth;
+        }
+        this.objectiveShownAt = now;
       }
       setClass(this.objectiveEl, 'is-visible', !!s.objective);
     }
@@ -261,16 +318,28 @@ export class Hud {
       if (s.missionTimer !== null) { this.timerText.set(formatTimer(s.missionTimer)); setClass(this.timerEl, 'is-urgent', s.missionTimer <= 10); }
     }
 
-    // Location
-    this.district.set(s.district);
-    this.street.set(s.streetName);
+    // Location popup: district changes, entering a vehicle, or a new street (rate-limited)
     this.clock.set(s.clock);
+    const L = this.locLast;
+    const inVeh = s.vehicleSpeedKmh !== null;
+    const vname = inVeh ? (s.vehicleName ?? '') : null;
+    const districtChanged = s.district !== L.district, streetChanged = s.streetName !== L.street, vehicleChanged = vname !== L.vehicle;
+    if (districtChanged || streetChanged || vehicleChanged) {
+      this.district.set(s.district);
+      this.street.set(s.streetName);
+      this.locVehicle.set(vname ?? '');
+      setClass(this.locEl, 'has-vehicle', !!vname);
+      const show = !this.started ? false : districtChanged || (vehicleChanged && !!vname) || (streetChanged && now - L.at > 9000);
+      L.district = s.district; L.street = s.streetName; L.vehicle = vname;
+      if (show) { L.at = now; this.locPop.show(4200); }
+      else if (vehicleChanged && !vname) this.locPop.hide();
+    }
+    this.started = true;
 
     // Vitals
     const hp = s.maxHealth > 0 ? Math.max(0, Math.min(1, s.health / s.maxHealth)) : 0;
     if (this.changed('hp', Math.round(hp * 500))) {
       this.healthFill.style.transform = `scaleX(${hp.toFixed(3)})`;
-      this.healthGhost.style.transform = `scaleX(${hp.toFixed(3)})`;
       setClass(this.vitalsEl, 'is-low', hp < 0.25);
     }
     const ar = Math.max(0, Math.min(1, s.armor / 100));
@@ -281,37 +350,31 @@ export class Hud {
     const stam = Math.max(0, Math.min(1, s.stamina));
     if (this.changed('st', Math.round(stam * 200))) {
       this.staminaFill.style.transform = `scaleX(${stam.toFixed(3)})`;
-      setClass(this.staminaRow, 'is-visible', stam < 0.995);
+      setClass(this.staminaEl, 'is-visible', stam < 0.995);
     }
 
     // Vehicle
-    const inVeh = s.vehicleSpeedKmh !== null;
-    setClass(this.vehicleEl, 'is-visible', inVeh);
+    setClass(this.speedoEl, 'is-visible', inVeh);
+    setClass(this.el, 'in-vehicle', inVeh);
     if (inVeh) {
       const kmh = Math.max(0, Math.round(s.vehicleSpeedKmh ?? 0));
       if (this.changed('kmh', kmh)) {
         this.speed.set(String(kmh));
-        this.gauge.style.strokeDashoffset = String(100 - Math.min(1, kmh / 220) * 100);
+        this.speedBar.style.transform = `scaleX(${Math.min(1, kmh / 200).toFixed(3)})`;
       }
-      this.vehicleName.set(s.vehicleName ?? '');
       const vhp = Math.max(0, Math.min(1, s.vehicleHealth ?? 1));
       if (this.changed('vhp', Math.round(vhp * 200))) {
         this.vehHealthFill.style.transform = `scaleX(${vhp.toFixed(3)})`;
-        setClass(this.vehicleEl, 'is-damaged', vhp < 0.3);
+        setClass(this.speedoEl, 'is-damaged', vhp < 0.3);
       }
     }
-    // Radio toast
+    // Radio popup
     if (s.radio !== this.radioLast) {
       const prev = this.radioLast;
       this.radioLast = s.radio;
-      if (s.radio || (inVeh && prev)) {
-        this.radioName.set(s.radio ?? 'Radio off');
-        this.radioEl.classList.add('is-visible');
-        window.clearTimeout(this.radioTimer);
-        this.radioTimer = window.setTimeout(() => this.radioEl.classList.remove('is-visible'), 3200);
-      }
+      if (s.radio || (inVeh && prev)) { this.radioName.set(s.radio ?? 'Radio off'); this.radioPop.show(3200); }
     }
-    if (!inVeh && this.radioEl.classList.contains('is-visible') && !s.radio) this.radioEl.classList.remove('is-visible');
+    if (!inVeh && !s.radio && this.radioPop.el.classList.contains('is-visible')) this.radioPop.hide();
 
     // Crosshair + hit marker
     if (this.changed('ch', s.crosshair)) {
@@ -320,8 +383,8 @@ export class Hud {
     }
     if (s.crosshair === 'aim') {
       const spread = Math.max(0, Math.min(1.5, s.crosshairSpread));
-      const px = Math.round((5 + spread * 30) * 2) / 2;
-      if (this.changed('spread', px)) this.crosshair.style.setProperty('--ma-spread', `${px}px`);
+      const px = Math.round((4 + spread * 30) * 2) / 2;
+      if (this.changed('spread', px)) this.crosshair.style.setProperty('--ma-spread', String(px));
     }
     const hm = Math.round(Math.max(0, Math.min(1, s.hitMarker)) * 20) / 20;
     if (this.changed('hm', hm)) { this.hitmarker.style.opacity = String(hm); this.hitmarker.style.setProperty('--ma-hm', String(hm)); }
@@ -345,7 +408,7 @@ export class Hud {
   }
 }
 
-/** Toasts, contextual hint, subtitles: shown even when the HUD is hidden. */
+/** Toasts, help box, subtitles: shown even when the HUD is hidden. */
 export class Notices {
   readonly toasts: HTMLDivElement;
   readonly hint: HTMLDivElement;
@@ -359,9 +422,10 @@ export class Notices {
     this.toasts = h('div', 'ma-toasts');
     this.toasts.setAttribute('aria-live', 'polite');
     this.hint = h('div', 'ma-hint');
-    this.hint.appendChild(h('div', 'ma-eyebrow', 'Tip'));
+    this.hint.setAttribute('role', 'status');
     this.hintText = h('div', 'ma-hint-text');
     this.hint.appendChild(this.hintText);
+    this.hint.appendChild(h('div', 'ma-hint-timer'));
     this.subtitleEl = h('div', 'ma-subtitle');
     this.subSpeaker = h('span', 'ma-subtitle-speaker');
     this.subText = h('span', 'ma-subtitle-text');
@@ -376,18 +440,17 @@ export class Notices {
       const c = lastEl.querySelector('.ma-toast-count');
       if (c) c.textContent = `×${n}`;
       window.clearTimeout(Number(lastEl.dataset.timer));
-      lastEl.dataset.timer = String(window.setTimeout(() => this.dismiss(lastEl), 3600));
+      lastEl.dataset.timer = String(window.setTimeout(() => this.dismiss(lastEl), 3800));
       return;
     }
     const t = h('div', `ma-toast ma-toast-${kind}`);
     t.dataset.text = text; t.dataset.kind = kind;
-    t.appendChild(h('span', 'ma-toast-mark'));
     t.appendChild(h('span', 'ma-toast-text', text));
     t.appendChild(h('span', 'ma-toast-count'));
     this.toasts.appendChild(t);
     const live = Array.from(this.toasts.children).filter(c => !c.classList.contains('is-leaving')) as HTMLElement[];
     while (live.length > 4) { const old = live.shift(); if (old) this.dismiss(old); }
-    t.dataset.timer = String(window.setTimeout(() => this.dismiss(t), 3600));
+    t.dataset.timer = String(window.setTimeout(() => this.dismiss(t), 3800));
   }
   private dismiss(t: HTMLElement) {
     if (t.classList.contains('is-leaving')) return;
@@ -396,17 +459,19 @@ export class Notices {
     window.setTimeout(() => t.remove(), 320);
   }
 
-  showHint(render: (el: HTMLElement) => void, seconds: number) {
-    render(this.hintText);
+  showHint(text: string, seconds: number) {
+    renderHintText(this.hintText, text);
+    const s = Math.max(1, seconds);
+    this.hint.style.setProperty('--ma-hint-s', `${s}s`);
     this.hint.classList.remove('is-visible'); void this.hint.offsetWidth;
     this.hint.classList.add('is-visible');
     window.clearTimeout(this.hintTimer);
-    this.hintTimer = window.setTimeout(() => this.hint.classList.remove('is-visible'), Math.max(1, seconds) * 1000);
+    this.hintTimer = window.setTimeout(() => this.hint.classList.remove('is-visible'), s * 1000);
   }
 
   subtitle(text: string | null, speaker?: string) {
     if (!text) { this.subtitleEl.classList.remove('is-visible'); return; }
-    this.subSpeaker.textContent = speaker ? speaker : '';
+    this.subSpeaker.textContent = speaker ? `${speaker}:` : '';
     setClass(this.subSpeaker, 'is-hidden', !speaker);
     this.subText.textContent = text;
     this.subtitleEl.classList.add('is-visible');

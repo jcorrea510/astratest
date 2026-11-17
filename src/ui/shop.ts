@@ -2,6 +2,7 @@
 import type { ShopItem } from './contracts';
 import { formatMoney } from './geometry';
 import { h } from './dom';
+import { CHECK_SVG, LOCK_SVG, guessIcon, weaponSvg } from './icons';
 
 export class Shop {
   readonly el: HTMLDivElement;
@@ -19,13 +20,10 @@ export class Shop {
     this.el.setAttribute('role', 'dialog');
     const panel = h('div', 'ma-panel ma-shop-panel');
     const head = h('div', 'ma-panel-head ma-shop-head');
-    const ht = h('div');
-    ht.appendChild(h('div', 'ma-eyebrow', 'Open for business'));
     this.title = h('div', 'ma-panel-title');
-    ht.appendChild(this.title);
-    head.appendChild(ht);
+    head.appendChild(this.title);
     const wallet = h('div', 'ma-wallet');
-    wallet.appendChild(h('div', 'ma-eyebrow', 'Wallet'));
+    wallet.appendChild(h('div', 'ma-label', 'Wallet'));
     this.moneyEl = h('div', 'ma-wallet-value');
     wallet.appendChild(this.moneyEl);
     head.appendChild(wallet);
@@ -34,7 +32,7 @@ export class Shop {
     panel.appendChild(this.list);
     const foot = h('div', 'ma-panel-foot');
     const hints = h('div', 'ma-foot-hints');
-    for (const [k, t] of [['↑↓', 'Browse'], ['Enter', 'Buy'], ['Esc', 'Leave']]) {
+    for (const [k, t] of [['↑↓', 'Browse'], ['Enter', 'Buy'], ['Esc', 'Leave store']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       hints.appendChild(s);
@@ -74,13 +72,24 @@ export class Shop {
       const afford = money >= it.price;
       const state = it.owned ? 'owned' : it.disabled ? 'disabled' : afford ? 'buy' : 'poor';
       b.classList.add(`is-${state}`);
+      const icon = h('span', 'ma-shop-icon');
+      const ic = guessIcon(`${it.id} ${it.label}`);
+      if (ic) icon.innerHTML = weaponSvg(ic); else icon.classList.add('is-empty');
+      b.appendChild(icon);
       const text = h('span', 'ma-shop-text');
       text.appendChild(h('span', 'ma-shop-name', it.label));
       text.appendChild(h('span', 'ma-shop-desc', it.description));
       b.appendChild(text);
       const right = h('span', 'ma-shop-right');
-      right.appendChild(h('span', 'ma-shop-price', it.owned ? 'Owned' : formatMoney(it.price)));
-      right.appendChild(h('span', 'ma-shop-action', state === 'buy' ? 'Buy' : state === 'poor' ? `Need ${formatMoney(it.price - money)} more` : state === 'disabled' ? 'Unavailable' : 'In your bag'));
+      if (state === 'owned') {
+        const tag = h('span', 'ma-shop-tag is-owned');
+        tag.innerHTML = CHECK_SVG; tag.appendChild(document.createTextNode('Owned'));
+        right.appendChild(tag);
+      } else {
+        right.appendChild(h('span', 'ma-shop-price', formatMoney(it.price)));
+        if (state === 'poor') right.appendChild(h('span', 'ma-shop-tag is-poor', `Need ${formatMoney(it.price - money)} more`));
+        if (state === 'disabled') { const tag = h('span', 'ma-shop-tag is-locked'); tag.innerHTML = LOCK_SVG; tag.appendChild(document.createTextNode('Unavailable')); right.appendChild(tag); }
+      }
       b.appendChild(right);
       b.setAttribute('aria-label', `${it.label}, ${it.owned ? 'owned' : formatMoney(it.price)}`);
       b.addEventListener('click', () => this.buy(it.id, b));

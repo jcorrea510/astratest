@@ -13,6 +13,12 @@
 
 CC0 does not require attribution; it is given here for traceability and thanks. Everything else you see and hear (sky, water, roads, towers, docks, pier and Ferris wheel, trees and palms, vans, weapons, faces and hair, particles, all music and most sound effects) is generated in code.
 
+## Fonts
+
+| Font | Author | Licence | Used for |
+| --- | --- | --- | --- |
+| Barlow Condensed, Barlow ([github.com/jpt/barlow](https://github.com/jpt/barlow)), bundled from `@fontsource/barlow-condensed` and `@fontsource/barlow` (latin subset) | Jeremy Tribby / The Barlow Project Authors | [SIL Open Font License 1.1](https://openfontlicense.org) | Logo, HUD numbers, menus (condensed); body text |
+
 ## Libraries
 
 | Library | Licence |
