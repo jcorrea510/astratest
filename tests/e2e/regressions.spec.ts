@@ -466,3 +466,24 @@ test('saving while swimming at sea loads you at the safehouse, not in the water'
   expect(r.z).toBeLessThan(0);
   clean(p);
 });
+
+// ---------- Bug-bash D ----------
+test('the respray prompt goes away once the car has been resprayed', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, a = (window as any).__meridian.activities;
+    g.money = 1000;
+    const v = g.vehicles.spawn('sedan', -260, 102, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    v.damage(300, v.position.clone(), null);
+    g.playerVehicle.phys.teleport(-200, 0.6, 102, Math.PI / 2);
+    for (let i = 0; i < 3; i++) g.frame(1 / 30, false);
+    const before = a.prompt();
+    for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
+    return { before, paid: 1000 - g.money, after: a.prompt() };
+  });
+  expect(r.paid).toBe(150);
+  expect(r.after).toBe(null);
+  clean(p);
+});

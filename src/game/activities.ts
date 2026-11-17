@@ -114,7 +114,7 @@ export class Activities {
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
-    if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() ? 'Stop to respray ($150)' : null;
+    if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() && this.garageArmed ? 'Stop to respray ($150)' : null; // not again until you drive out and back in
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
     if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
