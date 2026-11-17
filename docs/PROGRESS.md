@@ -23,15 +23,15 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress
-- M5 polish/QA.
+## In progress (10:20 UTC, after the usage-limit pause 06:15-10:00)
+- QA: 20-min soak re-run after fixing a memory leak (collider tag map kept despawned actors alive; heap grew 215->700 MB). Spot check after the fix: heap flat ~115 MB.
+- Fresh-eyes code review + playtest agents resumed (were cut off by the usage limit).
 
 ## Next
-1. Watch CI run on main; fix if red.
-2. Soak test (15 min scripted chaos, memory sampling) as tests/e2e/soak.spec.ts (@soak).
-3. Visual review at several times of day; polish anything cheap-looking.
-4. Fresh-eyes playtest + code review agents; bug-bash passes until two clean.
-5. README.md, CREDITS.md; final report; delete scheduled resume task.
+1. Soak must pass (no issues, flat heap). Then push to main (CI deploys).
+2. Fix reviewer/playtester findings; add a test per bug.
+3. Bug-bash passes until two consecutive clean passes.
+4. Final visual tour at several times of day; final report; delete scheduled resume task trig_01QHNBHfHX5vN6UurzWLwPga.
 
 ## Decisions
 - Original game "Meridian Afterglow" in "Port Meridian". Stylised low-poly, apricot/teal grade.
