@@ -19,6 +19,7 @@ const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
   cars: AiCar[] = [];
   maxCars = 18;
+  prewarming = false;
   private spawnT = 0;
   private parkedBlocks = new Map<number, Vehicle[]>();
   private frustum = new THREE.Frustum(); private m4 = new THREE.Matrix4();
@@ -194,8 +195,8 @@ export class Traffic {
         samplePath(lane, s, sp);
         const p = new THREE.Vector3(sp.x, 1, sp.z);
         const d = p.distanceTo(focus);
-        if (d < 70 || d > 170) continue;
-        if (d < 140 && this.frustum.containsPoint(p)) continue;
+        if (d < (this.prewarming ? 25 : 70) || d > 170) continue;
+        if (!this.prewarming && d < 140 && this.frustum.containsPoint(p)) continue;
         if (this.vehicles.list.some(o => o.position.distanceTo(p) < 14)) continue;
         this.spawnOnLane(this.pickKind(), lane, s);
         break;

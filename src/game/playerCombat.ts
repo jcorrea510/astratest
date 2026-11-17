@@ -62,6 +62,7 @@ export class PlayerCombat {
           this.pendingMelee = 0.16;
         } else {
           if (!this.ctl.aiming) { this.hipAimT = 0.7; c.yaw = this.cam.yaw + Math.PI; }
+          this.updateModel(); c.human.root.rotation.y = c.yaw;
           const o = this.muzzleWorld(new THREE.Vector3());
           const dir = this.aimPoint.clone().sub(o).normalize();
           const sp = (this.ctl.aiming ? def.aimSpread : def.spread) + this.spread + (c.speed > 1 ? 0.01 : 0);

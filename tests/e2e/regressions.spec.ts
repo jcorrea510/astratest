@@ -130,3 +130,45 @@ test('pausing closes the shop; the wheel never spends a medkit on a downed playe
   expect(r.wheel).toBe(false);
   clean(p);
 });
+
+test('playtest fixes: populated start, M3 enemies on the ground, fast police response, damage cap, no respray charge after a delivery', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  expect(await state<number>(page, 'window.__game.traffic.cars.length')).toBeGreaterThanOrEqual(5);
+  expect(await state<number>(page, 'window.__game.pop.npcs.length')).toBeGreaterThanOrEqual(6);
+  // M3 enemies must all stand on the ground (none on warehouse roofs)
+  const ys = await page.evaluate(() => {
+    const g = (window as any).__game; const M = (window as any).__meridian.missions;
+    for (const id of ['m1', 'm2']) M.completed.add(id);
+    M.start(M.available().find((d: any) => d.id === 'm3'));
+    g.player.place(398, 0.3, 100, 0);
+    for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
+    return g.pop.npcs.filter((n: any) => n.role === 'gang' && n.persistent).map((n: any) => n.pos.y);
+  });
+  expect(ys.length).toBe(8);
+  for (const y of ys) expect(y).toBeLessThan(1);
+  await page.evaluate(() => { (window as any).__meridian.missions.abort(); });
+  // police show up quickly at heat 2+
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-150, 0.3, -96, 0); g.police.report('kill', g.player.pos); g.police.state.add('kill'); });
+  await step(page, 8);
+  expect(await state<number>(page, 'window.__game.police.units.length + window.__game.police.foot.length')).toBeGreaterThan(0);
+  // damage cap: a single burst can't take more than 45 health in one second
+  const hp = await page.evaluate(() => { const g = (window as any).__game; g.player.health = 100; g.player.armor = 0; for (let i = 0; i < 20; i++) g.player.damage(20, null, g.time + 100); return g.player.health; });
+  expect(hp).toBeGreaterThanOrEqual(55);
+  // M1 delivery at the garage doesn't trigger a paid respray
+  await page.evaluate(() => { const g = (window as any).__game; g.police.clear(); g.player.health = 100; });
+  const money = await page.evaluate(() => {
+    const g = (window as any).__game; const M = (window as any).__meridian.missions;
+    M.completed.clear(); M.start(M.available()[0]);
+    const v = g.vehicles.spawn('sedan', -262, -96, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    v.phys.teleport(470, 0.7, 120, 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    v.damage(300, v.position.clone(), null);
+    const before = g.money;
+    v.phys.teleport(-200, 0.7, 102, Math.PI / 2); for (let i = 0; i < 200; i++) g.frame(1 / 30, false);
+    return { gained: g.money - before, done: M.completed.has('m1') };
+  });
+  expect(money.done).toBe(true);
+  expect(money.gained).toBe(600);
+  clean(p);
+});

@@ -242,7 +242,7 @@ export class FullMap {
     for (const d of this.painter.districtLabels) {
       const p = mapWorldToScreen(v, d.x, d.z);
       const text = d.name.toUpperCase().split('').join(' ');
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.65)'; ctx.strokeText(text, p.x, p.y);
+      ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.65)'; ctx.strokeText(text, p.x, p.y);
       ctx.fillStyle = 'rgba(252,242,217,0.78)'; ctx.fillText(text, p.x, p.y);
     }
 
@@ -260,7 +260,7 @@ export class FullMap {
         if (!b.label || b.kind === 'waypoint') continue;
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.85)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
+        ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.85)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
         ctx.fillStyle = '#fcf2d9'; ctx.fillText(b.label, p.x + br + 5, p.y);
       }
       ctx.textAlign = 'center';

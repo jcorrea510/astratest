@@ -14,6 +14,7 @@ export class Population {
   npcs: Npc[] = [];
   runner: NpcBrainRunner;
   maxCivilians = 22;
+  prewarming = false;
   private spawnT = 0;
   private frustum = new THREE.Frustum();
   private projScreen = new THREE.Matrix4();
@@ -150,10 +151,10 @@ export class Population {
         const to = nodes[e.to]; const t = Math.random();
         const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2, nd.z + (to.z - nd.z) * t);
         const d = p.distanceTo(focus);
-        if (d < 35 || d > 120) continue;
+        if (d < (this.prewarming ? 10 : 35) || d > 120) continue;
         const dens = DISTRICT_INFO[districtAt(this.city, p.x, p.z)].pedDensity;
         if (Math.random() > dens) continue;
-        if (d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
+        if (!this.prewarming && d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
         const n = this.spawn('civilian', p.x, p.z, 0.2);
         n.node = nd.id; n.nextNode = Math.random() < 0.5 ? e.to : nd.id;
         break;

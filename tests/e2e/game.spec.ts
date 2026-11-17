@@ -214,7 +214,7 @@ test('every mission can be completed', async ({ page }) => {
   expect((await status()).done, JSON.stringify(await status())).toContain('m4');
 
   // M5: the race. Drive through each checkpoint ahead of the rivals.
-  await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-44, 0.3, 412, 0); });
+  await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-410, 0.3, 412, 0); });
   await step(page, 5);
   expect((await status()).active).toBe('m5');
   await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); });

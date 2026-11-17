@@ -4,7 +4,7 @@ export const PLACES = {
   safehouse: { x: -300, z: -106.6, yaw: Math.PI, name: 'Lantern Ave apartment' },
   juno: { x: -262, z: -106.6, yaw: Math.PI, name: 'Juno' },
   marlo: { x: -200, z: 306.6, yaw: 0, name: 'Marlo' },
-  vesna: { x: -44, z: 412, yaw: 0, name: 'Vesna' },
+  vesna: { x: -410, z: 412, yaw: 0, name: 'Vesna' },
   arms: { x: -300, z: 10.2, yaw: Math.PI, name: 'Tidewater Arms' },
   garage: { x: -200, z: 102, yaw: Math.PI / 2, name: 'Glow Garage' },
   snack: { x: -46.5, z: 455.5, y: 1.2, yaw: 0, name: 'Pier 9 Snacks' },

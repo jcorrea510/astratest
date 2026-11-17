@@ -13,6 +13,7 @@ import { Activities } from './game/activities';
 import { readSave, writeSave, type SaveData } from './game/save';
 import { WEAPONS, WEAPON_ORDER, type WeaponId } from './combat/weapons';
 import { PLACES } from './game/places';
+import { AVENUES, STREETS } from './world/citymap';
 
 declare global { interface Window { __meridian?: unknown; __game?: Game } }
 
@@ -104,6 +105,8 @@ async function startGame(cont: boolean) {
     const save = cont ? readSave(storage) : null;
     if (save) applySave(save); else newGameSetup();
     activities.spawnCards();
+    game.cam.update(0.016, game.player.pos, 'foot');
+    game.prewarm();
     ui.hideLoading();
     ui.setHudVisible(true);
     game.onFrame = dt => frame(dt);
@@ -156,7 +159,7 @@ function wireGame(g: Game) {
   g.events.onDeath = (k, detail) => { ui.showDeath(k, detail); missions?.onPlayerDown(k); };
   g.events.onBeforeDown = () => { if (g.wheelOpen) closeWheel(true); activities?.closeShop(); };
   g.events.onRespawn = () => { ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info'); };
-  missions!.onPassed = () => { saveGame(); };
+  missions!.onPassed = () => { activities?.disarmGarage(); saveGame(); };
   document.addEventListener('pointerlockchange', () => {
     if (!document.pointerLockElement && started && game && !game.paused && !ui.isMenuOpen() && !ourUnlock && !activities?.shopIsOpen) pause();
     ourUnlock = false;
@@ -241,7 +244,17 @@ function minimapState() {
   const heading = Math.atan2(Math.sin(yaw), -Math.cos(yaw));
   const blips = [...g.baseBlips(), ...missions!.blips(), ...activities!.blips()];
   const heat = g.police.heat > 0 && !g.police.state.seen ? { x: g.police.state.lastSeen.x, z: g.police.state.lastSeen.z, r: g.police.state.searchRadius() } : null;
-  return { x: g.player.pos.x, z: g.player.pos.z, heading, zoom: g.playerVehicle ? 1 + Math.min(1, Math.abs(g.playerVehicle.speed) / 30) : 1, blips, heatRadius: heat };
+  // GPS: follow the street grid (every grid line is a road) to the current objective
+  const goal = blips.find(b => b.kind === 'target' || b.kind === 'checkpoint') ?? blips.find(b => b.kind === 'waypoint') ?? (!missions!.active ? blips.find(b => b.kind === 'mission') : undefined);
+  let route: { x: number; z: number }[] | undefined;
+  if (goal && Math.hypot(goal.x - g.player.pos.x, goal.z - g.player.pos.z) > 30) {
+    const snap = (v: number, arr: number[]) => arr.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+    const px = snap(g.player.pos.x, AVENUES), pz = snap(g.player.pos.z, STREETS), tx = snap(goal.x, AVENUES), tz = snap(goal.z, STREETS);
+    const viaX = Math.abs(g.player.pos.x - px) < Math.abs(g.player.pos.z - pz);
+    route = viaX ? [{ x: g.player.pos.x, z: g.player.pos.z }, { x: px, z: g.player.pos.z }, { x: px, z: tz }, { x: tx, z: tz }, { x: goal.x, z: goal.z }]
+      : [{ x: g.player.pos.x, z: g.player.pos.z }, { x: g.player.pos.x, z: pz }, { x: tx, z: pz }, { x: tx, z: tz }, { x: goal.x, z: goal.z }];
+  }
+  return { x: g.player.pos.x, z: g.player.pos.z, heading, zoom: g.playerVehicle ? 1 + Math.min(1, Math.abs(g.playerVehicle.speed) / 30) : 1, blips, heatRadius: heat, route };
 }
 
 /** Test / debugging surface used by the automated playthrough tests. */

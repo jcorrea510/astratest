@@ -102,16 +102,18 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   const roadMesh = new THREE.Mesh(road.build(false), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
 
   // Water with gentle animated waves and shoreline foam.
-  const waterMat = new THREE.MeshStandardMaterial({ color: '#1f6f80', roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.94 });
+  const waterMat = new THREE.MeshStandardMaterial({ color: '#1f6f80', roughness: 0.28, metalness: 0.1, transparent: true, opacity: 0.94 });
   waterMat.onBeforeCompile = sh => {
     sh.uniforms.uTime = timeUniform; sh.uniforms.uNight = nightUniform;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed,1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
       uniform float uTime, uNight; varying vec3 vW;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        float w1 = sin(vW.x * 0.21 + uTime * 1.1) + sin(vW.z * 0.17 - uTime * 0.9) + sin((vW.x + vW.z) * 0.37 + uTime * 1.7) * 0.5;
-        float w2 = cos(vW.x * 0.33 - uTime * 1.3) + cos(vW.z * 0.29 + uTime * 0.7);
-        normal = normalize(normal + vec3(w1 * 0.035, 0.0, w2 * 0.035));`)
+        // several non-aligned wave directions avoid stripe banding; fade the ripples with distance
+        float fadeW = 1.0 - smoothstep(60.0, 420.0, length(vViewPosition));
+        float w1 = sin(dot(vW.xz, vec2(0.19, 0.07)) + uTime * 1.1) + sin(dot(vW.xz, vec2(-0.05, 0.23)) - uTime * 0.9) + 0.5 * sin(dot(vW.xz, vec2(0.31, -0.27)) + uTime * 1.7) + 0.35 * sin(dot(vW.xz, vec2(-0.6, -0.41)) + uTime * 2.3);
+        float w2 = cos(dot(vW.xz, vec2(0.29, -0.13)) - uTime * 1.3) + cos(dot(vW.xz, vec2(0.08, 0.31)) + uTime * 0.7) + 0.35 * cos(dot(vW.xz, vec2(0.52, 0.47)) - uTime * 2.1);
+        normal = normalize(normal + vec3(w1 * 0.022, 0.0, w2 * 0.022) * fadeW);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float shoreS = smoothstep(${(COAST_Z + 8).toFixed(1)}, ${(COAST_Z - 2).toFixed(1)}, vW.z);
         float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(-60.0, vW.z);
@@ -228,6 +230,16 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
     void len;
   }
   const markMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  // parking bays along the long edges of courtyard lots
+  for (const b of city.blocks) {
+    if (b.kind !== 'buildings' || b.district === 'heights' || b.district === 'hillside') continue;
+    const x0 = b.x0 + SIDEWALK + 10, x1 = b.x1 - SIDEWALK - 10, z0 = b.z0 + SIDEWALK + 10, z1 = b.z1 - SIDEWALK - 10;
+    const yy = CURB_HEIGHT + 0.025;
+    const V = (x: number, z: number) => new THREE.Vector3(x, yy, z);
+    const line = (ax: number, az: number, bx: number, bz: number, wdt = 0.12) => { const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz) || 1, nx = -dz / l * wdt / 2, nz = dx / l * wdt / 2; mk.quad(V(ax - nx, az - nz), V(bx - nx, bz - nz), V(bx + nx, bz + nz), V(ax + nx, az + nz), [0, 0, 1, 0, 1, 1, 0, 1], white); };
+    for (let x = x0 + 2; x <= x1 - 2; x += 3) { line(x, z0 + 0.3, x, z0 + 5.3); line(x, z1 - 5.3, x, z1 - 0.3); }
+    line(x0 + 2, z0 + 5.3, x1 - 2 - ((x1 - x0 - 4) % 3), z0 + 5.3); line(x0 + 2, z1 - 5.3, x1 - 2 - ((x1 - x0 - 4) % 3), z1 - 5.3);
+  }
   const marks = new THREE.Mesh(mk.build(false), markMat); marks.receiveShadow = true; root.add(marks);
 
   // ---------- Buildings ----------
@@ -260,6 +272,13 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
     const ccx = wx + ((bb.min.x + bb.max.x) / 2) * c + ((bb.min.z + bb.max.z) / 2) * s;
     const ccz = wz - ((bb.min.x + bb.max.x) / 2) * s + ((bb.min.z + bb.max.z) / 2) * c;
     physics.addStaticBox(ccx, h / 2, ccz, w / 2 * 0.96, h / 2, d / 2 * 0.96, lot.rot);
+    {
+      // KayKit backs are bare: dress them with a windowed back facade so courtyards don't look unfinished.
+      const backOff = (bb.min.z + bb.max.z) / 2 - bb.min.z + 0.04; // from centre to just behind the back wall
+      const bx = ccx - backOff * s, bz = ccz - backOff * c;
+      const gbk = towerGB(bx, bz);
+      gbk.box(bx, bz, w * 0.94, 0.08, CURB_HEIGHT + 0.2, CURB_HEIGHT + h * 0.86, lot.rot, C(r.pick(['#8c5a46', '#6f7a78', '#9a7b5f', '#5f6b7a'])), [2, lot.seed % 991, 2.4, 3.3], C('#6f6c66'));
+    }
     if (r.chance(0.18)) rooftop.push({ x: ccx + r.range(-1.5, 1.5), y: h + CURB_HEIGHT - 0.7, z: ccz + r.range(-1.5, 1.5), s: r.range(0.9, 1.1) });
   };
   const placeMidrise = (lot: Lot) => {
@@ -479,6 +498,20 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   }
   for (let x = minX + 12; x < maxX - 8; x += 26) { const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
 
+  // Visible city edge: guardrail along the boundary walls with a tree line beyond.
+  {
+    const rail = new GeoBuilder();
+    const railC = C('#d8d2c4'), postC = C('#5e5a55');
+    const edgeX = minX - 5.2, edgeZ = minZ - 5.2;
+    for (let z = edgeZ; z < maxZ + 7; z += 3) rail.box(edgeX, z, 0.18, 0.18, 0, 0.9, 0, postC, [0, 0, 1, 1]);
+    rail.box(edgeX + 0.1, (edgeZ + maxZ + 7) / 2, 0.1, maxZ + 7 - edgeZ, 0.55, 0.85, 0, railC, [0, 0, 1, 1]);
+    for (let x = edgeX; x < maxX + 2; x += 3) rail.box(x, edgeZ, 0.18, 0.18, 0, 0.9, 0, postC, [0, 0, 1, 1]);
+    rail.box((edgeX + maxX + 2) / 2, edgeZ + 0.1, maxX + 2 - edgeX, 0.1, 0.55, 0.85, 0, railC, [0, 0, 1, 1]);
+    const rm = new THREE.Mesh(rail.build(true), facade); rm.castShadow = true; rm.receiveShadow = true; root.add(rm);
+    const tr = new Rng(77);
+    for (let z = edgeZ + 4; z < maxZ; z += tr.range(5, 9)) props.add(`tree${tr.int(0, 2)}`, edgeX - tr.range(6, 22), 0, z, tr.range(0, 6.28), tr.range(1.1, 1.7));
+    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) props.add(`tree${tr.int(0, 2)}`, x, 0, edgeZ - tr.range(6, 22), tr.range(0, 6.28), tr.range(1.1, 1.7));
+  }
   chunkMeshes.push(...inst.build(root));
   for (const m of props.build(root)) { m.userData.small = true; chunkMeshes.push(m); }
 

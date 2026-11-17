@@ -252,6 +252,17 @@ export class Game {
     this.audio.play('hitBody', { pos: this.player.pos });
     if (killed) this.playerDown('down');
   }
+  /** Fills the streets around the player before the first frame (so the city never starts empty). */
+  prewarm() {
+    this.renderer.camera.updateMatrixWorld(true);
+    this.pop.prewarming = this.traffic.prewarming = true;
+    for (let i = 0; i < 70; i++) {
+      this.traffic.update(0.4, this.renderer.camera, this.player.pos, this.renderer.quality.traffic);
+      this.pop.update(0.2, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
+    }
+    this.pop.prewarming = this.traffic.prewarming = false;
+    for (let i = 0; i < 30; i++) this.fixedUpdate(1 / 60);
+  }
   /** Enter the nearest vehicle (carjacking if occupied) or leave the current one. */
   toggleVehicle() {
     if (this.entering || !this.player.alive || this.deathT >= 0) return;

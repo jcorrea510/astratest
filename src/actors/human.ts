@@ -299,12 +299,12 @@ function variantGeometry(tpl: HumanTemplate, hair: HairStyle, hat: HatStyle): TH
     add(g, reg, 0, dy * S, dz * S);
   };
   switch (hair) {
-    case 'short': hairCap(0.093, 0.12, 0.108, Math.PI * 0.56, 0.42, R_HAIR); break;
-    case 'buzz': hairCap(0.089, 0.117, 0.104, Math.PI * 0.52, 0.45, R_HAIR); break;
-    case 'curly': hairCap(0.098, 0.124, 0.112, Math.PI * 0.58, 0.4, R_HAIR); for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; add(new THREE.SphereGeometry(1, 8, 6).scale(0.035 * S, 0.033 * S, 0.035 * S), R_HAIR, Math.cos(a) * 0.07 * S, 0.075 * S + Math.sin(a * 3) * 0.008 * S, Math.sin(a) * 0.065 * S - 0.015 * S); } break;
-    case 'long': hairCap(0.097, 0.124, 0.112, Math.PI * 0.6, 0.4, R_HAIR); add(new THREE.CylinderGeometry(0.085 * S, 0.075 * S, 0.2 * S, 14, 1, true, Math.PI * 0.55, Math.PI * 0.9).rotateY(Math.PI), R_HAIR, 0, -0.06 * S, -0.012 * S); add(new THREE.BoxGeometry(0.15 * S, 0.19 * S, 0.035 * S), R_HAIR, 0, -0.07 * S, -0.075 * S); break;
-    case 'bun': hairCap(0.094, 0.12, 0.108, Math.PI * 0.56, 0.42, R_HAIR); add(new THREE.SphereGeometry(1, 10, 8).scale(0.045 * S, 0.042 * S, 0.045 * S), R_HAIR, 0, 0.1 * S, -0.065 * S); break;
-    case 'ponytail': hairCap(0.094, 0.12, 0.108, Math.PI * 0.56, 0.42, R_HAIR); add(new THREE.CylinderGeometry(0.022 * S, 0.012 * S, 0.17 * S, 8).rotateX(0.35), R_HAIR, 0, -0.04 * S, -0.12 * S); break;
+    case 'short': hairCap(0.094, 0.121, 0.109, Math.PI * 0.62, 0.5, R_HAIR); break;
+    case 'buzz': hairCap(0.09, 0.118, 0.105, Math.PI * 0.6, 0.52, R_HAIR); break;
+    case 'curly': hairCap(0.099, 0.125, 0.113, Math.PI * 0.63, 0.48, R_HAIR); for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; add(new THREE.SphereGeometry(1, 8, 6).scale(0.035 * S, 0.033 * S, 0.035 * S), R_HAIR, Math.cos(a) * 0.07 * S, 0.075 * S + Math.sin(a * 3) * 0.008 * S, Math.sin(a) * 0.065 * S - 0.015 * S); } break;
+    case 'long': hairCap(0.098, 0.125, 0.113, Math.PI * 0.64, 0.46, R_HAIR); add(new THREE.CylinderGeometry(0.085 * S, 0.075 * S, 0.2 * S, 14, 1, true, Math.PI * 0.55, Math.PI * 0.9).rotateY(Math.PI), R_HAIR, 0, -0.06 * S, -0.012 * S); add(new THREE.BoxGeometry(0.15 * S, 0.19 * S, 0.035 * S), R_HAIR, 0, -0.07 * S, -0.075 * S); break;
+    case 'bun': hairCap(0.095, 0.121, 0.109, Math.PI * 0.62, 0.5, R_HAIR); add(new THREE.SphereGeometry(1, 10, 8).scale(0.045 * S, 0.042 * S, 0.045 * S), R_HAIR, 0, 0.1 * S, -0.065 * S); break;
+    case 'ponytail': hairCap(0.095, 0.121, 0.109, Math.PI * 0.62, 0.5, R_HAIR); add(new THREE.CylinderGeometry(0.022 * S, 0.012 * S, 0.17 * S, 8).rotateX(0.35), R_HAIR, 0, -0.04 * S, -0.12 * S); break;
     case 'bald': break;
   }
   if (hat === 'cap' || hat === 'police') {

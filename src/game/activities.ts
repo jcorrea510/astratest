@@ -18,12 +18,14 @@ export class Activities {
   private garageCool = 0;
   private garageArmed = true;
   missionActive: () => boolean = () => false;
+  /** Called when a mission ends: a delivery into the garage must not turn into a paid respray. */
+  disarmGarage() { this.garageArmed = false; }
   onSaveRequested: (() => void) | null = null;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
-    this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166');
-    this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff');
-    this.snackMk = ctx.marker(PLACES.snack, 1.3, '#ff8fb1');
-    this.safeMk = ctx.marker(PLACES.safehouse, 1.3, '#9be8a6');
+    this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166', 'TIDEWATER ARMS');
+    this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff', 'GLOW GARAGE  ·  RESPRAY $150');
+    this.snackMk = ctx.marker(PLACES.snack, 1.3, '#ff8fb1', 'PIER 9 SNACKS');
+    this.safeMk = ctx.marker(PLACES.safehouse, 1.3, '#9be8a6', 'SAFEHOUSE  ·  SAVE');
     this.buildRamps();
   }
   /** Re-creates postcard pickups after loading a save. */

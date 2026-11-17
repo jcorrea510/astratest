@@ -46,10 +46,11 @@ export class VehicleManager {
     for (const v of this.list) {
       v.phys.postStep();
       const imp = v.phys.impact;
-      if (imp > 3.2 && !v.destroyed) {
+      if (imp > 4 && !v.destroyed) {
         const d = v.phys.impactDir;
         const pt = this.tmp.copy(v.position).add(new THREE.Vector3(-d.x, 0.4, -d.z).multiplyScalar(2));
-        const dmg = (imp - 3) * 38;
+        // sub-linear: ordinary knocks dent, only big hits wreck a car
+        const dmg = Math.pow(imp - 3, 0.85) * 26;
         const destroyed = v.damage(dmg, pt.clone(), new THREE.Vector3(d.x, d.y, d.z), v.driver ?? v.lastDamagedBy);
         v.flashT = 0.15;
         this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);

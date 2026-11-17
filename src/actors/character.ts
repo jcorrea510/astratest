@@ -25,6 +25,7 @@ export class Character {
   lastDamageFrom: Character | null = null;
   lastHitTime = -10;
   knockT = 0;
+  private capStart = -10; private capUsed = 0;
   private controller: RAPIER.KinematicCharacterController;
   twist = 0;
   private twistSmoothed = 0;
@@ -83,6 +84,12 @@ export class Character {
   /** Applies damage; returns true if this hit killed the character. */
   damage(amount: number, from: Character | null, time: number): boolean {
     if (!this.alive) return false;
+    if (this.isPlayer) {
+      // Fairness cap: incoming damage per rolling second is limited so death is never instantaneous.
+      if (time - this.capStart > 1) { this.capStart = time; this.capUsed = 0; }
+      amount = Math.max(0, Math.min(amount, 45 - this.capUsed)); this.capUsed += amount;
+      if (amount <= 0) return false;
+    }
     if (this.armor > 0) { const absorbed = Math.min(this.armor, amount * 0.65); this.armor -= absorbed; amount -= absorbed; }
     this.health -= amount; this.lastDamageFrom = from; this.lastHitTime = time;
     this.human.flash();

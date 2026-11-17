@@ -6,8 +6,8 @@ export interface QualityPreset {
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
   low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 14, traffic: 12, pointLights: 0, particles: 300 },
-  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 48, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 22, traffic: 18, pointLights: 4, particles: 700 },
-  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 70, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 30, traffic: 24, pointLights: 8, particles: 1200 },
+  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 22, traffic: 18, pointLights: 4, particles: 700 },
+  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 30, traffic: 24, pointLights: 8, particles: 1200 },
 };
 
 export type Action =
@@ -21,7 +21,7 @@ export const ACTION_LABELS: Record<Action, string> = {
 };
 export const DEFAULT_BINDINGS: Record<Action, string[]> = {
   forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
-  sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['ControlLeft', 'KeyC'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
+  sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC', 'AltLeft'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
   reload: ['KeyR'], wheel: ['Tab', 'KeyQ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
   pause: ['Escape', 'KeyP'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyL'], radio: ['Period'], camera: ['KeyB'],
 };

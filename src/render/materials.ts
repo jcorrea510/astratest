@@ -128,7 +128,7 @@ export function atlasEmissive(base: THREE.Texture): THREE.Texture {
   const cw = c.width / 8, ch = c.height / 4;
   const grad = g.createLinearGradient(0, 0, 0, ch);
   grad.addColorStop(0, '#ffd08a'); grad.addColorStop(1, '#ff9f4a');
-  g.fillStyle = grad; g.fillRect(0, 0, cw * 0.84, ch);
+  g.save(); g.translate(0, ch * 3); g.fillStyle = grad; g.fillRect(2, 2, cw * 2 - 4, ch - 4); g.restore(); // window-glass swatch spans cells (0,3)-(1,3)
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = base.flipY;
   return t;
 }
@@ -142,7 +142,7 @@ export function kaykitMaterial(map: THREE.Texture, emissive: THREE.Texture | nul
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform float uNight; varying vec3 vWPos2; float kh(vec3 p){ return fract(sin(dot(p, vec3(12.7, 78.2, 37.9))) * 43758.5); }')
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          float wl = step(0.45, kh(floor(vWPos2 * vec3(0.55, 0.32, 0.55))));
+          float wl = step(0.5, kh(floor(vWPos2 * vec3(0.55, 0.32, 0.55))));
           totalEmissiveRadiance = texture2D(emissiveMap, vEmissiveMapUv).rgb * uNight * wl * 0.9;`);
     };
     m.customProgramCacheKey = () => 'kaykit-night';

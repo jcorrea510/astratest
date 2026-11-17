@@ -51,6 +51,7 @@ export class Police {
   units: AiCar[] = [];
   foot: Npc[] = [];
   private spawnT = 0;
+  private roadLanes: CityMap['lanes'] = [];
   private siren: LoopVoice | null = null;
   onHeatChange: ((heat: number, lost: boolean) => void) | null = null;
   constructor(private city: CityMap, private pop: Population, private traffic: Traffic, private audio: GameAudio, private scene: THREE.Scene) { }
@@ -108,7 +109,7 @@ export class Police {
       this.spawnT -= dt;
       const wantCars = UNITS_BY_HEAT[st.heat];
       if (this.spawnT <= 0 && this.units.length < wantCars && this.foot.length < st.heat * 3 + 2) {
-        this.spawnT = 3.5 - st.heat * 0.4;
+        this.spawnT = this.units.length === 0 ? 0.5 : 3.5 - st.heat * 0.4;
         this.spawnUnit(target, camera);
       }
       for (const n of this.foot) { n.persistent = true; n.target = player; if (n.brain === 'idle' || n.brain === 'wander') n.brain = 'chase'; n.lastSeen.copy(target); n.accuracy = 1.25 - st.heat * 0.1; }
@@ -126,15 +127,15 @@ export class Police {
   private spawnUnit(target: THREE.Vector3, camera: THREE.Camera) {
     const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const sp = { x: 0, z: 0, dx: 0, dz: 0 };
-    for (let tries = 0; tries < 20; tries++) {
-      const lane = this.city.lanes[Math.floor(Math.random() * this.city.lanes.length)];
-      if (lane.connector || lane.length < 30) continue;
+    if (!this.roadLanes.length) this.roadLanes = this.city.lanes.filter(l => !l.connector && l.length >= 30);
+    for (let tries = 0; tries < 60; tries++) {
+      const lane = this.roadLanes[Math.floor(Math.random() * this.roadLanes.length)];
       const s = 10 + Math.random() * (lane.length - 20);
       samplePath(lane, s, sp);
       const p = new THREE.Vector3(sp.x, 1, sp.z);
       const d = p.distanceTo(target);
-      if (d < 70 || d > 150) continue;
-      if (frustum.containsPoint(p) && d < 120) continue;
+      if (d < 60 || d > 170) continue;
+      if (frustum.containsPoint(p) && d < 100 && tries < 40) continue;
       // lane must head roughly towards the target
       if ((target.x - sp.x) * sp.dx + (target.z - sp.z) * sp.dz < 0) continue;
       const car = this.traffic.spawnOnLane('police', lane, s, 'pursuit', 'police', COP_LOOK);
