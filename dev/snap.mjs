@@ -12,6 +12,6 @@ await p.goto(url);
 await p.waitForFunction(() => document.title === 'ready' || document.title === 'error', null, { timeout: 180000 });
 console.log('loaded in', Date.now() - t0, 'ms', await p.title()); if ((await p.title()) === 'error') { console.log(await p.evaluate(() => document.querySelector('pre')?.textContent)); console.log(logs.join('\n')); }
 if (script) { const r = await p.evaluate(script); if (r !== undefined) console.log('result:', JSON.stringify(r)); }
-await p.screenshot({ path: out });
-console.log(logs.slice(0, 30).join('\n'));
+await p.screenshot({ path: out, timeout: 120000 });
+console.log(logs.slice(0, 30).map(l => l.slice(0, 3000)).join('\n'));
 await b.close();
