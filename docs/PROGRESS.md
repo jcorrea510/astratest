@@ -23,17 +23,12 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (~16:15 UTC, 17 Nov) — owner's quality round
-Owner asked (after pass 1): better running/jumping, shooting + gun sounds, driving, visuals/car visuals with windshields,
-robbable stores, sandbox mode, and a UI that looks like a real AAA open-world crime game (original, not a GTA copy).
-- DONE (8d43c03): robbable store kiosks (src/game/robbery.ts, STORES in places.ts) and sandbox mode (src/game/sandbox.ts,
-  title "Sandbox", ?autostart=1&sandbox=1, pause -> Sandbox tools); e2e tests/e2e/features.spec.ts (2 tests, passing).
-- RUNNING (background agents, same checkout, file ownership; lead commits):
-  UI overhaul (src/ui/**, index.html, fonts) · movement feel (player.ts, camera.ts, character.ts, human.ts) ·
-  shooting + gun audio (playerCombat.ts, src/combat/**, src/audio/**, particles.ts) · driving + car glass (src/vehicles/**, game/vehicles.ts).
-  Bug-bash pass 2 (report-only) also running against 4a1206a.
-- If resuming after a reset and agents are gone: check `git status`; review/finish uncommitted agent work per area, make tsc/eslint/vitest pass,
-  run full e2e (24 tests), commit, then two consecutive clean bug-bash passes, CREDITS (fonts/sounds), README update, final report.
+## In progress (~18:15 UTC, 17 Nov)
+- Quality round DONE and on main: UI overhaul, movement, shooting+gun audio, driving+car glass, robbable stores, sandbox (6cfcba8).
+- Bug-bash A found 6 bugs, all fixed with regression tests (f5b1218, on main; 29/29 e2e green, 77 unit tests).
+- NOW: bug-bash pass B (report-only agent) on f5b1218. Need TWO consecutive clean passes (B and C) before finishing.
+- After two clean passes: final report to the owner, then delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
+- If resuming after a reset with no agent running: launch a fresh report-only bug-bash on HEAD (see earlier prompts: build to a scratch outDir, serve on a free port, batch checks), fix findings with a regression test each, re-run full e2e, push main.
 
 Bug-bash pass 1 (fixed in 4a1206a, 7 regression tests): open water/swimming/flooding, safe exits, lane-graph routing, traffic passing,
 beach ramps, M2 keeps player car, contact respawn cooldown; shoreline-only foam.
