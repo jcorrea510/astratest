@@ -13,6 +13,8 @@ export interface Kit {
   hard: Float32Array<ArrayBuffer>;
   samples: Partial<Record<SampleName, AudioBuffer>>;
   rand: () => number;
+  /** Lazily rendered procedural sample variants (gunshots, foley), keyed by name; see `variant()`. */
+  bank: Map<string, { bufs: AudioBuffer[]; last: number }>;
 }
 
 export function makeKit(ctx: BaseAudioContext, rand: () => number = Math.random): Kit {
@@ -26,7 +28,40 @@ export function makeKit(ctx: BaseAudioContext, rand: () => number = Math.random)
     hard: shaperCurve(7),
     samples: {},
     rand,
+    bank: new Map(),
   };
+}
+
+/** A procedurally rendered mono sample with `count` round-robin variants. */
+export interface BankSpec { key: string; count: number; render: (sampleRate: number, rand: () => number) => Float32Array }
+
+/** Renders one more variant of `spec` if it has fewer than `count`. Returns true when it rendered something. */
+export function growBank(k: Kit, spec: BankSpec): boolean {
+  let e = k.bank.get(spec.key);
+  if (!e) { e = { bufs: [], last: -1 }; k.bank.set(spec.key, e); }
+  if (e.bufs.length >= spec.count) return false;
+  const d = spec.render(k.ctx.sampleRate, k.rand);
+  const b = k.ctx.createBuffer(1, Math.max(1, d.length), k.ctx.sampleRate); b.getChannelData(0).set(d); e.bufs.push(b);
+  return true;
+}
+
+/**
+ * Round-robin pick from the rendered variants of `spec` (renders the first one on demand; the engine's warm-up renders
+ * the rest in the background). Never returns the same variant twice in a row, like a recorded-sample engine.
+ */
+export function variant(k: Kit, spec: BankSpec): AudioBuffer {
+  let e = k.bank.get(spec.key);
+  if (!e || !e.bufs.length) { growBank(k, spec); e = k.bank.get(spec.key)!; }
+  let i = Math.floor(k.rand() * e.bufs.length);
+  if (e.bufs.length > 1 && i === e.last) i = (i + 1 + Math.floor(k.rand() * (e.bufs.length - 1))) % e.bufs.length;
+  e.last = i; return e.bufs[i];
+}
+
+/** Plays a buffer at time t through a gain of `level`; returns the end time. */
+export function playBuf(k: Kit, out: AudioNode, b: AudioBuffer, t: number, rate = 1, level = 1): number {
+  const s = k.ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate;
+  const g = gain(k.ctx, level); s.connect(g); g.connect(out);
+  const dur = b.duration / rate; s.start(t); s.stop(t + dur + 0.01); return t + dur;
 }
 
 export function noiseBuffer(ctx: BaseAudioContext, seconds: number, color: 'white' | 'pink' | 'brown', rand: () => number): AudioBuffer {
@@ -121,6 +156,26 @@ export function impulseResponse(ctx: BaseAudioContext, seconds: number, decay: n
     for (const [time, g] of reflections) {
       const at = Math.floor((time + (ch ? 0.007 : 0) + rand() * 0.004) * sr);
       for (let j = 0; j < 220 && at + j < len; j++) d[at + j] += (rand() * 2 - 1) * g * Math.exp(-j / 60);
+    }
+  }
+  return buf;
+}
+
+/**
+ * Open-air gunshot tail: no early reflections, a soft build-up and a long, dark, slowly undulating decay (the
+ * "rolling" sound of a shot echoing off distant hills and blocks).
+ */
+export function openAirResponse(ctx: BaseAudioContext, seconds: number, rand: () => number): AudioBuffer {
+  const sr = ctx.sampleRate; const len = Math.max(1, Math.floor(sr * seconds));
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch); let lp = 0, lp2 = 0; const ph = rand() * 6.28, rate = 1.3 + rand() * 0.8;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const env = (t < 0.07 ? t / 0.07 : Math.exp(-(t - 0.07) / 0.5)) * (0.75 + 0.25 * Math.sin(ph + t * rate * 6.28)) * (1 - t / seconds);
+      const k = 0.16 * Math.exp(-t * 1.4) + 0.025; // closes from ~1.3 kHz to ~200 Hz
+      lp = lp + k * ((rand() * 2 - 1) - lp); lp2 = lp2 + k * (lp - lp2);
+      d[i] = lp2 * env * 3;
     }
   }
   return buf;

@@ -2,11 +2,26 @@
  * Synthesised one-shot sound effects. Each recipe renders into `out` starting at time `t` and returns its end time.
  * Recipes only use scheduled, self-stopping sources, so they work identically in an OfflineAudioContext.
  */
-import type { SfxName } from '../ui/contracts';
-import { type Kit, bq, gain, noise, osc, perc, ahr, glide, sample } from './dsp';
+import type { SfxName, Vec3Like } from '../ui/contracts';
+import { type Kit, type BankSpec, bq, gain, noise, osc, perc, ahr, glide, sample, variant, playBuf } from './dsp';
+import { GUNS, renderGun, renderFoley, type FoleyName, type GunName } from './gunsynth';
 
 export interface SfxArgs { kit: Kit; out: AudioNode; t: number; /** pitch multiplier */ p: number }
 type Recipe = (a: SfxArgs) => number;
+
+/**
+ * Weapon foley that is not (yet) part of the shared SfxName contract. Played through `Audio.playExtra` (feature-detected
+ * by the combat code, so the NullAudio stand-in keeps working).
+ */
+export type ExtraSfx = 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert' | 'pump' | 'whizz' | 'crackBy' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'casingHull';
+export type SfxKey = SfxName | ExtraSfx;
+/** Surroundings of the listener for gunshot reflections: nearby walls (distance + horizontal direction) and openness 0..1. */
+export interface Acoustics { walls: { d: number; x: number; z: number }[]; open: number; indoors?: number }
+/** Optional extras implemented by the real audio engine. */
+export interface AudioExtras {
+  playExtra(name: ExtraSfx, opts?: { pos?: Vec3Like; volume?: number; pitch?: number }): void;
+  setAcoustics(a: Acoustics): void;
+}
 
 export type SfxCategory = 'world' | 'ui';
 export interface SfxMeta {
@@ -17,22 +32,30 @@ export interface SfxMeta {
   echo: number; // base echo/reverb send
   gain: number; // trim
   jitter: number; // random pitch spread (fraction)
+  env: number; // send to the gunshot environment (slapback taps off real walls + open-air rolling tail)
 }
-const W = (priority: number, perKey: number, minInterval: number, echo: number, g = 1, jitter = 0.04): SfxMeta => ({ cat: 'world', priority, perKey, minInterval, echo, gain: g, jitter });
-const U = (g = 1, perKey = 2, minInterval = 0.03): SfxMeta => ({ cat: 'ui', priority: 9, perKey, minInterval, echo: 0, gain: g, jitter: 0 });
+const W = (priority: number, perKey: number, minInterval: number, echo: number, g = 1, jitter = 0.04, env = 0): SfxMeta => ({ cat: 'world', priority, perKey, minInterval, echo, gain: g, jitter, env });
+const U = (g = 1, perKey = 2, minInterval = 0.03): SfxMeta => ({ cat: 'ui', priority: 9, perKey, minInterval, echo: 0, gain: g, jitter: 0, env: 0 });
 
 export const SFX_META: Record<SfxName, SfxMeta> = {
-  pistol: W(6, 5, 0.03, 0.3, 1, 0.05), smg: W(6, 6, 0.025, 0.25, 0.85, 0.06), shotgun: W(7, 3, 0.08, 0.35, 1, 0.04), rifle: W(6, 5, 0.03, 0.35, 1, 0.05),
-  punch: W(3, 2, 0.05, 0.05, 0.7), punchHit: W(5, 3, 0.04, 0.1, 0.9), hitBody: W(4, 3, 0.03, 0.05, 0.8), hitMetal: W(4, 4, 0.03, 0.15, 0.7),
-  hitConcrete: W(3, 4, 0.025, 0.12, 0.6), ricochet: W(3, 3, 0.05, 0.2, 0.5), reload: W(5, 1, 0.2, 0.05, 0.7), empty: W(4, 1, 0.08, 0.02, 0.7),
-  equip: W(4, 1, 0.08, 0.03, 0.6), pickup: W(7, 2, 0.05, 0.05, 0.6, 0), money: W(7, 2, 0.05, 0.05, 0.55, 0), footstep: W(1, 4, 0.06, 0.02, 0.5, 0.08),
+  pistol: W(6, 5, 0.03, 0.22, 1, 0.035, 1), smg: W(6, 7, 0.025, 0.18, 0.8, 0.04, 0.8), shotgun: W(7, 3, 0.08, 0.28, 1.05, 0.03, 1.2), rifle: W(6, 6, 0.03, 0.25, 1, 0.035, 1.1),
+  punch: W(3, 2, 0.05, 0.05, 0.7), punchHit: W(5, 3, 0.04, 0.1, 0.9), hitBody: W(4, 4, 0.03, 0.05, 0.75, 0.06), hitMetal: W(4, 4, 0.03, 0.15, 0.65, 0.08, 0.15),
+  hitConcrete: W(3, 5, 0.02, 0.12, 0.6, 0.08, 0.1), ricochet: W(3, 3, 0.05, 0.2, 0.45, 0.08, 0.2), reload: W(5, 1, 0.2, 0.05, 0.7), empty: W(4, 1, 0.08, 0.02, 0.7, 0.03),
+  equip: W(4, 1, 0.08, 0.03, 0.6, 0.05), pickup: W(7, 2, 0.05, 0.05, 0.6, 0), money: W(7, 2, 0.05, 0.05, 0.55, 0), footstep: W(1, 4, 0.06, 0.02, 0.5, 0.08),
   jump: W(2, 1, 0.1, 0.03, 0.5), land: W(2, 2, 0.08, 0.05, 0.7), doorOpen: W(4, 2, 0.08, 0.05, 0.7), doorClose: W(4, 2, 0.08, 0.08, 0.8),
   horn: W(5, 2, 0.15, 0.25, 0.6, 0.01), glass: W(5, 3, 0.05, 0.2, 0.7), crash: W(8, 3, 0.08, 0.3, 1), explosion: W(9, 3, 0.1, 0.6, 1, 0.06), splash: W(4, 2, 0.06, 0.1, 0.7),
   uiClick: U(0.5), uiHover: U(0.35, 2, 0.04), uiBack: U(0.5), missionStart: U(0.7, 1, 0.3), missionPass: U(0.7, 1, 0.3), missionFail: U(0.7, 1, 0.3),
   down: U(0.8, 1, 0.5), checkpoint: U(0.55, 2, 0.08), wheelOpen: U(0.45, 1, 0.08), wheelClose: U(0.45, 1, 0.08), heatUp: U(0.55, 1, 0.2), heatLost: U(0.55, 1, 0.3),
   purchase: U(0.6, 1, 0.1), whoosh: W(3, 3, 0.05, 0.05, 0.6), tireScreech: W(4, 2, 0.1, 0.1, 0.55, 0.05), engineStart: W(6, 2, 0.3, 0.05, 0.8, 0.02),
-  shellCasing: W(1, 4, 0.03, 0.03, 0.35, 0.12),
+  shellCasing: W(1, 5, 0.03, 0.03, 0.35, 0.08),
 };
+export const EXTRA_META: Record<ExtraSfx, SfxMeta> = {
+  magOut: W(5, 1, 0.1, 0.03, 0.55, 0.03), magIn: W(5, 1, 0.1, 0.03, 0.65, 0.03), slideRelease: W(5, 1, 0.1, 0.05, 0.7, 0.03), boltRack: W(5, 1, 0.1, 0.05, 0.7, 0.03),
+  shellInsert: W(5, 2, 0.1, 0.03, 0.55, 0.05), pump: W(6, 2, 0.15, 0.08, 0.75, 0.03), whizz: W(6, 3, 0.04, 0.05, 0.8, 0.1), crackBy: W(6, 2, 0.04, 0.2, 0.7, 0.05, 0.3),
+  hitWood: W(3, 4, 0.025, 0.1, 0.6, 0.08, 0.1), hitDirt: W(3, 4, 0.025, 0.05, 0.55, 0.1), hitWater: W(3, 4, 0.03, 0.05, 0.6, 0.1), hitGlass: W(4, 3, 0.04, 0.15, 0.6, 0.06),
+  casingHull: W(1, 3, 0.05, 0.02, 0.4, 0.08),
+};
+export const ALL_META: Record<SfxKey, SfxMeta> = { ...SFX_META, ...EXTRA_META };
 
 // ---------- building blocks ----------
 interface BurstOpts { type: BiquadFilterType; f: number; f2?: number; glideDur?: number; q?: number; a?: number; peak: number; dec: number; color?: 'white' | 'pink' | 'brown'; shape?: Float32Array<ArrayBuffer> }
@@ -68,15 +91,6 @@ const mx = (...e: number[]) => Math.max(...e);
 const R = (k: Kit, lo: number, hi: number) => lo + (hi - lo) * k.rand();
 const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
-interface GunOpts { crackHz: number; crackDur: number; crackAmp: number; bodyHz: number; bodyQ: number; bodyDec: number; bodyAmp: number; thumpFrom: number; thumpTo: number; thumpDec: number; thumpAmp: number; tailHz?: number; tailDec?: number; tailAmp?: number; drive: number }
-function gun({ kit: k, out, t, p }: SfxArgs, o: GunOpts): number {
-  const bus = saturator(k, out, o.drive, k.soft, 0.62);
-  let end = burst(k, bus, t, { type: 'highpass', f: o.crackHz * p, peak: o.crackAmp, a: 0.0004, dec: o.crackDur });
-  end = mx(end, burst(k, bus, t, { type: 'bandpass', f: o.bodyHz * p, f2: o.bodyHz * 0.6 * p, q: o.bodyQ, peak: o.bodyAmp, a: 0.0008, dec: o.bodyDec }));
-  end = mx(end, tone(k, bus, t, { f: o.thumpFrom * p, f2: o.thumpTo * p, glideDur: o.thumpDec * 0.7, peak: o.thumpAmp, a: 0.001, dec: o.thumpDec }));
-  if (o.tailHz && o.tailDec && o.tailAmp) end = mx(end, burst(k, out, t + 0.004, { type: 'lowpass', f: o.tailHz * p, f2: o.tailHz * 0.4, q: 0.5, a: 0.004, peak: o.tailAmp, dec: o.tailDec, color: 'pink' }));
-  return end;
-}
 function click(k: Kit, out: AudioNode, t: number, f: number, amp: number, dec = 0.018): number {
   return mx(burst(k, out, t, { type: 'bandpass', f, q: 3, peak: amp, a: 0.0004, dec }), tone(k, out, t, { f: f * 0.45, peak: amp * 0.25, a: 0.0005, dec: dec * 0.8 }));
 }
@@ -89,23 +103,46 @@ function tinkles(k: Kit, out: AudioNode, t: number, n: number, spread: number, a
   return end;
 }
 
+
+// ---------- sampled (procedurally rendered) weapon layers ----------
+const SPECS = new Map<string, BankSpec>();
+function spec(key: string, count: number, render: BankSpec['render']): BankSpec {
+  let sp = SPECS.get(key); if (!sp) { sp = { key, count, render }; SPECS.set(key, sp); } return sp;
+}
+const gunSpec = (g: GunName) => spec('gun:' + g, 4, (sr, r) => renderGun(GUNS[g], sr, r));
+const foleySpec = (n: FoleyName, count = 3) => spec('f:' + n, count, (sr, r) => renderFoley(n, sr, r));
+const FOLEY_COUNTS: Partial<Record<FoleyName, number>> = { hitBody: 4, hitMetal: 4, hitConcrete: 4, casingBrass: 4, whizz: 4, mechSmg: 4, mechRifle: 4 };
+/** Every procedurally rendered bank, in warm-up order (guns first). The engine renders missing variants in the background. */
+export function allBanks(): BankSpec[] {
+  const guns = (Object.keys(GUNS) as GunName[]).map(gunSpec);
+  const foley: FoleyName[] = ['mechPistol', 'mechSmg', 'mechRifle', 'pump', 'hitBody', 'hitConcrete', 'hitMetal', 'casingBrass', 'dryFire', 'whizz', 'crackBy', 'ricochet', 'magOut', 'magIn', 'slideRelease', 'boltRack', 'shellInsert', 'casingHull', 'equip', 'hitWood', 'hitDirt', 'hitWater', 'hitGlass'];
+  return [...guns, ...foley.map(n => foleySpec(n, FOLEY_COUNTS[n] ?? 3))];
+}
+function fol(a: SfxArgs, n: FoleyName, at = 0, level = 1, out: AudioNode = a.out): number {
+  const k = a.kit; return playBuf(k, out, variant(k, foleySpec(n, FOLEY_COUNTS[n] ?? 3)), a.t + at, a.p * R(k, 0.97, 1.03), level);
+}
+/** Mechanical action heard with every shot: [foley, delay, level]. The shotgun's is the pump. */
+const ACTION: Record<GunName, [FoleyName, number, number]> = { pistol: ['mechPistol', 0, 0.3], smg: ['mechSmg', 0, 0.28], rifle: ['mechRifle', 0, 0.26], shotgun: ['pump', 0.36, 0.6] };
+/**
+ * A gunshot: a round-robin variant of the rendered shot (crack + blast + body + sub + boom + tail), a random presence EQ
+ * tilt and level so automatic fire never repeats exactly, plus the gun's mechanical action. Street slapback and the
+ * open-air tail are added by the mixer (see AudioCore.play), scaled by distance and surroundings.
+ */
+function gunshot(a: SfxArgs, g: GunName): number {
+  const { kit: k, out, t, p } = a;
+  const eq = bq(k.ctx, 'peaking', R(k, 1800, 4200), 0.9); eq.gain.value = R(k, -3, 2); eq.connect(out);
+  let end = playBuf(k, eq, variant(k, gunSpec(g)), t, p, R(k, 0.9, 1));
+  const [m, at, lvl] = ACTION[g];
+  end = mx(end, fol(a, m, at * R(k, 0.96, 1.06), lvl * R(k, 0.8, 1)));
+  return end;
+}
+
 // ---------- recipes ----------
 export const RECIPES: Record<SfxName, Recipe> = {
-  pistol: a => mx(gun(a, { crackHz: 2600, crackDur: 0.016, crackAmp: 1.1, bodyHz: 1150, bodyQ: 1.0, bodyDec: 0.085, bodyAmp: 1.2, thumpFrom: 180, thumpTo: 60, thumpDec: 0.1, thumpAmp: 0.85, tailHz: 1600, tailDec: 0.22, tailAmp: 0.18, drive: 2.2 }),
-    click(a.kit, a.out, a.t + 0.045, 3800 * a.p, 0.12)),
-  smg: a => gun(a, { crackHz: 3200, crackDur: 0.009, crackAmp: 0.85, bodyHz: 1800, bodyQ: 1.3, bodyDec: 0.045, bodyAmp: 0.9, thumpFrom: 240, thumpTo: 100, thumpDec: 0.055, thumpAmp: 0.45, tailHz: 2200, tailDec: 0.12, tailAmp: 0.1, drive: 1.8 }),
-  shotgun: a => {
-    const { kit: k, out, t, p } = a;
-    let end = gun(a, { crackHz: 1700, crackDur: 0.024, crackAmp: 1.0, bodyHz: 650, bodyQ: 0.6, bodyDec: 0.26, bodyAmp: 1.3, thumpFrom: 120, thumpTo: 34, thumpDec: 0.36, thumpAmp: 1.5, tailHz: 900, tailDec: 0.6, tailAmp: 0.35, drive: 2.6 });
-    end = mx(end, burst(k, out, t, { type: 'lowpass', f: 260 * p, q: 0.9, a: 0.003, peak: 0.9, dec: 0.32, color: 'brown' }));
-    // pump action
-    end = mx(end, click(k, out, t + 0.42, 2200 * p, 0.16, 0.03), burst(k, out, t + 0.45, { type: 'bandpass', f: 1400 * p, q: 1.2, a: 0.02, peak: 0.08, dec: 0.08 }), click(k, out, t + 0.56, 1700 * p, 0.2, 0.035));
-    return end;
-  },
-  rifle: a => {
-    const end = gun(a, { crackHz: 3600, crackDur: 0.011, crackAmp: 1.35, bodyHz: 950, bodyQ: 1.2, bodyDec: 0.13, bodyAmp: 1.1, thumpFrom: 150, thumpTo: 48, thumpDec: 0.14, thumpAmp: 0.9, tailHz: 1300, tailDec: 0.55, tailAmp: 0.32, drive: 2.8 });
-    return mx(end, burst(a.kit, a.out, a.t + 0.002, { type: 'bandpass', f: 5200 * a.p, q: 2, peak: 0.25, a: 0.0003, dec: 0.02 }));
-  },
+  pistol: a => gunshot(a, 'pistol'),
+  smg: a => gunshot(a, 'smg'),
+  shotgun: a => gunshot(a, 'shotgun'),
+  rifle: a => gunshot(a, 'rifle'),
   punch: ({ kit: k, out, t, p }) => burst(k, out, t, { type: 'bandpass', f: 420 * p, f2: 1900 * p, glideDur: 0.11, q: 1.6, a: 0.05, peak: 0.9, dec: 0.12, color: 'pink' }),
   punchHit: ({ kit: k, out, t, p }) => {
     let end = tone(k, out, t, { f: 135 * p, f2: 52 * p, glideDur: 0.08, peak: 0.95, a: 0.001, dec: 0.13 });
@@ -114,38 +151,14 @@ export const RECIPES: Record<SfxName, Recipe> = {
     if (s) { const f = bq(k.ctx, 'lowpass', 2400); const g = gain(k.ctx, 0); perc(g.gain, t, 0.001, 0.32, 0.15); s.connect(f); f.connect(g); g.connect(out); end = mx(end, t + 0.17); }
     return end;
   },
-  hitBody: ({ kit: k, out, t, p }) => mx(
-    tone(k, out, t, { f: 98 * p, f2: 50 * p, glideDur: 0.1, peak: 0.75, a: 0.002, dec: 0.15 }),
-    burst(k, out, t, { type: 'lowpass', f: 480 * p, peak: 0.7, a: 0.002, dec: 0.08, color: 'pink' }),
-    burst(k, out, t, { type: 'bandpass', f: 2300 * p, q: 1, peak: 0.06, a: 0.001, dec: 0.03 })),
-  hitMetal: ({ kit: k, out, t, p }) => {
-    const f0 = R(k, 430, 560) * p; const parts: [number, number, number][] = [[1, 0.32, 0.5], [2.76, 0.22, 0.34], [5.4, 0.13, 0.2], [8.93, 0.07, 0.11]];
-    let end = burst(k, out, t, { type: 'highpass', f: 3000, peak: 0.55, a: 0.0004, dec: 0.012 });
-    for (const [m, amp, dec] of parts) end = mx(end, tone(k, out, t, { f: f0 * m, peak: amp, a: 0.0006, dec }));
-    return end;
-  },
-  hitConcrete: ({ kit: k, out, t, p }) => {
-    let end = burst(k, out, t, { type: 'bandpass', f: 1900 * p, q: 0.8, peak: 0.7, a: 0.0005, dec: 0.06 });
-    end = mx(end, burst(k, out, t, { type: 'lowpass', f: 420 * p, peak: 0.5, a: 0.001, dec: 0.08, color: 'pink' }));
-    for (let i = 0; i < 4; i++) end = mx(end, burst(k, out, t + R(k, 0.02, 0.2), { type: 'bandpass', f: R(k, 3000, 6000), q: 2, peak: R(k, 0.06, 0.14), a: 0.0004, dec: 0.012 }));
-    return end;
-  },
-  ricochet: ({ kit: k, out, t, p }) => {
-    const ctx = k.ctx; const f0 = R(k, 3300, 4300) * p; const dur = R(k, 0.32, 0.45);
-    const s = osc(ctx, 'sine', f0, t, dur + 0.03); glide(s.frequency, t, f0, f0 * 0.34, dur);
-    const lfo = osc(ctx, 'sine', R(k, 30, 45), t, dur + 0.03); const lg = gain(ctx, 90); lfo.connect(lg); lg.connect(s.frequency);
-    const g = gain(ctx, 0); perc(g.gain, t, 0.004, 0.3, dur); s.connect(g); g.connect(out);
-    return mx(t + dur, burst(k, out, t, { type: 'highpass', f: 2500, peak: 0.45, a: 0.0004, dec: 0.01 }));
-  },
-  reload: ({ kit: k, out, t, p }) => mx(
-    click(k, out, t, 3500 * p, 0.4, 0.02),
-    burst(k, out, t + 0.1, { type: 'bandpass', f: 1500 * p, q: 1, a: 0.03, peak: 0.12, dec: 0.08 }),
-    tone(k, out, t + 0.4, { f: 260 * p, f2: 170 * p, peak: 0.4, a: 0.001, dec: 0.06 }),
-    click(k, out, t + 0.4, 2200 * p, 0.5, 0.03),
-    click(k, out, t + 0.62, 2800 * p, 0.42, 0.025),
-    click(k, out, t + 0.71, 3900 * p, 0.5, 0.03)),
-  empty: ({ kit: k, out, t, p }) => mx(burst(k, out, t, { type: 'bandpass', f: 5000 * p, q: 4, peak: 0.55, a: 0.0003, dec: 0.012 }), tone(k, out, t, { f: 2400 * p, peak: 0.12, a: 0.0005, dec: 0.02 })),
-  equip: ({ kit: k, out, t, p }) => mx(burst(k, out, t, { type: 'bandpass', f: 900 * p, f2: 1500 * p, q: 1.2, a: 0.04, peak: 0.2, dec: 0.1, color: 'pink' }), click(k, out, t + 0.12, 3200 * p, 0.4, 0.02), click(k, out, t + 0.16, 2100 * p, 0.25, 0.02)),
+  hitBody: a => fol(a, 'hitBody'),
+  hitMetal: a => fol(a, 'hitMetal'),
+  hitConcrete: a => fol(a, 'hitConcrete'),
+  ricochet: a => fol(a, 'ricochet'),
+  // generic full reload (the player's weapons play the separate parts in sync with the animation instead)
+  reload: a => mx(fol(a, 'magOut', 0, 0.8), fol(a, 'magIn', 0.55), fol(a, 'slideRelease', 0.9, 0.8)),
+  empty: a => fol(a, 'dryFire'),
+  equip: a => fol(a, 'equip'),
   pickup: ({ kit: k, out, t }) => {
     const lp = bq(k.ctx, 'lowpass', 6000); lp.connect(out);
     return mx(tone(k, lp, t, { type: 'triangle', f: hz(81), peak: 0.32, a: 0.003, dec: 0.16 }), tone(k, lp, t + 0.075, { type: 'triangle', f: hz(88), peak: 0.32, a: 0.003, dec: 0.28 }), tone(k, lp, t + 0.075, { f: hz(100), peak: 0.08, a: 0.003, dec: 0.25 }));
@@ -285,11 +298,15 @@ export const RECIPES: Record<SfxName, Recipe> = {
     const rl = bq(ctx, 'lowpass', 260); const rg = gain(ctx, s ? 0.5 : 1); r.connect(rl); rl.connect(rg); rg.connect(eg);
     return end;
   },
-  shellCasing: ({ kit: k, out, t, p }) => {
-    const hp = bq(k.ctx, 'highpass', 2800); hp.connect(out); let end = t; let at = t + R(k, 0.25, 0.4);
-    for (let i = 0; i < 3; i++) { const f = R(k, 5200, 6800) * p; const amp = 0.12 * Math.pow(0.55, i); end = mx(end, tone(k, hp, at, { f, peak: amp, a: 0.0005, dec: 0.07 }), tone(k, hp, at, { f: f * 1.51, peak: amp * 0.4, a: 0.0005, dec: 0.04 })); at += R(k, 0.06, 0.1) * Math.pow(0.7, i); }
-    return end;
-  },
+  // brass bouncing on the pavement, a beat after the shot
+  shellCasing: a => fol(a, 'casingBrass', R(a.kit, 0.32, 0.5)),
 };
 
-export function renderSfx(name: SfxName, args: SfxArgs): number { return RECIPES[name](args); }
+export const EXTRA_RECIPES: Record<ExtraSfx, Recipe> = {
+  magOut: a => fol(a, 'magOut'), magIn: a => fol(a, 'magIn'), slideRelease: a => fol(a, 'slideRelease'), boltRack: a => fol(a, 'boltRack'),
+  shellInsert: a => fol(a, 'shellInsert'), pump: a => fol(a, 'pump'), whizz: a => fol(a, 'whizz'), crackBy: a => fol(a, 'crackBy'),
+  hitWood: a => fol(a, 'hitWood'), hitDirt: a => fol(a, 'hitDirt'), hitWater: a => fol(a, 'hitWater'), hitGlass: a => fol(a, 'hitGlass'),
+  casingHull: a => fol(a, 'casingHull', R(a.kit, 0.3, 0.45)),
+};
+
+export function renderSfx(name: SfxKey, args: SfxArgs): number { return (RECIPES as Record<string, Recipe>)[name]?.(args) ?? EXTRA_RECIPES[name as ExtraSfx](args); }

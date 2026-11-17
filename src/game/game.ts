@@ -4,7 +4,7 @@ import { Renderer } from '../render/renderer';
 import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import { Input } from '../core/input';
 import type { Settings } from '../core/settings';
-import { generateCity, type CityMap, signalState, districtAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
+import { generateCity, type CityMap, signalState, districtAt, surfaceAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import type { Assets } from '../world/assets';
 import { createHumanTemplate, type HumanTemplate, randomLook } from '../actors/human';
@@ -124,6 +124,7 @@ export class Game {
     this.skids = new SkidMarks(this.renderer.scene);
     this.vehicles = new VehicleManager(this.renderer.scene, this.physics, this.assets, this.particles, this.skids, this.audio);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
+    this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
       physics: this.physics, city: this.city, combat: this.combat, scene: this.renderer.scene, time: () => this.time,
@@ -535,8 +536,9 @@ export class Game {
   }
   // ---------------- HUD data ----------------
   streetName(x: number, z: number): string {
-    let bi = -1, bd = 12; AVENUES.forEach((a, i) => { const d = Math.abs(x - a); if (d < bd) { bd = d; bi = i; } });
-    let si = -1, sd = 12; STREETS.forEach((s, i) => { const d = Math.abs(z - s); if (d < sd) { sd = d; si = i; } });
+    // nearest road: on sidewalks, plazas and courtyards too
+    let bi = -1, bd = 60; AVENUES.forEach((a, i) => { const d = Math.abs(x - a); if (d < bd) { bd = d; bi = i; } });
+    let si = -1, sd = 60; STREETS.forEach((s, i) => { const d = Math.abs(z - s); if (d < sd) { sd = d; si = i; } });
     if (bi >= 0 && (si < 0 || bd < sd)) return AVENUE_NAMES[bi];
     if (si >= 0) return STREET_NAMES[si];
     return '';
@@ -551,7 +553,7 @@ export class Game {
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
       clock: `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`,
-      crosshair: pv || this.deathT >= 0 ? 'none' : this.pcombat.armed ? (this.pcombat.aiming ? 'aim' : 'dot') : 'none', crosshairSpread: this.pcombat.spread + (this.playerCtl.aiming ? def.aimSpread : def.spread),
+      crosshair: pv || this.deathT >= 0 ? 'none' : this.pcombat.armed ? (this.pcombat.aiming ? 'aim' : 'dot') : 'none', crosshairSpread: this.pcombat.hudSpread(this.renderer.camera.fov, window.innerHeight),
       hitMarker: this.pcombat.hitMarker, interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
       fps: this.settings.showFps ? Math.round(this.fps) : null,
     };

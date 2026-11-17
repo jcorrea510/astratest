@@ -11,6 +11,7 @@ import { type SampleName, registerSample } from './dsp';
 import { EngineVoiceImpl, SirenVoice, SkidVoice } from './loops';
 import { STATIONS } from './composer';
 import { isFiniteVec } from './spatial';
+import type { Acoustics, AudioExtras, ExtraSfx } from './sfx';
 
 type AmbienceArg = { night: number; water: number; traffic: number; park: number; indoors?: number };
 type Mood = 'none' | 'tension' | 'action';
@@ -18,7 +19,7 @@ const SAMPLE_KEYS: readonly SampleName[] = ['engine', 'engineBike', 'impact', 's
 
 interface AudioCtor { new (opts?: AudioContextOptions): AudioContext }
 
-export class Audio implements GameAudio {
+export class Audio implements GameAudio, AudioExtras {
   private ctx: AudioContext | null = null;
   private core: AudioCore | null = null;
   private resuming: Promise<void> | null = null;
@@ -29,6 +30,7 @@ export class Audio implements GameAudio {
   private lis = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: -1 } };
   private amb: AmbienceArg = { night: 0, water: 0, traffic: 0.5, park: 0 };
   private radioActive = false; private station = 0; private slow = 0; private paused = false; private mood: Mood = 'none';
+  private acoustics: Acoustics | null = null;
 
   constructor(private buffers: Record<string, ArrayBuffer>) {}
 
@@ -58,6 +60,7 @@ export class Audio implements GameAudio {
       while (core.radio.station !== this.station) core.radio.next();
       core.setRadioActive(this.radioActive);
       core.setMood(this.mood);
+      if (this.acoustics) core.setAcoustics(this.acoustics, 0);
       this.decodeSamples(ctx, core);
       this.lastTick = performance.now();
       this.timer = setInterval(() => this.tick(), 25);
@@ -100,6 +103,17 @@ export class Audio implements GameAudio {
   play(name: SfxName, opts?: { pos?: Vec3Like; volume?: number; pitch?: number }): void {
     const core = this.core; if (!core || this.ctx?.state !== 'running') return;
     try { core.play(name, opts); } catch { /* ignore */ }
+  }
+
+  // ---- weapon extras (not part of GameAudio; combat code feature-detects them) ----
+  playExtra(name: ExtraSfx, opts?: { pos?: Vec3Like; volume?: number; pitch?: number }): void {
+    const core = this.core; if (!core || this.ctx?.state !== 'running') return;
+    try { core.play(name, opts); } catch { /* ignore */ }
+  }
+  setAcoustics(a: Acoustics): void {
+    if (!a || !Array.isArray(a.walls)) return;
+    this.acoustics = { walls: a.walls.map(w => ({ d: w.d, x: w.x, z: w.z })), open: a.open, indoors: a.indoors };
+    try { this.core?.setAcoustics(this.acoustics); } catch { /* ignore */ }
   }
 
   engine(): EngineVoice { return new EngineVoiceImpl(() => this.core); }

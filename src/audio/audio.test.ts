@@ -210,3 +210,22 @@ describe('loop slot group', () => {
     expect(parked.sort()).toEqual([0, 1, 2]); expect([...g.active.keys()]).toEqual([v[4]]);
   });
 });
+
+describe('weapon sound synthesis', () => {
+  it('extra weapon foley has recipes and metadata', async () => {
+    const { EXTRA_META, EXTRA_RECIPES } = await import('./sfx');
+    expect(Object.keys(EXTRA_RECIPES).sort()).toEqual(Object.keys(EXTRA_META).sort());
+  });
+  it('gunshots have a sharp transient, a heavy low body and a 0.15-0.8 s near-field tail', async () => {
+    const { GUNS, renderGun, analyse } = await import('./gunsynth');
+    const r = rng(7);
+    for (const g of Object.keys(GUNS) as (keyof typeof GUNS)[]) {
+      const d = renderGun(GUNS[g], 48000, r); const a = analyse(d, 48000);
+      let onset = 0; for (let i = 0; i < 96; i++) onset = Math.max(onset, Math.abs(d[i]));
+      expect(onset).toBeGreaterThan(0.6 * a.peak); // most of the pressure arrives in the first 2 ms
+      expect(a.lowFrac).toBeGreaterThan(0.35); // body under 200 Hz
+      expect(a.durMs40).toBeGreaterThanOrEqual(150); expect(a.durMs40).toBeLessThanOrEqual(800);
+      for (let i = 0; i < d.length; i++) expect(Number.isFinite(d[i])).toBe(true);
+    }
+  });
+});

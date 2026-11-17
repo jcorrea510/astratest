@@ -2,16 +2,18 @@
  * The audio engine proper, bound to one BaseAudioContext (realtime or offline). Owns the mix graph:
  *
  *   one-shots ─▶ [air LP ─▶ panner] ─▶ sfxIn ─▶ slowMo LP ─┐
- *            └▶ echo send ─▶ street convolver ─▶ sfxIn      │
+ *            ├▶ echo send ─▶ street convolver ─▶ sfxIn      │
+ *            ├▶ env send ─▶ 4 slapback taps (real walls) ─▶ sfxIn
+ *            └▶ env send ─▶ open-air convolver ─▶ sfxIn     │
  *   ambience ─▶ ambIn ──────────────────────────────────────┼▶ world ─▶ pause LP ─▶ pause gain ─┐
  *   radio / mood ─▶ musicIn ─▶ slow-mo duck ────────────────┘                                  │
  *   UI stings ─▶ uiIn ──────────────────────────────────────────────────────────────────────────┼▶ master ─▶ compressor ─▶ ceiling shaper ─▶ out
  */
-import type { SfxName, Vec3Like } from '../ui/contracts';
-import { type Kit, makeKit, bq, gain, impulseResponse, ceilingCurve } from './dsp';
-import { SFX_META, renderSfx } from './sfx';
+import type { Vec3Like } from '../ui/contracts';
+import { type BankSpec, type Kit, makeKit, bq, gain, impulseResponse, ceilingCurve, openAirResponse, growBank } from './dsp';
+import { ALL_META, type Acoustics, type SfxKey, allBanks, renderSfx } from './sfx';
 import { VoicePool } from './voicepool';
-import { CULL_DISTANCE, MAX_DISTANCE, REF_DISTANCE, ROLLOFF, airCutoff, distance, echoSend, inverseGain, isFiniteVec } from './spatial';
+import { CULL_DISTANCE, MAX_DISTANCE, REF_DISTANCE, ROLLOFF, SPEED_OF_SOUND, airCutoff, distance, echoSend, inverseGain, isFiniteVec } from './spatial';
 import { Ambience, type AmbienceState } from './ambience';
 import { MoodLayer, MusicFx, Radio } from './music';
 import { safe } from './theory';
@@ -21,6 +23,8 @@ const CEIL_RANGE = 4;
 const AMB_TRIM = 0.55;
 
 interface OneShot { nodes: AudioNode[]; out: GainNode; end: number }
+interface Tap { delay: DelayNode; lp: BiquadFilterNode; g: GainNode; pan: StereoPannerNode | null }
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 /** Caps how many continuous loops of a kind are rendered; the farthest gets parked when a closer one needs a slot. */
 export class SlotGroup<T extends { park(): void }> {
@@ -52,6 +56,10 @@ export class AudioCore {
   readonly world: GainNode; readonly pauseLp: BiquadFilterNode; readonly pauseGain: GainNode;
   readonly sfxIn: GainNode; readonly slowLp: BiquadFilterNode; readonly slowGain: GainNode; readonly echoIn: GainNode;
   readonly uiIn: GainNode; readonly ambIn: GainNode; readonly musicIn: GainNode; readonly musicDuck: GainNode;
+  /** gunshot environment: slapback taps tuned to the walls around the listener, and an open-air rolling tail */
+  readonly slapIn: GainNode; readonly openIn: GainNode; private taps: Tap[] = []; private openAmt = 0.4; private indoors = 0;
+  private fwd = { x: 0, z: -1 };
+  private warmQ: BankSpec[];
   readonly radio: Radio; readonly mood: MoodLayer; readonly ambience: Ambience;
   readonly listener = { x: 0, y: 0, z: 0 };
   readonly pool: VoicePool<OneShot>;
@@ -80,6 +88,19 @@ export class AudioCore {
     this.echoIn = gain(ctx, 1); const echo = ctx.createConvolver(); echo.normalize = true;
     echo.buffer = impulseResponse(ctx, 1.5, 2.6, [[0.085, 0.55], [0.17, 0.4], [0.29, 0.3], [0.47, 0.18], [0.66, 0.1]], rand, 0.8);
     const echoOut = gain(ctx, 0.5); this.echoIn.connect(echo); echo.connect(echoOut); echoOut.connect(this.sfxIn);
+    // gunshot slapback: one delay tap per nearby wall (set by setAcoustics), each darkened and panned to its side
+    this.slapIn = gain(ctx, 1);
+    const diffuse = gain(ctx, 0.3); diffuse.connect(this.echoIn);
+    for (let i = 0; i < 4; i++) {
+      const delay = ctx.createDelay(0.6); const lp = bq(ctx, 'lowpass', 3500, 0.6); const g = gain(ctx, 0);
+      const pan = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+      this.slapIn.connect(delay); delay.connect(lp); lp.connect(g);
+      if (pan) { g.connect(pan); pan.connect(this.sfxIn); } else g.connect(this.sfxIn);
+      g.connect(diffuse);
+      this.taps.push({ delay, lp, g, pan });
+    }
+    this.openIn = gain(ctx, 1); const open = ctx.createConvolver(); open.normalize = true; open.buffer = openAirResponse(ctx, 2.6, rand);
+    const openOut = gain(ctx, 0.24); this.openIn.connect(open); open.connect(openOut); openOut.connect(this.sfxIn);
     // UI (unaffected by slow-mo / pause)
     this.uiIn = gain(ctx, 1); this.uiIn.connect(this.master);
     // ambience
@@ -91,8 +112,41 @@ export class AudioCore {
     const host = { kit: k, later: (at: number, fn: () => void) => this.later(at, fn) };
     this.radio = new Radio(host, this.musicIn, fx, rand);
     this.mood = new MoodLayer(host, this.musicIn, fx);
-    this.pool = new VoicePool<OneShot>(32, key => SFX_META[key as SfxName]?.perKey ?? 2, key => SFX_META[key as SfxName]?.minInterval ?? 0);
+    this.pool = new VoicePool<OneShot>(32, key => ALL_META[key as SfxKey]?.perKey ?? 2, key => ALL_META[key as SfxKey]?.minInterval ?? 0);
     this.setListener({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 });
+    this.warmQ = allBanks();
+    // a city street until the game reports the real surroundings
+    this.setAcoustics({ walls: [{ d: 11, x: 1, z: 0 }, { d: 16, x: -1, z: 0 }, { d: 30, x: 0, z: 1 }], open: 0.35 }, 0);
+  }
+
+  /** Renders one pending procedural sample variant (call from idle time); returns false when everything is warm. */
+  warmStep(): boolean {
+    while (this.warmQ.length) { if (growBank(this.kit, this.warmQ[0])) return true; this.warmQ.shift(); }
+    return false;
+  }
+  /** Renders every procedural sample now (offline rendering / tests). */
+  warmAll(): void { while (this.warmStep()) { /* keep going */ } }
+
+  /**
+   * Gunshot surroundings: up to four nearest walls become discrete slapback echoes (delay = round trip at the speed of
+   * sound, darker and quieter with distance, panned to their side); `open` (0..1) feeds the long open-air tail.
+   */
+  setAcoustics(a: Acoustics, tc = 0.08): void {
+    if (!a || !Array.isArray(a.walls)) return;
+    const now = this.ctx.currentTime;
+    const walls = a.walls.filter(w => Number.isFinite(w.d) && w.d > 1 && w.d < 90).sort((p, q) => p.d - q.d).slice(0, this.taps.length);
+    this.openAmt = clamp01(Number.isFinite(a.open) ? a.open : 0.4); this.indoors = clamp01(a.indoors ?? 0);
+    const rx = -this.fwd.z, rz = this.fwd.x; // listener right (y-up, forward on the xz plane)
+    this.taps.forEach((tap, i) => {
+      const w = walls[i];
+      const set = (p: AudioParam, v: number) => { if (tc > 0) p.setTargetAtTime(v, now, tc); else p.value = v; };
+      if (!w) { set(tap.g.gain, 0); return; }
+      const delay = Math.min(0.55, (2 * w.d) / 343 + 0.004 * i);
+      set(tap.delay.delayTime, delay);
+      set(tap.lp.frequency, 1200 + 4200 * Math.exp(-w.d / 25));
+      set(tap.g.gain, 0.85 * Math.min(1, 7 / (w.d + 3)) * (1 - 0.4 * this.indoors) * (i === 0 ? 1 : 0.8));
+      if (tap.pan) { const l = Math.hypot(w.x, w.z) || 1; set(tap.pan.pan, Math.max(-0.85, Math.min(0.85, (w.x * rx + w.z * rz) / l))); }
+    });
   }
 
   get now(): number { return this.ctx.currentTime; }
@@ -107,6 +161,7 @@ export class AudioCore {
       for (const q of due) { try { q.fn(); } catch { /* node already gone */ } }
     }
     for (const v of this.live) if (v.end + 0.15 < now) this.freeVoice(v);
+    if (this.warmQ.length) this.warmStep();
     this.pool.prune(now);
     this.engines.parkStale(now, 1.5); this.sirens.parkStale(now, 1.5); this.skids.parkStale(now, 1.5);
     this.radio.tick(now, ahead); this.mood.tick(now, ahead); this.ambience.tick(now, ahead);
@@ -159,6 +214,7 @@ export class AudioCore {
     this.listener.x = pos.x; this.listener.y = pos.y; this.listener.z = pos.z;
     let fx = 0, fy = 0, fz = -1;
     if (isFiniteVec(fwd)) { const l = Math.hypot(fwd.x, fwd.y, fwd.z); if (l > 1e-6) { fx = fwd.x / l; fy = fwd.y / l; fz = fwd.z / l; } }
+    const lh = Math.hypot(fx, fz); if (lh > 1e-4) { this.fwd.x = fx / lh; this.fwd.z = fz / lh; }
     const L = this.ctx.listener; const now = this.ctx.currentTime; const tc = 0.012;
     if (L.positionX) {
       L.positionX.setTargetAtTime(pos.x, now, tc); L.positionY.setTargetAtTime(pos.y, now, tc); L.positionZ.setTargetAtTime(pos.z, now, tc);
@@ -187,9 +243,9 @@ export class AudioCore {
 
   // ---------------- one-shots ----------------
   /** Plays a sound effect. `when` (context time) is for offline rendering; defaults to now. Returns false if culled/dropped. */
-  play(name: SfxName, opts?: { pos?: Vec3Like; volume?: number; pitch?: number }, when?: number): boolean {
-    const meta = SFX_META[name]; if (!meta) return false;
-    const ctx = this.ctx; const now = ctx.currentTime; const t = Math.max(now, when ?? now);
+  play(name: SfxKey, opts?: { pos?: Vec3Like; volume?: number; pitch?: number }, when?: number): boolean {
+    const meta = ALL_META[name]; if (!meta) return false;
+    const ctx = this.ctx; const now = ctx.currentTime; let t = Math.max(now, when ?? now);
     const world = meta.cat === 'world';
     const pos = world && opts?.pos && isFiniteVec(opts.pos) ? opts.pos : null;
     const dist = pos ? distance(this.listener, pos) : 0;
@@ -202,6 +258,8 @@ export class AudioCore {
     if (!adm.ok) return false;
     for (const s of adm.steal) this.stealVoice(s, now);
 
+    // far gunfire arrives late: you see the flash, then hear the report (speed of sound), capped for gameplay
+    if (meta.env > 0 && dist > 25) t += Math.min(0.5, (dist - 25) / SPEED_OF_SOUND);
     const pitch = safe(opts?.pitch ?? 1, 0.25, 4, 1) * (1 + (r() * 2 - 1) * meta.jitter) * (world ? this.pitchMul : 1);
     const level = vol * meta.gain * (world ? 1 + (r() * 2 - 1) * 0.08 : 1);
     const out = gain(ctx, level); const nodes: AudioNode[] = [out];
@@ -212,7 +270,13 @@ export class AudioCore {
       p.connect(this.sfxIn);
     } else out.connect(this.sfxIn);
     if (world && meta.echo > 0) {
-      const amt = pos ? echoSend(dist, meta.echo) * Math.sqrt(inverseGain(dist)) : meta.echo; const sg = gain(ctx, amt); out.connect(sg); sg.connect(this.echoIn); nodes.push(sg);
+      const amt = (pos ? echoSend(dist, meta.echo) * Math.sqrt(inverseGain(dist)) : meta.echo) * (1 - 0.35 * this.openAmt); const sg = gain(ctx, amt); out.connect(sg); sg.connect(this.echoIn); nodes.push(sg);
+    }
+    if (world && meta.env > 0) {
+      // gunshot environment: the farther the shot, the more of it you hear as reflections
+      const far = pos ? Math.sqrt(inverseGain(dist)) * (0.55 + 0.45 * clamp01(dist / 120)) : 0.55;
+      const slap = gain(ctx, meta.env * far * 0.7 * (1 - 0.6 * this.openAmt)); out.connect(slap); slap.connect(this.slapIn); nodes.push(slap);
+      const open = gain(ctx, meta.env * far * 0.75 * this.openAmt * (1 - this.indoors)); out.connect(open); open.connect(this.openIn); nodes.push(open);
     }
     const end = renderSfx(name, { kit: this.kit, out, t, p: pitch });
     const v: OneShot = { nodes, out, end };

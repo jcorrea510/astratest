@@ -1,7 +1,13 @@
 /** GPU-friendly particles (one Points draw per blend mode) and a ring-buffer skid mark mesh. */
 import * as THREE from 'three';
 
-interface P { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; size: number; grow: number; r: number; g: number; b: number; a: number; drag: number; grav: number }
+/**
+ * One particle. `hold` = fraction of the lifetime spent at full opacity before fading (short flashes must survive the
+ * frame they are born in); `floor` = height it bounces on (casings land on kerbs, not at y = 0); `bounce` = restitution.
+ */
+interface P { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; size: number; grow: number; r: number; g: number; b: number; a: number; drag: number; grav: number; hold: number; floor: number; bounce: number }
+export type ImpactKind = 'concrete' | 'metal' | 'body' | 'water' | 'wood' | 'dirt' | 'glass';
+const rnd = (lo: number, hi: number) => lo + (hi - lo) * Math.random();
 class Pool {
   points: THREE.Points;
   private ps: P[] = [];
@@ -30,14 +36,14 @@ class Pool {
       const d = Math.exp(-p.drag * dt);
       p.vx *= d; p.vy = p.vy * d - p.grav * dt; p.vz *= d;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      if (p.y < 0.05 && p.grav > 0) { p.y = 0.05; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
+      if (p.y < p.floor && p.grav > 0) { p.y = p.floor; p.vy *= -p.bounce; p.vx *= 0.6; p.vz *= 0.6; }
       ps[w++] = p;
     }
     ps.length = w;
     for (let i = 0; i < w; i++) {
       const p = ps[i], t = p.life / p.max;
       this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
-      const fade = t < 0.1 ? t / 0.1 : 1 - (t - 0.1) / 0.9;
+      const fade = p.hold > 0 ? (t < p.hold ? 1 : 1 - (t - p.hold) / (1 - p.hold)) : t < 0.1 ? t / 0.1 : 1 - (t - 0.1) / 0.9;
       this.col[i * 4] = p.r; this.col[i * 4 + 1] = p.g; this.col[i * 4 + 2] = p.b; this.col[i * 4 + 3] = p.a * fade;
       this.siz[i] = p.size * (1 + p.grow * t);
     }
@@ -51,31 +57,94 @@ class Pool {
 
 export class Particles {
   add: Pool; normal: Pool;
+  /** Small long-lived pool for bullet marks and shell casings, so they never evict smoke or sparks. */
+  debris: Pool;
   constructor(scene: THREE.Scene, max: number) {
     const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!;
     const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
     const tex = new THREE.CanvasTexture(c);
+    // crisper sprite for hard little things (casings, chips, bullet marks)
+    const c2 = document.createElement('canvas'); c2.width = c2.height = 32; const g2 = c2.getContext('2d')!;
+    const gr2 = g2.createRadialGradient(16, 16, 0, 16, 16, 16); gr2.addColorStop(0, 'rgba(255,255,255,1)'); gr2.addColorStop(0.55, 'rgba(255,255,255,0.95)'); gr2.addColorStop(1, 'rgba(255,255,255,0)');
+    g2.fillStyle = gr2; g2.fillRect(0, 0, 32, 32);
+    const hard = new THREE.CanvasTexture(c2);
     this.add = new Pool(max, true, tex); this.normal = new Pool(max, false, tex);
-    scene.add(this.add.points, this.normal.points);
+    this.debris = new Pool(Math.max(96, Math.min(256, Math.round(max / 4))), false, hard);
+    scene.add(this.add.points, this.normal.points, this.debris.points);
   }
   setMax(max: number) { void max; }
-  update(dt: number, viewportHeight: number) { this.add.update(dt, viewportHeight); this.normal.update(dt, viewportHeight); }
+  update(dt: number, viewportHeight: number) { this.add.update(dt, viewportHeight); this.normal.update(dt, viewportHeight); this.debris.update(dt, viewportHeight); }
   private p(x: number, y: number, z: number, o: Partial<P>): P {
-    return { x, y, z, vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 0.3, grow: 0, r: 1, g: 1, b: 1, a: 1, drag: 1, grav: 0, ...o };
+    return { x, y, z, vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 0.3, grow: 0, r: 1, g: 1, b: 1, a: 1, drag: 1, grav: 0, hold: 0, floor: 0.05, bounce: 0.3, ...o };
   }
   sparks(x: number, y: number, z: number, n = 10, speed = 6) {
     for (let i = 0; i < n; i++) this.add.emit(this.p(x, y, z, { vx: (Math.random() - 0.5) * speed, vy: Math.random() * speed * 0.8, vz: (Math.random() - 0.5) * speed, max: 0.25 + Math.random() * 0.35, size: 0.08 + Math.random() * 0.06, r: 1, g: 0.75, b: 0.35, a: 1, drag: 2, grav: 14 }));
   }
-  muzzle(x: number, y: number, z: number, dx: number, dy: number, dz: number, big = false) {
-    this.add.emit(this.p(x, y, z, { max: 0.06, size: big ? 0.9 : 0.55, r: 1, g: 0.8, b: 0.45, a: 1 }));
-    for (let i = 0; i < (big ? 6 : 3); i++) this.add.emit(this.p(x, y, z, { vx: dx * 8 + (Math.random() - 0.5) * 2, vy: dy * 8 + (Math.random() - 0.5) * 2, vz: dz * 8 + (Math.random() - 0.5) * 2, max: 0.07, size: 0.25, r: 1, g: 0.65, b: 0.3, drag: 6 }));
-    this.normal.emit(this.p(x + dx * 0.2, y + dy * 0.2, z + dz * 0.2, { vx: dx * 1.5, vy: 0.6, vz: dz * 1.5, max: 0.8, size: 0.25, grow: 3, r: 0.75, g: 0.75, b: 0.75, a: 0.25, drag: 2 }));
+  /**
+   * Muzzle flash: a white-hot core, a short forward cone of flame petals, a side "star" burst and a lingering wisp of
+   * smoke. `big` (shotgun) is the old boolean API; `scale` sizes it per weapon. Everything is ~2 frames long.
+   */
+  muzzle(x: number, y: number, z: number, dx: number, dy: number, dz: number, big = false, scale = 1) {
+    const s = (big ? 1.45 : 1) * scale;
+    const hold = { hold: 0.7 };
+    // core
+    this.add.emit(this.p(x + dx * 0.04, y + dy * 0.04, z + dz * 0.04, { max: 0.055, size: 0.42 * s * rnd(0.85, 1.15), r: 1, g: 0.93, b: 0.75, a: 1, ...hold }));
+    this.add.emit(this.p(x + dx * 0.1 * s, y + dy * 0.1 * s, z + dz * 0.1 * s, { max: 0.05, size: 0.62 * s * rnd(0.8, 1.2), r: 1, g: 0.62, b: 0.25, a: 0.8, ...hold }));
+    // forward flame cone
+    const n = big ? 7 : 4;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 1) / n * rnd(0.7, 1.1);
+      this.add.emit(this.p(x + dx * k * 0.32 * s, y + dy * k * 0.32 * s, z + dz * k * 0.32 * s, { vx: dx * 3, vy: dy * 3, vz: dz * 3, max: 0.045, size: (0.3 - k * 0.12) * s, r: 1, g: 0.7 - k * 0.2, b: 0.3 - k * 0.15, a: 0.9, drag: 8, ...hold }));
+    }
+    // side star (perpendicular to the barrel)
+    const rx = dz, rz = -dx, rl = Math.hypot(rx, rz) || 1;
+    for (const sg of [-1, 1]) this.add.emit(this.p(x + rx / rl * 0.07 * sg * s, y, z + rz / rl * 0.07 * sg * s, { vx: rx / rl * sg * 2.5, vz: rz / rl * sg * 2.5, max: 0.04, size: 0.16 * s, r: 1, g: 0.75, b: 0.4, a: 0.7, drag: 10, ...hold }));
+    // a few hot embers
+    for (let i = 0; i < (big ? 6 : 2); i++) this.add.emit(this.p(x, y, z, { vx: dx * rnd(6, 14) + rnd(-1.5, 1.5), vy: dy * rnd(6, 14) + rnd(-1, 1.5), vz: dz * rnd(6, 14) + rnd(-1.5, 1.5), max: rnd(0.08, 0.18), size: 0.045, r: 1, g: 0.7, b: 0.3, drag: 4, grav: 4, hold: 0.3 }));
+    // smoke wisp
+    for (let i = 0; i < (big ? 3 : 1); i++) this.normal.emit(this.p(x + dx * 0.25, y + dy * 0.25, z + dz * 0.25, { vx: dx * rnd(0.8, 2) + rnd(-0.2, 0.2), vy: 0.35 + rnd(0, 0.3), vz: dz * rnd(0.8, 2) + rnd(-0.2, 0.2), max: rnd(0.7, 1.2) * (big ? 1.4 : 1), size: 0.16 * s, grow: 4, r: 0.78, g: 0.77, b: 0.75, a: big ? 0.28 : 0.18, drag: 2.2, grav: -0.15 }));
   }
-  impact(x: number, y: number, z: number, nx: number, ny: number, nz: number, kind: 'concrete' | 'metal' | 'body' | 'water') {
-    if (kind === 'metal') this.sparks(x, y, z, 6, 5);
-    const col = kind === 'concrete' ? [0.75, 0.7, 0.62] : kind === 'water' ? [0.85, 0.95, 1] : kind === 'body' ? [0.9, 0.85, 0.8] : [0.5, 0.5, 0.5];
-    for (let i = 0; i < (kind === 'water' ? 10 : 5); i++) this.normal.emit(this.p(x, y, z, { vx: nx * 2 + (Math.random() - 0.5) * 2, vy: ny * 2 + Math.random() * (kind === 'water' ? 4 : 1.5), vz: nz * 2 + (Math.random() - 0.5) * 2, max: 0.5 + Math.random() * 0.4, size: kind === 'body' ? 0.12 : 0.18, grow: 2, r: col[0], g: col[1], b: col[2], a: kind === 'body' ? 0.5 : 0.6, drag: 3, grav: kind === 'water' ? 9 : 1 }));
+  /** Ejected shell casing (brass) or shotgun hull (red plastic). Bounces on `floorY`, lingers briefly. */
+  casing(x: number, y: number, z: number, vx: number, vy: number, vz: number, floorY: number, hull = false) {
+    const col = hull ? [0.75, 0.16, 0.12] : [0.95, 0.72, 0.3];
+    this.debris.emit(this.p(x, y, z, { vx, vy, vz, max: hull ? 3 : 2.2, size: hull ? 0.06 : 0.04, r: col[0], g: col[1], b: col[2], a: 1, drag: 0.4, grav: 11, hold: 0.85, floor: floorY + (hull ? 0.03 : 0.02), bounce: 0.35 }));
+    if (!hull) this.add.emit(this.p(x, y, z, { vx, vy, vz, max: 0.25, size: 0.05, r: 1, g: 0.8, b: 0.45, a: 0.6, drag: 0.4, grav: 11, hold: 0.4, floor: floorY + 0.02 }));
+  }
+  /**
+   * Bullet impact by surface. (nx, ny, nz) points away from the surface (towards the shooter for bodies).
+   * `strength` scales the effect (shotgun pellets use ~0.5). Body hits are a small cloth-dust puff (Teen rating: no gore).
+   */
+  impact(x: number, y: number, z: number, nx: number, ny: number, nz: number, kind: ImpactKind, strength = 1) {
+    const S = strength, lift = (k: number) => ({ vx: nx * k + rnd(-1, 1) * k * 0.6, vy: ny * k + rnd(-0.4, 1) * k * 0.6, vz: nz * k + rnd(-1, 1) * k * 0.6 });
+    const flash = (r: number, g: number, b: number, size: number) => this.add.emit(this.p(x + nx * 0.03, y + ny * 0.03, z + nz * 0.03, { max: 0.05, size: size * S, r, g, b, a: 1, hold: 0.6 }));
+    const mark = (r: number, g: number, b: number, size: number, life = 7) => { if (S >= 0.4) this.debris.emit(this.p(x + nx * 0.015, y + ny * 0.015, z + nz * 0.015, { max: life * rnd(0.85, 1.15), size: size * rnd(0.85, 1.2), r, g, b, a: 0.85, hold: 0.8 })); };
+    if (kind === 'metal') {
+      flash(1, 0.9, 0.7, 0.28);
+      const n = Math.round(9 * S);
+      for (let i = 0; i < n; i++) this.add.emit(this.p(x, y, z, { ...lift(rnd(3, 9)), max: rnd(0.12, 0.38), size: rnd(0.035, 0.06), r: 1, g: rnd(0.7, 0.9), b: 0.4, a: 1, drag: 1.5, grav: 12, hold: 0.5, floor: y - 3, bounce: 0.25 }));
+      this.normal.emit(this.p(x + nx * 0.05, y + ny * 0.05, z + nz * 0.05, { ...lift(0.6), max: 0.5, size: 0.12 * S, grow: 3, r: 0.6, g: 0.6, b: 0.62, a: 0.25, drag: 3 }));
+      mark(0.18, 0.18, 0.2, 0.05, 5);
+    } else if (kind === 'concrete' || kind === 'dirt' || kind === 'wood') {
+      const col = kind === 'concrete' ? [0.74, 0.7, 0.64] : kind === 'dirt' ? [0.52, 0.43, 0.32] : [0.55, 0.4, 0.26];
+      if (kind === 'concrete') flash(1, 0.85, 0.6, 0.18);
+      // dust puff that billows out of the hole
+      for (let i = 0; i < Math.max(2, Math.round(4 * S)); i++) this.normal.emit(this.p(x + nx * 0.05, y + ny * 0.05, z + nz * 0.05, { ...lift(rnd(1, 2.6)), max: rnd(0.6, 1.1), size: rnd(0.1, 0.16) * (0.6 + S * 0.4), grow: 3.2, r: col[0], g: col[1], b: col[2], a: kind === 'dirt' ? 0.55 : 0.5, drag: 4, grav: -0.2 }));
+      // chips / splinters / clods with gravity
+      for (let i = 0; i < Math.round((kind === 'wood' ? 6 : 5) * S); i++) this.debris.emit(this.p(x, y, z, { ...lift(rnd(2.5, 6)), max: rnd(0.5, 0.9), size: kind === 'wood' ? rnd(0.03, 0.05) : rnd(0.022, 0.04), r: col[0] * 0.8, g: col[1] * 0.8, b: col[2] * 0.8, a: 1, drag: 1, grav: 14, hold: 0.7, floor: Math.min(y, 0.2) - 0.1, bounce: 0.2 }));
+      mark(kind === 'wood' ? 0.2 : 0.12, kind === 'wood' ? 0.15 : 0.11, 0.1, kind === 'dirt' ? 0.08 : 0.055, kind === 'dirt' ? 3 : 7);
+    } else if (kind === 'glass') {
+      flash(0.9, 0.95, 1, 0.2);
+      for (let i = 0; i < Math.round(8 * S); i++) this.add.emit(this.p(x, y, z, { ...lift(rnd(2, 6)), max: rnd(0.3, 0.6), size: rnd(0.02, 0.04), r: 0.8, g: 0.9, b: 1, a: 0.8, drag: 1, grav: 14, hold: 0.5 }));
+    } else if (kind === 'water') {
+      // a thin column plus a crown of droplets
+      for (let i = 0; i < Math.round(5 * S); i++) this.normal.emit(this.p(x + rnd(-0.05, 0.05), y, z + rnd(-0.05, 0.05), { vx: rnd(-0.3, 0.3), vy: rnd(3.5, 6.5), vz: rnd(-0.3, 0.3), max: rnd(0.45, 0.7), size: rnd(0.08, 0.14), grow: 1.2, r: 0.9, g: 0.96, b: 1, a: 0.75, drag: 1, grav: 12, hold: 0.3, floor: y - 1 }));
+      for (let i = 0; i < Math.round(9 * S); i++) { const a = Math.random() * Math.PI * 2, sp = rnd(1, 2.5); this.normal.emit(this.p(x, y, z, { vx: Math.cos(a) * sp, vy: rnd(1.5, 3.5), vz: Math.sin(a) * sp, max: 0.5, size: 0.05, r: 0.92, g: 0.97, b: 1, a: 0.8, drag: 1, grav: 12, hold: 0.3, floor: y - 1 })); }
+      this.normal.emit(this.p(x, y + 0.05, z, { max: 0.6, size: 0.35 * S, grow: 2.5, r: 0.95, g: 0.98, b: 1, a: 0.35, drag: 2 }));
+    } else {
+      // body: a small, quick puff of cloth dust (no blood: Teen rating)
+      for (let i = 0; i < 3; i++) this.normal.emit(this.p(x + nx * 0.04, y + ny * 0.04, z + nz * 0.04, { ...lift(rnd(0.6, 1.4)), max: rnd(0.25, 0.4), size: rnd(0.07, 0.1) * (0.6 + 0.4 * S), grow: 2.2, r: 0.78, g: 0.74, b: 0.72, a: 0.4, drag: 5 }));
+    }
   }
   smoke(x: number, y: number, z: number, dark = 0.5, amount = 1) {
     const c = 0.85 - dark * 0.7;
@@ -96,7 +165,7 @@ export class Particles {
     this.sparks(x, y + 0.5, z, 30, 14);
   }
   splash(x: number, y: number, z: number, n = 14) { for (let i = 0; i < n; i++) this.normal.emit(this.p(x, y, z, { vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 4, vz: (Math.random() - 0.5) * 4, max: 0.8, size: 0.25, grow: 1, r: 0.9, g: 0.97, b: 1, a: 0.7, drag: 1, grav: 12 })); }
-  get count() { return this.add.count + this.normal.count; }
+  get count() { return this.add.count + this.normal.count + this.debris.count; }
 }
 
 /** Ring buffer of quads for tyre marks. */
