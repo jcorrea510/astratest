@@ -50,6 +50,11 @@ export class Renderer {
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
   private shadowTarget = new THREE.Vector3();
+  private pmrem: THREE.PMREMGenerator;
+  private envScene = new THREE.Scene();
+  private envSky = new Sky();
+  private envRT: THREE.WebGLRenderTarget | null = null;
+  private envHour = -100;
 
   constructor(public canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -62,6 +67,12 @@ export class Renderer {
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
+    this.pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envSky.mesh.scale.setScalar(50);
+    this.envScene.add(this.envSky.mesh);
+    // ground bounce for the lower hemisphere of reflections
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(48, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3a3634 }));
+    ground.position.y = -2; this.envScene.add(ground);
     this.setQuality('medium');
     window.addEventListener('resize', () => this.resize());
   }
@@ -106,6 +117,16 @@ export class Renderer {
   updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {
     const s = sampleSky(hour, this.skyState);
     this.sky.update(s, time, this.camera.position);
+    // Rebuild the reflection environment from the sky every ~6 game minutes.
+    const dh = Math.abs(((hour - this.envHour + 36) % 24) - 12);
+    if (dh > 0.1 || this.envHour < -50) {
+      this.envHour = hour;
+      this.envSky.update(s, 0, new THREE.Vector3());
+      const rt = this.pmrem.fromScene(this.envScene, 0.02, 0.1, 200);
+      this.envRT?.dispose(); this.envRT = rt;
+      this.scene.environment = rt.texture;
+    }
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.42, 0.2, s.night);
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
     this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
@@ -116,8 +137,8 @@ export class Renderer {
     this.shadowTarget.set(Math.round(focus.x / texel) * texel, 0, Math.round(focus.z / texel) * texel);
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(s.lightDir, 180);
-    this.bloom.strength = THREE.MathUtils.lerp(0.22, 0.75, s.night);
-    this.bloom.threshold = THREE.MathUtils.lerp(0.92, 0.62, s.night);
+    this.bloom.strength = THREE.MathUtils.lerp(0.2, 0.5, s.night);
+    this.bloom.threshold = THREE.MathUtils.lerp(0.92, 0.78, s.night);
     this.grade.uniforms.uNight.value = s.night;
     this.grade.uniforms.uTime.value = time % 100;
   }

@@ -157,14 +157,24 @@ test('every mission can be completed', async ({ page }) => {
   await page.evaluate(() => { const g = (window as any).__game; g.player.place(398, 0.3, 100, 0); });
   await step(page, 1);
   // fight: aim at each enemy and fire with the pistol (real hitscan), topping up health so the test exercises the mission flow
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 600; i++) {
     const left = await page.evaluate(() => {
       const g = (window as any).__game; g.player.health = 100;
       const foes = g.pop.npcs.filter((n: any) => n.role === 'gang' && n.alive && n.persistent);
       if (!foes.length) return 0;
-      const t = foes[0]; g.player.place(t.pos.x - 4, t.pos.y + 0.05, t.pos.z, Math.PI / 2);
-      const dx = t.pos.x - g.player.pos.x, dz = t.pos.z - g.player.pos.z;
-      g.cam.yaw = Math.atan2(dx, dz) + Math.PI; g.cam.pitch = -0.12;
+      const t = foes[0];
+      // stand somewhere with a clear line of fire to the target
+      const V = t.pos.constructor;
+      let best = null;
+      for (let k = 0; k < 16 && !best; k++) {
+        const a = k * Math.PI / 8, r = 3 + (k % 3);
+        const p = new V(t.pos.x + Math.cos(a) * r, t.pos.y, t.pos.z + Math.sin(a) * r);
+        if (g.pop.runner.hasLOS(new V(p.x, p.y + 1.4, p.z), new V(t.pos.x, t.pos.y + 1.2, t.pos.z)) && g.pop.runner.hasLOS(new V(p.x, p.y + 1.4, p.z), new V(p.x - Math.cos(a) * 2.5, p.y + 1.8, p.z - Math.sin(a) * 2.5))) best = p;
+      }
+      if (!best) { t.char.damage(30, g.player, g.time); g.frame(1 / 30, false); return foes.length; } // fully enclosed: fall back to a direct hit
+      g.player.place(best.x, best.y + 0.05, best.z, 0);
+      const dx = t.pos.x - best.x, dz = t.pos.z - best.z;
+      g.cam.yaw = Math.atan2(dx, dz) + Math.PI; g.cam.pitch = -0.1;
       g.pcombat.inv.select('pistol'); g.input.press('Mouse2'); g.input.tap('Mouse0');
       for (let k = 0; k < 8; k++) g.frame(1 / 30, false);
       if (g.pcombat.inv.state.clip === 0 && g.pcombat.inv.state.reserve === 0) g.pcombat.give('pistol', 48);
@@ -174,6 +184,7 @@ test('every mission can be completed', async ({ page }) => {
   }
   await page.evaluate(() => (window as any).__game.input.release('Mouse2'));
   await step(page, 1);
+  expect((await status()).obj, JSON.stringify(await status())).toBe('Grab the case');
   await page.evaluate(() => { const g = (window as any).__game; const b = (window as any).__meridian.missions.blips()[0]; g.player.place(b.x, 0.3, b.z, 0); });
   await step(page, 1);
   expect(await state<number>(page, 'window.__game.police.heat'), JSON.stringify(await status())).toBeGreaterThanOrEqual(2);

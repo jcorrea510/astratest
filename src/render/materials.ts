@@ -57,7 +57,7 @@ export function facadeMaterial(): THREE.MeshStandardMaterial {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uNight; varying vec4 vFacade; varying vec2 vFUv; varying vec3 vWPos;
-        float fh(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743); }`)
+        float fh(vec2 p){ p = mod(p, 61.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         // vFacade: x = style (0 none/roof, 1 glass grid, 2 punched windows, 3 corrugated, 4 storefront band), y = seed, z = cell width, w = floor height
         float style = vFacade.x; float glow = 0.0; float glass = 0.0; vec3 fGlowC = vec3(0.0);
@@ -79,20 +79,20 @@ export function facadeMaterial(): THREE.MeshStandardMaterial {
             glass = step(0.94, f.y) * step(mod(cell.x, 3.0), 0.5) * step(0.15, f.x) * step(f.x, 0.85);
           }
           if (cell.y < 0.5 && style < 2.5) { glass = step(0.04, f.x) * step(f.x, 0.96) * step(0.08, f.y) * step(f.y, 0.8); }
-          float lit = step(0.52, fh(cell + vFacade.y * 0.013 + floor(vWPos.xz * 0.01)));
-          float warm = fh(cell * 1.7 + vFacade.y);
-          vec3 day = mix(vec3(0.16, 0.27, 0.32), vec3(0.42, 0.6, 0.7), clamp(f.y * 0.8 + 0.1, 0.0, 1.0));
+          float lit = step(0.64, fh(cell + vec2(mod(vFacade.y, 37.0), floor(mod(vWPos.x * 0.01 + vWPos.z * 0.013, 17.0)))));
+          float warm = fh(cell * 1.7 + vec2(mod(vFacade.y, 29.0), 3.0));
+          vec3 day = mix(vec3(0.22, 0.34, 0.4), vec3(0.5, 0.66, 0.74), clamp(f.y * 0.8 + 0.1, 0.0, 1.0));
           vec3 litCol = mix(vec3(1.0, 0.78, 0.45), vec3(0.75, 0.9, 1.0), step(0.82, warm));
           diffuseColor.rgb = mix(diffuseColor.rgb, mix(day, day * 0.35, uNight), glass);
           glow = glass * lit * uNight;
-          if (cell.y < 0.5) glow = glass * uNight * 0.9;
+          if (cell.y < 0.5) { glow = glass * uNight * 0.32; litCol = vec3(1.0, 0.72, 0.42); }
           fGlowC = litCol * glow;
         }
         vec3 fGlow = fGlowC;
         float fGlass = glass;`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.18, fGlass);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.6, fGlass);')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 1.6;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 0.75;');
   };
   return m;
 }
@@ -143,7 +143,7 @@ export function kaykitMaterial(map: THREE.Texture, emissive: THREE.Texture | nul
         .replace('#include <common>', '#include <common>\nuniform float uNight; varying vec3 vWPos2; float kh(vec3 p){ return fract(sin(dot(p, vec3(12.7, 78.2, 37.9))) * 43758.5); }')
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           float wl = step(0.45, kh(floor(vWPos2 * vec3(0.55, 0.32, 0.55))));
-          totalEmissiveRadiance = texture2D(emissiveMap, vEmissiveMapUv).rgb * uNight * wl * 1.4;`);
+          totalEmissiveRadiance = texture2D(emissiveMap, vEmissiveMapUv).rgb * uNight * wl * 0.9;`);
     };
     m.customProgramCacheKey = () => 'kaykit-night';
   }

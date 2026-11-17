@@ -428,8 +428,8 @@ export class Game {
     this.updateLamps(dt);
     this.cullChunks();
     if (this.visuals.ferris) {
-      const w = this.visuals.ferris; w.rotation.x += dt * 0.05;
-      for (const g of w.userData.gondolas as THREE.Object3D[]) g.rotation.x = -w.rotation.x;
+      const w = this.visuals.ferris; w.rotation.z += dt * 0.05;
+      for (const g of w.userData.gondolas as THREE.Object3D[]) g.rotation.z = -w.rotation.z;
       (w.userData.ringMat as THREE.MeshStandardMaterial).emissiveIntensity = this.renderer.skyState.night * 2.2;
     }
   }

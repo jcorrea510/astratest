@@ -92,7 +92,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   slab(land, -1400, -1400, maxX + 2, maxZ + 8, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 6);
   slab(land, maxX, -1400, 1400, -70, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 6);
   const landMesh = new THREE.Mesh(land.build(false), grassMat); landMesh.receiveShadow = true; root.add(landMesh);
-  physics.addStaticBox(0, -1, 0, 1600, 0.95, 1600);
+  // Ground as 200 m tiles: one huge box loses contact precision for the character controller.
+  for (let gx = -1500; gx < 1500; gx += 200) for (let gz = -1500; gz < 1500; gz += 200) physics.addStaticBox(gx + 100, -0.55, gz + 100, 100, 0.5, 100);
 
   const asphalt = asphaltTexture();
   const asphaltMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, color: '#ffffff' });
@@ -498,23 +499,45 @@ function buildPier(root: THREE.Group, physics: Physics, facade: THREE.Material, 
   const wood = new THREE.Color('#9a7656');
   gb.box(x, startZ + len / 2, w, len, deckY - 0.5, deckY, 0, wood, [0, 0, 1, 1], new THREE.Color('#a8825f'));
   physics.addStaticBox(x, deckY - 0.25, startZ + len / 2, w / 2, 0.25, len / 2);
-  // ramp from the promenade up to the deck
-  const ramp = physics.addStaticBox(x, deckY / 2 - 0.2, startZ - 2, w / 2, 0.25, 6);
-  const ang = Math.atan2(deckY - CURB_HEIGHT, 12); const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), ang);
+  // ramp across the promenade up to the deck (rises towards +z)
+  const rampLen = 7, rampZ0 = startZ - rampLen, rise = deckY - CURB_HEIGHT;
+  const rampAng = Math.atan2(rise, rampLen), rampHyp = Math.hypot(rampLen, rise);
+  const ramp = physics.addStaticBox(x, (CURB_HEIGHT + deckY) / 2 - 0.25 / Math.cos(rampAng), rampZ0 + rampLen / 2, w / 2, 0.25, rampHyp / 2 + 0.05);
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -rampAng);
   ramp.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
   for (let z = startZ + 4; z < startZ + len; z += 8) for (const dx of [-w / 2 + 0.5, w / 2 - 0.5]) gb.box(x + dx, z, 0.6, 0.6, -4, deckY - 0.5, 0, new THREE.Color('#5d4632'), [0, 0, 1, 1]);
-  for (const dx of [-w / 2 + 0.15, w / 2 - 0.15]) { gb.box(x + dx, startZ + len / 2 + 2, 0.18, len - 4, deckY, deckY + 1.05, 0, new THREE.Color('#e8e0d0'), [0, 0, 1, 1]); physics.addStaticBox(x + dx, deckY + 0.5, startZ + len / 2 + 2, 0.1, 0.55, (len - 4) / 2); }
-  gb.box(x, startZ + len - 0.15, w, 0.18, deckY, deckY + 1.05, 0, new THREE.Color('#e8e0d0'), [0, 0, 1, 1]);
+  const railCol = new THREE.Color('#ece4d4');
+  for (const dx of [-w / 2 + 0.15, w / 2 - 0.15]) {
+    gb.box(x + dx, startZ + len / 2 + 2, 0.12, len - 4, deckY + 0.98, deckY + 1.08, 0, railCol, [0, 0, 1, 1]);
+    gb.box(x + dx, startZ + len / 2 + 2, 0.06, len - 4, deckY + 0.5, deckY + 0.56, 0, railCol, [0, 0, 1, 1]);
+    for (let z = startZ + 2; z <= startZ + len - 0.2; z += 2.5) gb.box(x + dx, z, 0.12, 0.12, deckY, deckY + 1.08, 0, railCol, [0, 0, 1, 1]);
+    physics.addStaticBox(x + dx, deckY + 0.5, startZ + len / 2 + 2, 0.1, 0.55, (len - 4) / 2);
+  }
+  gb.box(x, startZ + len - 0.15, w, 0.12, deckY + 0.98, deckY + 1.08, 0, railCol, [0, 0, 1, 1]);
+  for (let xx = x - w / 2 + 0.15; xx <= x + w / 2; xx += 2.5) gb.box(xx, startZ + len - 0.15, 0.12, 0.12, deckY, deckY + 1.08, 0, railCol, [0, 0, 1, 1]);
   physics.addStaticBox(x, deckY + 0.5, startZ + len - 0.15, w / 2, 0.55, 0.1);
   // food kiosk on the pier
   gb.box(x - 3, startZ + 40, 6, 5, deckY, deckY + 3.2, 0, new THREE.Color('#2f8f8a'), [2, 5, 2.8, 3.2], new THREE.Color('#e9d9b8'));
   physics.addStaticBox(x - 3, deckY + 1.6, startZ + 40, 3, 1.6, 2.5);
   const pier = new THREE.Mesh(gb.build(true), facade); pier.castShadow = true; pier.receiveShadow = true; root.add(pier);
+  // plank deck surface
+  const pc = document.createElement('canvas'); pc.width = 256; pc.height = 256; const g2 = pc.getContext('2d')!;
+  for (let i = 0; i < 16; i++) { const v = 150 + ((i * 37) % 23) - 11; g2.fillStyle = `rgb(${v},${Math.round(v * 0.76)},${Math.round(v * 0.55)})`; g2.fillRect(0, i * 16, 256, 15); g2.fillStyle = 'rgba(40,25,15,0.55)'; g2.fillRect(0, i * 16 + 15, 256, 1); g2.fillRect((i * 97) % 256, i * 16, 1, 15); }
+  for (let i = 0; i < 400; i++) { g2.fillStyle = `rgba(60,40,25,${0.05 + (i % 5) * 0.02})`; g2.fillRect((i * 53) % 256, (i * 29) % 256, 6 + (i % 9), 1); }
+  const ptex = new THREE.CanvasTexture(pc); ptex.wrapS = ptex.wrapT = THREE.RepeatWrapping; ptex.colorSpace = THREE.SRGBColorSpace; ptex.repeat.set(w / 4, len / 4); ptex.anisotropy = 8;
+  const deck = new THREE.Mesh(new THREE.PlaneGeometry(w, len).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: ptex, roughness: 0.85 }));
+  deck.position.set(x, deckY + 0.006, startZ + len / 2); deck.receiveShadow = true; root.add(deck);
+  const rampMesh = new THREE.Mesh(new THREE.PlaneGeometry(w, rampHyp).rotateX(-Math.PI / 2), deck.material);
+  rampMesh.position.set(x, (CURB_HEIGHT + deckY) / 2 + 0.01, rampZ0 + rampLen / 2); rampMesh.rotation.x = -rampAng; rampMesh.receiveShadow = true; root.add(rampMesh);
+  const rampSides = new GeoBuilder();
+  for (const sx of [-1, 1]) rampSides.box(x + sx * (w / 2 - 0.1), rampZ0 + rampLen / 2, 0.2, rampLen, 0, deckY * 0.6, 0, new THREE.Color('#7a5c40'), [0, 0, 1, 1]);
+  root.add(new THREE.Mesh(rampSides.build(true), facade));
+  rampMesh.rotation.x = 0; rampMesh.position.set(x, (deckY + CURB_HEIGHT) / 2 + 0.01, startZ - 2); rampMesh.rotateX(-Math.atan2(deckY - CURB_HEIGHT, 12)); rampMesh.receiveShadow = true; root.add(rampMesh);
   // Ferris wheel
   const wheel = new THREE.Group();
   const radius = 22, cy = deckY + radius + 3, cz = startZ + len - 26;
   const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.35, 6, 64), new THREE.MeshStandardMaterial({ color: '#f2efe6', roughness: 0.5, metalness: 0.3, emissive: new THREE.Color('#ff9a6a'), emissiveIntensity: 0 }));
-  const ring2 = ring.clone(); ring.position.x = -1.6; ring2.position.x = 1.6; ring.rotation.y = ring2.rotation.y = Math.PI / 2;
+  const ring2 = ring.clone(); ring.position.z = -1.6; ring2.position.z = 1.6;
   wheel.add(ring, ring2);
   const spokeMat = new THREE.MeshStandardMaterial({ color: '#e8e2d6', roughness: 0.6 });
   const gondMat = new THREE.MeshStandardMaterial({ color: '#e05a4f', roughness: 0.6 });
@@ -522,18 +545,18 @@ function buildPier(root: THREE.Group, physics: Physics, facade: THREE.Material, 
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2;
     const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.2, radius, 0.2), spokeMat);
-    spoke.position.set(0, Math.sin(a) * radius / 2, Math.cos(a) * radius / 2); spoke.rotation.x = -a + Math.PI / 2;
+    spoke.position.set(Math.cos(a) * radius / 2, Math.sin(a) * radius / 2, 0); spoke.rotation.z = a - Math.PI / 2;
     wheel.add(spoke);
     const g = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 2.2, 8), i % 2 ? gondMat : new THREE.MeshStandardMaterial({ color: '#2f8f9a', roughness: 0.6 }));
-    g.position.set(0, Math.sin(a) * radius, Math.cos(a) * radius); g.userData.angle = a;
+    g.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0); g.userData.angle = a;
     wheel.add(g); gondolas.push(g);
   }
   wheel.position.set(x + 2, cy, cz);
   const supportMat = new THREE.MeshStandardMaterial({ color: '#d8d2c4', roughness: 0.6 });
   for (const s of [-1, 1]) for (const dz of [-1, 1]) {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, cy - deckY + 1, 8), supportMat);
-    leg.position.set(x + 2 + s * 3, (cy + deckY) / 2, cz + dz * 7); leg.rotation.x = dz * -0.29; leg.rotation.z = s * 0.06; leg.castShadow = true; root.add(leg);
-    physics.addStaticCylinder(x + 2 + s * 3, deckY + 2, cz + dz * 10.5, 2, 0.6);
+    leg.position.set(x + 2 + dz * 6.2, (cy + deckY) / 2, cz + s * 3); leg.rotation.z = dz * 0.26; leg.rotation.x = s * 0.06; leg.castShadow = true; root.add(leg);
+    physics.addStaticCylinder(x + 2 + dz * 6.2 * 1.5, deckY + 2, cz + s * 3, 2, 0.6);
   }
   wheel.traverse(o => { o.castShadow = true; });
   wheel.userData.gondolas = gondolas; wheel.userData.ringMat = ring.material;
