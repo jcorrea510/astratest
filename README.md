@@ -6,6 +6,17 @@ An original open-world action game that runs in the browser. Explore **Port Meri
 
 Everything in the game is original: the city, districts, streets, brands, characters, story, user interface and music. It uses CC0 3D models and animations (see [CREDITS.md](CREDITS.md)). Tone is Teen: stylised action, no gore.
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Title screen](docs/screenshots/01-title.jpg) | ![Golden hour on Coastal Drive](docs/screenshots/02-golden-hour-drive.jpg) |
+| ![Night in Meridian Heights](docs/screenshots/03-night-heights.jpg) | ![Shootout at the Cannery Docks](docs/screenshots/04-docks-shootout.jpg) |
+| ![Holding up a street kiosk](docs/screenshots/05-store-holdup.jpg) | ![Beach stunt jump](docs/screenshots/06-beach-jump.jpg) |
+| ![Pause menu city map](docs/screenshots/07-pause-map.jpg) | |
+
+Captured from the production build in software rendering (high preset); a real GPU looks the same but runs much faster.
+
 ## What's in the game
 
 - **On foot:** weighty third-person movement (walk/jog/sprint with momentum and plant-and-pivot turns, variable-height jumps with jump buffering, climbing onto car roofs and low walls, dodge roll, landing rolls, swimming in the sea and harbor), a smooth collision-aware camera with a sprint FOV kick, and over-the-shoulder aiming.
