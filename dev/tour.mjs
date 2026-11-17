@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 const out = process.argv[2];
 const shots = [
-  ['morning', 8.2, -300, -96, 1.2, -0.08],
+  ['morning', 8.2, -300, -96, 1.2, -0.08], ['courtyard', 14, -300, -150, 0.3, -0.25], ['edge', 16, -440, -200, -1.4, -0.05], ['park', 10, 100, -330, 0, -0.05],
   ['noon-heights', 12.5, 0, -100, 2.2, -0.05],
   ['sunset-beach', 18.6, -120, 412, 1.0, -0.02],
   ['dusk-pier', 19.6, -50, 420, 0.2, 0.05],

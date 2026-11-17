@@ -69,6 +69,7 @@ export class Renderer {
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.envSky.mesh.scale.setScalar(50);
+    this.envSky.uniforms.uStars.value = 0; // stars in reflections read as noise on glass
     this.envScene.add(this.envSky.mesh);
     // ground bounce for the lower hemisphere of reflections
     const ground = new THREE.Mesh(new THREE.CircleGeometry(48, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3a3634 }));

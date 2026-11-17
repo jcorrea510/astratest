@@ -49,13 +49,13 @@ export class Sky {
   constructor() {
     this.uniforms = {
       uTop: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() },
-      uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uNight: { value: 0 }, uTime: { value: 0 }, uCloud: { value: new THREE.Color() },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uNight: { value: 0 }, uTime: { value: 0 }, uCloud: { value: new THREE.Color() }, uStars: { value: 1 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w; }`,
       fragmentShader: `
-        uniform vec3 uTop, uHorizon, uSunCol, uSunDir, uCloud; uniform float uNight, uTime; varying vec3 vDir;
+        uniform vec3 uTop, uHorizon, uSunCol, uSunDir, uCloud; uniform float uNight, uTime, uStars; varying vec3 vDir;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
         float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
@@ -75,7 +75,7 @@ export class Sky {
           // stars
           vec2 sp = d.xz / (d.y + 0.25) * 140.0;
           float st = step(0.9965, hash(floor(sp))) * smoothstep(0.05, 0.4, d.y);
-          col += vec3(st) * uNight * (0.6 + 0.4 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
+          col += vec3(st) * uNight * uStars * (0.6 + 0.4 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
           // stylised clouds
           vec2 cp = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.004, uTime * 0.002);
           float c = smoothstep(0.52, 0.78, fbm(cp)) * smoothstep(0.02, 0.25, d.y);

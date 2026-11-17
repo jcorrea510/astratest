@@ -51,16 +51,16 @@ export function facadeMaterial(): THREE.MeshStandardMaterial {
   m.onBeforeCompile = shader => {
     shader.uniforms.uNight = nightUniform;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nvarying vec4 vFacade;\nvarying vec2 vFUv;\nvarying vec3 vWPos;')
+      .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nflat varying vec4 vFacade;\nvarying vec2 vFUv;\nvarying vec3 vWPos;')
       .replace('#include <uv_vertex>', '#include <uv_vertex>\nvFacade = facade; vFUv = uv;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform float uNight; varying vec4 vFacade; varying vec2 vFUv; varying vec3 vWPos;
+        uniform float uNight; flat varying vec4 vFacade; varying vec2 vFUv; varying vec3 vWPos;
         float fh(vec2 p){ p = mod(p, 61.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         // vFacade: x = style (0 none/roof, 1 glass grid, 2 punched windows, 3 corrugated, 4 storefront band), y = seed, z = cell width, w = floor height
-        float style = vFacade.x; float glow = 0.0; float glass = 0.0; vec3 fGlowC = vec3(0.0);
+        float style = floor(vFacade.x + 0.5); float seed = floor(vFacade.y + 0.5); float glow = 0.0; float glass = 0.0; vec3 fGlowC = vec3(0.0);
         if (style > 0.5) {
           vec2 cs = vec2(vFacade.z, vFacade.w);
           vec2 cell = floor(vFUv / cs); vec2 f = fract(vFUv / cs);
@@ -79,20 +79,21 @@ export function facadeMaterial(): THREE.MeshStandardMaterial {
             glass = step(0.94, f.y) * step(mod(cell.x, 3.0), 0.5) * step(0.15, f.x) * step(f.x, 0.85);
           }
           if (cell.y < 0.5 && style < 2.5) { glass = step(0.04, f.x) * step(f.x, 0.96) * step(0.08, f.y) * step(f.y, 0.8); }
-          float lit = step(0.64, fh(cell + vec2(mod(vFacade.y, 37.0), floor(mod(vWPos.x * 0.01 + vWPos.z * 0.013, 17.0)))));
-          float warm = fh(cell * 1.7 + vec2(mod(vFacade.y, 29.0), 3.0));
+          float lit = step(0.64, fh(cell + vec2(mod(seed, 37.0), 0.0)));
+          float warm = fh(cell * 1.7 + vec2(mod(seed, 29.0), 3.0));
           vec3 day = mix(vec3(0.22, 0.34, 0.4), vec3(0.5, 0.66, 0.74), clamp(f.y * 0.8 + 0.1, 0.0, 1.0));
-          vec3 litCol = mix(vec3(1.0, 0.78, 0.45), vec3(0.75, 0.9, 1.0), step(0.82, warm));
+          vec3 litCol = mix(vec3(1.0, 0.6, 0.26), vec3(0.6, 0.78, 1.0), step(0.8, warm));
           diffuseColor.rgb = mix(diffuseColor.rgb, mix(day, day * 0.35, uNight), glass);
-          glow = glass * lit * uNight;
-          if (cell.y < 0.5) { glow = glass * uNight * 0.32; litCol = vec3(1.0, 0.72, 0.42); }
+          float bright = 0.35 + 0.65 * fh(cell * 2.3 + vec2(7.0, mod(seed, 13.0)));
+          glow = glass * lit * uNight * bright * (0.55 + 0.45 * (1.0 - f.y));
+          if (cell.y < 0.5) { glow = glass * uNight * 0.18; litCol = vec3(1.0, 0.72, 0.42); }
           fGlowC = litCol * glow;
         }
         vec3 fGlow = fGlowC;
         float fGlass = glass;`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.18, fGlass);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.6, fGlass);')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 0.75;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 0.6;');
   };
   return m;
 }
