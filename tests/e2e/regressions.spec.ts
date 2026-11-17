@@ -449,3 +449,20 @@ test('the race ends (failed) once every rival has crossed the line', async ({ pa
   expect(st.last).toContain('m5:failed:The Coastline crew');
   clean(p);
 });
+
+// ---------- Bug-bash C ----------
+test('saving while swimming at sea loads you at the safehouse, not in the water', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, M = (window as any).__meridian;
+    g.player.place(-200, -2.4, 600, 0);
+    for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
+    const swimming = g.player.swimming;
+    M.save(); const s = M.read();
+    return { swimming, x: s.pos.x, z: s.pos.z };
+  });
+  expect(r.swimming).toBe(true);
+  expect(r.z).toBeLessThan(0);
+  clean(p);
+});

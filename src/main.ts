@@ -152,8 +152,8 @@ function applySave(s: SaveData) {
 function saveGame(): boolean {
   if (!game || !missions || !activities || game.deathT >= 0 || sandbox) return false;
   const g = game;
-  const onFoot = !g.playerVehicle;
-  const pos = onFoot && !missions.active ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
+  const onFoot = !g.playerVehicle; // (in a car, on a mission or swimming: wake up at the safehouse instead)
+  const pos = onFoot && !missions.active && !g.player.swimming ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
   const ok = writeSave(storage, {
     version: 1, savedAt: Date.now(), money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
