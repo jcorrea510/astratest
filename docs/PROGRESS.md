@@ -23,12 +23,15 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (~18:15 UTC, 17 Nov)
-- Quality round DONE and on main: UI overhaul, movement, shooting+gun audio, driving+car glass, robbable stores, sandbox (6cfcba8).
-- Bug-bash A found 6 bugs, all fixed with regression tests (f5b1218, on main; 29/29 e2e green, 77 unit tests).
-- NOW: bug-bash pass B (report-only agent) on f5b1218. Need TWO consecutive clean passes (B and C) before finishing.
-- After two clean passes: final report to the owner, then delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
-- If resuming after a reset with no agent running: launch a fresh report-only bug-bash on HEAD (see earlier prompts: build to a scratch outDir, serve on a free port, batch checks), fix findings with a regression test each, re-run full e2e, push main.
+## Status (~00:00 UTC, 18 Nov): DONE
+- Quality round on main (UI overhaul, movement, shooting + gun audio, driving + car glass, store hold-ups, sandbox).
+- Bug-bash history: pass 1 (7 bugs), A (6), B (1), C (1), D (clean), E (1: beach ramps into the sea), F CLEAN, G CLEAN.
+  Every bug has a regression e2e test. Two consecutive clean passes (F, G) on bb1dfe0.
+- Tests: 77 unit, 32 e2e (all green on the production build at /astratest/), soak re-run on the final build.
+- CI: run #11 (bb1dfe0) green and deployed to GitHub Pages; earlier failures (#5, #8, #10) were test flakiness
+  (random traffic, aborted font prefetch on reload), both fixed in the tests.
+- Screenshots: docs/screenshots (in README).
+- Remaining: final report to the owner, delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
 
 Bug-bash pass 1 (fixed in 4a1206a, 7 regression tests): open water/swimming/flooding, safe exits, lane-graph routing, traffic passing,
 beach ramps, M2 keeps player car, contact respawn cooldown; shoreline-only foam.
