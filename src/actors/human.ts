@@ -379,7 +379,7 @@ export class Human {
   private locoWeights = [0, 0, 0, 0];
   private state: string = 'loco';
   private upperMode: UpperMode = 'loco';
-  private oneShot: { name: string; layer: 'upper' | 'full'; t: number; dur: number; fade: number } | null = null;
+  private oneShot: { name: string; layer: 'upper' | 'full'; t: number; dur: number; fade: number; weight: number; soft: boolean } | null = null;
   aimPitch = 0;
   speed = 0;
   scale: number;
@@ -435,18 +435,32 @@ export class Human {
     for (const col of c) col.convertSRGBToLinear();
     this.clothParams.set(look.sleeves === 'long' ? 0.97 : look.sleeves === 'short' ? 0.3 : -1, look.legs === 'shorts' ? 0.42 : 0.985, this.tpl.waistT, 0.97);
   }
+  /** Stride-synced locomotion cycle 0..1 (left foot plants near 0.08, right near 0.58). */
+  get locoPhase() { return this.phase; }
   /** Locomotion speed in m/s (world). */
   setSpeed(v: number) { this.speed = v; }
   /** Full-body state: loco, jump, drive, swim, sit, dead, crouch, talk, dance */
   setState(s: string) { if (s !== this.state) { this.state = s; this.stateTime = 0; if (s === 'dead') this.playOnce('Death01', 'full', 0.12); } }
   get currentState() { return this.state; }
   setUpperMode(m: UpperMode) { this.upperMode = m; }
-  playOnce(name: string, layer: 'upper' | 'full', fade = 0.1) {
-    const dur = this.tpl.clips.get(name)!.duration;
-    this.oneShot = { name, layer, t: 0, dur, fade };
-    for (const l of layer === 'full' ? [this.lower, this.upper] : [this.upper]) { const s = l.get(name)!; s.action.reset(); s.action.play(); }
+  /**
+   * Plays a one-shot over the given layer(s). Options: `from` starts part-way into the clip (s), `to` ends early (s),
+   * `rate` scales playback, `weight` < 1 blends it over the current pose (e.g. a light landing),
+   * and `soft` one-shots never count as busy (they may be interrupted by anything).
+   */
+  playOnce(name: string, layer: 'upper' | 'full', fade = 0.1, opts: { from?: number; to?: number; rate?: number; weight?: number; soft?: boolean } = {}) {
+    const clipDur = this.tpl.clips.get(name)!.duration;
+    const from = Math.max(0, Math.min(clipDur, opts.from ?? 0)), to = Math.max(from, Math.min(clipDur, opts.to ?? clipDur));
+    const rate = opts.rate ?? 1;
+    const dur = (to - from) / rate;
+    this.oneShot = { name, layer, t: 0, dur, fade: Math.min(fade, dur * 0.5), weight: Math.max(0, Math.min(1, opts.weight ?? 1)), soft: !!opts.soft };
+    for (const l of layer === 'full' ? [this.lower, this.upper] : [this.upper]) { const s = l.get(name)!; s.action.reset(); s.action.timeScale = rate; s.action.time = from; s.action.play(); }
   }
-  get busy() { return !!this.oneShot && this.oneShot.t < this.oneShot.dur - this.oneShot.fade; }
+  /** Name of the playing one-shot (null when none). */
+  get oneShotName() { return this.oneShot ? this.oneShot.name : null; }
+  /** Ends the current one-shot early with a short blend (e.g. a jump pose cut by landing). */
+  stopOnce(name?: string) { const os = this.oneShot; if (os && (!name || os.name === name)) os.dur = Math.min(os.dur, os.t + os.fade); }
+  get busy() { return !!this.oneShot && !this.oneShot.soft && this.oneShot.t < this.oneShot.dur - this.oneShot.fade; }
   flash() { this.flashT = 0.12; }
   update(dt: number) {
     this.stateTime += dt;
@@ -502,10 +516,10 @@ export class Human {
     if (this.oneShot) {
       const os = this.oneShot; os.t += dt;
       const fadeIn = Math.min(1, os.t / os.fade), fadeOut = Math.min(1, Math.max(0, (os.dur - os.t) / os.fade));
-      const k = Math.min(fadeIn, fadeOut);
+      const k = Math.min(fadeIn, fadeOut) * os.weight;
       const layers = os.layer === 'full' ? [this.lower, this.upper] : [this.upper];
       for (const l of layers) { for (const s of l.values()) s.target *= 1 - k; l.get(os.name)!.target = k; }
-      if (os.t >= os.dur) { if (os.name === 'Death01') { this.oneShot = null; } else this.oneShot = null; }
+      if (os.t >= os.dur) this.oneShot = null;
     }
     if (this.state === 'dead' && !this.oneShot) { for (const l of [this.lower, this.upper]) { for (const s of l.values()) s.target = 0; l.get('Death01')!.target = 1; } }
     // Smooth weights (fast enough to feel responsive, slow enough to never pop).

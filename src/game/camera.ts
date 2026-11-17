@@ -21,6 +21,11 @@ export class CameraRig {
   baseFov = 62;
   zoomLevel = 0;
   cinematic: { pos: THREE.Vector3; look: THREE.Vector3 } | null = null;
+  /** On-foot motion fed by the player controller each step: sprint blend 0..1, ground speed, step phase (cycles), airborne. */
+  foot = { sprint: 0, speed: 0, stepPhase: 0, airborne: false, falling: false };
+  private sprintBlend = 0;
+  private bobAmp = 0;
+  private dipY = 0; private dipV = 0;
 
   constructor(public camera: THREE.PerspectiveCamera, private physics: Physics) { }
 
@@ -32,6 +37,8 @@ export class CameraRig {
   }
   addShake(amount: number) { this.trauma = Math.min(1, this.trauma + amount * this.shakeScale); }
   snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; }
+  /** Landing impulse: the camera dips by roughly `amount` metres and springs back. */
+  landDip(amount: number) { this.dipV -= Math.min(0.5, Math.max(0, amount)) * 11; }
 
   update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean } = {}) {
     this.lastInput += dt;
@@ -54,15 +61,28 @@ export class CameraRig {
       }
     } else if (mode === 'dead') { targetDist = 6; height = 1.0; }
     else targetDist = 4.2 + this.zoomLevel * 1.4;
+    // On foot: sprint pulls the camera back a touch, kicks the FOV and adds a subtle step bob; landings dip it.
+    const onFoot = mode === 'foot', f = this.foot;
+    this.sprintBlend = damp(this.sprintBlend, onFoot ? f.sprint : 0, f.sprint > this.sprintBlend ? 3 : 4, dt);
+    if (onFoot) { targetDist += this.sprintBlend * 0.35; fovT += this.sprintBlend * 5; }
+    this.bobAmp = damp(this.bobAmp, onFoot && !f.airborne ? Math.min(1, Math.max(0, (f.speed - 1) / 6)) : 0, 6, dt);
+    this.dipV += (-90 * this.dipY - 13 * this.dipV) * Math.min(dt, 0.05);
+    this.dipY += this.dipV * Math.min(dt, 0.05);
+    if (!onFoot && mode !== 'aim') { this.dipY = 0; this.dipV = 0; }
     this.dist = damp(this.dist, targetDist, 8, dt);
     this.shoulder = damp(this.shoulder, shoulderT, 10, dt);
     this.fovExtra = damp(this.fovExtra, fovT, 6, dt);
+    const ph = f.stepPhase * Math.PI * 2;
+    const bobY = this.bobAmp * (0.022 + 0.018 * this.sprintBlend) * Math.cos(ph * 2);
     this.pivot.set(focus.x, focus.y + height, focus.z);
     if (!this.initialized) { this.smoothPivot.copy(this.pivot); this.initialized = true; }
-    const pk = mode === 'vehicle' ? 18 : 22;
+    // On foot the follow lags slightly (a weighty, filmic chase); aiming and vehicles stay tight.
+    const pk = mode === 'vehicle' ? 18 : onFoot ? 11 : 22;
     this.smoothPivot.x = damp(this.smoothPivot.x, this.pivot.x, pk, dt);
     this.smoothPivot.z = damp(this.smoothPivot.z, this.pivot.z, pk, dt);
-    this.smoothPivot.y = damp(this.smoothPivot.y, this.pivot.y, mode === 'vehicle' ? 10 : 12, dt);
+    // Vertical: soft during jumps (the arc reads on screen), quick when falling far or on the ground.
+    const vk = mode === 'vehicle' ? 10 : onFoot && f.airborne ? (f.falling ? 14 : 4.5) : 12;
+    this.smoothPivot.y = damp(this.smoothPivot.y, this.pivot.y, vk, dt);
     if (this.smoothPivot.distanceTo(this.pivot) > 6) this.smoothPivot.copy(this.pivot);
 
     const cy = Math.cos(this.pitch), sy = Math.sin(this.pitch);
@@ -70,9 +90,10 @@ export class CameraRig {
     const back = new THREE.Vector3(Math.sin(yaw) * cy, -sy, Math.cos(yaw) * cy);
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const origin = this.smoothPivot.clone().addScaledVector(right, this.shoulder);
+    origin.y += bobY + this.dipY;
     // keep the shoulder offset itself out of walls
     const sideHit = this.cast(this.smoothPivot, right, this.shoulder, opts.exclude);
-    if (sideHit !== null) origin.copy(this.smoothPivot).addScaledVector(right, Math.max(0, sideHit - 0.05));
+    if (sideHit !== null) { origin.copy(this.smoothPivot).addScaledVector(right, Math.max(0, sideHit - 0.05)); origin.y += bobY + this.dipY; }
     let d = this.dist;
     const hit = this.cast(origin, back, d, opts.exclude);
     if (hit !== null) d = Math.max(0.35, hit - 0.08);
@@ -85,6 +106,7 @@ export class CameraRig {
     this.camera.position.copy(pos);
     const look = origin.clone().addScaledVector(back, -10);
     this.camera.lookAt(look);
+    if (this.bobAmp > 0.001) this.camera.rotateZ(Math.sin(ph) * this.bobAmp * 0.004 * (1 + this.sprintBlend));
     this.camera.rotateZ(n(3) * s * 0.12);
     this.camera.rotateX(n(1) * s * 0.08);
     this.camera.rotateY(n(2) * s * 0.08);

@@ -250,7 +250,7 @@ export class Game {
     if (this.playerVehicle) return;
     const killed = this.player.damage(sp * 4, v.driver, this.time);
     const vel = v.phys.body.linvel();
-    this.player.vel.set(vel.x * 0.7, 4, vel.z * 0.7);
+    this.player.vel.set(vel.x * 0.7, 4, vel.z * 0.7); this.player.grounded = false; // let the knock-up happen
     this.player.human.playOnce('Roll', 'full', 0.05);
     this.cam.addShake(0.5);
     this.audio.play('hitBody', { pos: this.player.pos });
