@@ -23,20 +23,22 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (10:20 UTC, after the usage-limit pause 06:15-10:00)
-- QA: 20-min soak re-run after fixing a memory leak (collider tag map kept despawned actors alive; heap grew 215->700 MB). Spot check after the fix: heap flat ~115 MB.
-- Fresh-eyes code review + playtest agents resumed (were cut off by the usage limit).
+## In progress (~11:45 UTC)
+- Bug-bash passes (need two consecutive clean passes).
+
+## Done since 10:00
+- Memory leak fixed (collider tags); soak passes: 20 game-min chaos, 0 issues, heap 108->114 MB flat, no console errors.
+- Code-review fixes (11 bugs + minors) with 7 regression e2e tests; playtest fixes (16 items) with 1 more regression test. 15 e2e tests total, all green. CI deploys from main.
 
 ## Next
-1. Soak must pass (no issues, flat heap). Then push to main (CI deploys).
-2. Fix reviewer/playtester findings; add a test per bug.
-3. Bug-bash passes until two consecutive clean passes.
-4. Final visual tour at several times of day; final report; delete scheduled resume task trig_01QHNBHfHX5vN6UurzWLwPga.
+1. Bug-bash pass 1 (scripted tour, all districts/times, menus) -> fix -> pass 2 -> must be clean twice.
+2. Final screenshots for the report; final report; delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
 
 ## Decisions
 - Original game "Meridian Afterglow" in "Port Meridian". Stylised low-poly, apricot/teal grade.
 - KayKit scale x5 (1 tile = 10 m). Humans 1.78 m nominal.
-- Motorcycles cut (Kenney bike model clashed with the art style; bike physics not worth the risk).
+- Motorcycles cut (no in-style CC0 model; bike physics risk). Touch controls not built: phones get a desktop-only screen.
+- (old note) Motorcycles cut (Kenney bike model clashed with the art style; bike physics not worth the risk).
 - Pedestrians are not physically pushed by cars; hits are resolved by game logic.
 - Deploy via gh-pages branch (Pages REST API is blocked from this sandbox; github.io not reachable from here, verified via Actions API).
 
