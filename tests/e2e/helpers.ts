@@ -26,6 +26,16 @@ export async function step(page: Page, seconds: number, opts: { hold?: string[];
     for (const k of hold) g.input.release(k);
   }, { seconds, hold: opts.hold ?? [], render: opts.render ?? false, dt: opts.dt ?? 1 / 30 });
 }
+/** Removes AI traffic and pedestrians and stops new ones spawning, so scripted drives can't randomly hit someone. */
+export async function quietStreets(page: Page) {
+  await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.trafficCap = 0; g.pedCap = 0;
+    for (const c of [...g.traffic.cars]) if (!c.persistent) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
+    for (const v of [...g.vehicles.list]) if (!v.persistent && !v.driver) g.vehicles.remove(v);
+    for (const n of [...g.pop.npcs]) if (!n.persistent && !n.char.inVehicle) g.pop.remove(n);
+  });
+}
 export async function tap(page: Page, code: string) {
   await page.evaluate(code => { const g = (window as any).__game; g.input.tap(code); g.frame(1 / 30, false); }, code);
 }

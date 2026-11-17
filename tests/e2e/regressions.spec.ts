@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { watch, boot, step, clean, state } from './helpers';
+import { watch, boot, step, clean, state, quietStreets } from './helpers';
 
 /** One test per bug found in review / bug-bash, so they stay fixed. */
 test.describe.configure({ mode: 'serial' });
@@ -7,6 +7,7 @@ test.describe.configure({ mode: 'serial' });
 test('bailing out of a fast car at low health shows the down screen and respawns', async ({ page }) => {
   const p = watch(page);
   await boot(page);
+  await quietStreets(page);
   await page.evaluate(() => { const g = (window as any).__game; g.player.place(-420, 0.3, -102, 0); const v = g.vehicles.spawn('sedan', -420, -98, -Math.PI / 2); v.persistent = true; g.seatPlayer(v); g.player.health = 5; });
   await step(page, 2, { hold: ['KeyW'] });
   expect(await state<number>(page, 'Math.abs(window.__game.playerVehicle.speed)')).toBeGreaterThan(9);
