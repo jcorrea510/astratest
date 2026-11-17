@@ -33,6 +33,7 @@ export class VehicleManager {
   remove(v: Vehicle) {
     const i = this.list.indexOf(v); if (i >= 0) this.list.splice(i, 1);
     this.engines.get(v.id)?.stop(); this.engines.delete(v.id);
+    for (let i = 0; i < 8; i++) this.skids.end(v.id * 8 + i);
     v.dispose();
   }
   nearest(p: THREE.Vector3, maxDist: number, filter?: (v: Vehicle) => boolean): Vehicle | null {
@@ -49,7 +50,7 @@ export class VehicleManager {
         const d = v.phys.impactDir;
         const pt = this.tmp.copy(v.position).add(new THREE.Vector3(-d.x, 0.4, -d.z).multiplyScalar(2));
         const dmg = (imp - 3) * 38;
-        const destroyed = v.damage(dmg, pt.clone(), new THREE.Vector3(d.x, d.y, d.z));
+        const destroyed = v.damage(dmg, pt.clone(), new THREE.Vector3(d.x, d.y, d.z), v.driver ?? v.lastDamagedBy);
         v.flashT = 0.15;
         this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);
         if (imp > 6) this.audio.play('glass', { pos: pt, volume: Math.min(1, imp / 14) });
@@ -124,7 +125,7 @@ export class VehicleManager {
     for (const o of this.list) {
       if (o === v) continue;
       const d = o.position.distanceTo(p);
-      if (d < 9) { o.damage((9 - d) * 60, p, o.position.clone().sub(p).normalize()); const dir = o.position.clone().sub(p).normalize(); o.phys.body.applyImpulse({ x: dir.x * o.spec.mass * 4, y: o.spec.mass * 3, z: dir.z * o.spec.mass * 4 }, true); }
+      if (d < 9) { o.damage((9 - d) * 60, p, o.position.clone().sub(p).normalize(), v.lastDamagedBy); const dir = o.position.clone().sub(p).normalize(); o.phys.body.applyImpulse({ x: dir.x * o.spec.mass * 4, y: o.spec.mass * 3, z: dir.z * o.spec.mass * 4 }, true); }
     }
     this.onExplode?.(v, p);
   }

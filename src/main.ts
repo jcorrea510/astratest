@@ -99,6 +99,7 @@ async function startGame(cont: boolean) {
     missions = new Missions(ctx);
     activities = new Activities(game, ui, ctx);
     activities.onSaveRequested = () => saveGame();
+    activities.missionActive = () => !!missions?.active;
     wireGame(game);
     const save = cont ? readSave(storage) : null;
     if (save) applySave(save); else newGameSetup();
@@ -133,7 +134,7 @@ function applySave(s: SaveData) {
   for (const c of s.collectibles) activities!.found.add(c);
   for (const j of s.jumps) activities!.jumpsDone.add(j);
   g.stats = { ...s.stats };
-  g.player.place(s.pos.x, 0.4, s.pos.z, s.pos.yaw);
+  g.player.place(s.pos.x, missions!.ctx.groundY(s.pos.x, s.pos.z, 0.2) + 0.05, s.pos.z, s.pos.yaw);
   g.cam.snapBehind(s.pos.yaw + Math.PI);
 }
 function saveGame(): boolean {
@@ -153,6 +154,7 @@ function saveGame(): boolean {
 function wireGame(g: Game) {
   g.events.onToast = (t, k) => ui.toast(t, k);
   g.events.onDeath = (k, detail) => { ui.showDeath(k, detail); missions?.onPlayerDown(k); };
+  g.events.onBeforeDown = () => { if (g.wheelOpen) closeWheel(true); activities?.closeShop(); };
   g.events.onRespawn = () => { ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info'); };
   missions!.onPassed = () => { saveGame(); };
   document.addEventListener('pointerlockchange', () => {
@@ -164,7 +166,8 @@ function wireGame(g: Game) {
 }
 function pause() {
   if (!game || game.paused) return;
-  if (game.wheelOpen) closeWheel();
+  if (game.wheelOpen) closeWheel(true);
+  activities?.closeShop();
   game.paused = true; ui.setPaused(true); audio?.setPausedMuffle(true);
   ourUnlock = true; game.input.exitLock();
 }
@@ -191,11 +194,11 @@ function openWheel() {
   g.wheelOpen = true; g.targetTimeScale = 0.25; audio?.setSlowMo(1); audio?.play('wheelOpen');
   ui.openWheel(wheelSlots(), g.pcombat.inv.current);
 }
-function closeWheel() {
+function closeWheel(discard = false) {
   const g = game!;
   const id = ui.closeWheel();
   g.wheelOpen = false; g.targetTimeScale = 1; audio?.setSlowMo(0); audio?.play('wheelClose');
-  if (!id) return;
+  if (!id || discard || !g.player.alive || g.deathT >= 0) return;
   if (id === 'medkit') { const inv = g.pcombat.inv; if (inv.medkits > 0 && g.player.health < g.player.maxHealth) { inv.medkits--; g.player.health = Math.min(g.player.maxHealth, g.player.health + 60); audio?.play('pickup'); ui.toast('+60 health', 'info'); } }
   else if (g.pcombat.inv.select(id as WeaponId)) audio?.play('equip');
 }

@@ -86,7 +86,7 @@ export class Combat {
           this.onHit?.(c, dmg, shooter, head, killed, w);
         } else if (tag?.kind === 'vehicle') {
           const v = tag.ref as Vehicle;
-          v.damage(w.damage * 0.7, end, d);
+          v.damage(w.damage * 0.7, end, d, shooter);
           v.flashT = 0.05;
           info.kind = 'vehicle'; info.target = v;
           this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, 'metal');
@@ -128,7 +128,7 @@ export class Combat {
       return best;
     }
     for (const v of vehicles) {
-      if (v.position.distanceTo(new THREE.Vector3(cx, v.position.y, cz)) < 2.4) { v.damage(4, new THREE.Vector3(cx, attacker.pos.y + 1, cz)); this.audio.play('hitMetal', { pos: v.position, volume: 0.4 }); this.onVehicleHit?.(v, attacker); break; }
+      if (v.position.distanceTo(new THREE.Vector3(cx, v.position.y, cz)) < 2.4) { v.damage(4, new THREE.Vector3(cx, attacker.pos.y + 1, cz), undefined, attacker); this.audio.play('hitMetal', { pos: v.position, volume: 0.4 }); this.onVehicleHit?.(v, attacker); break; }
     }
     this.audio.play('punch', { pos: attacker.pos, volume: 0.6 });
     return null;

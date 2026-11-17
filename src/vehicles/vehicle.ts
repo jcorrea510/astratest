@@ -131,6 +131,7 @@ export class Vehicle {
   locked = false;
   flashT = 0;
   persistent = false;
+  lastDamagedBy: unknown = null;
 
   constructor(physics: Physics, public kind: VehicleKind, public tpl: VehicleTemplate, x: number, y: number, z: number, yaw: number, atlas: THREE.Texture | null, paintIndex = -1) {
     this.spec = VEHICLES[kind];
@@ -230,8 +231,9 @@ export class Vehicle {
     if (this.flashT > 0) { this.flashT -= dt; this.material.userData.u.uFlash.value = Math.max(0, this.flashT * 4); }
   }
   /** Applies damage; deforms the body near the impact point (local space). Returns true when this destroyed it. */
-  damage(amount: number, worldPoint?: THREE.Vector3, worldDir?: THREE.Vector3): boolean {
+  damage(amount: number, worldPoint?: THREE.Vector3, worldDir?: THREE.Vector3, by?: unknown): boolean {
     if (this.destroyed) return false;
+    if (by !== undefined) this.lastDamagedBy = by;
     this.health -= amount;
     if (worldPoint && amount > 25) this.deform(worldPoint, worldDir, Math.min(1, amount / 300));
     const frac = this.health / this.spec.health;
@@ -257,6 +259,11 @@ export class Vehicle {
     }
     pos.needsUpdate = true; g.computeVertexNormals();
     if (lp.z > this.tpl.bbox.max.z - 0.8 && severity > 0.4) this.lightsBroken = true;
+  }
+  /** Restores the undamaged shared body (respray). */
+  resetBody() {
+    if (this.ownGeo) { this.bodyMesh.geometry.dispose(); this.ownGeo = false; }
+    this.bodyMesh.geometry = this.tpl.body; this.lightsBroken = false;
   }
   private disposed = false;
   dispose() { if (this.disposed) return; this.disposed = true; this.phys.dispose(); this.group.removeFromParent(); if (this.ownGeo) this.bodyMesh.geometry.dispose(); this.material.dispose();

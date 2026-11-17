@@ -217,8 +217,8 @@ test('every mission can be completed', async ({ page }) => {
   await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-44, 0.3, 412, 0); });
   await step(page, 5);
   expect((await status()).active).toBe('m5');
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 448, a.position.z - 398) - Math.hypot(b.position.x + 448, b.position.z - 398))[0]; g.seatPlayer(v); });
-  await page.evaluate(TELEPORT_CAR(-440, 396, Math.PI / 2)); await step(page, 1);
+  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); });
+  await page.evaluate(TELEPORT_CAR(-436, 403.5, Math.PI / 2)); await step(page, 1);
   await step(page, 4); // countdown
   for (let i = 0; i < 30; i++) {
     const st = await status(); if (!st.active) break;

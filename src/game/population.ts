@@ -67,7 +67,7 @@ export class Population {
           this.audio.play('hitBody', { pos: n.pos, volume: 1 });
           if (!n.alive) this.onKilled?.(n, v.driver, 'vehicle');
         } else {
-          n.char.damage(sp * 3, v.driver, this.env.time());
+          if (n.char.damage(sp * 3, v.driver, this.env.time())) this.onKilled?.(n, v.driver, 'vehicle');
           n.char.vel.set(vel.x * 0.8 + (Math.random() - 0.5) * 2, 0, vel.z * 0.8);
           n.char.human.playOnce('Hit_Chest', 'full', 0.05);
           if (n.role === 'civilian' && n.alive) { n.brain = 'flee'; n.fleeFrom.copy(v.position); n.stateT = 0; }

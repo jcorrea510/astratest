@@ -69,9 +69,9 @@ export class Police {
   }
   private weaponFor(): WeaponId { const h = this.state.heat; return h <= 1 ? 'fists' : h === 2 ? 'pistol' : h === 3 ? (Math.random() < 0.5 ? 'smg' : 'pistol') : h === 4 ? (Math.random() < 0.5 ? 'rifle' : 'smg') : (Math.random() < 0.5 ? 'rifle' : 'shotgun'); }
   private standDown() {
-    for (const u of this.units) { u.mode = 'cruise'; u.target = null; u.v.siren = false; u.persistent = false; }
+    for (const u of this.units) { u.mode = 'cruise'; u.target = null; u.v.siren = false; u.persistent = false; u.v.persistent = false; u.ram = false; }
     this.units = [];
-    for (const n of this.foot) { n.brain = 'idle'; n.target = null; n.persistent = false; }
+    for (const n of this.foot) { n.brain = 'wander'; n.node = -1; n.target = null; n.persistent = false; }
     this.foot = [];
   }
   update(dt: number, player: Character, playerInVehicle: boolean, camera: THREE.Camera) {
@@ -88,7 +88,9 @@ export class Police {
     const lost = st.tick(dt, seen, pp);
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
     // Clean dead/removed units
+    for (const u of this.units) if (!this.traffic.cars.includes(u)) { u.persistent = false; u.v.persistent = false; u.v.siren = false; }
     this.units = this.units.filter(u => this.traffic.cars.includes(u));
+    for (const n of this.foot) if (!n.alive) n.persistent = false;
     this.foot = this.foot.filter(n => this.pop.npcs.includes(n) && n.alive);
     if (st.heat > 0) {
       const target = seen ? pp : st.lastSeen;

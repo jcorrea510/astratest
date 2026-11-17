@@ -80,6 +80,7 @@ export class Game {
     onVehicleEntered: (_v: Vehicle) => { },
     onVehicleExited: (_v: Vehicle) => { },
     onExplosion: (_at: THREE.Vector3) => { },
+    onBeforeDown: () => { },
   };
   wheelOpen = false;
   blockedInput = false;
@@ -159,7 +160,7 @@ export class Game {
     this.vehicles.onCrash = e => {
       if (e.vehicle === this.playerVehicle) { this.cam.addShake(Math.min(0.8, e.impact / 18)); this.stats.crashes++; this.pop.danger(e.point, 15, this.player); }
     };
-    this.vehicles.onExplode = (v, at) => this.explosion(at, this.playerVehicle === v ? null : this.player);
+    this.vehicles.onExplode = (v, at) => this.explosion(at, v.lastDamagedBy === this.player ? this.player : null);
   }
   private onNpcKilled(n: Npc, by: Character | null) {
     if (n.dropMoney > 0 || (n.role !== 'civilian' && Math.random() < 0.8) || Math.random() < 0.3) this.spawnPickup('cash', n.dropMoney || Math.floor(10 + Math.random() * 40), n.pos);
@@ -264,6 +265,7 @@ export class Game {
   }
   private updateEntering(dt: number) {
     const e = this.entering; if (!e) return;
+    if (this.deathT >= 0 || !this.player.alive) { this.entering = null; return; }
     e.t += dt;
     const door = e.v.doorPoint(1);
     const k = Math.min(1, e.t / 0.4);
@@ -310,7 +312,7 @@ export class Game {
     this.player.place(pos.x, Math.max(pos.y, v.position.y - 0.2), pos.z, v.yaw);
     this.player.setCollision(true);
     h.setState('loco');
-    if (fast) { h.playOnce('Roll', 'full', 0.05); this.player.damage(Math.min(25, Math.abs(v.speed) * 0.8), null, this.time); this.cam.addShake(0.4); }
+    if (fast) { h.playOnce('Roll', 'full', 0.05); this.cam.addShake(0.4); if (this.player.damage(Math.min(25, Math.abs(v.speed) * 0.8), null, this.time)) this.playerDown('down'); }
     this.cam.snapBehind(v.yaw + Math.PI);
     this.audio.play('doorClose', { pos: v.position });
     this.audio.setRadioActive(false);
@@ -330,6 +332,9 @@ export class Game {
   playerDown(kind: 'down' | 'busted') {
     if (this.deathT >= 0) return;
     this.deathT = 0; this.deathKind = kind;
+    this.entering = null;
+    this.events.onBeforeDown();
+    this.wheelOpen = false; this.targetTimeScale = 1;
     if (this.playerVehicle) this.exitVehicle(true);
     if (kind === 'busted') this.player.human.setState('crouch');
     else if (this.player.alive) this.player.kill();
@@ -340,6 +345,7 @@ export class Game {
   }
   private respawn() {
     const place = this.deathKind === 'down' ? CLINIC : PRECINCT;
+    this.entering = null;
     if (this.playerVehicle) this.exitVehicle(true);
     this.player.revive(this.player.maxHealth); this.player.armor = 0;
     this.player.place(place.x, 0.25, place.z, place.yaw);
@@ -408,7 +414,7 @@ export class Game {
       this.player.updateVisual(dt);
       if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
     }
-    this.pcombat.update(dt, blocked || !!this.entering, () => this.pop.characters(), () => this.vehicles.list);
+    this.pcombat.update(dt, blocked || this.paused || !!this.entering, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
@@ -416,7 +422,8 @@ export class Game {
     this.police.update(dt, this.player, !!pv, this.renderer.camera);
     this.updatePickups(dt);
     this.particles.update(dt, this.renderer.renderer.domElement.height);
-    if (this.deathT >= 0) { this.deathT += raw; if (this.deathT > 4.2) this.respawn(); }
+    if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > 4.2) this.respawn(); }
+    if (!this.player.alive && this.deathT < 0) this.playerDown('down'); // safety net: never leave a dead player without the respawn flow
     this.cam.baseFov = this.settings.fov;
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, 'dead');
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });

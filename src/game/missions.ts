@@ -48,7 +48,7 @@ export class Marker {
     if (camPos) { const d = Math.hypot(camPos.x - this.pos.x, camPos.z - this.pos.z); this.colMat.uniforms.uFade.value = THREE.MathUtils.smoothstep(d, this.radius + 0.5, this.radius + 6); }
   }
   inside(p: THREE.Vector3, yTol = 3) { return Math.hypot(p.x - this.pos.x, p.z - this.pos.z) < this.radius && Math.abs(p.y - this.pos.y) < yTol; }
-  dispose() { this.group.removeFromParent(); Marker.all.delete(this); }
+  dispose() { this.group.removeFromParent(); Marker.all.delete(this); this.group.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); }
 }
 
 export class MissionCtx {
@@ -142,6 +142,8 @@ const m2: MissionDef = {
         if (!car) {
           // spawn the courier on a lane near Marrow Ave when the player is ready
           const lane = start.lane; samplePath(lane, Math.min(lane.length - 5, start.s), { x: 0, z: 0, dx: 0, dz: 0 });
+          const sp0 = { x: 0, z: 0, dx: 0, dz: 0 }; samplePath(lane, Math.min(lane.length - 10, Math.max(5, start.s)), sp0);
+          for (const o of [...g.vehicles.list]) if (!o.persistent && !o.driver?.isPlayer && Math.hypot(o.position.x - sp0.x, o.position.z - sp0.z) < 9) { const c = g.traffic.carOf(o); if (c) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); } if (!o.driver) g.vehicles.remove(o); }
           car = g.traffic.spawnOnLane('van', lane, Math.min(lane.length - 10, Math.max(5, start.s)), 'goto');
           car.persistent = true; car.v.persistent = true; car.target = dest.clone(); car.arriveDist = 6;
           car.v.locked = true; car.driver.persistent = true; car.maxSpeed = 0;
@@ -163,7 +165,7 @@ const m2: MissionDef = {
         }
         return 'running';
       },
-      cleanup: () => { if (car) { car.persistent = false; car.v.persistent = false; car.v.locked = false; car.driver.persistent = false; car.mode = 'cruise'; car.target = null; } },
+      cleanup: () => { if (car) { car.persistent = false; car.v.persistent = false; car.v.locked = false; car.driver.persistent = false; car.mode = 'cruise'; car.target = null; car.maxSpeed = undefined; car.arriveDist = 8; } },
     };
     return run;
   },
@@ -209,7 +211,7 @@ const m3: MissionDef = {
         if (stage === 3) { run.objective = 'Lose the heat'; if (g.police.heat === 0) { g.audio.setMusicMood('none'); return 'passed'; } }
         return 'running';
       },
-      cleanup: () => { siteMk?.dispose(); caseMk?.dispose(); for (const e of enemies) { e.persistent = false; if (e.alive) { e.hostile = false; e.brain = 'idle'; } } g.audio.setMusicMood('none'); },
+      cleanup: () => { siteMk?.dispose(); caseMk?.dispose(); for (const e of enemies) { e.persistent = false; if (e.alive) { e.hostile = false; e.brain = 'wander'; e.node = -1; } } g.audio.setMusicMood('none'); },
     };
     return run;
   },
@@ -255,7 +257,7 @@ const m4: MissionDef = {
         }
         return 'running';
       },
-      cleanup: () => { mk?.dispose(); if (target) target.persistent = false; for (const gd of guards) { gd.persistent = false; if (gd.alive) { gd.hostile = false; gd.brain = 'idle'; } } g.audio.setMusicMood('none'); },
+      cleanup: () => { mk?.dispose(); if (target) target.persistent = false; for (const gd of guards) { gd.persistent = false; if (gd.alive) { gd.hostile = false; gd.brain = 'wander'; gd.node = -1; } } g.audio.setMusicMood('none'); },
     };
     return run;
   },
@@ -263,15 +265,16 @@ const m4: MissionDef = {
 
 // ---------------------------------------------------------------- Mission 5: checkpoint street race at sunset
 export const RACE_ROUTE: { x: number; z: number }[] = [
-  { x: -350, z: 396 }, { x: -150, z: 396 }, { x: -50, z: 300 }, { x: 50, z: 200 }, { x: 150, z: 100 }, { x: 250, z: 2 }, { x: 350, z: -100 }, { x: 446, z: 0 }, { x: 446, z: 200 }, { x: 250, z: 396 }, { x: 52, z: 404 },
+  { x: -350, z: 403 }, { x: -150, z: 403 }, { x: -50, z: 300 }, { x: 50, z: 200 }, { x: 150, z: 100 }, { x: 250, z: 2 }, { x: 350, z: -100 }, { x: 446, z: 0 }, { x: 446, z: 200 }, { x: 250, z: 396 }, { x: 52, z: 404 },
 ];
 const m5: MissionDef = {
   id: 'm5', title: 'Afterglow Run', tagline: 'Sunset. Three rivals. One city-wide race.', contact: PLACES.vesna, reward: 5000, requires: 'm4', hour: 18.4,
   create(ctx) {
     const g = ctx.game;
-    const startPos = { x: -440, z: 396 };
+    const startPos = { x: -436, z: 403.5 }; // eastbound side of Coastal Drive
     let stage = 0; let cp = 0; let mk: Marker | null = null; let rivals: AiCar[] = []; let countdown = 0; let myCar: Vehicle | null = null;
     const rivalCp: number[] = [];
+    const raceSpeed: number[] = [];
     ctx.say([['Vesna', 'Everyone in this town knows Juno\'s new driver now. The Coastline crew want a race.'], ['Vesna', 'Coastal Drive to the docks and back to the pier. Win, and you\'ll never pay for a drink on the Strand again.']]);
     const place = () => 1 + rivals.filter((r, i) => rivalCp[i] > cp || (rivalCp[i] === cp && r.v.position.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)) < ctx.playerPos.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)))).length;
     const run: MissionRun = {
@@ -279,22 +282,22 @@ const m5: MissionDef = {
       blips: () => stage < 2 ? [{ x: startPos.x, z: startPos.z, kind: 'checkpoint', label: 'Start', pulse: true }] : [{ ...RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)], kind: 'checkpoint', pulse: true }, ...(cp + 1 < RACE_ROUTE.length ? [{ ...RACE_ROUTE[cp + 1], kind: 'checkpoint' as const }] : []), ...rivals.map(r => ({ x: r.v.position.x, z: r.v.position.z, kind: 'vehicle' as const }))],
       update: dt => {
         if (stage === 0) {
-          if (!mk) { mk = ctx.marker(startPos, 6, '#ffc37e'); myCar = ctx.car('coupe', startPos.x - 8, startPos.z + 2, Math.PI / 2, 3); myCar.persistent = true; }
+          if (!mk) { mk = ctx.marker(startPos, 6, '#ffc37e'); myCar = ctx.car('coupe', startPos.x - 7.5, startPos.z + 3.2, Math.PI / 2, 3); myCar.persistent = true; }
           run.objective = g.playerVehicle ? 'Drive into the start marker' : 'Take the Pipit GT waiting at the start line';
           if (g.playerVehicle && mk.inside(ctx.playerPos) && g.police.heat === 0) {
             mk.dispose(); mk = null; stage = 1; countdown = 3.5;
             const pv = g.playerVehicle;
-            pv.phys.teleport(startPos.x, pv.position.y + 0.2, startPos.z + 2, Math.PI / 2);
-            const lane = nearestLane(g.city, startPos.x + 12, startPos.z - 4)!;
-            rivals = [0, 1, 2].map(i => { const r = g.traffic.spawnOnLane('coupe', lane.lane, Math.max(4, lane.s - 4 + i * 0.1), 'goto'); r.persistent = true; r.v.persistent = true; r.driver.persistent = true; r.v.phys.teleport(startPos.x + (i - 1) * 0.5 - 4, 0.6, startPos.z - 3.5 + i * 3.6 - 3.6, Math.PI / 2); r.target = new THREE.Vector3(RACE_ROUTE[0].x, 0, RACE_ROUTE[0].z); r.arriveDist = -10; r.mode = 'goto'; r.maxSpeed = 31 - i * 1.5; return r; });
-            rivals.forEach((r, i) => { rivalCp[i] = 0; r.v.input.handbrake = true; });
+            pv.phys.teleport(startPos.x, pv.position.y + 0.2, startPos.z, Math.PI / 2);
+            const lane = nearestLane(g.city, startPos.x + 20, startPos.z)!;
+            const grid = [[0, -3.4], [0, 3.2], [-7.5, -3.4]];
+            rivals = [0, 1, 2].map(i => { const r = g.traffic.spawnOnLane('coupe', lane.lane, Math.max(4, lane.s - 4 + i * 0.1), 'goto'); r.persistent = true; r.v.persistent = true; r.driver.persistent = true; r.v.phys.teleport(startPos.x + grid[i][0], 0.6, startPos.z + grid[i][1], Math.PI / 2); r.target = new THREE.Vector3(RACE_ROUTE[0].x, 0, RACE_ROUTE[0].z); r.arriveDist = -10; r.mode = 'goto'; r.maxSpeed = 31 - i * 1.5; return r; });
+            rivals.forEach((r, i) => { rivalCp[i] = 0; raceSpeed[i] = r.maxSpeed ?? 30; r.maxSpeed = 0; });
             g.blockedInput = true;
           } else if (g.playerVehicle && mk.inside(ctx.playerPos) && g.police.heat > 0) run.objective = 'Lose the heat before the race';
         } else if (stage === 1) {
           countdown -= dt;
           run.objective = countdown > 0.5 ? `Get ready… ${Math.ceil(countdown - 0.5)}` : 'GO!';
-          for (const r of rivals) { r.v.input.throttle = 0; r.v.input.handbrake = true; }
-          if (countdown <= 0.5) { stage = 2; g.blockedInput = false; mk = ctx.marker(RACE_ROUTE[0], 9, '#7ff3ff'); g.audio.play('checkpoint'); g.audio.setMusicMood('action'); }
+          if (countdown <= 0.5) { rivals.forEach((r, i) => { r.maxSpeed = raceSpeed[i]; }); stage = 2; g.blockedInput = false; mk = ctx.marker(RACE_ROUTE[0], 9, '#7ff3ff'); g.audio.play('checkpoint'); g.audio.setMusicMood('action'); }
         } else if (stage === 2) {
           const pos = place();
           run.objective = `Race: checkpoint ${cp + 1}/${RACE_ROUTE.length}  ·  Position ${pos}/4`;
@@ -321,7 +324,7 @@ const m5: MissionDef = {
       },
       cleanup: () => {
         mk?.dispose(); g.blockedInput = false; g.audio.setMusicMood('none');
-        for (const r of rivals) { r.persistent = false; r.v.persistent = false; r.driver.persistent = false; r.mode = 'cruise'; r.target = null; }
+        for (const r of rivals) { r.persistent = false; r.v.persistent = false; r.driver.persistent = false; r.mode = 'cruise'; r.target = null; r.maxSpeed = undefined; r.arriveDist = 8; }
         if (myCar) myCar.persistent = false;
       },
     };

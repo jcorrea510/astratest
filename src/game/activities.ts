@@ -16,6 +16,8 @@ export class Activities {
   private airborne: { t: number; start: THREE.Vector3; ramp: number } | null = null;
   private lastRamp = -1; private rampT = 0;
   private garageCool = 0;
+  private garageArmed = true;
+  missionActive: () => boolean = () => false;
   onSaveRequested: (() => void) | null = null;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
     this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166');
@@ -106,7 +108,7 @@ export class Activities {
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
-    if (g.playerVehicle) return this.garageMk.inside(p) ? 'Stop to respray ($150)' : null;
+    if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() ? 'Stop to respray ($150)' : null;
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
     if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
@@ -127,17 +129,21 @@ export class Activities {
     // Respray garage
     this.garageCool = Math.max(0, this.garageCool - dt);
     const pv = g.playerVehicle;
-    if (pv && this.garageMk.inside(p) && Math.abs(pv.speed) < 2 && this.garageCool <= 0 && !pv.destroyed) {
-      this.garageCool = 8;
-      if (g.money < 150) this.ui.toast('Respray costs $150', 'warning');
+    const inGarage = !!pv && this.garageMk.inside(p);
+    if (!inGarage) this.garageArmed = true;
+    else if (this.missionActive()) this.garageArmed = false; // a mission drop-off here is not a respray visit
+    if (pv && inGarage && this.garageArmed && Math.abs(pv.speed) < 2 && this.garageCool <= 0 && !pv.destroyed && !this.missionActive()) {
+      this.garageArmed = false; this.garageCool = 2;
+      const needsWork = pv.health < pv.spec.health || g.police.heat > 0;
+      if (!needsWork) this.ui.toast('Glow Garage: this one already looks perfect', 'info');
+      else if (g.money < 150) this.ui.toast('Respray costs $150', 'warning');
       else if (g.police.heat > 0 && g.police.state.seen) this.ui.toast('Not while the police are watching', 'warning');
       else {
         g.addMoney(-150); g.audio.play('purchase');
         pv.health = pv.spec.health; pv.lightsBroken = false; pv.phys.enginePower = 1;
         const paints = ['#2fa39a', '#f26b3a', '#1f2a44', '#e8e2d0', '#7b2cbf', '#ffcc4d', '#3d3d42'];
         pv.material.userData.u.uPaint.value.set(paints[Math.floor(Math.random() * paints.length)]).convertSRGBToLinear(); pv.material.userData.u.uPaintOn.value = pv.kind === 'police' ? 0 : 1;
-        // restore the undamaged body shape
-        pv.bodyMesh.geometry = pv.tpl.body;
+        pv.resetBody();
         const hadHeat = g.police.heat > 0; g.police.clear();
         this.ui.toast(hadHeat ? 'Fresh paint. The heat is off.' : 'Fresh paint, good as new.', 'money');
       }
