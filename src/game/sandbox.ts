@@ -60,7 +60,8 @@ export class Sandbox {
   }
   openPanel(onClose: () => void) {
     this.open = true;
-    this.ui.openSandbox(this.actions(), (id, v) => { this.act(id, v); this.ui.refreshSandbox(this.actions()); }, () => { this.open = false; onClose(); });
+    // sliders are not re-rendered while dragging (rebuilding the panel would drop the drag)
+    this.ui.openSandbox(this.actions(), (id, v) => { this.act(id, v); if (this.actions().find(a => a.id === id)?.kind !== 'slider') this.ui.refreshSandbox(this.actions()); }, () => { this.open = false; onClose(); });
   }
   act(id: string, v?: number | string | boolean) {
     const g = this.game, num = Number(v);
@@ -84,9 +85,10 @@ export class Sandbox {
   }
   private spawnVehicle() {
     const g = this.game;
-    const yaw = g.player.yaw, f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-    const p = g.playerVehicle ? g.playerVehicle.position : g.player.pos;
-    const x = p.x + f.x * 7, z = p.z + f.z * 7;
+    // ahead of whatever the player is in: the seated player's own yaw is not kept up to date
+    const pv = g.playerVehicle, yaw = pv ? pv.yaw : g.player.yaw, f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const p = pv ? pv.position : g.player.pos, ahead = pv ? 10 : 7;
+    const x = p.x + f.x * ahead, z = p.z + f.z * ahead;
     const v = g.vehicles.spawn(this.kind, x, z, yaw, -1, Math.max(0.2, p.y + 0.4));
     g.audio.play('engineStart', { pos: v.position });
   }

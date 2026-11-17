@@ -110,8 +110,10 @@ export class Robberies {
     const d = to.length(); to.normalize();
     return dir.dot(to) > Math.cos(Math.min(0.5, Math.atan2(1.3, d) + 0.12));
   }
-  update(dt: number) {
+  /** missionActive: hold-ups are off during story missions (and one in progress is called off). */
+  update(dt: number, missionActive = false) {
     const g = this.game, t = g.time, p = g.player.pos;
+    if (missionActive && this.active) this.reset();
     for (const k of this.kiosks) {
       const dist = Math.hypot(p.x - k.def.x, p.z - k.def.z);
       // shutters
@@ -120,7 +122,7 @@ export class Robberies {
       if (k.phase === 'open' && dist < 110 && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
       if (k.phase === 'open' && k.clerk && !k.clerk.alive) { this.close(k); }
-      if (k.phase === 'open' && k.clerk?.alive && k !== this.active && this.covering(k) && !g.inputBlocked) this.begin(k);
+      if (k.phase === 'open' && k.clerk?.alive && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
     }
     const k = this.active; if (!k) return;
     const n = k.clerk;

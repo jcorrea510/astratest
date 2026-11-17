@@ -327,3 +327,107 @@ test('a mission contact who is hurt does not pop back in beside the body', async
   expect(r.back).toBe(false);
   clean(p);
 });
+
+// ---------- Bug-bash A ----------
+test('police in cars find an on-foot player off the road (plaza) and get out', async ({ page }) => {
+  test.setTimeout(300_000);
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.player.place(-200, 0.3, 150, 0);
+    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+    g.police.setHeat(4, g.player.pos);
+    let seen = false, nearFoot = 0;
+    for (let i = 0; i < 45 * 30; i++) {
+      g.player.health = 100; g.frame(1 / 30, false);
+      if (g.police.state.seen) seen = true;
+      nearFoot = Math.max(nearFoot, g.police.foot.filter((n: any) => n.alive && n.pos.distanceTo(g.player.pos) < 45).length);
+      if (g.deathT >= 0) break;
+    }
+    return { seen, nearFoot };
+  });
+  expect(r.seen).toBe(true);
+  expect(r.nearFoot).toBeGreaterThan(0);
+  clean(p);
+});
+
+test('a quick tap fires automatic weapons once', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const shots = await page.evaluate(() => {
+    const g = (window as any).__game; const out: number[] = [];
+    for (const id of ['smg', 'rifle']) {
+      g.pcombat.give(id, 60); g.pcombat.inv.select(id);
+      for (let i = 0; i < 40; i++) g.frame(1 / 30, false);
+      g.input.press('Mouse2'); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+      const c0 = g.pcombat.inv.state.clip;
+      for (let k = 0; k < 3; k++) { g.input.tap('Mouse0'); for (let i = 0; i < 8; i++) g.frame(1 / 30, false); }
+      g.input.release('Mouse2');
+      out.push(c0 - g.pcombat.inv.state.clip);
+    }
+    return out;
+  });
+  expect(shots).toEqual([3, 3]);
+  clean(p);
+});
+
+test('sandbox: spawning from a car puts the new car ahead; hold-ups stop when a mission starts', async ({ page }) => {
+  const p = watch(page);
+  await boot(page, '&sandbox=1');
+  const ahead = await page.evaluate(() => {
+    const g = (window as any).__game, sb = (window as any).__meridian.sandbox; const out: number[] = [];
+    for (const yaw of [1.0, -2.0]) {
+      if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
+      g.player.place(-200, 0.3, 140, 0);
+      const v = g.vehicles.spawn('coupe', -200, 140, yaw); v.persistent = true; g.seatPlayer(v);
+      for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+      const n = g.vehicles.list.length; sb.act('kind', 'sedan'); sb.act('spawn');
+      const nv = g.vehicles.list[n]; const dx = nv.position.x - v.position.x, dz = nv.position.z - v.position.z;
+      out.push(Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - v.yaw), Math.cos(Math.atan2(dx, dz) - v.yaw))));
+      g.vehicles.remove(nv);
+    }
+    return out;
+  });
+  for (const a of ahead) expect(a).toBeLessThan(0.3);
+  clean(p);
+});
+
+test('a hold-up is called off when a story mission starts', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, M = (window as any).__meridian; const R = M.activities.robberies; const k = R.kiosks[0];
+    g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol');
+    g.player.place(k.def.x + k.front.x * 5, 0.4, k.def.z + k.front.z * 5, 0);
+    for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
+    k.brave = false; const c = k.clerk; g.input.press('Mouse2');
+    for (let i = 0; i < 30; i++) { g.cam.yaw = Math.atan2(-(c.pos.x - g.player.pos.x), -(c.pos.z - g.player.pos.z)); g.frame(1 / 30, false); }
+    const during = R.robbing;
+    M.missions.start(M.missions.available()[0]);
+    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+    g.input.release('Mouse2');
+    return { during, after: R.robbing };
+  });
+  expect(r).toEqual({ during: true, after: false });
+  clean(p);
+});
+
+test('sandbox sliders can be dragged; quitting a debug-URL game lands on the title', async ({ page }) => {
+  const p = watch(page);
+  await boot(page, '&sandbox=1');
+  await page.evaluate(() => { const g = (window as any).__game; g.paused = true; g.menuOpen = true; (window as any).__meridian.sandbox.openPanel(() => {}); });
+  await expect(page.getByLabel('Wanted level')).toBeVisible();
+  // a drag is a stream of input events on the same element: the panel must not rebuild (and drop) the slider mid-drag
+  const drag = await page.evaluate(() => {
+    const el = document.querySelector('[aria-label="Wanted level"]') as HTMLInputElement; let attached = true;
+    for (const v of [1, 2, 3, 4, 5]) { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); attached = attached && el.isConnected; }
+    return attached;
+  });
+  expect(drag).toBe(true);
+  expect(await state<number>(page, 'window.__game.police.heat')).toBe(5);
+  await page.evaluate(() => (window as any).__meridian.quit());
+  await page.waitForURL(u => !u.search.includes('autostart'), { timeout: 60_000 });
+  await expect(page.getByText('New game')).toBeVisible({ timeout: 120_000 });
+  clean(p);
+});

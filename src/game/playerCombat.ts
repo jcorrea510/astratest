@@ -110,7 +110,7 @@ export class PlayerCombat {
     const camHit = this.physics.ray(this.tmpO.x, this.tmpO.y, this.tmpO.z, this.tmpD.x, this.tmpD.y, this.tmpD.z, 250, undefined, c.collider);
     this.aimPoint.copy(this.tmpO).addScaledVector(this.tmpD, camHit ? Math.max(camHit.toi, 2.5) : 250);
     // Fire
-    const wantFire = !blocked && onFoot && (def.auto ? this.input.held('fire') : this.input.justPressed('fire'));
+    const wantFire = !blocked && onFoot && (def.auto ? this.input.held('fire') || this.input.justPressed('fire') : this.input.justPressed('fire')); // a tap shorter than a frame still fires once
     if (wantFire) {
       if (!def.melee && inv.state.clip === 0) {
         // dry fire: click once per trigger pull, then reload if there is ammo

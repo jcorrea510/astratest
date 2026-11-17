@@ -119,12 +119,12 @@ export class Activities {
     if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
     if (this.safeMk.inside(p, 2.5)) return `${key}  Save game`;
-    return this.robberies.prompt();
+    return this.missionActive() ? null : this.robberies.prompt();
   }
   update(dt: number) {
     const g = this.game, p = g.player.pos, t = g.time;
     for (const c of this.cards) if (c) { c.rotation.y += dt * 1.5; c.position.y += Math.sin(t * 2) * 0.002; }
-    if (!g.paused) this.robberies.update(dt);
+    if (!g.paused) this.robberies.update(dt, this.missionActive());
     if (g.inputBlocked && !this.shopOpen) return;
     if (this.shopOpen) { if (g.input.justPressed('pause')) this.closeShop(); return; }
     // interactions

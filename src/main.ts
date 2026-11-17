@@ -191,7 +191,7 @@ function resume() {
 }
 function quitToTitle() {
   saveGame();
-  location.reload();
+  location.href = location.pathname; // the title screen (drop debug query flags such as ?autostart)
 }
 
 // ---------------- Inventory wheel ----------------
@@ -272,7 +272,7 @@ function exposeApi() {
   window.__meridian = {
     game, missions, activities, sandbox, ui, settings, PLAYER_LOOK,
     save: () => saveGame(), read: () => readSave(storage),
-    pause, resume, openWheel, closeWheel,
+    pause, resume, openWheel, closeWheel, quit: quitToTitle,
   };
 }
 

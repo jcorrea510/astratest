@@ -52,6 +52,7 @@ export class Police {
   units: AiCar[] = [];
   foot: Npc[] = [];
   private spawnT = 0;
+  private progress = new Map<AiCar, { best: number; t: number }>();
   private roadLanes: CityMap['lanes'] = [];
   private siren: LoopVoice | null = null;
   onHeatChange: ((heat: number, lost: boolean) => void) | null = null;
@@ -83,6 +84,7 @@ export class Police {
   }
   private weaponFor(): WeaponId { const h = this.state.heat; return h <= 1 ? 'fists' : h === 2 ? 'pistol' : h === 3 ? (Math.random() < 0.5 ? 'smg' : 'pistol') : h === 4 ? (Math.random() < 0.5 ? 'rifle' : 'smg') : (Math.random() < 0.5 ? 'rifle' : 'shotgun'); }
   private standDown() {
+    this.progress.clear();
     for (const u of this.units) { u.mode = 'cruise'; u.target = null; u.v.siren = false; u.persistent = false; u.v.persistent = false; u.ram = false; }
     this.units = [];
     for (const n of this.foot) { n.brain = 'wander'; n.node = -1; n.target = null; n.persistent = false; }
@@ -95,9 +97,11 @@ export class Police {
     const pp = player.pos;
     for (const n of this.pop.npcs) {
       if (!n.alive || n.role !== 'police') continue;
-      const d = n.pos.distanceTo(pp);
-      if (n.char.inVehicle ? d < 55 : d < 65 && n.losT > 0) { seen = true; break; }
-      if (n.char.inVehicle && d < 90) { const v = n.char.inVehicle as { position: THREE.Vector3 }; const from = v.position.clone(); from.y += 1.4; if (this.pop.runner.hasLOS(from, pp.clone().setY(pp.y + 1.2))) { seen = true; break; } }
+      // an officer riding in a car is where the car is (their own position is not updated while seated)
+      const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
+      const d = (car ? car.position : n.pos).distanceTo(pp);
+      if (car ? d < 55 : d < 65 && n.losT > 0) { seen = true; break; }
+      if (car && d < 90) { const from = car.position.clone(); from.y += 1.4; if (this.pop.runner.hasLOS(from, pp.clone().setY(pp.y + 1.2))) { seen = true; break; } }
     }
     const lost = st.tick(dt, seen, pp);
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
@@ -112,7 +116,13 @@ export class Police {
         u.target = target.clone(); u.mode = 'pursuit'; u.ram = st.heat >= 3 && playerInVehicle;
         // Officers bail out near an on-foot player (or when the car is stuck/close)
         const d = u.v.position.distanceTo(pp);
-        if ((!playerInVehicle && d < 22) || (d < 10 && Math.abs(u.v.speed) < 1.5)) {
+        // no progress towards an on-foot player (off-road: plazas, parks, the beach): get out and go on foot
+        let pr = this.progress.get(u); if (!pr) { pr = { best: d, t: 0 }; this.progress.set(u, pr); }
+        if (d < pr.best - 3) { pr.best = d; pr.t = 0; } else pr.t += dt;
+        const stuck = !playerInVehicle && d < 90 && pr.t > 6;
+        if ((!playerInVehicle && d < 22) || (d < 10 && Math.abs(u.v.speed) < 1.5) || stuck) {
+          this.progress.delete(u);
+          if (stuck) { u.v.input.throttle = 0; u.v.input.handbrake = true; }
           const cop = this.traffic.eject(u, u.v, 1);
           if (cop) { this.arm(cop); this.foot.push(cop); u.v.siren = true; u.v.persistent = false; }
           if (st.heat >= 2) { const p = u.v.doorPoint(-1); const extra = this.pop.spawn('police', p.x, p.z, Math.max(0.2, u.v.position.y), COP_LOOK); this.arm(extra); extra.brain = 'combat'; this.foot.push(extra); }
