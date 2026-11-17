@@ -57,9 +57,25 @@ export interface GameUI {
   closeMap(): void;
   // Help
   showControlsHint(text: string, seconds: number): void; // small contextual hint box (e.g. first time in a car)
+  // Store hold-ups: a meter while the clerk empties the till (null hides it)
+  robberyMeter(s: { label: string; progress: number /*0..1*/; cash: number } | null): void;
+  // Sandbox mode: the title offers it (callbacks.onSandbox); in a sandbox game the pause menu gets a
+  // "Sandbox tools" entry (callbacks.onOpenSandbox) and the game opens a generic tools panel.
+  setMode(mode: 'story' | 'sandbox'): void;
+  openSandbox(actions: SandboxAction[], onAction: (id: string, value?: number | string | boolean) => void, onClose: () => void): void;
+  refreshSandbox(actions: SandboxAction[]): void; // re-render values (e.g. after a toggle)
+  closeSandbox(): void;
+}
+/** One control in the sandbox tools panel, grouped into sections by `group`. */
+export interface SandboxAction {
+  id: string; group: string; label: string; detail?: string;
+  kind: 'button' | 'toggle' | 'slider' | 'select';
+  value?: number | string | boolean; min?: number; max?: number; step?: number; options?: { value: string; label: string }[];
 }
 export interface UICallbacks {
   onStart(continueGame: boolean): void; // title: New game / Continue
+  onSandbox(): void; // title: Sandbox (free play: everything unlocked, tools panel)
+  onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel
   onResume(): void;
   onQuitToTitle(): void;
   onSettingsChanged(s: Settings): void; // apply + persist (game calls saveSettings)

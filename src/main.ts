@@ -52,6 +52,8 @@ function webglOk(): boolean {
 ui.init({
   city, settings, callbacks: {
     onStart: cont => { void startGame(cont); },
+    onSandbox: () => { /* sandbox mode: wired up after the UI pass */ },
+    onOpenSandbox: () => { /* sandbox tools: wired up after the UI pass */ },
     onResume: () => resume(),
     onQuitToTitle: () => quitToTitle(),
     onSettingsChanged: s => applySettings(s),

@@ -5,7 +5,7 @@
 import './ui.css';
 import { DEFAULT_SETTINGS, keyLabel, type Action, type Settings } from '../core/settings';
 import type { CityMap } from '../world/citymap';
-import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot } from './contracts';
+import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot, SandboxAction } from './contracts';
 import { button, h, renderKeyText } from './dom';
 import { Hud, Notices } from './hud';
 import { CityPainter } from './mapdraw';
@@ -23,7 +23,7 @@ interface Layer { id: LayerId; el: HTMLElement; back: () => void; action?: (a: N
 
 const NOOP_CALLBACKS: UICallbacks = {
   onStart: () => {}, onResume: () => {}, onQuitToTitle: () => {}, onSettingsChanged: () => {}, onQualityChanged: () => {},
-  onSetWaypoint: () => {}, onUiSound: () => {}, captureKey: () => {},
+  onSetWaypoint: () => {}, onUiSound: () => {}, captureKey: () => {}, onSandbox: () => {}, onOpenSandbox: () => {},
 };
 
 export class UI implements GameUI {
@@ -667,6 +667,13 @@ export class UI implements GameUI {
     } else this.padPrev = null;
     this.padRaf = requestAnimationFrame(this.padLoop);
   };
+
+  // ---- Stubs (replaced by the UI pass) ----
+  robberyMeter(_s: { label: string; progress: number; cash: number } | null): void { /* stub */ }
+  setMode(_mode: 'story' | 'sandbox'): void { /* stub */ }
+  openSandbox(_actions: SandboxAction[], _onAction: (id: string, value?: number | string | boolean) => void, onClose: () => void): void { onClose(); }
+  refreshSandbox(_actions: SandboxAction[]): void { /* stub */ }
+  closeSandbox(): void { /* stub */ }
 
   /** Key-repeat for held directions: fires on press, then after 380 ms every 110 ms. */
   private repeat(key: string, held: boolean, t: number): boolean {
