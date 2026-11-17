@@ -33,7 +33,7 @@ export class CameraRig {
   addShake(amount: number) { this.trauma = Math.min(1, this.trauma + amount * this.shakeScale); }
   snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; }
 
-  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null } = {}) {
+  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean } = {}) {
     this.lastInput += dt;
     if (mode === 'cinematic' && this.cinematic) {
       this.camera.position.lerp(this.cinematic.pos, 1 - Math.exp(-dt * 2));
@@ -66,8 +66,9 @@ export class CameraRig {
     if (this.smoothPivot.distanceTo(this.pivot) > 6) this.smoothPivot.copy(this.pivot);
 
     const cy = Math.cos(this.pitch), sy = Math.sin(this.pitch);
-    const back = new THREE.Vector3(Math.sin(this.yaw) * cy, -sy, Math.cos(this.yaw) * cy);
-    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const yaw = opts.lookBack && opts.vehicleYaw !== undefined ? opts.vehicleYaw + Math.PI : opts.lookBack ? this.yaw + Math.PI : this.yaw;
+    const back = new THREE.Vector3(Math.sin(yaw) * cy, -sy, Math.cos(yaw) * cy);
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const origin = this.smoothPivot.clone().addScaledVector(right, this.shoulder);
     // keep the shoulder offset itself out of walls
     const sideHit = this.cast(this.smoothPivot, right, this.shoulder, opts.exclude);

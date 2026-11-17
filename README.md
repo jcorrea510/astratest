@@ -1,0 +1,81 @@
+# Meridian Afterglow
+
+An original open-world action game that runs in the browser. Explore **Port Meridian**, a compact coastal city of seven districts, at golden hour and beyond: steal cars, drive, fight, shake off the police, and work through five story missions for Juno, Marlo and Vesna.
+
+**Play:** https://jcorrea510.github.io/astratest/ (desktop Chrome, Safari or Firefox; keyboard + mouse or a gamepad).
+
+Everything in the game is original: the city, districts, streets, brands, characters, story, user interface and music. It uses CC0 3D models and animations (see [CREDITS.md](CREDITS.md)). Tone is Teen: stylised action, no gore.
+
+## What's in the game
+
+- **On foot:** third-person movement (walk/jog/sprint, jump, dodge roll, swimming), a smooth collision-aware camera and over-the-shoulder aiming.
+- **Driving:** enter and exit any vehicle (or take it from its driver). Seven vehicles that handle differently (Solano Sedan, Meridian Cab, Pipit Hatch, Pipit GT, Estero Wagon, Dray Box Van, MPD Interceptor) with weighty ray-cast physics, handbrake drifts, body roll, collisions, visible crumple damage, smoke, fire and explosions, headlights and tail lights, tyre marks and a horn.
+- **Traffic** that follows lanes and traffic lights, keeps its distance, slows for corners, honks, and panics when shot at.
+- **Combat:** fists plus four guns that each feel distinct (Kestrel P9 pistol, Mako Compact SMG, Breaker 12 shotgun, Longline Carbine), with ammo, reloads, recoil, spread, tracers, muzzle flash, hit reactions and hit markers. Health and armor.
+- **Inventory wheel:** hold Tab (or LB) to open a radial weapon/item wheel; the city slows down while you choose.
+- **People:** pedestrians with varied bodies, faces, hair and outfits, blended animation with stride-matched feet; they walk the sidewalks, wait for crossing signals, dodge cars, flee gunfire and cower. Gang members and police take cover, flank, fire in bursts and reload.
+- **Heat:** crimes raise your heat level (0–5); the police response escalates from foot patrols to armed units and ramming cruisers. Break line of sight and leave the search area to lose it, or get a respray at the Glow Garage.
+- **City:** seven districts (Brickline, Meridian Heights, Juniper Park, Hillside, Cannery Docks, Saltwater Strand, Midtown), a pier with a Ferris wheel, beach, docks with cranes, storefronts with invented brands, billboards, a full day–night cycle with working street lights, car lights and lit windows, and ambient sound plus three procedural radio stations.
+- **Things to do:** five missions (a timed delivery, a tailing job, a dockside shootout and escape, a car theft under heat, and a city-wide street race), 12 hidden sunset postcards, 3 stunt jumps, Tidewater Arms (weapons, ammo, armor, first-aid kits), Pier 9 Snacks, the Glow Garage respray, and a safehouse.
+- **Menus & HUD:** title screen, loading screen with progress, pause menu, settings (graphics quality, sensitivity, invert Y, field of view, camera shake, volumes, FPS counter, full key rebinding), controls help, rotating minimap, full city map with waypoints, autosave and manual save, mission cards and subtitles. Phones get a clean "play this on a computer" screen.
+
+## Controls
+
+| Action | Keyboard / mouse | Gamepad |
+| --- | --- | --- |
+| Move / steer | W A S D | Left stick |
+| Look | Mouse | Right stick |
+| Accelerate / brake & reverse (in a vehicle) | W / S | RT / LT |
+| Fire / punch | Left mouse | RT |
+| Aim | Right mouse | LT |
+| Sprint | Left Shift | A |
+| Jump · Handbrake (in a vehicle) | Space | B · A |
+| Dodge roll | Left Ctrl or C | L3 |
+| Enter / exit vehicle | F | Y |
+| Interact / shop / save | E | X |
+| Reload | R | X |
+| Inventory wheel (hold) | Tab or Q | LB |
+| Next / previous weapon | Mouse wheel | RB |
+| Horn · Headlights · Radio | H · L · . | L3 · D-pad ↓ · D-pad ↑ |
+| Camera distance | B | D-pad → |
+| City map | M | View |
+| Pause | Esc or P | Menu |
+
+All keyboard and mouse bindings can be changed in **Settings → Key bindings**.
+
+## Run, test, build
+
+Requires Node 22+.
+
+```bash
+npm install
+npm run dev -- --host 0.0.0.0   # http://localhost:5173/astratest/
+npm run typecheck                # TypeScript
+npm run lint                     # ESLint
+npm test                         # unit tests (Vitest)
+npm run build                    # production build into dist/
+npm run test:e2e                 # browser tests: builds, serves /astratest/ and plays the game with scripted input
+npm run test:soak                # 20 minutes (game time) of scripted chaos with memory checks
+```
+
+The browser tests drive the real production build at the `/astratest/` subpath: title screen to gameplay, walking/driving/crashing, combat, the inventory wheel, gaining and losing heat, death and arrest, every mission start to finish, save and continue, settings persistence, and the mobile screen. `?autostart=1` skips the title screen; `?quality=low|medium|high` overrides the graphics preset.
+
+## Deploy
+
+`.github/workflows/deploy.yml` runs on every push to `main`: typecheck, lint, unit tests, build, browser tests, then publishes `dist/` to the `gh-pages` branch, which GitHub Pages serves at https://jcorrea510.github.io/astratest/. Nothing is published if any check fails.
+
+If Pages ever needs re-enabling: repository **Settings → Pages → Build and deployment → Source: Deploy from a branch → `gh-pages` / root**.
+
+## Performance budgets
+
+Quality presets (Low / Medium / High) scale resolution, shadows (none / 2048 / 4096), bloom, MSAA, draw distance, crowd and traffic density, and dynamic lights. Targets for Medium on an Apple M1 MacBook Air at 60 fps: ≤ 350 draw calls and ≤ 1 M triangles per frame (measured 184–311 calls and 0.46–0.89 M triangles across districts in software rendering), ≤ 64 MB of textures, bounded particle and entity pools. The first download is about 6 MB (2.7 MB of JS, mostly the physics engine, plus models, animations and sounds), with a progress bar.
+
+## Code map
+
+- `src/world` – city layout (pure data, tested), city mesh/collider builder, asset loading
+- `src/render` – renderer, sky and time of day, procedural materials, particles
+- `src/actors` – people (rig, outfits, faces, animation), character controller, NPC brains
+- `src/vehicles` – vehicle physics, specs and visuals
+- `src/combat` – weapons and hitscan combat
+- `src/game` – game loop, player, camera, traffic, police, population, missions, activities, saves
+- `src/ui` – menus, HUD, minimap, map, wheel, shop; `src/audio` – synthesized sound, engines, ambience, radio

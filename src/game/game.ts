@@ -417,7 +417,7 @@ export class Game {
     if (this.deathT >= 0) { this.deathT += raw; if (this.deathT > 4.2) this.respawn(); }
     this.cam.baseFov = this.settings.fov;
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, 'dead');
-    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body });
+    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);

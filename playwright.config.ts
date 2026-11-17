@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 const local = existsSync('/opt/pw-browsers/chromium') && !process.env.CI ? '/opt/pw-browsers/chromium' : undefined;
 export default defineConfig({
   testDir: './tests/e2e',
+  grepInvert: process.env.SOAK ? undefined : /@soak/,
   timeout: 240_000,
   expect: { timeout: 30_000 },
   workers: 1,

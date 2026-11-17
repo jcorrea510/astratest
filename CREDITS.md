@@ -1,20 +1,22 @@
-# Credits and licenses
+# Credits and licences
 
-Meridian Afterglow, Port Meridian, its characters, story, brands, interface and custom code/art direction are original to this project.
+**Meridian Afterglow**, **Port Meridian**, its districts, streets, characters, story, dialogue, brands (Tidewater Arms, Glow Garage, Fizzwell, Coastline FM and the rest), user interface, icons, music, sound effects and all code are original to this project.
 
-## Third-party art and audio
+## Third-party assets (all CC0 / public domain)
 
-The files below are included in the repository. Inclusion does not mean all are rendered in the final game; remove unused assets before release.
+| Files | Author / source | Licence | Used for |
+| --- | --- | --- | --- |
+| `public/assets/kaykit/*.gltf`, `*.bin`, `citybits_texture.png` | Kay Lousberg, [KayKit City Builder Bits 1.0](https://github.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0) (kaylousberg.com) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (`public/assets/kaykit/LICENSE.txt`) | Brownstone buildings, cars, street lights, traffic lights, hydrants, benches, bins, dumpsters, bushes, water towers |
+| `public/assets/ual/AnimationLibrary_Godot_Standard.gltf`, `.bin` | Quaternius, [Universal Animation Library (standard)](https://quaternius.itch.io/universal-animation-library), via the glTF mirror [J-Ponzo/gltf-universal-animation-library](https://github.com/J-Ponzo/gltf-universal-animation-library) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (`public/assets/ual/LICENSE.txt`) | Human skeleton, base body and 46 animations. The body is reshaped, re-dressed and given a new head in code. |
+| `public/assets/vehicles/audio/engine.ogg`, `engine-motorcycle.ogg`, `impact.ogg` | Kenney, [Starter Kit Racing](https://github.com/KenneyNL/Starter-Kit-Racing) | CC0 1.0 (`public/assets/vehicles/SOURCE-README.md`) | Engine loops, crash layer |
+| `public/assets/vehicles/audio/skid.ogg` | Landeplage, distributed in Kenney Starter Kit Racing | CC0 1.0 | Tyre squeal |
 
-| Local files | Author / source | License |
-| --- | --- | --- |
-| `public/assets/city/models/*.glb` and `models/Textures/colormap.png` | Kenney, [Starter Kit City Builder](https://github.com/KenneyNL/Starter-Kit-City-Builder), commit `4535092b740b378b700efd9df9e27a631815b84a` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| `public/assets/vehicles/models/*.glb` and `models/Textures/colormap.png` | Kenney, [Starter Kit Racing](https://github.com/KenneyNL/Starter-Kit-Racing), commit `2f2e5f2646dda89cb21d4e8539bab60c6e955dc8` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| `public/assets/vehicles/audio/engine.ogg`, `engine-motorcycle.ogg`, `impact.ogg` | Kenney, Starter Kit Racing (same source/commit) | CC0 1.0 |
-| `public/assets/vehicles/audio/skid.ogg` | [Landeplage](https://github.com/Landeplage), distributed in Kenney Starter Kit Racing (same source/commit) | CC0 1.0 |
-
-The official source README explicitly licenses included sprites, models and sound effects as CC0; the racing README separately confirms the skid effect is CC0. Copies are retained alongside assets as `SOURCE-README.md`. Those READMEs describe the upstream Godot kits, not this game. No upstream game code is copied. CC0 does not require attribution; it is provided for traceability.
+CC0 does not require attribution; it is given here for traceability and thanks. Everything else you see and hear (sky, water, roads, towers, docks, pier and Ferris wheel, trees and palms, vans, weapons, faces and hair, particles, all music and most sound effects) is generated in code.
 
 ## Libraries
 
-Dependency versions and transitive licenses are recorded in `package-lock.json` and package distributions. Three.js (MIT), Rapier (Apache-2.0), Vite (MIT), TypeScript (Apache-2.0), Vitest (MIT), Playwright (Apache-2.0) and ESLint (MIT) support development/runtime as applicable. Verify this list against the final manifest before release.
+| Library | Licence |
+| --- | --- |
+| [three.js](https://threejs.org) | MIT |
+| [Rapier](https://rapier.rs) (`@dimforge/rapier3d-compat`) | Apache-2.0 |
+| Vite, Vitest, TypeScript, ESLint, Playwright (development only) | MIT / Apache-2.0 |
