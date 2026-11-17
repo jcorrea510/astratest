@@ -23,16 +23,20 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (~15:40 UTC, 17 Nov; resumed after a usage-limit pause 12:00-15:10)
-- Bug-bash pass 1 found 7 bugs; all fixed with a regression e2e test each (22 e2e tests now):
-  1. sea/harbor were solid ground -> ground colliders only on land, seabed at -7, sea edge walls; cars flood and sink, player swims; faster swimming; foam limited to the shoreline (was striping the whole sea).
-  2. exiting by the pier rail dropped you off the pier -> exit check: rays at knee/waist/head, capsule room test, ground under the spot.
-  3. race rivals got lost -> lane-graph shortest-path routing (routeField, unit tested), re-route when the target changes, brake before turns, longer look-ahead at speed, tougher race cars.
-  4. a stopped undriven car blocked traffic forever (M2 soft-lock) -> traffic pulls out and passes after 3 s.
-  5. beach ramps could not pay -> angled to take a run from Coastal Dr, wider, per-ramp thresholds, palms kept clear.
-  6. M2 deleted the player's parked car -> courier spawns past it.
-  7. contacts respawned beside their body -> 2 min away, never respawn within 70 m.
-- Next: full e2e green -> commit/push -> bug-bash pass 2 (fresh agent) -> must be clean twice.
+## In progress (~16:15 UTC, 17 Nov) — owner's quality round
+Owner asked (after pass 1): better running/jumping, shooting + gun sounds, driving, visuals/car visuals with windshields,
+robbable stores, sandbox mode, and a UI that looks like a real AAA open-world crime game (original, not a GTA copy).
+- DONE (8d43c03): robbable store kiosks (src/game/robbery.ts, STORES in places.ts) and sandbox mode (src/game/sandbox.ts,
+  title "Sandbox", ?autostart=1&sandbox=1, pause -> Sandbox tools); e2e tests/e2e/features.spec.ts (2 tests, passing).
+- RUNNING (background agents, same checkout, file ownership; lead commits):
+  UI overhaul (src/ui/**, index.html, fonts) · movement feel (player.ts, camera.ts, character.ts, human.ts) ·
+  shooting + gun audio (playerCombat.ts, src/combat/**, src/audio/**, particles.ts) · driving + car glass (src/vehicles/**, game/vehicles.ts).
+  Bug-bash pass 2 (report-only) also running against 4a1206a.
+- If resuming after a reset and agents are gone: check `git status`; review/finish uncommitted agent work per area, make tsc/eslint/vitest pass,
+  run full e2e (24 tests), commit, then two consecutive clean bug-bash passes, CREDITS (fonts/sounds), README update, final report.
+
+Bug-bash pass 1 (fixed in 4a1206a, 7 regression tests): open water/swimming/flooding, safe exits, lane-graph routing, traffic passing,
+beach ramps, M2 keeps player car, contact respawn cooldown; shoreline-only foam.
 
 ## Done since 10:00
 - Memory leak fixed (collider tags); soak passes: 20 game-min chaos, 0 issues, heap 108->114 MB flat, no console errors.
