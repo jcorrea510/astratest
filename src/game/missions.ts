@@ -9,7 +9,7 @@ import type { AiCar } from './traffic';
 import { nearestLane, samplePath } from '../world/citymap';
 import type { WeaponId } from '../combat/weapons';
 import type { Look } from '../actors/human';
-import { groups, G_STATIC } from '../core/physics';
+import { groups, G_STATIC, RAPIER } from '../core/physics';
 
 export type MissionStatus = 'running' | 'passed' | 'failed';
 export interface MissionRun { objective: string; timer: number | null; blips(): MinimapBlip[]; update(dt: number): MissionStatus; failReason: string; cleanup(): void }
@@ -19,22 +19,36 @@ const GANG_LOOK = (i: number): Look => ({ skin: ['#c68c63', '#8a5a3b', '#f1c9a5'
 
 /** Ring markers for objectives (shared look). */
 export class Marker {
+  static all = new Set<Marker>();
   group = new THREE.Group();
-  constructor(scene: THREE.Scene, public pos: THREE.Vector3, public radius: number, color: string, tall = 6) {
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
-    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, tall, 32, 1, true), mat);
-    cyl.position.y = tall / 2;
-    const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.86, radius, 40).rotateX(-Math.PI / 2), ringMat);
-    ring.position.y = 0.06;
-    this.group.add(cyl, ring);
+  private colMat: THREE.ShaderMaterial;
+  constructor(scene: THREE.Scene, public pos: THREE.Vector3, public radius: number, color: string, tall = 0) {
+    const h = tall || Math.min(7, 2.2 + radius * 0.9);
+    this.colMat = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(color) }, uFade: { value: 1 }, uTime: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform vec3 uColor; uniform float uFade, uTime; varying vec2 vUv;
+        void main(){ float a = pow(1.0 - vUv.y, 1.6) * 0.42 * uFade; a *= 0.85 + 0.15 * sin(vUv.y * 18.0 - uTime * 3.0); gl_FragColor = vec4(uColor * 1.6, a); }`,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, h, 40, 1, true), this.colMat);
+    cyl.position.y = h / 2;
+    const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.4), transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.9, radius, 48).rotateX(-Math.PI / 2), ringMat);
+    ring.position.y = 0.05;
+    const inner = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.9, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false, toneMapped: false }));
+    inner.position.y = 0.04;
+    this.group.add(cyl, ring, inner);
     this.group.position.copy(pos);
-    this.group.renderOrder = 3;
     scene.add(this.group);
+    Marker.all.add(this);
   }
-  update(t: number) { const s = 1 + Math.sin(t * 3) * 0.04; this.group.children[0].scale.set(s, 1, s); }
+  update(t: number, camPos?: THREE.Vector3) {
+    this.colMat.uniforms.uTime.value = t;
+    if (camPos) { const d = Math.hypot(camPos.x - this.pos.x, camPos.z - this.pos.z); this.colMat.uniforms.uFade.value = THREE.MathUtils.smoothstep(d, this.radius + 0.5, this.radius + 6); }
+  }
   inside(p: THREE.Vector3, yTol = 3) { return Math.hypot(p.x - this.pos.x, p.z - this.pos.z) < this.radius && Math.abs(p.y - this.pos.y) < yTol; }
-  dispose() { this.group.removeFromParent(); }
+  dispose() { this.group.removeFromParent(); Marker.all.delete(this); }
 }
 
 export class MissionCtx {
@@ -57,7 +71,8 @@ export class MissionCtx {
     return hit ? 40 - hit.toi : hint;
   }
   gang(x: number, z: number, weapon: WeaponId, i: number, hostile = false): Npc {
-    const n = this.game.pop.spawn('gang', x, z, this.groundY(x, z) + 0.05, GANG_LOOK(i), weapon);
+    const p = this.freeSpot(x, z);
+    const n = this.game.pop.spawn('gang', p.x, p.z, p.y + 0.05, GANG_LOOK(i), weapon);
     n.persistent = true; n.hostile = hostile; n.brain = 'idle'; n.accuracy = 1.15; n.char.maxHealth = n.char.health = 70; n.dropMoney = 40;
     n.char.human.setState(i % 3 === 0 ? 'talk' : 'loco');
     return n;
@@ -66,6 +81,20 @@ export class MissionCtx {
     const v = this.game.vehicles.spawn(kind, x, z, yaw, paint, this.groundY(x, z) + 0.2); v.persistent = true; return v;
   }
   inVehicle() { return this.game.playerVehicle; }
+  /** Finds open ground near a point (no static geometry within ~0.6 m), searching outward. */
+  freeSpot(x: number, z: number, maxR = 12): THREE.Vector3 {
+    const ball = new RAPIER.Ball(0.6);
+    for (let i = 0; i < 80; i++) {
+      const a = i * 2.399, r = i === 0 ? 0 : Math.min(maxR, 0.8 + i * 0.35);
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      const y = this.groundY(px, pz);
+      if (y > 0.6) continue; // on top of something
+      let blocked = false;
+      this.game.physics.world.intersectionsWithShape({ x: px, y: y + 1, z: pz }, { x: 0, y: 0, z: 0, w: 1 }, ball, () => { blocked = true; return false; }, undefined, groups(0xffff, G_STATIC));
+      if (!blocked) return new THREE.Vector3(px, y, pz);
+    }
+    return new THREE.Vector3(x, this.groundY(x, z), z);
+  }
   near(p: { x: number; z: number }, r: number) { return Math.hypot(this.playerPos.x - p.x, this.playerPos.z - p.z) < r; }
 }
 
@@ -102,10 +131,10 @@ const m2: MissionDef = {
   id: 'm2', title: 'Tail Light', tagline: 'Follow the courier. Not too close.', contact: PLACES.juno, reward: 900, requires: 'm1',
   create(ctx) {
     const g = ctx.game;
-    const start = nearestLane(g.city, -150, -100)!;
-    let car: AiCar | null = null; let stage = 0; let closeT = 0; let farT = 0; let started = 0;
+    const start = nearestLane(g.city, -236, -98)!;
+    let car: AiCar | null = null; let stage = 0; let closeT = 0; let farT = 0; let started = 0; void started;
     const dest = new THREE.Vector3(345, 0, 300);
-    ctx.say([['Juno', 'The buyer paid with a marked card. The courier delivering the rest is pulling out on Marrow Ave.'], ['Juno', 'Follow it to the drop. Stay close enough to see it, far enough not to be seen.']]);
+    ctx.say([['Juno', 'The buyer paid with a marked card. Their courier van is parked right there on 3rd Street.'], ['Juno', 'Grab a car and follow it to the drop. Close enough to see it, far enough not to be seen.']]);
     const run: MissionRun = {
       objective: 'Get in a car and find the courier', timer: null, failReason: '',
       blips: () => car ? [{ x: car.v.position.x, z: car.v.position.z, kind: 'target', label: 'Courier', pulse: true }] : [],
@@ -115,13 +144,13 @@ const m2: MissionDef = {
           const lane = start.lane; samplePath(lane, Math.min(lane.length - 5, start.s), { x: 0, z: 0, dx: 0, dz: 0 });
           car = g.traffic.spawnOnLane('van', lane, Math.min(lane.length - 10, Math.max(5, start.s)), 'goto');
           car.persistent = true; car.v.persistent = true; car.target = dest.clone(); car.arriveDist = 6;
-          car.v.locked = true; car.driver.persistent = true;
+          car.v.locked = true; car.driver.persistent = true; car.maxSpeed = 0;
           return 'running';
         }
         const v = car.v;
         if (v.destroyed || !car.driver.alive) { run.failReason = 'The courier is out of action. The trail is cold.'; return 'failed'; }
         const d = v.position.distanceTo(ctx.playerPos);
-        if (stage === 0) { run.objective = 'Follow the courier van'; if (d < 120) { stage = 1; started = g.time; } if (g.time - started > 0 && d > 400) { run.failReason = 'You never caught up.'; return 'failed'; } }
+        if (stage === 0) { run.objective = ctx.inVehicle() ? 'Follow the courier van' : 'Get in a car to follow the courier'; if (ctx.inVehicle() && d < 120) { stage = 1; started = g.time; car.maxSpeed = 11; } }
         if (stage === 1) {
           run.objective = d < 14 ? 'Too close! Back off' : d > 80 ? 'Don\'t lose the courier' : 'Follow the courier van';
           if (d < 14) closeT += dt; else closeT = Math.max(0, closeT - dt * 0.5);
@@ -146,7 +175,7 @@ const m3: MissionDef = {
   create(ctx) {
     const g = ctx.game;
     const site = new THREE.Vector3(398, 0, 160);
-    const enemies: Npc[] = []; let stage = 0; let caseMk: Marker | null = null; let siteMk: Marker | null = null;
+    const enemies: Npc[] = []; let stage = 0; let caseMk: Marker | null = null; let siteMk: Marker | null = null; const caseSpot = new THREE.Vector3(site.x, 0, site.z + 4);
     if (!g.pcombat.inv.weapons.pistol.owned) g.pcombat.give('pistol', 60); else g.pcombat.give('pistol', 36);
     ctx.say([['Marlo', 'So you\'re the driver Juno keeps bragging about.'], ['Marlo', 'The Tidecutters hit our shipment. It\'s sitting in a container yard at the Cannery Docks.'], ['Marlo', 'Here, take this pistol. Get the case back. The police will come running, so lose them after.']]);
     ctx.ui.showControlsHint('Hold Right Mouse to aim, Left Mouse to fire, R to reload. Hold Tab for the weapon wheel.', 8);
@@ -156,7 +185,7 @@ const m3: MissionDef = {
       blips: () => {
         if (stage === 0) return [{ x: site.x, z: site.z, kind: 'target', label: 'Container yard', pulse: true }];
         if (stage === 1) return enemies.filter(e => e.alive).map(e => ({ x: e.pos.x, z: e.pos.z, kind: 'enemy' as const }));
-        if (stage === 2) return [{ x: site.x, z: site.z + 4, kind: 'target', label: 'Case', pulse: true }];
+        if (stage === 2) return [{ x: caseSpot.x, z: caseSpot.z, kind: 'target', label: 'Case', pulse: true }];
         return [];
       },
       update: () => {
@@ -170,7 +199,7 @@ const m3: MissionDef = {
           for (const e of enemies) if (e.alive && !e.hostile && (ctx.near(e.pos, 40) || e.char.health < e.char.maxHealth)) { for (const o of enemies) { o.hostile = true; if (o.brain === 'idle') o.brain = 'chase'; o.lastSeen.copy(ctx.playerPos); } break; }
           const left = enemies.filter(e => e.alive).length;
           run.objective = left ? `Take out the Tidecutters (${left} left)` : '';
-          if (!left) { stage = 2; caseMk = ctx.marker({ x: site.x, z: site.z + 4 }, 1.6, '#7ff3ff'); run.objective = 'Grab the case'; g.audio.setMusicMood('tension'); }
+          if (!left) { stage = 2; const cs = ctx.freeSpot(site.x, site.z + 4); caseSpot.copy(cs); caseMk = ctx.marker({ x: cs.x, z: cs.z }, 1.6, '#7ff3ff'); run.objective = 'Grab the case'; g.audio.setMusicMood('tension'); }
         }
         if (stage === 2 && caseMk && caseMk.inside(ctx.playerPos)) {
           caseMk.dispose(); caseMk = null; stage = 3; g.audio.play('pickup');
@@ -327,8 +356,10 @@ export class Missions {
     for (const m of this.markers.values()) m.dispose();
     this.markers.clear();
   }
+  lastResult = '';
   finish(status: 'passed' | 'failed', reason = '') {
     const a = this.active; if (!a) return;
+    this.lastResult = `${a.def.id}:${status}:${reason}`;
     a.run.cleanup();
     this.active = null;
     const g = this.ctx.game;
@@ -352,6 +383,7 @@ export class Missions {
   update(dt: number) {
     const g = this.ctx.game;
     this.ctx.tickDialogue(dt);
+    for (const mk of Marker.all) mk.update(g.time, g.renderer.camera.position);
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.active) {
       const st = this.active.run.update(dt);
@@ -362,7 +394,7 @@ export class Missions {
     const avail = this.available();
     for (const [id, mk] of this.markers) if (!avail.some(m => m.id === id)) { mk.dispose(); this.markers.delete(id); }
     for (const m of avail) if (!this.markers.has(m.id)) this.markers.set(m.id, this.ctx.marker(m.contact, 1.6, '#ffc37e'));
-    for (const [, mk] of this.markers) mk.update(g.time);
+    
     if (this.cooldown > 0 || g.deathT >= 0) return;
     for (const m of avail) {
       const mk = this.markers.get(m.id);

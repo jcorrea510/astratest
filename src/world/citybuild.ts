@@ -314,7 +314,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
       physics.addStaticBox(cx, h / 2, cz, w / 2, h / 2, d / 2);
     }
     const startZ = wh ? iz0 + (iz1 - iz0) * 0.6 : iz0;
-    for (let z = startZ + 2; z < iz1 - 3; z += 3.4) for (let x = ix0 + 7; x < ix1 - 6; x += 14) {
+    let row = 0;
+    for (let z = startZ + 2; z < iz1 - 3; z += (row++ % 2 === 0 ? 2.75 : 7.5)) for (let x = ix0 + 7; x < ix1 - 6; x += 17) {
       if (r.chance(0.3)) continue;
       const stack = r.int(1, 3);
       for (let k = 0; k < stack; k++) gb.box(x, z, 12.2, 2.6, CURB_HEIGHT + k * 2.6, CURB_HEIGHT + (k + 1) * 2.6, 0, C(r.pick(containerColors)), [3, 1, 2.4, 2.6]);

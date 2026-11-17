@@ -11,8 +11,8 @@ import type { WeaponId } from '../combat/weapons';
 
 export type Crime = 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson';
 const CRIME: Record<Crime, { add: number; min: number }> = {
-  assault: { add: 1, min: 1 }, shooting: { add: 1, min: 1 }, kill: { add: 1, min: 2 }, copAttack: { add: 1, min: 2 }, copKill: { add: 2, min: 3 },
-  carjack: { add: 1, min: 1 }, vehicleWreck: { add: 0, min: 1 }, copCarTheft: { add: 1, min: 2 }, hitPerson: { add: 1, min: 1 },
+  assault: { add: 0, min: 1 }, shooting: { add: 0, min: 1 }, kill: { add: 1, min: 2 }, copAttack: { add: 1, min: 2 }, copKill: { add: 2, min: 3 },
+  carjack: { add: 0, min: 1 }, vehicleWreck: { add: 0, min: 1 }, copCarTheft: { add: 1, min: 2 }, hitPerson: { add: 0, min: 1 },
 };
 export { COP_LOOK };
 export const UNITS_BY_HEAT = [0, 1, 2, 3, 4, 5];

@@ -37,6 +37,7 @@ let assetFrac = 0, assetLabel = 'Preparing the city';
 let started = false;
 let autosaveT = 0;
 let ourUnlock = false;
+let mapByKey = false;
 
 function isMobile(): boolean {
   const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
@@ -121,7 +122,7 @@ async function startGame(cont: boolean) {
 function newGameSetup() {
   const g = game!;
   g.money = 250; g.hour = 17.4;
-  g.player.place(PLACES.safehouse.x, 0.25, PLACES.safehouse.z, Math.PI * 0.5);
+  g.player.place(PLACES.safehouse.x + 4, 0.25, PLACES.safehouse.z, Math.PI * 0.5);
   g.cam.snapBehind(Math.PI * 0.5 + Math.PI);
 }
 function applySave(s: SaveData) {
@@ -205,7 +206,11 @@ function frame(raw: number) {
   const input = g.input;
   // pause / map
   if (input.justPressed('pause') && !a.shopIsOpen) { if (g.paused) { /* UI handles Esc in menus */ } else pause(); }
-  if (!g.paused && !ui.isMenuOpen() && input.justPressed('map')) { pause(); ui.openMap(minimapState()); }
+  if (mapByKey && g.paused && !ui.isMenuOpen()) { mapByKey = false; resume(); }
+  if (!g.paused && !ui.isMenuOpen() && !a.shopIsOpen && input.justPressed('map')) {
+    if (g.wheelOpen) closeWheel();
+    g.paused = true; mapByKey = true; audio?.setPausedMuffle(true); ourUnlock = true; g.input.exitLock(); ui.openMap(minimapState());
+  }
   if (!g.paused) {
     // wheel (hold)
     const canWheel = !g.playerVehicle && g.player.alive && g.deathT < 0 && !a.shopIsOpen;
@@ -251,8 +256,8 @@ if (!webglOk()) {
 } else if (isMobile()) {
   ui.showMobileGate();
 } else {
-  ui.showTitle(!!readSave(storage));
   void preload().catch(e => console.error(e));
   if (params.get('autostart') === '1') void startGame(params.get('continue') === '1');
+  else ui.showTitle(!!readSave(storage));
 }
 document.title = 'Meridian Afterglow';

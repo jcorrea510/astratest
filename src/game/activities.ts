@@ -115,7 +115,6 @@ export class Activities {
   }
   update(dt: number) {
     const g = this.game, p = g.player.pos, t = g.time;
-    for (const m of [this.shopMk, this.garageMk, this.snackMk, this.safeMk]) m.update(t);
     for (const c of this.cards) if (c) { c.rotation.y += dt * 1.5; c.position.y += Math.sin(t * 2) * 0.002; }
     if (g.inputBlocked && !this.shopOpen) return;
     if (this.shopOpen) { if (g.input.justPressed('pause')) this.closeShop(); return; }

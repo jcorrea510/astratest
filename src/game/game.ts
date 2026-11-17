@@ -186,7 +186,7 @@ export class Game {
     const loop = (now: number) => {
       if (!this.running) return;
       requestAnimationFrame(loop);
-      const raw = Math.min(0.1, (now - this.last) / 1000); this.last = now;
+      const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
       this.frame(raw);
@@ -196,6 +196,7 @@ export class Game {
   stop() { this.running = false; }
   /** Advances the simulation by real-time dt (seconds). Exposed for scripted tests. */
   frame(raw: number, render = true) {
+    raw = Number.isFinite(raw) ? Math.max(0, Math.min(0.1, raw)) : 0;
     this.input.pollGamepad();
     this.timeScale += (this.targetTimeScale - this.timeScale) * Math.min(1, raw * 10);
     const dt = this.paused ? 0 : raw * this.timeScale;

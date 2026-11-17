@@ -78,6 +78,7 @@ export class Traffic {
         v.input.throttle = 0; v.input.handbrake = true;
         continue;
       }
+      v.syncTransform();
       const pos = v.position, f = v.phys.forward();
       const speed = v.speed;
       // progress along the lane
@@ -122,8 +123,9 @@ export class Traffic {
         if (blocker === 'person' && blockDist < 9 && Math.abs(speed) < 2) { car.honkT += dt; if (car.honkT > 1.6) { car.honkT = -2.5; this.audio.play('horn', { pos, volume: 0.6 }); } }
       }
       // Pure-pursuit steering
-      const inv = new THREE.Matrix4().copy(v.group.matrixWorld).invert();
-      const local = aim.clone().setY(pos.y).applyMatrix4(inv);
+      const pp = v.phys.body.translation();
+      const adx = aim.x - pp.x, adz = aim.z - pp.z;
+      const local = { x: adx * f.z - adz * f.x, z: adx * f.x + adz * f.z };
       let steer = THREE.MathUtils.clamp(Math.atan2(local.x, Math.max(0.5, local.z)) * 2.0, -1, 1);
       if (local.z < 0 && (car.mode === 'pursuit' || car.mode === 'goto')) steer = Math.sign(local.x || 1);
       // Stuck handling: reverse briefly

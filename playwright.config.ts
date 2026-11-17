@@ -1,3 +1,19 @@
 import { defineConfig } from '@playwright/test';
 import { existsSync } from 'node:fs';
-export default defineConfig({ testDir: './tests/e2e', use: { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox'] }, baseURL: 'http://127.0.0.1:4173/astratest/', screenshot: 'only-on-failure' }, webServer: { command: 'npm run build && npm run preview -- --port 4173', url: 'http://127.0.0.1:4173/astratest/', reuseExistingServer: !process.env.CI }, reporter: 'list' });
+const local = existsSync('/opt/pw-browsers/chromium') && !process.env.CI ? '/opt/pw-browsers/chromium' : undefined;
+export default defineConfig({
+  testDir: './tests/e2e',
+  timeout: 240_000,
+  expect: { timeout: 30_000 },
+  workers: 1,
+  retries: 0,
+  use: {
+    baseURL: 'http://127.0.0.1:4173/astratest/',
+    viewport: { width: 1280, height: 720 },
+    screenshot: 'only-on-failure',
+    trace: 'off',
+    launchOptions: { executablePath: local, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox', '--enable-precise-memory-info', '--js-flags=--expose-gc', '--autoplay-policy=no-user-gesture-required'] },
+  },
+  webServer: { command: 'npm run build && npx vite preview --port 4173 --strictPort --host 127.0.0.1', url: 'http://127.0.0.1:4173/astratest/', reuseExistingServer: !process.env.CI, timeout: 180_000 },
+  reporter: [['list']],
+});
