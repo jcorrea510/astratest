@@ -121,5 +121,10 @@ export class Renderer {
     this.grade.uniforms.uNight.value = s.night;
     this.grade.uniforms.uTime.value = time % 100;
   }
-  render() { this.composer.render(); }
+  stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
+  render() {
+    const info = this.renderer.info; info.autoReset = false; info.reset();
+    this.composer.render();
+    this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
+  }
 }

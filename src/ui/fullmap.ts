@@ -45,6 +45,7 @@ export class FullMap {
     const body = h('div', 'ma-map-body');
     this.stage = h('div', 'ma-map-stage');
     this.canvas = h('canvas', 'ma-map-canvas');
+    this.canvas.tabIndex = -1;
     this.stage.appendChild(this.canvas);
     body.appendChild(this.stage);
     const legend = h('div', 'ma-map-legend');
@@ -200,10 +201,9 @@ export class FullMap {
     this.fitScale = Math.min(w / (b.maxX - b.minX), hgt / (b.maxZ - b.minZ));
     this.view.w = w; this.view.h = hgt;
     if (refit) {
-      this.view.scale = this.fitScale * 1.15;
-      const s = this.state;
-      this.view.cx = s ? s.x * 0.35 + ((b.minX + b.maxX) / 2) * 0.65 : (b.minX + b.maxX) / 2;
-      this.view.cz = s ? s.z * 0.35 + ((b.minZ + b.maxZ) / 2) * 0.65 : (b.minZ + b.maxZ) / 2;
+      this.view.scale = this.fitScale;
+      this.view.cx = (b.minX + b.maxX) / 2;
+      this.view.cz = (b.minZ + b.maxZ) / 2;
     } else if (prevFit > 0) this.view.scale *= this.fitScale / prevFit;
     this.clampView();
     this.dirty = true;
@@ -253,14 +253,17 @@ export class FullMap {
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
         drawBlip(ctx, b.kind, p.x, p.y, br, t, !!b.pulse);
-        if (b.label) {
-          ctx.font = '600 11px Inter, "Helvetica Neue", Arial, sans-serif';
-          ctx.textAlign = 'left';
-          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.85)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
-          ctx.fillStyle = '#fcf2d9'; ctx.fillText(b.label, p.x + br + 5, p.y);
-          ctx.textAlign = 'center';
-        }
       }
+      ctx.font = '600 11px Inter, "Helvetica Neue", Arial, sans-serif';
+      ctx.textAlign = 'left';
+      for (const b of s.blips) {
+        if (!b.label || b.kind === 'waypoint') continue;
+        const p = mapWorldToScreen(v, b.x, b.z);
+        if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.85)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
+        ctx.fillStyle = '#fcf2d9'; ctx.fillText(b.label, p.x + br + 5, p.y);
+      }
+      ctx.textAlign = 'center';
       const wp = this.localWaypoint;
       if (wp) { const p = mapWorldToScreen(v, wp.x, wp.z); drawBlip(ctx, 'waypoint', p.x, p.y, 10, t); }
       const pp = mapWorldToScreen(v, s.x, s.z);

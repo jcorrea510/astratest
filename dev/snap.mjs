@@ -9,7 +9,7 @@ p.on('pageerror', e => logs.push('pageerror: ' + e.message));
 p.on('requestfailed', r => logs.push('requestfailed: ' + r.url()));
 const t0 = Date.now();
 await p.goto(url);
-await p.waitForFunction(() => document.title === 'ready' || document.title === 'error', null, { timeout: 180000 });
+await p.waitForFunction(() => document.title === 'ready' || document.title === 'error' || (window.__meridian && window.__game && window.__game.time > 0), null, { timeout: 180000 });
 console.log('loaded in', Date.now() - t0, 'ms', await p.title()); if ((await p.title()) === 'error') { console.log(await p.evaluate(() => document.querySelector('pre')?.textContent)); console.log(logs.join('\n')); }
 if (script) { const r = await p.evaluate(script); if (r !== undefined) console.log('result:', JSON.stringify(r)); }
 await p.screenshot({ path: out, timeout: 120000 });

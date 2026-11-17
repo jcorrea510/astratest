@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
-export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void }
+export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
@@ -82,13 +82,13 @@ export class Traffic {
       const speed = v.speed;
       // progress along the lane
       if (car.mode !== 'pursuit' && car.mode !== 'goto' || !car.target || pos.distanceTo(car.target) > 40) this.advanceLane(car, pos, car.target);
-      let targetSpeed = car.lane.speed * (car.mode === 'flee' ? 1.6 : car.mode === 'pursuit' ? 1.8 : 1);
+      let targetSpeed = car.maxSpeed ?? car.lane.speed * (car.mode === 'flee' ? 1.6 : car.mode === 'pursuit' ? 1.8 : 1);
       const aim = new THREE.Vector3();
       const look = THREE.MathUtils.clamp(Math.abs(speed) * 0.55 + 4, 5, 16);
       if ((car.mode === 'pursuit' || car.mode === 'goto') && car.target && pos.distanceTo(car.target) < 40) {
         aim.copy(car.target);
         const d = pos.distanceTo(car.target);
-        targetSpeed = car.mode === 'pursuit' ? (car.ram ? 26 : Math.min(26, Math.max(0, d - 9) * 1.2)) : Math.min(14, Math.max(0, d - car.arriveDist) * 1.5);
+        targetSpeed = car.mode === 'pursuit' ? (car.ram ? 26 : Math.min(26, Math.max(0, d - 9) * 1.2)) : Math.min(car.maxSpeed ?? 14, Math.max(0, d - car.arriveDist) * 1.5);
         if (car.mode === 'goto' && d < car.arriveDist + 1 && car.onArrive) { const cb = car.onArrive; car.onArrive = undefined; cb(); }
       } else {
         let s = car.s + look, lane = car.lane;
@@ -96,6 +96,8 @@ export class Traffic {
         if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[nextChoice]; if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[lane.next[0]]; } }
         samplePath(lane, Math.min(s, lane.length), sp); aim.set(sp.x, 0, sp.z);
       }
+      // Slow for corners: angle between heading and the aim point
+      { const ax = aim.x - pos.x, az = aim.z - pos.z, al = Math.hypot(ax, az) || 1; const cosA = (ax * f.x + az * f.z) / al; const ang = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); if (ang > 0.25) targetSpeed = Math.min(targetSpeed, Math.max(6, targetSpeed * (1.15 - ang * 1.1))); }
       // Signals
       if (car.mode === 'cruise' && !car.lane.connector) {
         const inter = this.city.intersections[car.lane.intersection];

@@ -1,13 +1,19 @@
 /** Hand-drawn SVG icons for weapons, items, heat flares and map legend. All original artwork. */
 import type { MinimapBlip, WeaponIcon } from './contracts';
 
+/** Rounded rectangle as an SVG path (corner radius r). */
+function rr(x: number, y: number, w: number, hgt: number, r: number): string {
+  return `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + hgt - r}Q${x + w} ${y + hgt} ${x + w - r} ${y + hgt}` +
+    `H${x + r}Q${x} ${y + hgt} ${x} ${y + hgt - r}V${y + r}Q${x} ${y} ${x + r} ${y}Z`;
+}
+
 /** Weapon/item silhouettes in a 64 x 32 box, filled with currentColor (evenodd for cut-outs). */
 export const WEAPON_PATHS: Record<WeaponIcon, string> = {
+  // A clenched fist seen from the front: four knuckles, a thumb across, the back of the hand below.
   fists:
-    'M22 12.5Q22 8 26.5 8H40Q45 8 45 13V20Q45 26 39 26H28Q22 26 22 20Z' +
-    'M29.2 8.8h1.2v6.4h-1.2zM34.3 8.8h1.2v6.4h-1.2zM39.4 8.8h1.2v6.4h-1.2z' +
-    'M23.6 17.4H36.6Q38.2 17.4 38.2 19V19.6H23.6Z' +
-    'M25 26.6H38.5V30.5H25Z',
+    rr(20, 2.5, 6.2, 12, 3) + rr(26.9, 1.5, 6.2, 13, 3) + rr(33.8, 2, 6.2, 12.5, 3) + rr(40.7, 4, 5.8, 10.5, 2.9) +
+    rr(19, 15.4, 19.5, 5.6, 2.8) +
+    'M19 21.8H46.5V24.5Q46.5 29.5 41.5 29.5H24Q19 29.5 19 24.5Z' + rr(39.3, 15.4, 7.2, 5.6, 2.2),
   pistol:
     'M14 8H49L51.5 9.6V14H33.2L31.6 17.6Q30.2 19.6 27.6 19.2L26.1 18.9L23.6 28H13L17.2 14H14Z' +
     'M27.1 14.7H30.8L30 16.7Q29.4 17.8 28.1 17.6L26.6 17.3Z' +
@@ -32,7 +38,8 @@ export const WEAPON_PATHS: Record<WeaponIcon, string> = {
 };
 
 export function weaponSvg(icon: WeaponIcon, cls = 'ma-icon'): string {
-  return `<svg class="${cls}" viewBox="0 0 64 32" aria-hidden="true"><path fill-rule="evenodd" fill="currentColor" d="${WEAPON_PATHS[icon]}"/></svg>`;
+  const d = WEAPON_PATHS[icon] ?? WEAPON_PATHS.fists;
+  return `<svg class="${cls}" viewBox="0 0 64 32" aria-hidden="true"><path fill-rule="evenodd" fill="currentColor" d="${d}"/></svg>`;
 }
 
 /** Heat "flare": an original rank chevron with a spark above it (deliberately not a star). */

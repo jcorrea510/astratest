@@ -35,7 +35,7 @@ class Session {
     this.outs = { dry, rev, dly };
     if (song.style === 'lofi') {
       const c = ctx.createBufferSource(); c.buffer = k.crackle; c.loop = true; c.start(now);
-      const hp = bq(ctx, 'highpass', 900); const cg = gain(ctx, 0.11); c.connect(hp); hp.connect(cg); cg.connect(dry); this.extra.push(c);
+      const hp = bq(ctx, 'highpass', 900); const cg = gain(ctx, 0.2); c.connect(hp); hp.connect(cg); cg.connect(dry); this.extra.push(c);
     }
   }
   setLevel(level: number, tc = 0.3): void { const now = this.k.ctx.currentTime; for (const g of this.gains) g.gain.setTargetAtTime(level, now, tc); }
@@ -127,7 +127,7 @@ export class Radio {
 export class MoodLayer {
   mood: 'none' | 'tension' | 'action' = 'none';
   onNote: NoteHook | null = null;
-  private session: Session | null = null; private level = 0.6;
+  private session: Session | null = null; private level = 0.45;
   constructor(private host: Host, private out: AudioNode, private fx: MusicFx) {}
   set(mood: 'none' | 'tension' | 'action', now: number): void {
     if (mood === this.mood) return; this.mood = mood;

@@ -33,9 +33,6 @@ export class CityPainter {
     const big = 4000;
     const land = new Path2D();
     land.rect(-big, -big, big * 2, big * 2);
-    const hills = new Path2D();
-    hills.rect(-big, -big, big * 2, big + STREETS[0] - 30);
-    hills.rect(-big, STREETS[0] - 30, big + AVENUES[0] - 30, big * 2);
     const water = new Path2D();
     water.rect(-big, COAST_Z, big * 2, big);
     water.rect(HARBOR_X, -60, big, big);
@@ -44,8 +41,7 @@ export class CityPainter {
     beach.rect(AVENUES[0] - 30, STREETS[STREETS.length - 1] + 9, HARBOR_X - AVENUES[0] + 30, COAST_Z - STREETS[STREETS.length - 1] - 9);
     const quay = new Path2D();
     quay.rect(AVENUES[AVENUES.length - 1] + 9, STREETS[0] - 30, HARBOR_X - AVENUES[AVENUES.length - 1] - 9, COAST_Z - STREETS[0] + 30);
-    this.base.push({ color: BASE, path: land });
-    this.base.push({ color: '#1b4038', path: hills });
+    this.base.push({ color: '#1d4436', path: land });
     this.base.push({ color: mixColor('#d9b380', BASE, 0.45), path: beach });
     this.base.push({ color: mixColor('#7a7268', BASE, 0.45), path: quay });
     this.base.push({ color: '#0b2630', path: water });

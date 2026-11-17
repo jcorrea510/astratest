@@ -145,7 +145,7 @@ export class Vehicle {
     this.visual.add(this.bodyMesh);
     for (const w of tpl.layout.wheels) {
       if (!wheelMat && atlas) wheelMat = new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.75 });
-      const m = new THREE.Mesh(tpl.wheel, tpl.atlas ? this.material : wheelMat!); m.castShadow = true;
+      const m = new THREE.Mesh(tpl.wheel, tpl.atlas ? this.material : wheelMat!); m.castShadow = false;
       m.position.set(w.x, w.y, w.z); this.group.add(m); this.wheels.push(m);
     }
     // Lights
@@ -153,10 +153,12 @@ export class Vehicle {
     this.tailMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.02, 0.02), toneMapped: false });
     const bb = tpl.bbox;
     const fz = bb.max.z + 0.02, rz = bb.min.z - 0.02, ly = tpl.model === 'van' ? 0.95 : bb.min.y + (bb.max.y - bb.min.y) * 0.38;
+    const heads: THREE.BufferGeometry[] = [], tails: THREE.BufferGeometry[] = [];
     for (const sx of [-1, 1]) {
-      const h = new THREE.Mesh(lightGeo, this.headMat); h.position.set(sx * (bb.max.x - 0.32), ly, fz); this.visual.add(h);
-      const t = new THREE.Mesh(lightGeo, this.tailMat); t.position.set(sx * (bb.max.x - 0.3), ly + 0.05, rz); t.rotation.y = Math.PI; t.scale.set(1.2, 0.7, 1); this.visual.add(t);
+      heads.push(lightGeo.clone().translate(sx * (bb.max.x - 0.32), ly, fz));
+      tails.push(lightGeo.clone().scale(1.2, 0.7, 1).rotateY(Math.PI).translate(sx * (bb.max.x - 0.3), ly + 0.05, rz));
     }
+    this.visual.add(new THREE.Mesh(mergeGeometries(heads)!, this.headMat), new THREE.Mesh(mergeGeometries(tails)!, this.tailMat));
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 9).rotateX(-Math.PI / 2).translate(0, 0.04, fz + 4.4), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
     this.beam.renderOrder = 2; this.visual.add(this.beam);
     if (kind === 'police') {
@@ -216,6 +218,7 @@ export class Vehicle {
     const on = (this.headlights || night > 0.35) && !this.destroyed && !this.lightsBroken && (!!this.driver || this.persistent);
     this.headMat.color.setRGB(on ? 3 : 0.75, on ? 2.8 : 0.72, on ? 2.4 : 0.65);
     (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.35 * Math.max(night, 0.2) : 0;
+    this.beam.visible = on;
     const tail = this.destroyed ? 0.02 : braking ? 3 : on ? 1.1 : 0.35;
     this.tailMat.color.setRGB(tail, tail * 0.05, tail * 0.04);
     if (this.barRed && this.barBlue) {

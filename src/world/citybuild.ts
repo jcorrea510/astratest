@@ -230,7 +230,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   const marks = new THREE.Mesh(mk.build(false), markMat); marks.receiveShadow = true; root.add(marks);
 
   // ---------- Buildings ----------
-  const inst = new ChunkInstancer(250);
+  const inst = new ChunkInstancer(125);
+  const props = new ChunkInstancer(300);
   const atlas = assets.atlas;
   const emis = atlasEmissive(atlas);
   const palettes = { original: kaykitMaterial(atlas, emis), pastel: kaykitMaterial(atlasVariant(atlas, 'pastel'), emis), muted: kaykitMaterial(atlasVariant(atlas, 'muted'), emis) };
@@ -241,7 +242,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
 
   const facade = facadeMaterial();
   const towersByChunk = new Map<string, GeoBuilder>();
-  const towerGB = (x: number, z: number) => { const k = `${Math.floor(x / 250)},${Math.floor(z / 250)}`; let g = towersByChunk.get(k); if (!g) { g = new GeoBuilder(); towersByChunk.set(k, g); } return g; };
+  const towerGB = (x: number, z: number) => { const k = `${Math.floor(x / 125)},${Math.floor(z / 125)}`; let g = towersByChunk.get(k); if (!g) { g = new GeoBuilder(); towersByChunk.set(k, g); } return g; };
   const signs: { x: number; y: number; z: number; yaw: number; idx: number; w: number }[] = [];
   const billboards: { x: number; y: number; z: number; yaw: number; idx: number }[] = [];
   const rooftop: { x: number; y: number; z: number; s: number }[] = [];
@@ -363,18 +364,18 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   if (bg.length) { root.add(new THREE.Mesh(mergeGeometries(bg)!, bbMat)); const fm = new THREE.Mesh(frame.build(true), facade); fm.castShadow = true; root.add(fm); }
 
   // ---------- Street furniture ----------
-  inst.register('streetlight', bake('streetlight'), propMat);
-  inst.register('trafficlight', bake('trafficlight_A'), propMat);
-  inst.register('hydrant', bake('firehydrant'), propMat);
-  inst.register('bench', bake('bench'), propMat);
-  inst.register('trash', bake('trash_A'), propMat);
-  inst.register('dumpster', bake('dumpster'), propMat);
-  inst.register('bush', bake('bush'), propMat);
-  inst.register('watertower', bake('watertower'), propMat);
+  props.register('streetlight', bake('streetlight'), propMat);
+  props.register('trafficlight', bake('trafficlight_A'), propMat);
+  props.register('hydrant', bake('firehydrant'), propMat);
+  props.register('bench', bake('bench'), propMat);
+  props.register('trash', bake('trash_A'), propMat);
+  props.register('dumpster', bake('dumpster'), propMat);
+  props.register('bush', bake('bush'), propMat);
+  props.register('watertower', bake('watertower'), propMat);
   const vcMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85 });
-  for (let t = 0; t < 3; t++) inst.register(`tree${t}`, treeGeometry(100 + t), vcMat);
-  for (let t = 0; t < 3; t++) inst.register(`palm${t}`, palmGeometry(200 + t), vcMat);
-  for (const r of rooftop) inst.add('watertower', r.x, r.y, r.z, 0, 0.55 * r.s);
+  for (let t = 0; t < 3; t++) props.register(`tree${t}`, treeGeometry(100 + t), vcMat);
+  for (let t = 0; t < 3; t++) props.register(`palm${t}`, palmGeometry(200 + t), vcMat);
+  for (const r of rooftop) props.add('watertower', r.x, r.y, r.z, 0, 0.55 * r.s);
 
   const lampHeads: THREE.Vector3[] = [];
   const lampBB = bake('streetlight').boundingBox!;
@@ -389,7 +390,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
       const x = r.axis === 'x' ? s : r.coord + off, z = r.axis === 'x' ? r.coord + off : s;
       const dx = r.axis === 'x' ? 0 : -side, dz = r.axis === 'x' ? -side : 0;
       const yaw = Math.atan2(dz, -dx);
-      inst.add('streetlight', x, CURB_HEIGHT, z, yaw);
+      props.add('streetlight', x, CURB_HEIGHT, z, yaw);
       physics.addStaticCylinder(x, 2.5, z, 2.5, 0.14);
       lampHeads.push(new THREE.Vector3(x + dx * armReach, lampY, z + dz * armReach));
     }
@@ -411,7 +412,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
       const x = inter.x - ap.dx * (along + 1.2) + rx * (across + 1.0);
       const z = inter.z - ap.dz * (along + 1.2) + rz * (across + 1.0);
       const yaw = Math.atan2(-ap.dx, -ap.dz); // model front (+z) faces oncoming traffic
-      inst.add('trafficlight', x, CURB_HEIGHT, z, yaw);
+      props.add('trafficlight', x, CURB_HEIGHT, z, yaw);
       physics.addStaticCylinder(x, 2, z, 2, 0.15);
       const head: SignalHead = { inter: inter.id, axis: ap.axis, lamps: [0, 0, 0] };
       const fx = -ap.dx, fz = -ap.dz;
@@ -443,13 +444,13 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
     const front = lot.d / 2 + 1.6;
     const at = (lateral: number, f: number) => ({ x: lot.x + lateral * c + f * s, z: lot.z - lateral * s + f * c });
     const roll = r.next();
-    if (b.district === 'strand' && roll < 0.45) { const p = at(r.range(-3, 3), front + 1.2); inst.add(`palm${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
-    else if ((b.district === 'brickline' || b.district === 'midtown') && roll < 0.22) { const p = at(r.range(-3, 3), front + 1.5); inst.add(`tree${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28), r.range(0.75, 0.95)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
-    else if (roll < 0.34) { const p = at(r.range(-3, 3), front); inst.add('hydrant', p.x, CURB_HEIGHT, p.z, lot.rot); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.25); }
-    else if (roll < 0.46) { const p = at(r.range(-2, 2), front - 0.6); inst.add('bench', p.x, CURB_HEIGHT, p.z, lot.rot + Math.PI); physics.addStaticBox(p.x, 0.5, p.z, 1, 0.5, 0.4, lot.rot); }
-    else if (roll < 0.56) { const p = at(r.range(-3, 3), front - 0.4); inst.add('trash', p.x, CURB_HEIGHT, p.z, r.range(0, 6)); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.35); }
-    if (b.district === 'hillside' && r.chance(0.6)) { const p = at(r.range(-3.5, 3.5), -lot.d / 2 - 4); inst.add(`tree${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28), r.range(0.8, 1.15)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
-    if (r.chance(0.08) && b.district !== 'hillside') { const p = at(r.range(-3, 3), -lot.d / 2 - 2.5); inst.add('dumpster', p.x, CURB_HEIGHT, p.z, lot.rot); physics.addStaticBox(p.x, 0.8, p.z, 1.4, 0.8, 0.9, lot.rot); }
+    if (b.district === 'strand' && roll < 0.45) { const p = at(r.range(-3, 3), front + 1.2); props.add(`palm${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
+    else if ((b.district === 'brickline' || b.district === 'midtown') && roll < 0.22) { const p = at(r.range(-3, 3), front + 1.5); props.add(`tree${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28), r.range(0.75, 0.95)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
+    else if (roll < 0.34) { const p = at(r.range(-3, 3), front); props.add('hydrant', p.x, CURB_HEIGHT, p.z, lot.rot); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.25); }
+    else if (roll < 0.46) { const p = at(r.range(-2, 2), front - 0.6); props.add('bench', p.x, CURB_HEIGHT, p.z, lot.rot + Math.PI); physics.addStaticBox(p.x, 0.5, p.z, 1, 0.5, 0.4, lot.rot); }
+    else if (roll < 0.56) { const p = at(r.range(-3, 3), front - 0.4); props.add('trash', p.x, CURB_HEIGHT, p.z, r.range(0, 6)); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.35); }
+    if (b.district === 'hillside' && r.chance(0.6)) { const p = at(r.range(-3.5, 3.5), -lot.d / 2 - 4); props.add(`tree${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, r.range(0, 6.28), r.range(0.8, 1.15)); physics.addStaticCylinder(p.x, 2, p.z, 2, 0.25); }
+    if (r.chance(0.08) && b.district !== 'hillside') { const p = at(r.range(-3, 3), -lot.d / 2 - 2.5); props.add('dumpster', p.x, CURB_HEIGHT, p.z, lot.rot); physics.addStaticBox(p.x, 0.8, p.z, 1.4, 0.8, 0.9, lot.rot); }
   }
   // Parks and plazas
   for (const b of city.blocks) {
@@ -459,24 +460,25 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
       for (let i = 0; i < 46; i++) {
         const x = r.range(ix0 + 3, ix1 - 3), z = r.range(iz0 + 3, iz1 - 3);
         if (Math.abs(x - (ix0 + ix1) / 2) < 5 || Math.abs(z - (iz0 + iz1) / 2) < 5) continue;
-        inst.add(`tree${r.int(0, 2)}`, x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(0.9, 1.4));
+        props.add(`tree${r.int(0, 2)}`, x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(0.9, 1.4));
         physics.addStaticCylinder(x, 2, z, 2, 0.3);
       }
-      for (let i = 0; i < 10; i++) { const x = r.range(ix0 + 4, ix1 - 4); inst.add('bench', x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, 0); physics.addStaticBox(x, 0.5, (iz0 + iz1) / 2 + 3.6, 1, 0.5, 0.4); }
-      for (let i = 0; i < 18; i++) inst.add('bush', r.range(ix0 + 2, ix1 - 2), CURB_HEIGHT, r.range(iz0 + 2, iz1 - 2), r.range(0, 6), r.range(0.8, 1.3));
+      for (let i = 0; i < 10; i++) { const x = r.range(ix0 + 4, ix1 - 4); props.add('bench', x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, 0); physics.addStaticBox(x, 0.5, (iz0 + iz1) / 2 + 3.6, 1, 0.5, 0.4); }
+      for (let i = 0; i < 18; i++) props.add('bush', r.range(ix0 + 2, ix1 - 2), CURB_HEIGHT, r.range(iz0 + 2, iz1 - 2), r.range(0, 6), r.range(0.8, 1.3));
     } else if (b.kind === 'plaza' || b.district === 'heights') {
       for (let i = 0; i < (b.kind === 'plaza' ? 14 : 4); i++) {
         const x = r.range(ix0 + 4, ix1 - 4), z = r.range(iz0 + 4, iz1 - 4);
         if (city.lots.some(l => l.blockId === b.id && Math.abs(l.x - x) < l.w / 2 + 3 && Math.abs(l.z - z) < l.d / 2 + 3)) continue;
-        inst.add(`tree${r.int(0, 2)}`, x, CURB_HEIGHT, z, r.range(0, 6.28), 1.1); physics.addStaticCylinder(x, 2, z, 2, 0.3);
+        props.add(`tree${r.int(0, 2)}`, x, CURB_HEIGHT, z, r.range(0, 6.28), 1.1); physics.addStaticCylinder(x, 2, z, 2, 0.3);
       }
     } else if (b.district === 'strand') {
       // beach palms along the promenade
     }
   }
-  for (let x = minX + 12; x < maxX - 8; x += 26) { const z = maxZ + 12 + Math.sin(x) * 3; inst.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
+  for (let x = minX + 12; x < maxX - 8; x += 26) { const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
 
   chunkMeshes.push(...inst.build(root));
+  for (const m of props.build(root)) { m.userData.small = true; chunkMeshes.push(m); }
 
   // ---------- Pier and Ferris wheel landmark ----------
   const ferris = buildPier(root, physics, facade, maxZ + 7);

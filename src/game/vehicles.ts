@@ -63,6 +63,8 @@ export class VehicleManager {
       const braking = v.input.throttle < -0.1 && v.speed > 1;
       v.update(dt, night, time, braking || v.input.handbrake);
       const dist = v.position.distanceTo(listener);
+      v.group.visible = dist < 260 || v === playerVehicle;
+      v.bodyMesh.castShadow = dist < 60;
       // Skid marks + tyre smoke
       const c = v.phys.ctrl;
       for (let i = 0; i < v.tpl.layout.wheels.length; i++) {

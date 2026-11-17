@@ -1,0 +1,375 @@
+/** Story missions (five, each a different kind of play), mission markers and the shared mission framework. */
+import * as THREE from 'three';
+import type { Game } from './game';
+import type { GameUI, MinimapBlip } from '../ui/contracts';
+import { PLACES, type Place } from './places';
+import type { Npc } from '../actors/npc';
+import type { Vehicle } from '../vehicles/vehicle';
+import type { AiCar } from './traffic';
+import { nearestLane, samplePath } from '../world/citymap';
+import type { WeaponId } from '../combat/weapons';
+import type { Look } from '../actors/human';
+import { groups, G_STATIC } from '../core/physics';
+
+export type MissionStatus = 'running' | 'passed' | 'failed';
+export interface MissionRun { objective: string; timer: number | null; blips(): MinimapBlip[]; update(dt: number): MissionStatus; failReason: string; cleanup(): void }
+export interface MissionDef { id: string; title: string; tagline: string; contact: Place; reward: number; requires: string | null; hour?: number; create(ctx: MissionCtx): MissionRun }
+
+const GANG_LOOK = (i: number): Look => ({ skin: ['#c68c63', '#8a5a3b', '#f1c9a5', '#a8714c'][i % 4], top: ['#1f6f6a', '#2a2a2e', '#1f6f6a'][i % 3], bottom: '#1d1f24', shoes: '#e9e4d8', hair: '#1f1a17', hat: '#1f6f6a', detail: '#d9b44a', sleeves: i % 2 ? 'long' : 'short', legs: 'pants', hairStyle: (['buzz', 'short', 'bald', 'curly'] as const)[i % 4], hatStyle: i % 3 === 0 ? 'beanie' : 'none', height: 0.98 + (i % 3) * 0.03, build: 1.02 });
+
+/** Ring markers for objectives (shared look). */
+export class Marker {
+  group = new THREE.Group();
+  constructor(scene: THREE.Scene, public pos: THREE.Vector3, public radius: number, color: string, tall = 6) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, tall, 32, 1, true), mat);
+    cyl.position.y = tall / 2;
+    const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.86, radius, 40).rotateX(-Math.PI / 2), ringMat);
+    ring.position.y = 0.06;
+    this.group.add(cyl, ring);
+    this.group.position.copy(pos);
+    this.group.renderOrder = 3;
+    scene.add(this.group);
+  }
+  update(t: number) { const s = 1 + Math.sin(t * 3) * 0.04; this.group.children[0].scale.set(s, 1, s); }
+  inside(p: THREE.Vector3, yTol = 3) { return Math.hypot(p.x - this.pos.x, p.z - this.pos.z) < this.radius && Math.abs(p.y - this.pos.y) < yTol; }
+  dispose() { this.group.removeFromParent(); }
+}
+
+export class MissionCtx {
+  private lines: { text: string; speaker: string; t: number }[] = [];
+  private lineT = 0;
+  constructor(public game: Game, public ui: GameUI) { }
+  get player() { return this.game.player; }
+  get playerPos() { return this.game.player.pos; }
+  say(lines: [string, string][]) { for (const [speaker, text] of lines) this.lines.push({ speaker, text, t: Math.max(2.6, text.length * 0.055) }); }
+  tickDialogue(dt: number) {
+    if (!this.lines.length) return;
+    if (this.lineT === 0) this.ui.subtitle(this.lines[0].text, this.lines[0].speaker);
+    this.lineT += dt;
+    if (this.lineT > this.lines[0].t) { this.lines.shift(); this.lineT = 0; if (!this.lines.length) this.ui.subtitle(null); }
+  }
+  clearDialogue() { this.lines = []; this.lineT = 0; this.ui.subtitle(null); }
+  marker(p: { x: number; z: number; y?: number }, r = 4, color = '#ffc37e') { return new Marker(this.game.renderer.scene, new THREE.Vector3(p.x, this.groundY(p.x, p.z, p.y), p.z), r, color); }
+  groundY(x: number, z: number, hint = 0.2) {
+    const hit = this.game.physics.ray(x, 40, z, 0, -1, 0, 80, groups(0xffff, G_STATIC));
+    return hit ? 40 - hit.toi : hint;
+  }
+  gang(x: number, z: number, weapon: WeaponId, i: number, hostile = false): Npc {
+    const n = this.game.pop.spawn('gang', x, z, this.groundY(x, z) + 0.05, GANG_LOOK(i), weapon);
+    n.persistent = true; n.hostile = hostile; n.brain = 'idle'; n.accuracy = 1.15; n.char.maxHealth = n.char.health = 70; n.dropMoney = 40;
+    n.char.human.setState(i % 3 === 0 ? 'talk' : 'loco');
+    return n;
+  }
+  car(kind: Parameters<Game['vehicles']['spawn']>[0], x: number, z: number, yaw: number, paint = 0): Vehicle {
+    const v = this.game.vehicles.spawn(kind, x, z, yaw, paint, this.groundY(x, z) + 0.2); v.persistent = true; return v;
+  }
+  inVehicle() { return this.game.playerVehicle; }
+  near(p: { x: number; z: number }, r: number) { return Math.hypot(this.playerPos.x - p.x, this.playerPos.z - p.z) < r; }
+}
+
+// ---------------------------------------------------------------- Mission 1: delivery against the clock
+const m1: MissionDef = {
+  id: 'm1', title: 'Warm Welcome', tagline: 'A package, a deadline, a city you barely know.', contact: PLACES.juno, reward: 600, requires: null,
+  create(ctx) {
+    const pickup = { x: 470, z: 120 }, drop = PLACES.garage;
+    let stage = 0; let timer: number | null = null; let mk: Marker | null = null;
+    ctx.say([['Juno', 'Rae! Back in Port Meridian and already broke, huh?'], ['Juno', 'Easy money: a package at the Cannery Docks gate. Grab any car.'], ['Juno', 'Bring it to the Glow Garage on 5th. The buyer leaves in two and a half minutes.']]);
+    ctx.ui.showControlsHint('Walk up to a car and press F to get in. W/S to drive and brake, Space for the handbrake.', 8);
+    const run: MissionRun = {
+      objective: 'Get a car', timer: null, failReason: '',
+      blips: () => stage === 0 ? [] : [{ x: stage === 1 ? pickup.x : drop.x, z: stage === 1 ? pickup.z : drop.z, kind: 'target', label: stage === 1 ? 'Package' : 'Glow Garage', pulse: true }],
+      update: dt => {
+        if (stage === 0) { if (ctx.inVehicle()) { stage = 1; mk = ctx.marker(pickup, 5); timer = 150; run.objective = 'Drive to the Cannery Docks gate'; } }
+        else if (stage === 1) {
+          if (mk && mk.inside(ctx.playerPos)) { mk.dispose(); stage = 2; mk = ctx.marker(drop, 4.5, '#7ff3ff'); run.objective = 'Deliver the package to the Glow Garage'; ctx.game.audio.play('checkpoint'); ctx.say([['Juno', 'Got it? Good. Now don\'t scratch the paint. Or do. Just hurry.']]); }
+        } else if (stage === 2) {
+          if (mk && mk.inside(ctx.playerPos) && ctx.inVehicle() && Math.abs(ctx.inVehicle()!.speed) < 3) return 'passed';
+          if (mk && mk.inside(ctx.playerPos) && !ctx.inVehicle()) return 'passed';
+        }
+        if (timer !== null) { timer -= dt; run.timer = Math.max(0, timer); if (timer <= 0) { run.failReason = 'The buyer walked.'; return 'failed'; } }
+        return 'running';
+      },
+      cleanup: () => { mk?.dispose(); },
+    };
+    return run;
+  },
+};
+
+// ---------------------------------------------------------------- Mission 2: tail a car without being spotted
+const m2: MissionDef = {
+  id: 'm2', title: 'Tail Light', tagline: 'Follow the courier. Not too close.', contact: PLACES.juno, reward: 900, requires: 'm1',
+  create(ctx) {
+    const g = ctx.game;
+    const start = nearestLane(g.city, -150, -100)!;
+    let car: AiCar | null = null; let stage = 0; let closeT = 0; let farT = 0; let started = 0;
+    const dest = new THREE.Vector3(345, 0, 300);
+    ctx.say([['Juno', 'The buyer paid with a marked card. The courier delivering the rest is pulling out on Marrow Ave.'], ['Juno', 'Follow it to the drop. Stay close enough to see it, far enough not to be seen.']]);
+    const run: MissionRun = {
+      objective: 'Get in a car and find the courier', timer: null, failReason: '',
+      blips: () => car ? [{ x: car.v.position.x, z: car.v.position.z, kind: 'target', label: 'Courier', pulse: true }] : [],
+      update: dt => {
+        if (!car) {
+          // spawn the courier on a lane near Marrow Ave when the player is ready
+          const lane = start.lane; samplePath(lane, Math.min(lane.length - 5, start.s), { x: 0, z: 0, dx: 0, dz: 0 });
+          car = g.traffic.spawnOnLane('van', lane, Math.min(lane.length - 10, Math.max(5, start.s)), 'goto');
+          car.persistent = true; car.v.persistent = true; car.target = dest.clone(); car.arriveDist = 6;
+          car.v.locked = true; car.driver.persistent = true;
+          return 'running';
+        }
+        const v = car.v;
+        if (v.destroyed || !car.driver.alive) { run.failReason = 'The courier is out of action. The trail is cold.'; return 'failed'; }
+        const d = v.position.distanceTo(ctx.playerPos);
+        if (stage === 0) { run.objective = 'Follow the courier van'; if (d < 120) { stage = 1; started = g.time; } if (g.time - started > 0 && d > 400) { run.failReason = 'You never caught up.'; return 'failed'; } }
+        if (stage === 1) {
+          run.objective = d < 14 ? 'Too close! Back off' : d > 80 ? 'Don\'t lose the courier' : 'Follow the courier van';
+          if (d < 14) closeT += dt; else closeT = Math.max(0, closeT - dt * 0.5);
+          if (d > 95) farT += dt; else farT = 0;
+          if (closeT > 3.5) { run.failReason = 'The courier spotted you.'; return 'failed'; }
+          if (farT > 6) { run.failReason = 'You lost the courier.'; return 'failed'; }
+          if (v.position.distanceTo(dest) < 14 && Math.abs(v.speed) < 1.5) { ctx.say([['Juno', 'A boathouse on the Strand. Now we know where they keep it. Nice driving.']]); return 'passed'; }
+          // keep the courier's lane routing towards the destination; obey signals for a natural drive
+          car.mode = v.position.distanceTo(dest) < 40 ? 'goto' : 'goto';
+        }
+        return 'running';
+      },
+      cleanup: () => { if (car) { car.persistent = false; car.v.persistent = false; car.v.locked = false; car.driver.persistent = false; car.mode = 'cruise'; car.target = null; } },
+    };
+    return run;
+  },
+};
+
+// ---------------------------------------------------------------- Mission 3: shootout at the docks, then escape the heat
+const m3: MissionDef = {
+  id: 'm3', title: 'Breakwater', tagline: 'The Tidecutters crew stole the shipment. Take it back.', contact: PLACES.marlo, reward: 1500, requires: 'm2',
+  create(ctx) {
+    const g = ctx.game;
+    const site = new THREE.Vector3(398, 0, 160);
+    const enemies: Npc[] = []; let stage = 0; let caseMk: Marker | null = null; let siteMk: Marker | null = null;
+    if (!g.pcombat.inv.weapons.pistol.owned) g.pcombat.give('pistol', 60); else g.pcombat.give('pistol', 36);
+    ctx.say([['Marlo', 'So you\'re the driver Juno keeps bragging about.'], ['Marlo', 'The Tidecutters hit our shipment. It\'s sitting in a container yard at the Cannery Docks.'], ['Marlo', 'Here, take this pistol. Get the case back. The police will come running, so lose them after.']]);
+    ctx.ui.showControlsHint('Hold Right Mouse to aim, Left Mouse to fire, R to reload. Hold Tab for the weapon wheel.', 8);
+    siteMk = ctx.marker(site, 10, '#ff8a6a');
+    const run: MissionRun = {
+      objective: 'Go to the container yard at the Cannery Docks', timer: null, failReason: '',
+      blips: () => {
+        if (stage === 0) return [{ x: site.x, z: site.z, kind: 'target', label: 'Container yard', pulse: true }];
+        if (stage === 1) return enemies.filter(e => e.alive).map(e => ({ x: e.pos.x, z: e.pos.z, kind: 'enemy' as const }));
+        if (stage === 2) return [{ x: site.x, z: site.z + 4, kind: 'target', label: 'Case', pulse: true }];
+        return [];
+      },
+      update: () => {
+        if (stage === 0 && ctx.near(site, 110)) {
+          siteMk?.dispose(); siteMk = null;
+          const spots: [number, number, WeaponId][] = [[388, 140, 'pistol'], [404, 146, 'smg'], [395, 168, 'pistol'], [410, 175, 'pistol'], [380, 182, 'shotgun'], [418, 158, 'smg'], [372, 160, 'pistol'], [402, 190, 'pistol']];
+          spots.forEach(([x, z, w], i) => enemies.push(ctx.gang(x, z, w, i)));
+          stage = 1; run.objective = 'Take out the Tidecutters';
+        }
+        if (stage === 1) {
+          for (const e of enemies) if (e.alive && !e.hostile && (ctx.near(e.pos, 40) || e.char.health < e.char.maxHealth)) { for (const o of enemies) { o.hostile = true; if (o.brain === 'idle') o.brain = 'chase'; o.lastSeen.copy(ctx.playerPos); } break; }
+          const left = enemies.filter(e => e.alive).length;
+          run.objective = left ? `Take out the Tidecutters (${left} left)` : '';
+          if (!left) { stage = 2; caseMk = ctx.marker({ x: site.x, z: site.z + 4 }, 1.6, '#7ff3ff'); run.objective = 'Grab the case'; g.audio.setMusicMood('tension'); }
+        }
+        if (stage === 2 && caseMk && caseMk.inside(ctx.playerPos)) {
+          caseMk.dispose(); caseMk = null; stage = 3; g.audio.play('pickup');
+          g.police.state.add('kill'); g.police.state.lastSeen.copy(ctx.playerPos); g.police.onHeatChange?.(g.police.heat, false);
+          ctx.say([['Marlo', 'Sirens. Of course. Lose them and I\'ll call it a good night.']]);
+        }
+        if (stage === 3) { run.objective = 'Lose the heat'; if (g.police.heat === 0) { g.audio.setMusicMood('none'); return 'passed'; } }
+        return 'running';
+      },
+      cleanup: () => { siteMk?.dispose(); caseMk?.dispose(); for (const e of enemies) { e.persistent = false; if (e.alive) { e.hostile = false; e.brain = 'idle'; } } g.audio.setMusicMood('none'); },
+    };
+    return run;
+  },
+};
+
+// ---------------------------------------------------------------- Mission 4: steal a guarded car, shake 3 heat, deliver it intact
+const m4: MissionDef = {
+  id: 'm4', title: 'Night Market', tagline: 'One very particular car. Delivered spotless.', contact: PLACES.marlo, reward: 2500, requires: 'm3', hour: 21.5,
+  create(ctx) {
+    const g = ctx.game;
+    const lot = new THREE.Vector3(100, 0, -150);
+    let target: Vehicle | null = null; const guards: Npc[] = []; let stage = 0; let mk: Marker | null = null;
+    ctx.say([['Marlo', 'A collector wants a Pipit GT. Orange. There\'s one parked in the Heights plaza.'], ['Marlo', 'It\'s guarded, and the moment it moves the city will notice. Lose the heat before you bring it to the Glow Garage.'], ['Marlo', 'And keep it in one piece. Collectors are picky.']]);
+    const run: MissionRun = {
+      objective: 'Find the Pipit GT in the Meridian Heights plaza', timer: null, failReason: '',
+      blips: () => {
+        if (stage <= 1 && target) return [{ x: target.position.x, z: target.position.z, kind: 'target', label: 'Pipit GT', pulse: true }];
+        if (stage <= 1) return [{ x: lot.x, z: lot.z, kind: 'target', label: 'Heights plaza', pulse: true }];
+        if (stage === 2 && target && g.playerVehicle !== target) return [{ x: target.position.x, z: target.position.z, kind: 'target', label: 'Pipit GT' }];
+        return [{ x: PLACES.garage.x, z: PLACES.garage.z, kind: 'garage', label: 'Glow Garage', pulse: true }];
+      },
+      update: () => {
+        if (!target) {
+          target = ctx.car('coupe', lot.x, lot.z, Math.PI / 2, 0);
+          target.material.userData.u.uPaint.value.set('#f26b3a').convertSRGBToLinear();
+          const pts: [number, number, WeaponId][] = [[94, -146, 'pistol'], [106, -156, 'smg'], [108, -143, 'pistol']];
+          pts.forEach(([x, z, w], i) => guards.push(ctx.gang(x, z, w, i + 4)));
+        }
+        if (target.destroyed) { run.failReason = 'The Pipit GT was destroyed.'; return 'failed'; }
+        if (stage === 0 && ctx.near(lot, 30)) { for (const gd of guards) { gd.hostile = true; } stage = 1; run.objective = 'Steal the Pipit GT'; }
+        if (stage <= 1 && g.playerVehicle === target) {
+          stage = 2; for (const gd of guards) gd.hostile = true;
+          g.police.state.add('copKill'); g.police.state.lastSeen.copy(ctx.playerPos); g.police.onHeatChange?.(g.police.heat, false);
+          run.objective = 'Lose the heat'; g.audio.setMusicMood('action');
+        }
+        if (stage === 2) {
+          run.objective = g.playerVehicle !== target ? 'Get back in the Pipit GT' : g.police.heat > 0 ? 'Lose the heat' : 'Deliver the Pipit GT to the Glow Garage';
+          if (g.police.heat === 0 && !mk) mk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff');
+          if (mk && g.police.heat > 0) { mk.dispose(); mk = null; }
+          const health = target.health / target.spec.health;
+          if (health < 0.3) { run.failReason = 'The collector won\'t take a wreck.'; return 'failed'; }
+          if (mk && g.playerVehicle === target && mk.inside(ctx.playerPos) && Math.abs(target.speed) < 3) { g.audio.setMusicMood('none'); return 'passed'; }
+        }
+        return 'running';
+      },
+      cleanup: () => { mk?.dispose(); if (target) target.persistent = false; for (const gd of guards) { gd.persistent = false; if (gd.alive) { gd.hostile = false; gd.brain = 'idle'; } } g.audio.setMusicMood('none'); },
+    };
+    return run;
+  },
+};
+
+// ---------------------------------------------------------------- Mission 5: checkpoint street race at sunset
+export const RACE_ROUTE: { x: number; z: number }[] = [
+  { x: -350, z: 396 }, { x: -150, z: 396 }, { x: -50, z: 300 }, { x: 50, z: 200 }, { x: 150, z: 100 }, { x: 250, z: 2 }, { x: 350, z: -100 }, { x: 446, z: 0 }, { x: 446, z: 200 }, { x: 250, z: 396 }, { x: 52, z: 404 },
+];
+const m5: MissionDef = {
+  id: 'm5', title: 'Afterglow Run', tagline: 'Sunset. Three rivals. One city-wide race.', contact: PLACES.vesna, reward: 5000, requires: 'm4', hour: 18.4,
+  create(ctx) {
+    const g = ctx.game;
+    const startPos = { x: -440, z: 396 };
+    let stage = 0; let cp = 0; let mk: Marker | null = null; let rivals: AiCar[] = []; let countdown = 0; let myCar: Vehicle | null = null;
+    const rivalCp: number[] = [];
+    ctx.say([['Vesna', 'Everyone in this town knows Juno\'s new driver now. The Coastline crew want a race.'], ['Vesna', 'Coastal Drive to the docks and back to the pier. Win, and you\'ll never pay for a drink on the Strand again.']]);
+    const place = () => 1 + rivals.filter((r, i) => rivalCp[i] > cp || (rivalCp[i] === cp && r.v.position.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)) < ctx.playerPos.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)))).length;
+    const run: MissionRun = {
+      objective: 'Get to the start line on Coastal Drive', timer: null, failReason: '',
+      blips: () => stage < 2 ? [{ x: startPos.x, z: startPos.z, kind: 'checkpoint', label: 'Start', pulse: true }] : [{ ...RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)], kind: 'checkpoint', pulse: true }, ...(cp + 1 < RACE_ROUTE.length ? [{ ...RACE_ROUTE[cp + 1], kind: 'checkpoint' as const }] : []), ...rivals.map(r => ({ x: r.v.position.x, z: r.v.position.z, kind: 'vehicle' as const }))],
+      update: dt => {
+        if (stage === 0) {
+          if (!mk) { mk = ctx.marker(startPos, 6, '#ffc37e'); myCar = ctx.car('coupe', startPos.x - 8, startPos.z + 2, Math.PI / 2, 3); myCar.persistent = true; }
+          run.objective = g.playerVehicle ? 'Drive into the start marker' : 'Take the Pipit GT waiting at the start line';
+          if (g.playerVehicle && mk.inside(ctx.playerPos) && g.police.heat === 0) {
+            mk.dispose(); mk = null; stage = 1; countdown = 3.5;
+            const pv = g.playerVehicle;
+            pv.phys.teleport(startPos.x, pv.position.y + 0.2, startPos.z + 2, Math.PI / 2);
+            const lane = nearestLane(g.city, startPos.x + 12, startPos.z - 4)!;
+            rivals = [0, 1, 2].map(i => { const r = g.traffic.spawnOnLane('coupe', lane.lane, Math.max(4, lane.s - 4 + i * 0.1), 'goto'); r.persistent = true; r.v.persistent = true; r.driver.persistent = true; r.v.phys.teleport(startPos.x + (i - 1) * 0.5 - 4, 0.6, startPos.z - 3.5 + i * 3.6 - 3.6, Math.PI / 2); r.target = new THREE.Vector3(RACE_ROUTE[0].x, 0, RACE_ROUTE[0].z); r.arriveDist = -10; r.mode = 'goto'; r.maxSpeed = 31 - i * 1.5; return r; });
+            rivals.forEach((r, i) => { rivalCp[i] = 0; r.v.input.handbrake = true; });
+            g.blockedInput = true;
+          } else if (g.playerVehicle && mk.inside(ctx.playerPos) && g.police.heat > 0) run.objective = 'Lose the heat before the race';
+        } else if (stage === 1) {
+          countdown -= dt;
+          run.objective = countdown > 0.5 ? `Get ready… ${Math.ceil(countdown - 0.5)}` : 'GO!';
+          for (const r of rivals) { r.v.input.throttle = 0; r.v.input.handbrake = true; }
+          if (countdown <= 0.5) { stage = 2; g.blockedInput = false; mk = ctx.marker(RACE_ROUTE[0], 9, '#7ff3ff'); g.audio.play('checkpoint'); g.audio.setMusicMood('action'); }
+        } else if (stage === 2) {
+          const pos = place();
+          run.objective = `Race: checkpoint ${cp + 1}/${RACE_ROUTE.length}  ·  Position ${pos}/4`;
+          // rivals chase their own checkpoints
+          rivals.forEach((r, i) => {
+            if (!g.traffic.cars.includes(r)) return;
+            const c = RACE_ROUTE[Math.min(rivalCp[i], RACE_ROUTE.length - 1)];
+            r.target = new THREE.Vector3(c.x, 0, c.z); r.mode = 'goto'; r.ram = false;
+            if (r.v.position.distanceTo(r.target) < 14 && rivalCp[i] < RACE_ROUTE.length) rivalCp[i]++;
+          });
+          if (mk && mk.inside(ctx.playerPos, 5)) {
+            mk.dispose(); mk = null; cp++; g.audio.play('checkpoint');
+            if (cp >= RACE_ROUTE.length) {
+              const rank = 1 + rivalCp.filter(c => c >= RACE_ROUTE.length).length;
+              g.audio.setMusicMood('none');
+              if (rank === 1) { ctx.say([['Vesna', 'First across the line! Port Meridian is yours tonight.'], ['Juno', 'Told you. Best driver this side of the breakwater.']]); return 'passed'; }
+              run.failReason = `You finished ${rank === 2 ? '2nd' : rank === 3 ? '3rd' : '4th'}. Only first place counts.`; return 'failed';
+            }
+            mk = ctx.marker(RACE_ROUTE[cp], 9, '#7ff3ff');
+          }
+          if (!g.playerVehicle) run.objective = 'Get back in a car!';
+        }
+        return 'running';
+      },
+      cleanup: () => {
+        mk?.dispose(); g.blockedInput = false; g.audio.setMusicMood('none');
+        for (const r of rivals) { r.persistent = false; r.v.persistent = false; r.driver.persistent = false; r.mode = 'cruise'; r.target = null; }
+        if (myCar) myCar.persistent = false;
+      },
+    };
+    return run;
+  },
+};
+
+export const MISSIONS: MissionDef[] = [m1, m2, m3, m4, m5];
+
+/** Mission flow: markers at contacts, start/finish, rewards, failure and retry. */
+export class Missions {
+  completed = new Set<string>();
+  active: { def: MissionDef; run: MissionRun } | null = null;
+  private markers = new Map<string, Marker>();
+  private cooldown = 0;
+  onPassed: ((def: MissionDef) => void) | null = null;
+  constructor(public ctx: MissionCtx) { }
+  available(): MissionDef[] { return MISSIONS.filter(m => !this.completed.has(m.id) && (!m.requires || this.completed.has(m.requires))); }
+  get allDone() { return MISSIONS.every(m => this.completed.has(m.id)); }
+  blips(): MinimapBlip[] {
+    if (this.active) return this.active.run.blips();
+    return this.available().map(m => ({ x: m.contact.x, z: m.contact.z, kind: 'mission', label: `${m.contact.name}: ${m.title}` }));
+  }
+  get objective() { return this.active?.run.objective || null; }
+  get timer() { return this.active?.run.timer ?? null; }
+  start(def: MissionDef) {
+    const g = this.ctx.game;
+    if (def.hour !== undefined) g.hour = def.hour;
+    this.ctx.ui.missionCard(def.title, def.tagline, 'start');
+    g.audio.play('missionStart');
+    this.active = { def, run: def.create(this.ctx) };
+    for (const m of this.markers.values()) m.dispose();
+    this.markers.clear();
+  }
+  finish(status: 'passed' | 'failed', reason = '') {
+    const a = this.active; if (!a) return;
+    a.run.cleanup();
+    this.active = null;
+    const g = this.ctx.game;
+    if (status === 'passed') {
+      this.completed.add(a.def.id);
+      g.addMoney(a.def.reward);
+      if (a.def.id === 'm1') g.pcombat.give('pistol', 36);
+      if (a.def.id === 'm3') g.pcombat.give('smg', 90);
+      if (a.def.id === 'm4') g.pcombat.give('rifle', 75);
+      this.ctx.ui.missionCard('Mission passed', `${a.def.title}  ·  +$${a.def.reward.toLocaleString()}`, 'passed');
+      g.audio.play('missionPass');
+      this.onPassed?.(a.def);
+      if (this.allDone) setTimeout(() => this.ctx.ui.missionCard('Port Meridian is yours', 'All missions complete. The city is still open: explore, collect, cause trouble.', 'passed'), 4500);
+    } else {
+      this.ctx.clearDialogue();
+      this.ctx.ui.missionCard('Mission failed', reason || 'Try again from the marker.', 'failed');
+      g.audio.play('missionFail');
+    }
+    this.cooldown = 4;
+  }
+  update(dt: number) {
+    const g = this.ctx.game;
+    this.ctx.tickDialogue(dt);
+    this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.active) {
+      const st = this.active.run.update(dt);
+      if (st !== 'running') this.finish(st, this.active.run.failReason);
+      return;
+    }
+    // markers for available missions
+    const avail = this.available();
+    for (const [id, mk] of this.markers) if (!avail.some(m => m.id === id)) { mk.dispose(); this.markers.delete(id); }
+    for (const m of avail) if (!this.markers.has(m.id)) this.markers.set(m.id, this.ctx.marker(m.contact, 1.6, '#ffc37e'));
+    for (const [, mk] of this.markers) mk.update(g.time);
+    if (this.cooldown > 0 || g.deathT >= 0) return;
+    for (const m of avail) {
+      const mk = this.markers.get(m.id);
+      if (mk && mk.inside(g.player.pos, 2.5) && !g.playerVehicle) { this.start(m); break; }
+    }
+  }
+  /** Player went down / got arrested: fail the active mission. */
+  onPlayerDown(kind: 'down' | 'busted') { if (this.active) this.finish('failed', kind === 'down' ? 'You were taken out.' : 'You were arrested.'); }
+  abort() { if (this.active) { this.active.run.cleanup(); this.active = null; } for (const m of this.markers.values()) m.dispose(); this.markers.clear(); this.ctx.clearDialogue(); }
+}

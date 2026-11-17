@@ -477,12 +477,16 @@ export class Game {
   }
   private cullChunks() {
     const cp = this.renderer.camera.position; const max = this.renderer.quality.drawDistance + 60;
+    const shadowR = this.renderer.quality.shadowRange * 1.3 + 10;
     for (const m of this.visuals.chunkMeshes) {
       const mesh = m as THREE.Mesh;
       const bs = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
       if (!bs) continue;
       const d = Math.hypot(bs.center.x - cp.x, bs.center.z - cp.z) - bs.radius;
-      mesh.visible = d < max;
+      mesh.visible = d < (mesh.userData.small ? Math.min(max, 200) : max);
+      if (mesh.userData.shadow === undefined) mesh.userData.shadow = mesh.castShadow;
+      const ds = Math.hypot(bs.center.x - this.player.pos.x, bs.center.z - this.player.pos.z) - bs.radius;
+      mesh.castShadow = mesh.userData.shadow && ds < shadowR;
     }
   }
   // ---------------- HUD data ----------------

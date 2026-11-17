@@ -193,9 +193,9 @@ function synthwave(c: Ctx) {
 function lofi(c: Ctx) {
   const { s, sec, ev, r } = c; const v = shape(c); const ch = chord(c, 4);
   const pat = r(); // per-bar decision
-  if (s === 0) for (const m of voiceInRange(ch, 55)) ev.push({ inst: 'keys', midi: m, dur: 7, vel: 0.55 * v });
-  if (s === (pat < 0.5 ? 7 : 10) && sec.name !== 'outro') for (const m of voiceInRange(ch, 55).slice(1)) ev.push({ inst: 'keys', midi: m, dur: 5, vel: 0.35 * v });
   const groove = sec.name === 'verse' || sec.name === 'chorus';
+  if (s === 0) for (const m of voiceInRange(ch, 55)) ev.push({ inst: 'keys', midi: m, dur: groove ? 7 : 13, vel: 0.55 * v });
+  if (s === (pat < 0.5 ? 7 : 10) && sec.name !== 'outro') for (const m of voiceInRange(ch, 55).slice(1)) ev.push({ inst: 'keys', midi: m, dur: groove ? 5 : 6, vel: 0.35 * v });
   if (groove) {
     const b = bassNote(c) + 12;
     if (s === 0) ev.push({ inst: 'bass', midi: b, dur: 6, vel: 0.75 });
@@ -205,7 +205,7 @@ function lofi(c: Ctx) {
     if (s % 2 === 0) ev.push({ inst: 'hat', midi: 0, dur: 1, vel: s % 4 === 0 ? 0.35 : 0.22, pan: 0.2 });
     if (s === 14 && pat > 0.75) ev.push({ inst: 'rim', midi: 0, dur: 1, vel: 0.3 });
     if (sec.name === 'chorus') lead(c, 'bell', 0.6, c.song.root + 24);
-  }
+  } else if (c.barIn >= 1 && s % 4 === 2 && (sec.name === 'intro' || c.barIn < sec.bars - 1)) ev.push({ inst: 'hat', midi: 0, dur: 1, vel: 0.32, pan: 0.2 });
 }
 
 function funk(c: Ctx) {

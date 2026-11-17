@@ -64,6 +64,24 @@ function crackleBuffer(ctx: BaseAudioContext, seconds: number, rand: () => numbe
   return buf;
 }
 
+/** Copy of `b` whose tail is crossfaded into its head so it loops without a click. */
+export function makeLoopable(ctx: BaseAudioContext, b: AudioBuffer, fadeSec = 0.08): AudioBuffer {
+  const fade = Math.min(Math.floor(fadeSec * b.sampleRate), Math.floor(b.length / 4));
+  if (fade < 16) return b;
+  const len = b.length - fade; const out = ctx.createBuffer(b.numberOfChannels, len, b.sampleRate);
+  for (let c = 0; c < b.numberOfChannels; c++) {
+    const src = b.getChannelData(c); const dst = out.getChannelData(c);
+    dst.set(src.subarray(0, len));
+    for (let i = 0; i < fade; i++) { const a = i / fade; const w1 = Math.sin(a * Math.PI / 2), w0 = Math.cos(a * Math.PI / 2); dst[i] = src[i] * w1 + src[len + i] * w0; }
+  }
+  return out;
+}
+
+/** Store a decoded sample in the kit (looped samples get a seamless loop point). */
+export function registerSample(k: Kit, name: SampleName, b: AudioBuffer): void {
+  k.samples[name] = name === 'impact' ? b : makeLoopable(k.ctx, b);
+}
+
 /** Normalised tanh shaper curve. */
 export function shaperCurve(drive: number, n = 2048): Float32Array<ArrayBuffer> {
   const c = new Float32Array(n); const norm = Math.tanh(drive);

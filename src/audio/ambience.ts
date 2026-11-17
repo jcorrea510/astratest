@@ -14,7 +14,7 @@ export function ambienceLevels(a: AmbienceState): AmbienceLevels {
     hum: (0.1 + 0.12 * traffic) * (1 - 0.35 * night) * (1 - 0.5 * park) * out,
     traffic: (0.04 + 0.32 * traffic) * (1 - 0.4 * night) * (1 - 0.4 * park) * out,
     wind: (0.07 + 0.06 * night + 0.07 * water) * out,
-    waves: 0.55 * water * out,
+    waves: 0.32 * water * out,
     crickets: night * (0.2 + 0.8 * park) * (1 - 0.5 * traffic) * out,
     birds: day * (0.12 + 0.88 * park) * (1 - 0.4 * traffic) * out,
     indoorsCut: 18000 * Math.pow(500 / 18000, indoors),
@@ -79,7 +79,7 @@ export class Ambience {
 
   private call(t: number, level: number): void {
     const k = this.k, ctx = k.ctx; const p = ctx.createStereoPanner(); p.pan.value = k.rand() * 1.6 - 0.8;
-    const lvl = gain(ctx, (0.02 + 0.03 * k.rand()) * clamp(level, 0, 1)); lvl.connect(p); p.connect(this.g.birds);
+    const lvl = gain(ctx, (0.035 + 0.045 * k.rand()) * clamp(level, 0, 1)); lvl.connect(p); p.connect(this.g.birds);
     const notes = 2 + Math.floor(k.rand() * 5); const base = 2400 + k.rand() * 2200; const kind = Math.floor(k.rand() * 3);
     let at = t;
     for (let i = 0; i < notes; i++) {

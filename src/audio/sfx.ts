@@ -106,7 +106,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
     const end = gun(a, { crackHz: 3600, crackDur: 0.011, crackAmp: 1.35, bodyHz: 950, bodyQ: 1.2, bodyDec: 0.13, bodyAmp: 1.1, thumpFrom: 150, thumpTo: 48, thumpDec: 0.14, thumpAmp: 0.9, tailHz: 1300, tailDec: 0.55, tailAmp: 0.32, drive: 2.8 });
     return mx(end, burst(a.kit, a.out, a.t + 0.002, { type: 'bandpass', f: 5200 * a.p, q: 2, peak: 0.25, a: 0.0003, dec: 0.02 }));
   },
-  punch: ({ kit: k, out, t, p }) => burst(k, out, t, { type: 'bandpass', f: 420 * p, f2: 1900 * p, glideDur: 0.11, q: 2.2, a: 0.05, peak: 0.55, dec: 0.12, color: 'pink' }),
+  punch: ({ kit: k, out, t, p }) => burst(k, out, t, { type: 'bandpass', f: 420 * p, f2: 1900 * p, glideDur: 0.11, q: 1.6, a: 0.05, peak: 0.9, dec: 0.12, color: 'pink' }),
   punchHit: ({ kit: k, out, t, p }) => {
     let end = tone(k, out, t, { f: 135 * p, f2: 52 * p, glideDur: 0.08, peak: 0.95, a: 0.001, dec: 0.13 });
     end = mx(end, burst(k, out, t, { type: 'lowpass', f: 1300 * p, peak: 0.55, a: 0.0008, dec: 0.05 }));
@@ -159,7 +159,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
     burst(k, out, t, { type: 'lowpass', f: R(k, 550, 900) * p, peak: 0.42, a: 0.003, dec: R(k, 0.05, 0.08), color: 'pink' }),
     burst(k, out, t + 0.004, { type: 'bandpass', f: R(k, 2000, 3200), q: 1.5, peak: 0.07, a: 0.001, dec: 0.018 }),
     tone(k, out, t, { f: 85 * p, f2: 55, peak: 0.18, a: 0.002, dec: 0.05 })),
-  jump: ({ kit: k, out, t, p }) => mx(burst(k, out, t, { type: 'bandpass', f: 800 * p, f2: 1700 * p, q: 1.3, a: 0.04, peak: 0.25, dec: 0.16, color: 'pink' }), burst(k, out, t, { type: 'lowpass', f: 600, peak: 0.2, a: 0.002, dec: 0.05 })),
+  jump: ({ kit: k, out, t, p }) => mx(burst(k, out, t, { type: 'bandpass', f: 800 * p, f2: 1700 * p, q: 1.0, a: 0.04, peak: 0.6, dec: 0.16, color: 'pink' }), burst(k, out, t, { type: 'lowpass', f: 600, peak: 0.45, a: 0.002, dec: 0.06, color: 'pink' }), tone(k, out, t, { f: 120 * p, f2: 70, peak: 0.25, a: 0.003, dec: 0.06 })),
   land: ({ kit: k, out, t, p }) => mx(
     tone(k, out, t, { f: 92 * p, f2: 45, peak: 0.6, a: 0.002, dec: 0.12 }),
     burst(k, out, t, { type: 'lowpass', f: 620 * p, peak: 0.55, a: 0.002, dec: 0.1, color: 'pink' }),
@@ -204,7 +204,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
     return end;
   },
   uiClick: ({ kit: k, out, t }) => mx(tone(k, out, t, { f: 2100, peak: 0.14, a: 0.001, dec: 0.035 }), tone(k, out, t, { type: 'triangle', f: 1050, peak: 0.08, a: 0.001, dec: 0.05 })),
-  uiHover: ({ kit: k, out, t }) => tone(k, out, t, { f: 2800, peak: 0.05, a: 0.003, dec: 0.03 }),
+  uiHover: ({ kit: k, out, t }) => tone(k, out, t, { f: 2800, peak: 0.08, a: 0.003, dec: 0.03 }),
   uiBack: ({ kit: k, out, t }) => mx(tone(k, out, t, { type: 'triangle', f: 1400, peak: 0.12, a: 0.002, dec: 0.05 }), tone(k, out, t + 0.05, { type: 'triangle', f: 1050, peak: 0.12, a: 0.002, dec: 0.07 })),
   missionStart: ({ kit: k, out, t }) => {
     const ctx = k.ctx; let end = burst(k, out, t, { type: 'bandpass', f: 400, f2: 4500, glideDur: 0.5, q: 1.5, a: 0.45, peak: 0.18, dec: 0.08 });

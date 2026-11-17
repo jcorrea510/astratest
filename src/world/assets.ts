@@ -6,7 +6,7 @@ export const KAYKIT_MODELS = [
   'building_A_withoutBase', 'building_B_withoutBase', 'building_C_withoutBase', 'building_D_withoutBase',
   'building_E_withoutBase', 'building_F_withoutBase', 'building_G_withoutBase', 'building_H_withoutBase',
   'car_sedan', 'car_taxi', 'car_police', 'car_hatchback', 'car_stationwagon',
-  'streetlight', 'trafficlight_A', 'firehydrant', 'bench', 'trash_A', 'trash_B', 'dumpster', 'bush', 'box_A', 'box_B', 'watertower',
+  'streetlight', 'trafficlight_A', 'firehydrant', 'bench', 'trash_A', 'dumpster', 'bush', 'watertower',
 ] as const;
 export type KayKitName = (typeof KAYKIT_MODELS)[number];
 

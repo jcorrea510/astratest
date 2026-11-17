@@ -21,14 +21,14 @@ export function playNote(k: Kit, outs: MusicOuts, style: StyleId, e: NoteEv, t: 
   switch (e.inst as Inst) {
     case 'pad': case 'drone': {
       const lp = bq(ctx, 'lowpass', style === 'synthwave' ? 1500 : style === 'tension' ? 700 : 1200, 0.8);
-      const g = gain(ctx, 0); const a = Math.min(0.5, dur * 0.3); const end = ahr(g.gain, t, a, v * (e.inst === 'drone' ? 0.05 : 0.045), Math.max(0, dur - a), 0.7);
+      const g = gain(ctx, 0); const a = Math.min(0.5, dur * 0.3); const end = ahr(g.gain, t, a, v * (e.inst === 'drone' ? 0.06 : 0.07), Math.max(0, dur - a), 0.7);
       for (const d of [-9, 9]) { const o = osc(ctx, 'sawtooth', f, t, end - t + 0.05); o.detune.value = d + wob; o.connect(lp); }
       if (style === 'synthwave') { glide(lp.frequency, t, 900, 2200, dur * 0.8); }
       lp.connect(g); send(g, outs, 0.55, 0); return end;
     }
     case 'arp': {
       const o = osc(ctx, 'square', f, t, 0.3); const lp = bq(ctx, 'lowpass', 3400, 4); glide(lp.frequency, t, 3400, 650, 0.16);
-      const g = gain(ctx, 0); const end = perc(g.gain, t, 0.002, v * 0.075, 0.24); o.connect(lp); lp.connect(g); send(g, outs, 0.25, 0.35, e.pan); return end;
+      const g = gain(ctx, 0); const end = perc(g.gain, t, 0.002, v * 0.1, 0.24); o.connect(lp); lp.connect(g); send(g, outs, 0.25, 0.35, e.pan); return end;
     }
     case 'bass': {
       const g = gain(ctx, 0); const funk = style === 'funk'; const lofi = style === 'lofi';
@@ -48,18 +48,19 @@ export function playNote(k: Kit, outs: MusicOuts, style: StyleId, e: NoteEv, t: 
       lp.connect(g); send(g, outs, 0.3, 0.38, 0.1); return end;
     }
     case 'keys': {
-      const lp = bq(ctx, 'lowpass', 2400, 0.7); const g = gain(ctx, 0); const end = perc(g.gain, t, 0.004, v * 0.07, dur + 0.9);
+      const lp = bq(ctx, 'lowpass', 2400, 0.7); const g = gain(ctx, 0); const pk = v * 0.15; const end = t + dur + 0.9;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + 0.006); g.gain.setTargetAtTime(pk * 0.35, t + 0.006, 0.35); g.gain.setTargetAtTime(0, t + dur, 0.17); g.gain.setValueAtTime(0, end);
       const a = osc(ctx, 'sine', f, t, end - t + 0.05); const b = osc(ctx, 'triangle', f, t, end - t + 0.05); const c = osc(ctx, 'sine', f * 2, t, 0.4);
       a.detune.value = wob; b.detune.value = wob + 4; const cg = gain(ctx, 0); perc(cg.gain, t, 0.002, 0.35, 0.3); c.connect(cg); cg.connect(lp);
       const bg = gain(ctx, 0.4); a.connect(lp); b.connect(bg); bg.connect(lp); lp.connect(g); send(g, outs, 0.35, 0); return end;
     }
     case 'bell': {
-      const g = gain(ctx, 0); const end = perc(g.gain, t, 0.002, v * 0.065, Math.max(0.8, dur));
+      const g = gain(ctx, 0); const end = perc(g.gain, t, 0.002, v * 0.1, Math.max(0.8, dur));
       const a = osc(ctx, 'sine', f, t, end - t + 0.05); a.detune.value = wob; const b = osc(ctx, 'sine', f * 3.01, t, 0.5); const bg = gain(ctx, 0); perc(bg.gain, t, 0.002, 0.25, 0.4);
       a.connect(g); b.connect(bg); bg.connect(g); send(g, outs, 0.45, 0.3, -0.15); return end;
     }
     case 'clav': {
-      const o = osc(ctx, 'square', f, t, 0.2); const bp = bq(ctx, 'bandpass', 1500, 1.8); const g = gain(ctx, 0); const end = perc(g.gain, t, 0.001, v * 0.08, 0.1);
+      const o = osc(ctx, 'square', f, t, 0.2); const bp = bq(ctx, 'bandpass', 1500, 1.8); const g = gain(ctx, 0); const end = perc(g.gain, t, 0.001, v * 0.13, 0.1);
       o.connect(bp); bp.connect(g); send(g, outs, 0.1, 0, e.pan); return end;
     }
     case 'stab': {

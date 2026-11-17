@@ -11,8 +11,10 @@ export const WHEEL_MAX = 120;
 export const WHEEL_DEADZONE = 28;
 
 function polar(a: number, r: number) { return { x: Math.sin(a) * r, y: -Math.cos(a) * r }; }
-function sectorPath(a0: number, a1: number, r0: number, r1: number) {
-  const p0 = polar(a0, r1), p1 = polar(a1, r1), p2 = polar(a1, r0), p3 = polar(a0, r0);
+/** Annular sector between angles a0..a1 with a constant-width gap of `gap` px on each side. */
+function sectorPath(a0: number, a1: number, r0: number, r1: number, gap = 0) {
+  const g0 = gap / r0, g1 = gap / r1;
+  const p0 = polar(a0 + g1, r1), p1 = polar(a1 - g1, r1), p2 = polar(a1 - g0, r0), p3 = polar(a0 + g0, r0);
   const large = a1 - a0 > Math.PI ? 1 : 0;
   return `M${p0.x.toFixed(2)} ${p0.y.toFixed(2)}A${r1} ${r1} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}` +
     `L${p2.x.toFixed(2)} ${p2.y.toFixed(2)}A${r0} ${r0} 0 ${large} 0 ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}Z`;
@@ -71,14 +73,14 @@ export class Wheel {
     this.slotLayer.textContent = '';
     this.groups = [];
     const n = this.slots.length;
-    const gap = n > 1 ? 0.035 : 0;
+    const gap = n > 1 ? 3.5 : 0;
     this.slots.forEach((s, i) => {
       const a = slotAngle(i, n), half = Math.PI / Math.max(1, n);
       const g = svg('g', {}, 'ma-wheel-slot' + (s.enabled ? '' : ' is-disabled'));
-      g.appendChild(svg('path', { d: n === 1 ? sectorPath(0, Math.PI * 2 - 0.0001, R_IN, R_OUT) : sectorPath(a - half + gap, a + half - gap, R_IN, R_OUT) }, 'ma-wheel-sector'));
+      g.appendChild(svg('path', { d: n === 1 ? sectorPath(0, Math.PI * 2 - 0.0001, R_IN, R_OUT) : sectorPath(a - half, a + half, R_IN, R_OUT, gap) }, 'ma-wheel-sector'));
       const c = polar(a, R_MID);
       const icon = svg('svg', { x: c.x - 38, y: c.y - 30, width: 76, height: 38, viewBox: '0 0 64 32' }, 'ma-wheel-icon');
-      icon.appendChild(svg('path', { d: WEAPON_PATHS[s.icon], 'fill-rule': 'evenodd', fill: 'currentColor' }));
+      icon.appendChild(svg('path', { d: WEAPON_PATHS[s.icon] ?? WEAPON_PATHS.fists, 'fill-rule': 'evenodd', fill: 'currentColor' }));
       g.appendChild(icon);
       const label = svg('text', { x: c.x, y: c.y + 22, 'text-anchor': 'middle' }, 'ma-wheel-label');
       label.textContent = s.label.toUpperCase();

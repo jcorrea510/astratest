@@ -7,12 +7,12 @@ function lcg(seed: number) {
 }
 
 /** Sunset skyline of Port Meridian, generated deterministically as an SVG string. */
-export function titleArtSvg(): string {
+export function titleArtSvg(prefix = 'maT'): string {
   const rnd = lcg(1977);
   const W = 1600, HZ = 650;
   const far: string[] = [], near: string[] = [], windows: string[] = [];
   // Far layer: hazy towers
-  for (let x = 380; x < W; ) {
+  for (let x = 560; x < W; ) {
     const w = 26 + rnd() * 46;
     const centre = Math.exp(-(((x - 1020) / 260) ** 2));
     const hgt = 40 + rnd() * 80 + centre * 210;
@@ -20,9 +20,9 @@ export function titleArtSvg(): string {
     x += w + 2 + rnd() * 10;
   }
   // Near layer: downtown silhouettes, a stepped tower and the harbour
-  for (let x = 300; x < 1330; ) {
+  for (let x = 600; x < 1330; ) {
     const w = 30 + rnd() * 58;
-    const centre = Math.exp(-(((x - 900) / 220) ** 2));
+    const centre = Math.exp(-(((x - 960) / 200) ** 2));
     const hgt = 26 + rnd() * 60 + centre * 150 * (0.6 + rnd() * 0.6);
     const y = HZ - hgt;
     near.push(`<rect x="${x.toFixed(0)}" y="${y.toFixed(0)}" width="${w.toFixed(0)}" height="${(hgt + 2).toFixed(0)}"/>`);
@@ -69,25 +69,25 @@ export function titleArtSvg(): string {
   };
   return `<svg class="ma-art" viewBox="0 0 ${W} 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
 <defs>
-<linearGradient id="maSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c2a31"/><stop offset="0.3" stop-color="#21505a"/><stop offset="0.55" stop-color="#7f6a6c"/><stop offset="0.66" stop-color="#d8906a"/><stop offset="0.72" stop-color="#ffc483"/></linearGradient>
-<linearGradient id="maSun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0c4"/><stop offset="0.6" stop-color="#ffc483"/><stop offset="1" stop-color="#ff9b6a"/></linearGradient>
-<linearGradient id="maSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d5a5f"/><stop offset="0.35" stop-color="#173f47"/><stop offset="1" stop-color="#0a2229"/></linearGradient>
-<radialGradient id="maGlow" cx="1110" cy="560" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd59a" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd59a" stop-opacity="0"/></radialGradient>
-<mask id="maSunMask"><rect width="${W}" height="900" fill="#fff"/>${stripes.join('')}</mask>
+<linearGradient id="${prefix}Sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c2a31"/><stop offset="0.3" stop-color="#21505a"/><stop offset="0.55" stop-color="#7f6a6c"/><stop offset="0.66" stop-color="#d8906a"/><stop offset="0.72" stop-color="#ffc483"/></linearGradient>
+<linearGradient id="${prefix}Sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0c4"/><stop offset="0.6" stop-color="#ffc483"/><stop offset="1" stop-color="#ff9b6a"/></linearGradient>
+<linearGradient id="${prefix}Sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d5a5f"/><stop offset="0.35" stop-color="#173f47"/><stop offset="1" stop-color="#0a2229"/></linearGradient>
+<radialGradient id="${prefix}Glow" cx="1110" cy="560" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd59a" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd59a" stop-opacity="0"/></radialGradient>
+<mask id="${prefix}SunMask"><rect width="${W}" height="900" fill="#fff"/>${stripes.join('')}</mask>
 </defs>
-<rect width="${W}" height="900" fill="url(#maSky)"/>
-<rect width="${W}" height="900" fill="url(#maGlow)"/>
-<g class="ma-art-sun"><circle cx="1110" cy="560" r="205" fill="url(#maSun)" mask="url(#maSunMask)"/></g>
+<rect width="${W}" height="900" fill="url(#${prefix}Sky)"/>
+<rect width="${W}" height="900" fill="url(#${prefix}Glow)"/>
+<g class="ma-art-sun"><circle cx="1110" cy="560" r="205" fill="url(#${prefix}Sun)" mask="url(#${prefix}SunMask)"/></g>
 <g fill="#5b6b72" opacity="0.55">${far.join('')}</g>
 <g fill="none" stroke="#14343b" stroke-width="3"><circle cx="${fx}" cy="${fy}" r="${fr}"/><circle cx="${fx}" cy="${fy}" r="${fr - 10}" stroke-width="1.5"/><path d="${spokes.join('')}" stroke-width="1.4"/><path d="M${fx} ${fy}L${fx - 60} ${HZ}M${fx} ${fy}L${fx + 60} ${HZ}" stroke-width="5"/></g>
 <g fill="#14343b">${cabins.join('')}<rect x="1300" y="${HZ - 14}" width="300" height="16"/></g>
 <g fill="#14343b"><path d="M1500 ${HZ}V430H1508V${HZ}ZM1440 438H1600V446H1440ZM1504 430L1560 380L1563 386L1508 438Z"/><path d="M1560 ${HZ}V470H1566V${HZ}Z"/></g>
 <g fill="#10313a">${near.join('')}</g>
 <g fill="#ffcf8f" opacity="0.8">${windows.join('')}</g>
-<rect y="${HZ}" width="${W}" height="${900 - HZ}" fill="url(#maSea)"/>
+<rect y="${HZ}" width="${W}" height="${900 - HZ}" fill="url(#${prefix}Sea)"/>
 <g fill="#ffd59a">${refl.join('')}</g>
 <rect y="${HZ}" width="${W}" height="1.5" fill="#ffd59a" opacity="0.5"/>
-<g fill="#0a2329">${palm(1515, 400, 1.0, 1)}${palm(1585, 470, 0.8, -1)}${palm(150, 520, 0.75, -1)}</g>
+<g fill="#0a2329">${palm(1515, 400, 1.0, 1)}${palm(1585, 470, 0.8, -1)}</g>
 </svg>`;
 }
 
@@ -108,7 +108,8 @@ export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct:
   const el = h('div', 'ma-layer ma-loading');
   el.setAttribute('role', 'progressbar');
   el.setAttribute('aria-valuemin', '0'); el.setAttribute('aria-valuemax', '100');
-  el.appendChild(h('div', 'ma-loading-sun'));
+  el.innerHTML = titleArtSvg('maL');
+  el.appendChild(h('div', 'ma-loading-shade'));
   const inner = h('div', 'ma-loading-inner');
   inner.appendChild(wordmark('ma-wordmark-sm'));
   const row = h('div', 'ma-loading-row');
@@ -121,14 +122,17 @@ export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct:
   bar.appendChild(fill);
   inner.appendChild(bar);
   el.appendChild(inner);
+  const tipBox = h('div', 'ma-loading-tipbox');
+  tipBox.appendChild(h('div', 'ma-eyebrow', 'Street smarts'));
   const tip = h('div', 'ma-loading-tip');
-  el.appendChild(tip);
+  tipBox.appendChild(tip);
+  inner.appendChild(tipBox);
   return { el, fill, pct, label, tip };
 }
 
 export function buildMobileGate(): HTMLDivElement {
   const el = h('div', 'ma-layer ma-mobile');
-  el.innerHTML = titleArtSvg();
+  el.innerHTML = titleArtSvg('maM');
   el.appendChild(h('div', 'ma-mobile-shade'));
   const box = h('div', 'ma-mobile-box');
   box.appendChild(monogram());
