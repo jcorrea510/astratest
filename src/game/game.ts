@@ -25,7 +25,7 @@ import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
 
-export const PLAYER_LOOK = { skin: '#c68c63', top: '#e8875a', bottom: '#27324a', shoes: '#f2efe8', hair: '#1f1a17', hat: '#264653', detail: '#2b2b2b', sleeves: 'long' as const, legs: 'pants' as const, hairStyle: 'short' as const, hatStyle: 'none' as const, height: 1.0, build: 1.02 };
+export const PLAYER_LOOK = { skin: '#c68c63', top: '#2f8790', bottom: '#2a2f3d', shoes: '#f2efe8', hair: '#1f1a17', hat: '#264653', detail: '#e8b05a', sleeves: 'long' as const, legs: 'pants' as const, hairStyle: 'short' as const, hatStyle: 'none' as const, height: 1.0, build: 1.02 };
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
 export const CLINIC = { x: -60, z: -110, yaw: Math.PI, name: 'Juniper Clinic' };
 export const PRECINCT = { x: 40, z: 108, yaw: 0, name: 'Meridian PD' };
