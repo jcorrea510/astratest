@@ -23,8 +23,16 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (~11:15 UTC, 17 Nov)
-- Bug-bash pass 1 running (functional agent). Night facade speckle fixed (flat varyings), committed 80a0e1c.
+## In progress (~15:40 UTC, 17 Nov; resumed after a usage-limit pause 12:00-15:10)
+- Bug-bash pass 1 found 7 bugs; all fixed with a regression e2e test each (22 e2e tests now):
+  1. sea/harbor were solid ground -> ground colliders only on land, seabed at -7, sea edge walls; cars flood and sink, player swims; faster swimming; foam limited to the shoreline (was striping the whole sea).
+  2. exiting by the pier rail dropped you off the pier -> exit check: rays at knee/waist/head, capsule room test, ground under the spot.
+  3. race rivals got lost -> lane-graph shortest-path routing (routeField, unit tested), re-route when the target changes, brake before turns, longer look-ahead at speed, tougher race cars.
+  4. a stopped undriven car blocked traffic forever (M2 soft-lock) -> traffic pulls out and passes after 3 s.
+  5. beach ramps could not pay -> angled to take a run from Coastal Dr, wider, per-ramp thresholds, palms kept clear.
+  6. M2 deleted the player's parked car -> courier spawns past it.
+  7. contacts respawned beside their body -> 2 min away, never respawn within 70 m.
+- Next: full e2e green -> commit/push -> bug-bash pass 2 (fresh agent) -> must be clean twice.
 
 ## Done since 10:00
 - Memory leak fixed (collider tags); soak passes: 20 game-min chaos, 0 issues, heap 108->114 MB flat, no console errors.

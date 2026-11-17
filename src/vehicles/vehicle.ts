@@ -112,6 +112,8 @@ export class Vehicle {
   material: THREE.MeshStandardMaterial;
   health: number;
   destroyed = false;
+  /** sank in deep water: dead, no fire */
+  flooded = false;
   burnTime = 0;
   driver: Character | null = null;
   input: DriveInput = { throttle: 0, steer: 0, handbrake: false };

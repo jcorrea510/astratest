@@ -172,3 +172,157 @@ test('playtest fixes: populated start, M3 enemies on the ground, fast police res
   expect(money.gained).toBe(600);
   clean(p);
 });
+
+// ---------- Bug-bash pass 1 ----------
+test('the sea is water: walk in and swim, a car driven in floods, swim back out onto the beach', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const walk = await page.evaluate(() => {
+    const g = (window as any).__game; g.player.place(10, 0.3, 430, 0);
+    g.input.press('KeyW'); for (let i = 0; i < 25 * 30; i++) { g.cam.yaw = Math.PI; g.frame(1 / 30, false); } g.input.release('KeyW');
+    return { z: g.player.pos.z, swimming: g.player.swimming };
+  });
+  expect(walk.z).toBeGreaterThan(455);
+  expect(walk.swimming).toBe(true);
+  const back = await page.evaluate(() => {
+    const g = (window as any).__game; g.player.place(10, -2.4, 520, 0);
+    g.input.press('KeyW'); for (let i = 0; i < 35 * 30; i++) { g.cam.yaw = 0; g.frame(1 / 30, false); } g.input.release('KeyW');
+    return { z: g.player.pos.z, swimming: g.player.swimming, grounded: g.player.grounded };
+  });
+  expect(back.swimming).toBe(false);
+  expect(back.grounded).toBe(true);
+  expect(back.z).toBeLessThan(455);
+  const car = await page.evaluate(() => {
+    const g = (window as any).__game; g.player.place(0, 0.3, 405, 0);
+    const v = g.vehicles.spawn('sedan', 0, 405, 0); v.persistent = true; g.seatPlayer(v);
+    g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
+    for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
+    return { flooded: v.flooded, inCar: !!g.playerVehicle, swimming: g.player.swimming, alive: g.player.alive };
+  });
+  expect(car).toEqual({ flooded: true, inCar: false, swimming: true, alive: true });
+  clean(p);
+});
+
+test('getting out next to the pier railing keeps you on the pier', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const spots = await page.evaluate(() => {
+    const g = (window as any).__game; const out: number[][] = [];
+    for (const [x, z] of [[-43.4, 470], [-43.4, 500], [-56.6, 520]]) {
+      if (g.playerVehicle) g.exitVehicle(true);
+      const v = g.vehicles.spawn('sedan', x, z, 0, 0, 1.6); v.persistent = true; g.seatPlayer(v);
+      for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+      g.input.tap('KeyF'); for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+      out.push([g.player.pos.x, g.player.pos.y, g.player.swimming ? 1 : 0]);
+    }
+    return out;
+  });
+  for (const [x, y, swim] of spots) { expect(y).toBeGreaterThan(0.8); expect(x).toBeGreaterThan(-56.6); expect(x).toBeLessThan(-43.4); expect(swim).toBe(0); }
+  clean(p);
+});
+
+test('race rivals follow the route and keep racing', async ({ page }) => {
+  test.setTimeout(600_000);
+  const p = watch(page);
+  await boot(page);
+  await page.evaluate(() => { const M = (window as any).__meridian.missions; for (const id of ['m1', 'm2', 'm3', 'm4']) M.completed.add(id); M.start(M.available()[0]); });
+  await step(page, 1);
+  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); v.phys.teleport(-436, 0.7, 403.5, Math.PI / 2); });
+  await step(page, 6);
+  for (let i = 0; i < 9; i++) await step(page, 10);
+  const cp = await state<number[]>(page, 'window.__meridian.missions.active.run.rivalProgress()');
+  // after 90 s every rival is well into the 11-checkpoint course (they used to get lost after checkpoint 2)
+  expect(Math.max(...cp), JSON.stringify(cp)).toBeGreaterThanOrEqual(6);
+  expect(cp.filter(c => c >= 4).length, JSON.stringify(cp)).toBeGreaterThanOrEqual(2);
+  clean(p);
+});
+
+test('traffic pulls out and passes a car abandoned in its lane', async ({ page }) => {
+  test.setTimeout(300_000);
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game;
+    // a long straight lane near the start
+    const lanes = g.city.lanes.filter((l: any) => !l.connector && l.length > 80);
+    const at = (l: any, s: number) => { let i = 1; while (i < l.points.length - 1 && l.cum[i] < s) i++; const a = l.points[i - 1], b = l.points[i]; const t = (s - l.cum[i - 1]) / Math.max(1e-6, l.cum[i] - l.cum[i - 1]); return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, yaw: Math.atan2(b.x - a.x, b.z - a.z) }; };
+    lanes.sort((a: any, b: any) => { const pa = at(a, 40), pb = at(b, 40); return Math.hypot(pa.x - g.player.pos.x, pa.z - g.player.pos.z) - Math.hypot(pb.x - g.player.pos.x, pb.z - g.player.pos.z); });
+    const lane = lanes[0];
+    const block = at(lane, 45);
+    const parked = g.vehicles.spawn('sedan', block.x, block.z, block.yaw); parked.persistent = true;
+    for (const c of [...g.traffic.cars]) if (c.lane === lane) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
+    const car = g.traffic.spawnOnLane('hatch', lane, 8); car.persistent = true; car.v.persistent = true; car.driver.persistent = true;
+    for (let i = 0; i < 45 * 30; i++) g.frame(1 / 30, false);
+    const dx = car.v.position.x - block.x, dz = car.v.position.z - block.z;
+    return { past: dx * Math.sin(block.yaw) + dz * Math.cos(block.yaw), inTraffic: g.traffic.cars.includes(car), parkedHealth: parked.health / parked.spec.health };
+  });
+  expect(r.inTraffic).toBe(true);
+  expect(r.past, JSON.stringify(r)).toBeGreaterThan(5);
+  clean(p);
+});
+
+test('beach stunt ramps pay when hit from Coastal Drive', async ({ page }) => {
+  test.setTimeout(300_000);
+  const p = watch(page);
+  await boot(page);
+  const res = await page.evaluate(() => {
+    const g = (window as any).__game; const out: number[] = [];
+    for (const rx of [-300, 200]) {
+      if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
+      const x0 = rx - 110; g.player.place(x0, 0.3, 403.5, 0);
+      const v = g.vehicles.spawn('sedan', x0, 403.5, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+      for (let i = 0; i < 9; i++) g.frame(1 / 30, false);
+      const m0 = g.money; g.input.press('KeyW');
+      for (let s = 0; s < 240; s++) {
+        const q = v.position, f = v.phys.forward();
+        const lead = q.x < rx - 30 ? { x: q.x + 20, z: 403.5 } : { x: rx + Math.sin(0.6) * 10, z: 411.5 + Math.cos(0.6) * 10 };
+        const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
+        g.input.release('KeyA'); g.input.release('KeyD'); if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        g.frame(1 / 30, false);
+      }
+      for (const k of ['KeyW', 'KeyA', 'KeyD']) g.input.release(k);
+      out.push(g.money - m0);
+    }
+    return out;
+  });
+  expect(res).toEqual([300, 300]);
+  clean(p);
+});
+
+test('starting the courier mission leaves your parked car alone', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const kept = await page.evaluate(() => {
+    const g = (window as any).__game; const M = (window as any).__meridian.missions;
+    M.completed.add('m1');
+    g.player.place(-229, 0.3, -101, 0);
+    const mine = g.vehicles.spawn('sedan', -229, -98, Math.PI / 2); g.seatPlayer(mine);
+    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    g.exitVehicle(); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    g.player.place(-262, 0.25, -106.6, 0);
+    for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
+    const van = g.traffic.cars.find((c: any) => c.v.locked);
+    return { active: M.active?.def.id, kept: g.vehicles.list.includes(mine), van: !!van, gap: van ? Math.hypot(van.v.position.x - mine.position.x, van.v.position.z - mine.position.z) : 0 };
+  });
+  expect(kept.active).toBe('m2');
+  expect(kept.kept).toBe(true);
+  expect(kept.van).toBe(true);
+  expect(kept.gap).toBeGreaterThan(5);
+  clean(p);
+});
+
+test('a mission contact who is hurt does not pop back in beside the body', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game; const M = (window as any).__meridian.missions;
+    g.player.place(-280, 0.3, -106.6, 0);
+    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+    const juno = M.contacts.get('Juno'); juno.char.damage(500, g.player, g.time);
+    for (let i = 0; i < 30 * 30; i++) g.frame(1 / 30, false);
+    return { hadContact: !!juno, back: M.contacts.has('Juno') };
+  });
+  expect(r.hadContact).toBe(true);
+  expect(r.back).toBe(false);
+  clean(p);
+});

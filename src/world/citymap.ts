@@ -23,6 +23,9 @@ export const STREETS = [-400, -300, -200, -100, 0, 100, 200, 300, 400];
 export const WATER_LEVEL = -1.2;
 export const COAST_Z = 452; // beach ends and the sea begins south of this line
 export const HARBOR_X = 492; // quay edge on the east side
+export const SEABED_Y = -7; // open water south of the beach and east of the quay
+export const SEA_EDGE_Z = 640; // swimmable sea ends here (invisible wall)
+export const SEA_EDGE_X = 660;
 export const MAP_BOUNDS = { minX: -520, maxX: 620, minZ: -470, maxZ: 620 };
 
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
@@ -335,4 +338,49 @@ export function nearestLane(city: CityMap, x: number, z: number, roadOnly = true
     }
   }
   return best;
+}
+
+const routeCache = new WeakMap<CityMap, { prev: number[][]; fields: Map<string, Float32Array> }>();
+/**
+ * Driving distance from the start of every lane to a target point, following the lane graph
+ * (reverse Dijkstra seeded by the lanes that pass near the target). Quantised and cached per 10 m cell.
+ */
+export function routeField(city: CityMap, x: number, z: number): Float32Array {
+  let c = routeCache.get(city);
+  if (!c) {
+    const prev: number[][] = city.lanes.map(() => []);
+    for (const l of city.lanes) for (const n of l.next) prev[n].push(l.id);
+    c = { prev, fields: new Map() }; routeCache.set(city, c);
+  }
+  const key = `${Math.round(x / 10)},${Math.round(z / 10)}`;
+  const hit = c.fields.get(key); if (hit) return hit;
+  const n = city.lanes.length, D = new Float32Array(n).fill(Infinity);
+  // seeds: lanes passing within 14 m of the target, costed by the distance along the lane to its closest point
+  let bestLane = -1, bestD = Infinity, bestS = 0;
+  for (const lane of city.lanes) {
+    let ld = Infinity, ls = 0;
+    for (let i = 1; i < lane.points.length; i++) {
+      const a = lane.points[i - 1], b = lane.points[i];
+      const vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / l2));
+      const d = Math.hypot(x - (a.x + vx * t), z - (a.z + vz * t));
+      if (d < ld) { ld = d; ls = lane.cum[i - 1] + Math.sqrt(l2) * t; }
+    }
+    if (ld < 14) D[lane.id] = ls + ld * 2;
+    if (ld < bestD) { bestD = ld; bestLane = lane.id; bestS = ls; }
+  }
+  if (bestLane >= 0 && !Number.isFinite(D[bestLane])) D[bestLane] = bestS;
+  // binary-heap Dijkstra over reversed edges: D[p] = p.length + D[next]
+  const heap: number[] = [];
+  const push = (id: number) => { heap.push(id); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (D[heap[p]] <= D[heap[i]]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && D[heap[l]] < D[heap[m]]) m = l; if (r < heap.length && D[heap[r]] < D[heap[m]]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const done = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (Number.isFinite(D[i])) push(i);
+  while (heap.length) {
+    const id = pop(); if (done[id]) continue; done[id] = 1;
+    for (const p of c.prev[id]) { const cand = city.lanes[p].length + D[id]; if (cand < D[p]) { D[p] = cand; push(p); } }
+  }
+  if (c.fields.size > 48) c.fields.clear();
+  c.fields.set(key, D);
+  return D;
 }

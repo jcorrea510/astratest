@@ -20,9 +20,10 @@ export const POSTCARDS: Place[] = [
   { x: 95, z: -150, name: 'Heights plaza' }, { x: -200, z: 150, name: 'Midtown plaza' }, { x: -400, z: 430, name: 'West beach' },
   { x: 245, z: 5, name: 'Sunset Blvd' }, { x: -350, z: -394, name: 'North Crest' }, { x: 470, z: -20, name: 'Harbor gate' },
 ];
-/** Stunt ramps: position, heading (yaw of travel), length/height. */
+/** Stunt ramps: position, heading (yaw of travel), length/height, and what a jump must reach to pay. */
 export const RAMPS = [
-  { x: 470, z: 210, yaw: Math.PI, len: 9, h: 2.2, name: 'Quay launch' },
-  { x: -300, z: 411.5, yaw: 0, len: 6, h: 1.4, name: 'Promenade hop' },
-  { x: 200, z: 411.5, yaw: 0, len: 6, h: 1.4, name: 'Strand flyer' },
+  { x: 470, z: 210, yaw: Math.PI, len: 9, h: 2.2, w: 4.2, name: 'Quay launch', minDist: 18, minAir: 0.8 },
+  // the promenade ramps face east-south-east: veer off eastbound Coastal Drive at speed and land on the sloping beach
+  { x: -300, z: 411.5, yaw: 0.6, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
+  { x: 200, z: 411.5, yaw: 0.6, len: 6.5, h: 1.8, w: 6, name: 'Strand flyer', minDist: 11, minAir: 0.55 },
 ];

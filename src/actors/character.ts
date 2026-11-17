@@ -51,7 +51,7 @@ export class Character {
     const deep = this.pos.y < WATER_LEVEL - 0.9;
     this.swimming = deep;
     if (this.swimming) {
-      this.vel.x = damp(this.vel.x, desired.x * 0.45, 4, dt); this.vel.z = damp(this.vel.z, desired.z * 0.45, 4, dt);
+      this.vel.x = damp(this.vel.x, desired.x * 0.8, 4, dt); this.vel.z = damp(this.vel.z, desired.z * 0.8, 4, dt);
       this.vel.y = damp(this.vel.y, (WATER_LEVEL - 1.25 - this.pos.y) * 3, 6, dt);
     } else {
       const acc = this.grounded ? 14 : 3;

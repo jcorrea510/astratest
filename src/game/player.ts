@@ -35,7 +35,7 @@ export class PlayerController {
     let speed = this.sprinting ? 6.6 : 4.1;
     if (this.input.pad.connected && mag < 0.6 && !this.sprinting) speed = 1.6 + mag * 3.2;
     if (this.aiming) speed = 2.4;
-    if (c.swimming) speed = 2.2;
+    if (c.swimming) speed = 3.4;
     // Dodge roll
     if (this.rollT > 0) {
       this.rollT -= dt;

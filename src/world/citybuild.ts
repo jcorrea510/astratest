@@ -1,10 +1,11 @@
 /** Builds Port Meridian's meshes and static colliders from the pure city layout. */
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
+import { RAMPS } from '../game/places';
 import type { Physics } from '../core/physics';
 import type { Assets, KayKitName } from './assets';
 import {
-  type CityMap, type Lot, AVENUES, STREETS, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, halfWidth,
+  type CityMap, type Lot, AVENUES, STREETS, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
 } from './citymap';
 import { bakeModel, ChunkInstancer, colorize, mergeColored, treeGeometry, palmGeometry } from './geometry';
 import { asphaltTexture, pavementTexture, grassTexture, sandTexture, facadeMaterial, atlasVariant, atlasEmissive, kaykitMaterial, signAtlas, billboardAtlas, glowTexture, nightUniform, timeUniform, BRANDS } from '../render/materials';
@@ -93,7 +94,20 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
   slab(land, maxX, -1400, 1400, -70, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 6);
   const landMesh = new THREE.Mesh(land.build(false), grassMat); landMesh.receiveShadow = true; root.add(landMesh);
   // Ground as 200 m tiles: one huge box loses contact precision for the character controller.
-  for (let gx = -1500; gx < 1500; gx += 200) for (let gz = -1500; gz < 1500; gz += 200) physics.addStaticBox(gx + 100, -0.55, gz + 100, 100, 0.5, 100);
+  // Only land gets ground: the sea and harbor are open water down to a seabed (swim, sink).
+  const tileRect = (x0: number, z0: number, x1: number, z1: number, top: number) => {
+    for (let gx = x0; gx < x1; gx += 200) for (let gz = z0; gz < z1; gz += 200) {
+      const ex = Math.min(gx + 200, x1), ez = Math.min(gz + 200, z1);
+      physics.addStaticBox((gx + ex) / 2, top - 0.5, (gz + ez) / 2, (ex - gx) / 2, 0.5, (ez - gz) / 2);
+    }
+  };
+  tileRect(-1500, -1500, maxX + 2, maxZ + 7, -0.05); // city and the land around it
+  tileRect(maxX + 2, -1500, 1500, -62, -0.05); // north-east of the docks
+  tileRect(-1500, maxZ + 7, 1500, SEA_EDGE_Z, SEABED_Y); // seabed south of the coast
+  tileRect(maxX + 2, -62, SEA_EDGE_X, maxZ + 7, SEABED_Y); // harbor floor
+  // invisible edge of the playable sea
+  physics.addStaticBox(0, -2, SEA_EDGE_Z, 1500, 8, 1);
+  physics.addStaticBox(SEA_EDGE_X, -2, (SEA_EDGE_Z - 62) / 2, 1, 8, (SEA_EDGE_Z + 62) / 2);
 
   const asphalt = asphaltTexture();
   const asphaltMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, color: '#ffffff' });
@@ -115,10 +129,12 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
         float w2 = cos(dot(vW.xz, vec2(0.29, -0.13)) - uTime * 1.3) + cos(dot(vW.xz, vec2(0.08, 0.31)) + uTime * 0.7) + 0.35 * cos(dot(vW.xz, vec2(0.52, 0.47)) - uTime * 2.1);
         normal = normalize(normal + vec3(w1 * 0.022, 0.0, w2 * 0.022) * fadeW);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float shoreS = smoothstep(${(COAST_Z + 8).toFixed(1)}, ${(COAST_Z - 2).toFixed(1)}, vW.z);
-        float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(-60.0, vW.z);
+        // thin, broken foam line where the water meets the sand
+        float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z);
+        // along the dock quay only (east of it, alongside it), never across the open sea to the west
+        float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(${(HARBOR_X - 1).toFixed(1)}, vW.x) * step(-60.0, vW.z) * step(vW.z, ${(COAST_Z - 30).toFixed(1)});
         float foamBand = max(shoreS, shoreE);
-        float foam = foamBand * step(0.55, 0.5 + 0.5 * sin(vW.x * 0.6 + vW.z * 0.4 + uTime * 2.0 + foamBand * 9.0));
+        float foam = foamBand * step(0.5, 0.5 + 0.5 * sin(vW.x * 1.7 + sin(vW.x * 0.21) * 4.0 + uTime * 1.6 + foamBand * 7.0)) * step(0.35, 0.5 + 0.5 * sin(vW.x * 0.37 + vW.z * 0.9 - uTime * 0.8));
         float deep = smoothstep(0.0, 160.0, vW.z - ${COAST_Z.toFixed(1)});
         diffuseColor.rgb = mix(vec3(0.17, 0.55, 0.58), vec3(0.06, 0.24, 0.36), deep);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 0.95), foam * 0.75 + foamBand * 0.15);`);
@@ -170,7 +186,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
     const len = 90, drop = 5.2, ang = Math.atan2(drop, len);
     const cz = maxZ + 7 + len / 2, cy = CURB_HEIGHT - 0.05 - drop / 2 - 0.5 / Math.cos(ang);
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), ang);
-    physicsSlope(physics, (minX + maxX) / 2, cy, cz, (maxX - minX) / 2 + 300, 0.5, Math.hypot(len, drop) / 2, q);
+    // matches the visible sand: from 600 m west of the city to the dock quay
+    physicsSlope(physics, (minX + maxX) / 2 - 300, cy, cz, (maxX - minX) / 2 + 300, 0.5, Math.hypot(len, drop) / 2, q);
   }
 
   // Hills to the north and west close the map visually.
@@ -496,7 +513,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
       // beach palms along the promenade
     }
   }
-  for (let x = minX + 12; x < maxX - 8; x += 26) { const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
+  // (kept clear of the landing strip in front of each beach ramp)
+  for (let x = minX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && Math.abs(r.x - x) < 9)) continue; const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {

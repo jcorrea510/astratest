@@ -12,7 +12,9 @@ import type { Look } from '../actors/human';
 import { groups, G_STATIC, RAPIER } from '../core/physics';
 
 export type MissionStatus = 'running' | 'passed' | 'failed';
-export interface MissionRun { objective: string; timer: number | null; blips(): MinimapBlip[]; update(dt: number): MissionStatus; failReason: string; cleanup(): void }
+export interface MissionRun { objective: string; timer: number | null; blips(): MinimapBlip[]; update(dt: number): MissionStatus; failReason: string; cleanup(): void;
+  /** race only: checkpoints each rival has passed (for tests and debugging) */
+  rivalProgress?(): number[] }
 export interface MissionDef { id: string; title: string; tagline: string; contact: Place; reward: number; requires: string | null; hour?: number; create(ctx: MissionCtx): MissionRun }
 
 const CONTACT_LOOKS: Record<string, Look> = {
@@ -159,9 +161,17 @@ const m2: MissionDef = {
         if (!car) {
           // spawn the courier on a lane near Marrow Ave when the player is ready
           const lane = start.lane; samplePath(lane, Math.min(lane.length - 5, start.s), { x: 0, z: 0, dx: 0, dz: 0 });
-          const sp0 = { x: 0, z: 0, dx: 0, dz: 0 }; samplePath(lane, Math.min(lane.length - 10, Math.max(5, start.s)), sp0);
-          for (const o of [...g.vehicles.list]) if (!o.persistent && !o.driver?.isPlayer && Math.hypot(o.position.x - sp0.x, o.position.z - sp0.z) < 9) { const c = g.traffic.carOf(o); if (c) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); } if (!o.driver) g.vehicles.remove(o); }
-          car = g.traffic.spawnOnLane('van', lane, Math.min(lane.length - 10, Math.max(5, start.s)), 'goto');
+          // the van's spot on the lane: skip past the player's own car rather than removing it
+          const sp0 = { x: 0, z: 0, dx: 0, dz: 0 };
+          const mine = (o: Vehicle) => o.persistent || !!o.driver?.isPlayer || o === g.lastPlayerVehicle;
+          let s0 = Math.min(lane.length - 10, Math.max(5, start.s));
+          for (const cand of [s0, s0 + 16, s0 - 16, s0 + 32, s0 - 32]) {
+            const sc = Math.min(lane.length - 10, Math.max(5, cand)); samplePath(lane, sc, sp0);
+            if (!g.vehicles.list.some(o => mine(o) && Math.hypot(o.position.x - sp0.x, o.position.z - sp0.z) < 9)) { s0 = sc; break; }
+          }
+          samplePath(lane, s0, sp0);
+          for (const o of [...g.vehicles.list]) if (!mine(o) && Math.hypot(o.position.x - sp0.x, o.position.z - sp0.z) < 9) { const c = g.traffic.carOf(o); if (c) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); } if (!o.driver) g.vehicles.remove(o); }
+          car = g.traffic.spawnOnLane('van', lane, s0, 'goto');
           car.persistent = true; car.v.persistent = true; car.target = dest.clone(); car.arriveDist = 6;
           car.v.locked = true; car.driver.persistent = true; car.maxSpeed = 0;
           return 'running';
@@ -296,6 +306,7 @@ const m5: MissionDef = {
     const place = () => 1 + rivals.filter((r, i) => rivalCp[i] > cp || (rivalCp[i] === cp && r.v.position.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)) < ctx.playerPos.distanceTo(new THREE.Vector3(RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].x, 0, RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)].z)))).length;
     const run: MissionRun = {
       objective: 'Get to the start line on Coastal Drive', timer: null, failReason: '',
+      rivalProgress: () => [...rivalCp],
       blips: () => stage < 2 ? [{ x: startPos.x, z: startPos.z, kind: 'checkpoint', label: 'Start', pulse: true }] : [{ ...RACE_ROUTE[Math.min(cp, RACE_ROUTE.length - 1)], kind: 'checkpoint', pulse: true }, ...(cp + 1 < RACE_ROUTE.length ? [{ ...RACE_ROUTE[cp + 1], kind: 'checkpoint' as const }] : []), ...rivals.map(r => ({ x: r.v.position.x, z: r.v.position.z, kind: 'vehicle' as const }))],
       update: dt => {
         if (stage === 0) {
@@ -307,7 +318,7 @@ const m5: MissionDef = {
             pv.phys.teleport(startPos.x, pv.position.y + 0.2, startPos.z, Math.PI / 2);
             const lane = nearestLane(g.city, startPos.x + 20, startPos.z)!;
             const grid = [[0, -3.4], [0, 3.2], [-7.5, -3.4]];
-            rivals = [0, 1, 2].map(i => { const r = g.traffic.spawnOnLane('coupe', lane.lane, Math.max(4, lane.s - 4 + i * 0.1), 'goto'); r.persistent = true; r.v.persistent = true; r.driver.persistent = true; r.v.phys.teleport(startPos.x + grid[i][0], 0.6, startPos.z + grid[i][1], Math.PI / 2); r.target = new THREE.Vector3(RACE_ROUTE[0].x, 0, RACE_ROUTE[0].z); r.arriveDist = -10; r.mode = 'goto'; r.maxSpeed = 31 - i * 1.5; return r; });
+            rivals = [0, 1, 2].map(i => { const r = g.traffic.spawnOnLane('coupe', lane.lane, Math.max(4, lane.s - 4 + i * 0.1), 'goto'); r.persistent = true; r.v.persistent = true; r.driver.persistent = true; r.v.phys.teleport(startPos.x + grid[i][0], 0.6, startPos.z + grid[i][1], Math.PI / 2); r.v.health = r.v.spec.health * 2.5; /* race-prepped */ r.target = new THREE.Vector3(RACE_ROUTE[0].x, 0, RACE_ROUTE[0].z); r.arriveDist = -10; r.mode = 'goto'; r.maxSpeed = 31 - i * 1.5; return r; });
             rivals.forEach((r, i) => { rivalCp[i] = 0; raceSpeed[i] = r.maxSpeed ?? 30; r.maxSpeed = 0; });
             g.blockedInput = true;
           } else if (g.playerVehicle && mk.inside(ctx.playerPos) && g.police.heat > 0) run.objective = 'Lose the heat before the race';
@@ -357,6 +368,7 @@ export class Missions {
   active: { def: MissionDef; run: MissionRun } | null = null;
   private markers = new Map<string, Marker>();
   private contacts = new Map<string, Npc>();
+  private contactAway = new Map<string, number>();
   private cooldown = 0;
   onPassed: ((def: MissionDef) => void) | null = null;
   constructor(public ctx: MissionCtx) { }
@@ -419,8 +431,12 @@ export class Missions {
     const avail = this.available();
     for (const [id, mk] of this.markers) if (!avail.some(m => m.id === id)) { mk.dispose(); this.markers.delete(id); }
     // Contacts stand beside their marker while they have work for you.
-    for (const [name, npc] of this.contacts) if (!avail.some(m => m.contact.name === name) || !npc.alive) { npc.persistent = false; if (npc.alive) { npc.brain = 'wander'; npc.node = -1; npc.char.human.setState('loco'); } this.contacts.delete(name); }
+    for (const [name, npc] of this.contacts) if (!avail.some(m => m.contact.name === name) || !npc.alive) { if (!npc.alive) this.contactAway.set(name, g.time + 120); npc.persistent = false; if (npc.alive) { npc.brain = 'wander'; npc.node = -1; npc.char.human.setState('loco'); } this.contacts.delete(name); }
     for (const m of avail) if (!this.contacts.has(m.contact.name)) {
+      // a contact who was hurt stays away for a while, and never pops back in while you watch
+      const away = this.contactAway.get(m.contact.name);
+      if (away !== undefined && (g.time < away || Math.hypot(g.player.pos.x - m.contact.x, g.player.pos.z - m.contact.z) < 70)) continue;
+      this.contactAway.delete(m.contact.name);
       const look = CONTACT_LOOKS[m.contact.name]; if (!look) continue;
       const x = m.contact.x + 1.9, z = m.contact.z;
       const n = g.pop.spawn('civilian', x, z, this.ctx.groundY(x, z) + 0.05, look);

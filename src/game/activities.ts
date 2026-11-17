@@ -45,7 +45,7 @@ export class Activities {
     const mat = new THREE.MeshStandardMaterial({ color: '#d9822b', roughness: 0.6, flatShading: true });
     const stripe = new THREE.MeshStandardMaterial({ color: '#2b2f33', roughness: 0.7 });
     for (const r of RAMPS) {
-      const w = 4.2;
+      const w = r.w;
       const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(r.len, 0); shape.lineTo(r.len, r.h); shape.closePath();
       const geo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false }); geo.translate(-r.len / 2, 0, -w / 2); geo.rotateY(-Math.PI / 2);
       const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
@@ -165,13 +165,13 @@ export class Activities {
     if (pv) {
       for (let i = 0; i < RAMPS.length; i++) { const r = RAMPS[i]; if (Math.hypot(pv.position.x - r.x, pv.position.z - r.z) < r.len * 0.7) { this.lastRamp = i; this.rampT = 0.6; } }
       this.rampT -= dt;
-      if (!pv.phys.grounded && !this.airborne && this.rampT > 0 && Math.abs(pv.speed) > 12) this.airborne = { t: 0, start: pv.position.clone(), ramp: this.lastRamp };
+      if (!pv.phys.grounded && !this.airborne && this.rampT > 0 && Math.abs(pv.speed) > 9) this.airborne = { t: 0, start: pv.position.clone(), ramp: this.lastRamp };
       if (this.airborne) {
         this.airborne.t += dt;
         if (pv.phys.grounded && this.airborne.t > 0.25) {
           const dist = pv.position.distanceTo(this.airborne.start), a = this.airborne;
           this.airborne = null;
-          if (dist > 18 && a.t > 0.8) {
+          if (dist > RAMPS[a.ramp].minDist && a.t > RAMPS[a.ramp].minAir) {
             const first = !this.jumpsDone.has(a.ramp);
             const reward = first ? 300 : 50;
             this.jumpsDone.add(a.ramp); g.addMoney(reward);

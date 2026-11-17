@@ -1,7 +1,7 @@
 /** Ambient traffic and police driving: lane following, signals, spacing, reactions, parked cars, pursuit. */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, routeField, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
@@ -13,7 +13,11 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
-export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number }
+export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number;
+  /** lane picked at the end of the current one, and the routing target it was picked for */
+  nextChoice?: number; nextKey?: string;
+  /** steering around a stopped, undriven obstacle: which vehicle, which side, time spent */
+  avoid?: { v: Vehicle; side: number; t: number } | null; blockedT?: number }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
@@ -94,12 +98,19 @@ export class Traffic {
         if (car.mode === 'goto' && d < car.arriveDist + 1 && car.onArrive) { const cb = car.onArrive; car.onArrive = undefined; cb(); }
       } else {
         let s = car.s + look, lane = car.lane;
-        const nextChoice = (car as unknown as { nextChoice?: number }).nextChoice ?? lane.next[0];
-        if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[nextChoice]; if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[lane.next[0]]; } }
+        const nextChoice = car.nextChoice ?? lane.next[0];
+        if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[nextChoice]; if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[this.chooseNext(lane, car.target, true)]; } }
         samplePath(lane, Math.min(s, lane.length), sp); aim.set(sp.x, 0, sp.z);
+        // pull out around a stopped obstacle
+        if (car.avoid) { const l = Math.hypot(sp.dx, sp.dz) || 1; aim.x += car.avoid.side * (sp.dz / l) * 3.4; aim.z += car.avoid.side * (-sp.dx / l) * 3.4; }
       }
       // Slow for corners: angle between heading and the aim point
       { const ax = aim.x - pos.x, az = aim.z - pos.z, al = Math.hypot(ax, az) || 1; const cosA = (ax * f.x + az * f.z) / al; const ang = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); if (ang > 0.25) targetSpeed = Math.min(targetSpeed, Math.max(6, targetSpeed * (1.15 - ang * 1.1))); }
+      // Brake ahead of a turn on the route (matters at race speed): v² = v_turn² + 2·a·d
+      if (!car.lane.connector && car.nextChoice !== undefined) {
+        const nl = this.city.lanes[car.nextChoice];
+        if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * 6 * Math.max(0, car.lane.length - car.s - 3)));
+      }
       // Signals
       if (car.mode === 'cruise' && !car.lane.connector) {
         const inter = this.city.intersections[car.lane.intersection];
@@ -108,19 +119,32 @@ export class Traffic {
         if (st !== 'green' && dStop > -1 && !(st === 'yellow' && dStop < speed * 0.45)) targetSpeed = Math.min(targetSpeed, Math.max(0, dStop) * 0.9);
       }
       // Following distance / obstacles ahead
-      let blockDist = Infinity, blocker: 'car' | 'person' | null = null;
-      const check = (ox: number, oz: number, radius: number, kind: 'car' | 'person') => {
+      let blockDist = Infinity, blocker: 'car' | 'person' | null = null, blockerV: Vehicle | null = null, blockerLat = 0;
+      const check = (ox: number, oz: number, radius: number, kind: 'car' | 'person', ov: Vehicle | null = null) => {
         const dx = ox - pos.x, dz = oz - pos.z;
-        const ahead = dx * f.x + dz * f.z; if (ahead < 1 || ahead > 26) return;
-        const lat = Math.abs(dx * f.z - dz * f.x); if (lat > radius) return;
-        if (ahead < blockDist) { blockDist = ahead; blocker = kind; }
+        const ahead = dx * f.x + dz * f.z; if (ahead < 1 || ahead > Math.max(26, speed * 1.8)) return;
+        const latS = dx * f.z - dz * f.x, lat = Math.abs(latS); if (lat > radius) return;
+        if (ahead < blockDist) { blockDist = ahead; blocker = kind; blockerV = ov; blockerLat = latS; }
       };
-      for (const o of this.vehicles.list) if (o !== v) check(o.position.x, o.position.z, 2.3, 'car');
+      if (car.avoid) {
+        // finished once the obstacle is behind us, or give up after a while
+        const o = car.avoid.v, dx = o.position.x - pos.x, dz = o.position.z - pos.z;
+        car.avoid.t += dt;
+        if (dx * f.x + dz * f.z < -4 || car.avoid.t > 14 || !this.vehicles.list.includes(o)) car.avoid = null;
+      }
+      for (const o of this.vehicles.list) if (o !== v && o !== car.avoid?.v) check(o.position.x, o.position.z, 2.3, 'car', o);
       if (!player.inVehicle && player.alive) check(player.pos.x, player.pos.z, 1.9, 'person');
       for (const n of this.pop.npcs) if (n.alive && !n.char.inVehicle && !n.far) check(n.pos.x, n.pos.z, 1.7, 'person');
       if (blockDist < Infinity && !(car.mode === 'pursuit' && car.ram)) {
         const gap = blocker === 'car' ? 7.5 : 5.5;
         targetSpeed = Math.min(targetSpeed, Math.max(0, (blockDist - gap) * 0.8));
+        // A stopped car nobody in traffic is driving (parked, abandoned, wrecked, or the player waiting) never moves on its own:
+        // after a few seconds, pull out and pass it.
+        const bv = blockerV as Vehicle | null;
+        if (bv && Math.abs(bv.speed) < 0.6 && !this.carOf(bv) && Math.abs(speed) < 1 && car.mode !== 'pursuit') {
+          car.blockedT = (car.blockedT ?? 0) + dt;
+          if (car.blockedT > 3 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
+        } else car.blockedT = 0;
         if (blocker === 'person' && blockDist < 9 && Math.abs(speed) < 2) { car.honkT += dt; if (car.honkT > 1.6) { car.honkT = -2.5; this.audio.play('horn', { pos, volume: 0.6 }); } }
       }
       // Pure-pursuit steering
@@ -152,22 +176,26 @@ export class Traffic {
       if (d < bd) { bd = d; best = lane.cum[i - 1] + Math.sqrt(l2) * u; }
     }
     car.s = best;
-    const ext = car as unknown as { nextChoice?: number };
-    if (ext.nextChoice === undefined || !lane.next.includes(ext.nextChoice)) ext.nextChoice = this.chooseNext(lane, target);
-    if (car.s > lane.length - 0.8) { car.lane = this.city.lanes[ext.nextChoice]; car.s = 0; ext.nextChoice = this.chooseNext(car.lane, target); }
+    // re-pick the turn whenever the routing target moves to a new cell (race checkpoints, chase targets)
+    const key = target ? `${Math.round(target.x / 10)},${Math.round(target.z / 10)}` : '';
+    if (car.nextChoice === undefined || !lane.next.includes(car.nextChoice) || car.nextKey !== key) { car.nextChoice = this.chooseNext(lane, target); car.nextKey = key; }
+    if (car.s > lane.length - 0.8) { car.lane = this.city.lanes[car.nextChoice]; car.s = 0; car.nextChoice = this.chooseNext(car.lane, target); car.nextKey = key; }
     if (bd > 25) { // far off the lane (pushed away): re-snap to nearest lane
       let nb: Lane | null = null, nd = Infinity;
       for (const l of this.city.lanes) { if (l.connector) continue; samplePath(l, l.length / 2, sp); const d = Math.hypot(sp.x - pos.x, sp.z - pos.z); if (d < nd) { nd = d; nb = l; } }
       if (nb) { car.lane = nb; car.s = 0; }
     }
   }
-  private chooseNext(lane: Lane, target: THREE.Vector3 | null): number {
+  private chooseNext(lane: Lane, target: THREE.Vector3 | null, deterministic = false): number {
     if (!lane.next.length) return lane.id;
     if (target) {
+      // shortest driving route through the lane graph
+      const field = routeField(this.city, target.x, target.z);
       let best = lane.next[0], bd = Infinity;
-      for (const n of lane.next) { const l = this.city.lanes[n]; const end = this.city.lanes[l.next[0] ?? n]; const p = end.points[end.points.length - 1]; const d = Math.hypot(p.x - target.x, p.z - target.z); if (d < bd) { bd = d; best = n; } }
+      for (const n of lane.next) if (field[n] < bd) { bd = field[n]; best = n; }
       return best;
     }
+    if (deterministic) return lane.next[0];
     return lane.next[Math.floor(this.rng.next() * lane.next.length)];
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, maxCars: number) {

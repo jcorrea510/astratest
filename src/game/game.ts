@@ -1,10 +1,10 @@
 /** Game orchestrator: owns the world, systems and the main loop. */
 import * as THREE from 'three';
 import { Renderer } from '../render/renderer';
-import { Physics } from '../core/physics';
+import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import { Input } from '../core/input';
 import type { Settings } from '../core/settings';
-import { generateCity, type CityMap, signalState, districtAt, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
+import { generateCity, type CityMap, signalState, districtAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import type { Assets } from '../world/assets';
 import { createHumanTemplate, type HumanTemplate, randomLook } from '../actors/human';
@@ -64,6 +64,8 @@ export class Game {
   traffic!: Traffic;
   police!: Police;
   playerVehicle: Vehicle | null = null;
+  /** the car the player last got out of (kept out of mission clean-ups) */
+  lastPlayerVehicle: Vehicle | null = null;
   money = 250;
   pickups: Pickup[] = [];
   private pickupId = 0;
@@ -314,13 +316,13 @@ export class Game {
   exitVehicle(force = false) {
     const v = this.playerVehicle; if (!v) return;
     void force;
-    const pos = this.findExitPoint(v);
+    const pos = v.flooded ? v.position.clone().setY(WATER_LEVEL - 1.3) : this.findExitPoint(v);
     const fast = Math.abs(v.speed) > 9 && !v.destroyed;
-    this.playerVehicle = null; v.driver = null; this.player.inVehicle = null;
+    this.playerVehicle = null; v.driver = null; this.player.inVehicle = null; this.lastPlayerVehicle = v;
     v.input.throttle = 0; v.input.handbrake = !fast;
     const h = this.player.human;
     this.renderer.scene.add(h.root);
-    this.player.place(pos.x, Math.max(pos.y, v.position.y - 0.2), pos.z, v.yaw);
+    this.player.place(pos.x, v.flooded ? pos.y : Math.max(pos.y, v.position.y - 0.2), pos.z, v.yaw);
     this.player.setCollision(true);
     h.setState('loco');
     if (fast) { h.playOnce('Roll', 'full', 0.05); this.cam.addShake(0.4); if (this.player.damage(Math.min(25, Math.abs(v.speed) * 0.8), null, this.time)) this.playerDown('down'); }
@@ -329,13 +331,23 @@ export class Game {
     this.audio.setRadioActive(false);
     this.events.onVehicleExited(v);
   }
+  /**
+   * A door-side spot the player can stand on: a clear path from the seat at knee, waist and head height,
+   * room for a person, and ground near the car's level (so never over a railing or off the pier).
+   */
   private findExitPoint(v: Vehicle): THREE.Vector3 {
+    const solid = groups(ALL, G_STATIC | G_VEHICLE | G_PROP), body = v.phys.body, c = v.position;
+    const g = this.physics.ray(c.x, c.y + 0.5, c.z, 0, -1, 0, 6, solid, null, body);
+    const carGround = g ? c.y + 0.5 - g.toi : c.y - 0.6;
     for (const side of [1, -1] as const) {
       const p = v.doorPoint(side);
-      const from = v.position.clone(); from.y += 0.9;
-      const dir = p.clone().setY(from.y).sub(from); const len = dir.length(); dir.normalize();
-      const hit = this.physics.ray(from.x, from.y, from.z, dir.x, dir.y, dir.z, len + 0.4, undefined, null, v.phys.body);
-      if (!hit) { p.y = v.position.y + 0.1; return p; }
+      const dx = p.x - c.x, dz = p.z - c.z, len = Math.hypot(dx, dz) || 1;
+      let blocked = false;
+      for (const h of [0.4, 0.95, 1.6]) if (this.physics.ray(c.x, carGround + h, c.z, dx / len, 0, dz / len, len + 0.45, solid, null, body)) { blocked = true; break; }
+      if (blocked || this.physics.overlapsCapsule(p.x, carGround + 1.0, p.z, 0.5, 0.34, solid, body)) continue;
+      const down = this.physics.ray(p.x, carGround + 1.2, p.z, 0, -1, 0, 2.4, solid, null, body);
+      if (!down) continue;
+      p.y = carGround + 1.2 - down.toi + 0.05; return p;
     }
     const p = v.position.clone(); p.y += v.tpl.bbox.max.y + 0.3; return p;
   }
@@ -419,7 +431,7 @@ export class Game {
         if (this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 3;
         if (this.input.justPressed('radio')) { const st = this.audio.radioNext(); this.events.onToast(st ? `Radio  ${st}` : 'Radio off', 'info'); }
       }
-      if (pv.destroyed && pv.burnTime > 2.5) this.exitVehicle(true);
+      if ((pv.destroyed && pv.burnTime > 2.5) || pv.flooded) this.exitVehicle(true);
     } else {
       if (!this.entering) this.playerCtl.updateAnimation();
       this.player.updateVisual(dt);

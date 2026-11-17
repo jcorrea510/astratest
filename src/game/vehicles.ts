@@ -4,6 +4,7 @@ import type { Physics } from '../core/physics';
 import type { Assets } from '../world/assets';
 import { Vehicle, makeKayKitTemplate, makeVanTemplate, type VehicleTemplate } from '../vehicles/vehicle';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
+import { WATER_LEVEL } from '../world/citymap';
 import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
 
@@ -67,6 +68,12 @@ export class VehicleManager {
     for (const v of [...this.list]) {
       const braking = v.input.throttle < -0.1 && v.speed > 1;
       v.update(dt, night, time, braking || v.input.handbrake);
+      // Deep water floods the engine: the car is lost and slowly sinks.
+      if (!v.flooded && v.position.y < WATER_LEVEL - 0.2) {
+        v.flooded = true; v.destroyed = true; v.health = 0; v.siren = false; v.burnTime = -1;
+        v.phys.body.setLinearDamping(2.2); v.phys.body.setAngularDamping(2.2);
+        const p = v.position; this.particles.splash(p.x, WATER_LEVEL, p.z, 30); this.audio.play('splash', { pos: p, volume: 1 });
+      }
       const dist = v.position.distanceTo(listener);
       v.group.visible = dist < 260 || v === playerVehicle;
       v.bodyMesh.castShadow = dist < 60;
@@ -91,7 +98,7 @@ export class VehicleManager {
           const p = this.hoodPoint(v);
           if (dist < 200) { this.particles.fire(p.x, p.y, p.z); if (Math.random() < 0.4) this.particles.smoke(p.x, p.y + 0.8, p.z, 0.9, 1.4); }
           if (v.burnTime > 4) { v.burnTime = -1; this.explode(v); }
-        } else if (v.burnTime < 0 && Math.random() < 0.15 && dist < 150) { const p = this.hoodPoint(v); this.particles.smoke(p.x, p.y + 0.5, p.z, 0.9, 1.2); }
+        } else if (v.burnTime < 0 && !v.flooded && Math.random() < 0.15 && dist < 150) { const p = this.hoodPoint(v); this.particles.smoke(p.x, p.y + 0.5, p.z, 0.9, 1.2); }
       }
       // Engine sound for nearby driven vehicles
       const hasEngine = !v.destroyed && (v.driver || v === playerVehicle) && dist < 70;

@@ -35,6 +35,11 @@ export class Physics {
     this.world.timestep = dt;
     this.world.step(this.eventQueue);
   }
+  /** True when an upright capsule (centre, half height of the straight part, radius) overlaps anything in the filter. */
+  overlapsCapsule(cx: number, cy: number, cz: number, halfH: number, r: number, filterGroups = groups(ALL, ALL), excludeRb?: RAPIER.RigidBody | null) {
+    const shape = new RAPIER.Capsule(halfH, r);
+    return !!this.world.intersectionWithShape({ x: cx, y: cy, z: cz }, { x: 0, y: 0, z: 0, w: 1 }, shape, undefined, filterGroups, undefined, excludeRb ?? undefined);
+  }
   /** Ray cast returning hit distance, collider and normal. */
   ray(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxToi: number, filterGroups = groups(ALL, ALL), exclude?: RAPIER.Collider | null, excludeRb?: RAPIER.RigidBody | null) {
     const ray = new RAPIER.Ray({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz });
