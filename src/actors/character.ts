@@ -119,6 +119,7 @@ export class Character {
   private disposed = false;
   dispose() {
     if (this.disposed) return; this.disposed = true;
+    this.physics.untag(this.collider);
     this.physics.world.removeCharacterController(this.controller);
     this.physics.world.removeRigidBody(this.body);
     this.human.dispose();

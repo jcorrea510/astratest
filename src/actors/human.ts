@@ -518,5 +518,5 @@ export class Human {
     if (this.flashT > 0) { this.flashT -= dt; (this.material.userData.uniforms.uFlash as { value: number }).value = Math.max(0, this.flashT / 0.12) * 0.6; }
     this.mixer.update(dt);
   }
-  dispose() { this.mixer.stopAllAction(); this.material.dispose(); this.root.removeFromParent(); }
+  dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); this.material.dispose(); this.root.removeFromParent(); this.mesh.skeleton.dispose(); }
 }

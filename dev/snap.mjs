@@ -1,7 +1,7 @@
 // Usage: node dev/snap.mjs <url> <out.png> [script-js-evaluated-in-page]
 import { chromium } from '@playwright/test';
 const [url, out, script] = process.argv.slice(2);
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--js-flags=--expose-gc', '--enable-precise-memory-info'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 const logs = [];
 p.on('console', m => { if (m.type() !== 'debug') logs.push(`${m.type()}: ${m.text()}`); });

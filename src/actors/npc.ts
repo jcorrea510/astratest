@@ -51,7 +51,7 @@ export class Npc {
   }
   get alive() { return this.char.alive; }
   get pos() { return this.char.pos; }
-  dispose() { this.model?.removeFromParent(); this.char.dispose(); }
+  dispose() { if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); this.model = null; } this.target = null; this.char.dispose(); }
 }
 
 export interface NpcEnv {

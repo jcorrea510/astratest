@@ -5,7 +5,11 @@ import type { Input } from '../core/input';
 import type { CameraRig } from './camera';
 import { wrapAngle } from '../core/rng';
 
+export type PlayerSound = 'jump' | 'land' | 'whoosh' | 'footstep' | 'splash';
 export class PlayerController {
+  onSound: ((s: PlayerSound, volume: number) => void) | null = null;
+  private stepDist = 0;
+  private wasSwimming = false;
   aiming = false;
   sprinting = false;
   rollT = 0;
@@ -43,13 +47,19 @@ export class PlayerController {
       this.rollT = 0.72;
       const yaw = mag > 0.1 ? Math.atan2(dirX, dirZ) : c.yaw;
       this.rollDir.set(Math.sin(yaw), 0, Math.cos(yaw)); c.yaw = yaw;
-      h.playOnce('Roll', 'full', 0.08);
+      h.playOnce('Roll', 'full', 0.08); this.onSound?.('whoosh', 0.6);
       return;
     }
     this.desired.set(dirX * speed * mag, 0, dirZ * speed * mag);
     const jump = !opts.blocked && this.input.justPressed('jump') && c.grounded && !c.swimming && !this.aiming;
-    if (jump) h.playOnce('Jump_Start', 'full', 0.05);
+    if (jump) { h.playOnce('Jump_Start', 'full', 0.05); this.onSound?.('jump', 0.7); }
     c.move(this.desired, dt, jump);
+    if (c.grounded && !c.swimming) {
+      this.stepDist += c.speed * dt;
+      const stride = c.speed > 5 ? 1.25 : c.speed > 2.5 ? 0.95 : 0.7;
+      if (this.stepDist > stride) { this.stepDist = 0; this.onSound?.('footstep', Math.min(1, 0.35 + c.speed * 0.1)); }
+    }
+    if (c.swimming !== this.wasSwimming) { if (c.swimming) this.onSound?.('splash', 1); this.wasSwimming = c.swimming; }
     // Facing: aim faces the camera; otherwise face movement. When aiming while moving the legs lead and the torso twists.
     const moveYaw = Math.atan2(this.desired.x, this.desired.z);
     if (this.aiming) {
@@ -74,7 +84,7 @@ export class PlayerController {
     if (c.swimming) h.setState('swim');
     else if (!c.grounded && c.vel.y < -1.5 && this.rollT <= 0) h.setState('jump');
     else {
-      if (h.currentState === 'jump' && c.grounded) h.playOnce('Jump_Land', 'full', 0.06);
+      if (h.currentState === 'jump' && c.grounded) { h.playOnce('Jump_Land', 'full', 0.06); this.onSound?.('land', 0.8); }
       h.setState('loco');
     }
     const fwdSpeed = c.speed;

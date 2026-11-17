@@ -59,6 +59,7 @@ export class Combat {
   shoot(shooter: Character, w: WeaponDef, origin: THREE.Vector3, dir: THREE.Vector3, spread: number, excludeVehicle?: Vehicle | null): HitInfo[] {
     const hits: HitInfo[] = [];
     this.audio.play(w.sound, { pos: origin, pitch: 0.95 + Math.random() * 0.1 });
+    if (w.id !== 'shotgun' || Math.random() < 0.5) this.audio.play('shellCasing', { pos: origin, volume: 0.35 });
     this.particles.muzzle(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, w.id === 'shotgun');
     this.flash.position.copy(origin); this.flashT = 0.05;
     const right = new THREE.Vector3(dir.z, 0, -dir.x).normalize(), up = new THREE.Vector3().crossVectors(right, dir).normalize();

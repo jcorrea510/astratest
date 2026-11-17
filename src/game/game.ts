@@ -90,6 +90,7 @@ export class Game {
   private lampPools!: THREE.InstancedMesh;
   private lampTimer = 0;
   respawnPoint = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw };
+  private ambT = 0;
 
   constructor(public canvas: HTMLCanvasElement, public settings: Settings, public assets: Assets, public audio: GameAudio = new NullAudio()) {
     this.renderer = new Renderer(canvas);
@@ -128,6 +129,7 @@ export class Game {
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
+    this.playerCtl.onSound = (snd, vol) => { this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: snd === 'footstep' ? 0.9 + Math.random() * 0.2 : 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
     onProgress(0.85, 'Warming up the city lights');
     this.physics.world.step();
     await tick();
@@ -380,7 +382,7 @@ export class Game {
       } else if (p.ttl <= 0) this.removePickup(p);
     }
   }
-  removePickup(p: Pickup) { const i = this.pickups.indexOf(p); if (i >= 0) this.pickups.splice(i, 1); p.mesh.removeFromParent(); }
+  removePickup(p: Pickup) { const i = this.pickups.indexOf(p); if (i >= 0) this.pickups.splice(i, 1); p.mesh.removeFromParent(); p.mesh.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); }
   update(dt: number, raw = dt) {
     this.time += dt;
     this.hour = (this.hour + (dt / this.dayLength) * 24) % 24;
@@ -421,6 +423,15 @@ export class Game {
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);
+    this.ambT -= raw;
+    if (this.ambT <= 0) {
+      this.ambT = 0.5;
+      const p = this.player.pos;
+      const water = Math.max(0, 1 - Math.min(Math.max(0, 440 - p.z), p.z > -60 ? Math.max(0, 480 - p.x) : 999) / 90);
+      const d = districtAt(this.city, p.x, p.z);
+      const near = this.vehicles.list.filter(v => v.driver && v.position.distanceTo(p) < 90).length;
+      this.audio.setAmbience({ night: this.renderer.skyState.night, water, traffic: Math.min(1, near / 8 + (d === 'heights' ? 0.3 : 0.1)), park: d === 'juniper' ? 1 : d === 'hillside' ? 0.6 : d === 'strand' ? 0.3 : 0 });
+    }
     this.renderer.updateEnvironment(this.hour, this.time, this.player.pos);
     nightUniform.value = this.renderer.skyState.night;
     timeUniform.value = this.time;

@@ -259,5 +259,9 @@ export class Vehicle {
     if (lp.z > this.tpl.bbox.max.z - 0.8 && severity > 0.4) this.lightsBroken = true;
   }
   private disposed = false;
-  dispose() { if (this.disposed) return; this.disposed = true; this.phys.dispose(); this.group.removeFromParent(); if (this.ownGeo) this.bodyMesh.geometry.dispose(); this.material.dispose(); }
+  dispose() { if (this.disposed) return; this.disposed = true; this.phys.dispose(); this.group.removeFromParent(); if (this.ownGeo) this.bodyMesh.geometry.dispose(); this.material.dispose();
+    this.phys.physics.untag(this.phys.collider);
+    this.visual.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && m !== this.bodyMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) { if (m.geometry !== lightGeo) m.geometry.dispose(); const mat = m.material as THREE.Material; if (mat !== this.material && mat !== wheelMat) mat.dispose(); } });
+    this.driver = null;
+  }
 }

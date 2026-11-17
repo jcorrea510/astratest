@@ -20,6 +20,7 @@ export class Physics {
   }
   tag(c: RAPIER.Collider, t: ColliderTag) { this.tags.set(c.handle, t); return c; }
   tagOf(c: RAPIER.Collider | null | undefined) { return c ? this.tags.get(c.handle) : undefined; }
+  untag(c: RAPIER.Collider | null | undefined) { if (c) this.tags.delete(c.handle); }
   addStaticBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, yaw = 0, friction = 0.7) {
     const d = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(cx, cy, cz).setFriction(friction)
       .setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) })

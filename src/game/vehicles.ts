@@ -5,7 +5,7 @@ import type { Assets } from '../world/assets';
 import { Vehicle, makeKayKitTemplate, makeVanTemplate, type VehicleTemplate } from '../vehicles/vehicle';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import type { Particles, SkidMarks } from '../render/particles';
-import type { GameAudio, EngineVoice } from '../ui/contracts';
+import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
 
 export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vector3 }
 export class VehicleManager {
@@ -14,6 +14,8 @@ export class VehicleManager {
   onCrash: ((e: CrashEvent) => void) | null = null;
   onExplode: ((v: Vehicle, at: THREE.Vector3) => void) | null = null;
   private engines = new Map<number, EngineVoice>();
+  private skidVoice: LoopVoice | null = null;
+  private skidWas = false;
   private tmp = new THREE.Vector3();
 
   constructor(private scene: THREE.Scene, private physics: Physics, private assets: Assets, private particles: Particles, private skids: SkidMarks, private audio: GameAudio) {
@@ -59,6 +61,7 @@ export class VehicleManager {
     }
   }
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
+    this.updateSkidAudio(playerVehicle);
     for (const v of [...this.list]) {
       const braking = v.input.throttle < -0.1 && v.speed > 1;
       v.update(dt, night, time, braking || v.input.handbrake);
@@ -97,6 +100,20 @@ export class VehicleManager {
       } else if (ev) { ev.stop(); this.engines.delete(v.id); }
     }
   }
+  /** Tyre squeal for the player's car (loop) plus a screech one-shot when a slide starts. */
+  private updateSkidAudio(pv: Vehicle | null) {
+    const slip = pv && !pv.destroyed ? Math.max(...pv.phys.slip) : 0;
+    const vol = Math.min(1, Math.max(0, (slip - 3) / 6));
+    if (vol > 0.02 && pv) {
+      if (!this.skidVoice) this.skidVoice = this.audio.skid();
+      this.skidVoice.update(pv.position, vol);
+      if (!this.skidWas && vol > 0.35) this.audio.play('tireScreech', { pos: pv.position, volume: vol });
+      this.skidWas = true;
+    } else {
+      if (this.skidVoice) { this.skidVoice.stop(); this.skidVoice = null; }
+      this.skidWas = false;
+    }
+  }
   private hoodPoint(v: Vehicle) { return new THREE.Vector3(0, v.tpl.bbox.max.y * 0.7, v.tpl.bbox.max.z - 0.9).applyMatrix4(v.group.matrixWorld); }
   explode(v: Vehicle) {
     const p = v.position.clone();
@@ -111,5 +128,5 @@ export class VehicleManager {
     }
     this.onExplode?.(v, p);
   }
-  stopAllSounds() { for (const e of this.engines.values()) e.stop(); this.engines.clear(); }
+  stopAllSounds() { for (const e of this.engines.values()) e.stop(); this.engines.clear(); this.skidVoice?.stop(); this.skidVoice = null; }
 }
