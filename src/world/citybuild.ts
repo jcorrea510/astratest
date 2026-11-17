@@ -514,7 +514,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, assets: Assets, 
     }
   }
   // (kept clear of the landing strip in front of each beach ramp)
-  for (let x = minX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && Math.abs(r.x - x) < 9)) continue; const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
+  for (let x = minX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; /* ramp + landing run */ const z = maxZ + 12 + Math.sin(x) * 3; props.add(`palm${Math.abs(Math.round(x)) % 3}`, x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x); }
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {

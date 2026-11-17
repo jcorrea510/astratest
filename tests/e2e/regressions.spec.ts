@@ -276,17 +276,20 @@ test('beach stunt ramps pay when hit from Coastal Drive', async ({ page }) => {
       const m0 = g.money; g.input.press('KeyW');
       for (let s = 0; s < 240; s++) {
         const q = v.position, f = v.phys.forward();
-        const lead = q.x < rx - 30 ? { x: q.x + 20, z: 403.5 } : { x: rx + Math.sin(0.6) * 10, z: 411.5 + Math.cos(0.6) * 10 };
+        const lead = q.x < rx - 30 ? { x: q.x + 20, z: 403.5 } : { x: rx + Math.sin(1.2) * 10, z: 411.5 + Math.cos(1.2) * 10 };
         const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
-        g.input.release('KeyA'); g.input.release('KeyD'); if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        g.input.release('KeyA'); g.input.release('KeyD');
+        if (q.x > rx + 4) { g.input.release('KeyW'); if (q.x > rx + 15 && v.phys.grounded) g.input.press('KeyS'); } // jump, land, brake on the sand
+        else if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
         g.frame(1 / 30, false);
       }
-      for (const k of ['KeyW', 'KeyA', 'KeyD']) g.input.release(k);
-      out.push(g.money - m0);
+      for (const k of ['KeyW', 'KeyA', 'KeyD', 'KeyS']) g.input.release(k);
+      for (let s = 0; s < 120; s++) g.frame(1 / 30, false);
+      out.push(g.money - m0, v.flooded || v.destroyed ? 1 : 0);
     }
     return out;
   });
-  expect(res).toEqual([300, 300]);
+  expect(res).toEqual([300, 0, 300, 0]); // paid, and the car is still dry and in one piece
   clean(p);
 });
 

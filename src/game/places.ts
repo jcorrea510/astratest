@@ -33,7 +33,7 @@ export const POSTCARDS: Place[] = [
 /** Stunt ramps: position, heading (yaw of travel), length/height, and what a jump must reach to pay. */
 export const RAMPS = [
   { x: 470, z: 210, yaw: Math.PI, len: 9, h: 2.2, w: 4.2, name: 'Quay launch', minDist: 18, minAir: 0.8 },
-  // the promenade ramps face east-south-east: veer off eastbound Coastal Drive at speed and land on the sloping beach
-  { x: -300, z: 411.5, yaw: 0.6, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
-  { x: 200, z: 411.5, yaw: 0.6, len: 6.5, h: 1.8, w: 6, name: 'Strand flyer', minDist: 11, minAir: 0.55 },
+  // the promenade ramps face east along the beach: veer off eastbound Coastal Drive at speed, land on the sand with room to stop before the sea
+  { x: -300, z: 411.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
+  { x: 200, z: 411.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Strand flyer', minDist: 11, minAir: 0.55 },
 ];
