@@ -255,5 +255,6 @@ export class Vehicle {
     pos.needsUpdate = true; g.computeVertexNormals();
     if (lp.z > this.tpl.bbox.max.z - 0.8 && severity > 0.4) this.lightsBroken = true;
   }
-  dispose() { this.phys.dispose(); this.group.removeFromParent(); if (this.ownGeo) this.bodyMesh.geometry.dispose(); this.material.dispose(); }
+  private disposed = false;
+  dispose() { if (this.disposed) return; this.disposed = true; this.phys.dispose(); this.group.removeFromParent(); if (this.ownGeo) this.bodyMesh.geometry.dispose(); this.material.dispose(); }
 }

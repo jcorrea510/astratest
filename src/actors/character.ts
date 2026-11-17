@@ -116,7 +116,9 @@ export class Character {
   }
   /** Head height above ground in metres. */
   get headY() { return this.pos.y + 1.6 * this.human.look.height; }
+  private disposed = false;
   dispose() {
+    if (this.disposed) return; this.disposed = true;
     this.physics.world.removeCharacterController(this.controller);
     this.physics.world.removeRigidBody(this.body);
     this.human.dispose();
