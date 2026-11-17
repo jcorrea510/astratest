@@ -6,7 +6,8 @@ export function watch(page: Page): Problems {
   const p: Problems = { errors: [], failed: [] };
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') p.errors.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', e => p.errors.push(`pageerror: ${e.message}`));
-  page.on('requestfailed', r => p.failed.push(`${r.url()} ${r.failure()?.errorText}`));
+  // ERR_ABORTED = the page itself cancelled the request (e.g. a font still loading when a test reloads); not a failure
+  page.on('requestfailed', r => { const e = r.failure()?.errorText ?? ''; if (!e.includes('ERR_ABORTED')) p.failed.push(`${r.url()} ${e}`); });
   page.on('response', r => { if (r.status() >= 400) p.failed.push(`${r.status()} ${r.url()}`); });
   return p;
 }
