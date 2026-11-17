@@ -336,6 +336,12 @@ const m5: MissionDef = {
             r.target = new THREE.Vector3(c.x, 0, c.z); r.mode = 'goto'; r.ram = false;
             if (r.v.position.distanceTo(r.target) < 14 && rivalCp[i] < RACE_ROUTE.length) rivalCp[i]++;
           });
+          // every rival still in the race has crossed the line: it's over
+          const racing = rivals.filter(r => g.traffic.cars.includes(r) || rivalCp[rivals.indexOf(r)] >= RACE_ROUTE.length);
+          if (racing.length && racing.every(r => rivalCp[rivals.indexOf(r)] >= RACE_ROUTE.length)) {
+            g.audio.setMusicMood('none');
+            run.failReason = 'The Coastline crew crossed the line without you.'; return 'failed';
+          }
           if (mk && mk.inside(ctx.playerPos, 5)) {
             mk.dispose(); mk = null; cp++; g.audio.play('checkpoint');
             if (cp >= RACE_ROUTE.length) {

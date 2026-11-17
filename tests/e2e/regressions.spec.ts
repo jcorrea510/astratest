@@ -431,3 +431,21 @@ test('sandbox sliders can be dragged; quitting a debug-URL game lands on the tit
   await expect(page.getByText('New game')).toBeVisible({ timeout: 120_000 });
   clean(p);
 });
+
+// ---------- Bug-bash B ----------
+test('the race ends (failed) once every rival has crossed the line', async ({ page }) => {
+  test.setTimeout(600_000);
+  const p = watch(page);
+  await boot(page);
+  await page.evaluate(() => { const M = (window as any).__meridian.missions; for (const id of ['m1', 'm2', 'm3', 'm4']) M.completed.add(id); M.start(M.available()[0]); });
+  await step(page, 1);
+  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); v.phys.teleport(-436, 0.7, 403.5, Math.PI / 2); });
+  let st = { active: 'm5' as string | null, last: '' };
+  for (let i = 0; i < 30 && st.active; i++) {
+    await step(page, 10);
+    st = await state<{ active: string | null; last: string }>(page, '({active: window.__meridian.missions.active?.def.id ?? null, last: String(window.__meridian.missions.lastResult)})');
+  }
+  expect(st.active).toBe(null);
+  expect(st.last).toContain('m5:failed:The Coastline crew');
+  clean(p);
+});
