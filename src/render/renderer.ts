@@ -1,0 +1,125 @@
+/** Renderer, lights, post-processing and the colour grade that holds the art direction together. */
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { QUALITY, type QualityName, type QualityPreset } from '../core/settings';
+import { Sky, sampleSky, type SkyState } from './sky';
+
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.32 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 1.08 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat; uniform vec3 uFlashColor; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 col = c.rgb;
+      float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      // split tone: teal shadows, apricot highlights
+      vec3 shadowTint = mix(vec3(0.86, 1.0, 1.04), vec3(0.8, 0.95, 1.12), uNight);
+      vec3 highTint = mix(vec3(1.06, 1.0, 0.92), vec3(1.04, 0.98, 0.94), uNight);
+      col *= mix(shadowTint, highTint, smoothstep(0.15, 0.75, l));
+      // gentle S-curve and saturation
+      col = mix(vec3(l), col, uSat);
+      col = col * (1.0 + 0.08 * (col - 0.5));
+      // slow-motion desaturation for the inventory wheel
+      col = mix(col, vec3(dot(col, vec3(0.299,0.587,0.114))) * vec3(0.9,1.0,1.05), uSlow * 0.55);
+      vec2 d = vUv - 0.5;
+      float v = smoothstep(0.85, 0.2, length(d * vec2(1.0, 0.85)));
+      col *= mix(1.0 - uVignette, 1.0, v);
+      col = mix(col, uFlashColor, uFlash * (1.0 - v * 0.7));
+      col += (hash(vUv * 1000.0 + uTime) - 0.5) * 0.018;
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+    }`,
+};
+
+export class Renderer {
+  renderer: THREE.WebGLRenderer;
+  scene = new THREE.Scene();
+  camera: THREE.PerspectiveCamera;
+  sun: THREE.DirectionalLight;
+  hemi: THREE.HemisphereLight;
+  sky = new Sky();
+  skyState: SkyState = sampleSky(18);
+  composer!: EffectComposer;
+  bloom!: UnrealBloomPass;
+  grade!: ShaderPass;
+  quality!: QualityPreset;
+  qualityName: QualityName = 'medium';
+  private shadowTarget = new THREE.Vector3();
+
+  constructor(public canvas: HTMLCanvasElement) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.15, 1600);
+    this.scene.fog = new THREE.Fog(0x88aabb, 120, 420);
+    this.hemi = new THREE.HemisphereLight(0xa7d3ee, 0x7a6656, 0.9);
+    this.sun = new THREE.DirectionalLight(0xfff1dc, 3);
+    this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
+    this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
+    this.setQuality('medium');
+    window.addEventListener('resize', () => this.resize());
+  }
+  setQuality(name: QualityName) {
+    this.qualityName = name; const q = this.quality = QUALITY[name];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatio));
+    this.renderer.shadowMap.enabled = q.shadowMap > 0;
+    this.sun.castShadow = q.shadowMap > 0;
+    if (q.shadowMap > 0) {
+      this.sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
+      this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
+      const c = this.sun.shadow.camera; c.left = -q.shadowRange; c.right = q.shadowRange; c.top = q.shadowRange; c.bottom = -q.shadowRange; c.near = 1; c.far = 400; c.updateProjectionMatrix();
+    }
+    this.renderer.shadowMap.needsUpdate = true;
+    // Force materials to recompile for the new shadow configuration.
+    this.scene.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined; if (m) (Array.isArray(m) ? m : [m]).forEach(mm => (mm.needsUpdate = true)); });
+    this.buildComposer();
+    (this.scene.fog as THREE.Fog).far = q.drawDistance; this.camera.far = q.drawDistance + 1200; this.camera.updateProjectionMatrix();
+    this.resize();
+  }
+  private buildComposer() {
+    this.composer?.dispose();
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: this.quality.msaa });
+    this.composer = new EffectComposer(this.renderer, rt);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.6, 0.85);
+    this.bloom.enabled = this.quality.bloom;
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
+    this.grade = new ShaderPass(GradeShader);
+    this.composer.addPass(this.grade);
+  }
+  resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix();
+    this.composer.setSize(w, h);
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+  }
+  /** Updates lighting for a given hour and keeps the shadow frustum centred on the focus point. */
+  updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {
+    const s = sampleSky(hour, this.skyState);
+    this.sky.update(s, time, this.camera.position);
+    this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
+    this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
+    (this.scene.fog as THREE.Fog).color.copy(s.fog);
+    (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(110, 60, s.night);
+    this.renderer.toneMappingExposure = s.exposure;
+    // Snap the shadow camera to texels to avoid shimmering.
+    const range = this.quality.shadowRange || 60, texel = (range * 2) / (this.quality.shadowMap || 1024);
+    this.shadowTarget.set(Math.round(focus.x / texel) * texel, 0, Math.round(focus.z / texel) * texel);
+    this.sun.target.position.copy(this.shadowTarget);
+    this.sun.position.copy(this.shadowTarget).addScaledVector(s.lightDir, 180);
+    this.bloom.strength = THREE.MathUtils.lerp(0.22, 0.75, s.night);
+    this.bloom.threshold = THREE.MathUtils.lerp(0.92, 0.62, s.night);
+    this.grade.uniforms.uNight.value = s.night;
+    this.grade.uniforms.uTime.value = time % 100;
+  }
+  render() { this.composer.render(); }
+}
