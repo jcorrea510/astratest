@@ -23,8 +23,8 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## In progress (~11:45 UTC)
-- Bug-bash passes (need two consecutive clean passes).
+## In progress (~11:15 UTC, 17 Nov)
+- Bug-bash pass 1 running (functional agent). Night facade speckle fixed (flat varyings), committed 80a0e1c.
 
 ## Done since 10:00
 - Memory leak fixed (collider tags); soak passes: 20 game-min chaos, 0 issues, heap 108->114 MB flat, no console errors.
