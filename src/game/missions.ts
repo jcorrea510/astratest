@@ -372,7 +372,9 @@ export class Missions {
   private cooldown = 0;
   onPassed: ((def: MissionDef) => void) | null = null;
   constructor(public ctx: MissionCtx) { }
-  available(): MissionDef[] { return MISSIONS.filter(m => !this.completed.has(m.id) && (!m.requires || this.completed.has(m.requires))); }
+  /** false in sandbox mode: no contacts, markers or story missions */
+  enabled = true;
+  available(): MissionDef[] { if (!this.enabled) return []; return MISSIONS.filter(m => !this.completed.has(m.id) && (!m.requires || this.completed.has(m.requires))); }
   get allDone() { return MISSIONS.every(m => this.completed.has(m.id)); }
   blips(): MinimapBlip[] {
     if (this.active) return this.active.run.blips();

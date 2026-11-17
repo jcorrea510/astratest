@@ -45,6 +45,8 @@ export class Game {
   hour = 17.6;
   time = 0;
   timeScale = 1;
+  /** sandbox overrides: traffic / pedestrian caps (null = quality preset) and a stoppable clock */
+  trafficCap: number | null = null; pedCap: number | null = null; clockRunning = true;
   targetTimeScale = 1;
   paused = false;
   menuOpen = false;
@@ -414,7 +416,7 @@ export class Game {
   removePickup(p: Pickup) { const i = this.pickups.indexOf(p); if (i >= 0) this.pickups.splice(i, 1); p.mesh.removeFromParent(); p.mesh.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); }
   update(dt: number, raw = dt) {
     this.time += dt;
-    this.hour = (this.hour + (dt / this.dayLength) * 24) % 24;
+    if (this.clockRunning) this.hour = (this.hour + (dt / this.dayLength) * 24) % 24;
     const blocked = this.inputBlocked;
     if (!this.paused && !blocked) {
       const look = this.input.lookDelta(raw);
@@ -440,8 +442,8 @@ export class Game {
     this.pcombat.update(dt, blocked || this.paused || !!this.entering, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
-    this.pop.update(dt, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
-    this.traffic.update(dt, this.renderer.camera, this.player.pos, this.renderer.quality.traffic);
+    this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
+    this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
     this.police.update(dt, this.player, !!pv, this.renderer.camera);
     this.updatePickups(dt);
     this.particles.update(dt, this.renderer.renderer.domElement.height);

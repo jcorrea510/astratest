@@ -6,6 +6,7 @@ import { PLACES, POSTCARDS, RAMPS } from './places';
 import { Marker, type MissionCtx } from './missions';
 import { WEAPONS, WEAPON_ORDER, type WeaponId } from '../combat/weapons';
 import { RAPIER, groups, G_STATIC } from '../core/physics';
+import { Robberies } from './robbery';
 
 export class Activities {
   found = new Set<number>();
@@ -20,13 +21,15 @@ export class Activities {
   missionActive: () => boolean = () => false;
   /** Called when a mission ends: a delivery into the garage must not turn into a paid respray. */
   disarmGarage() { this.garageArmed = false; }
-  onSaveRequested: (() => void) | null = null;
+  onSaveRequested: (() => boolean) | null = null;
+  robberies: Robberies;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
     this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166', 'TIDEWATER ARMS');
     this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff', 'GLOW GARAGE  ·  RESPRAY $150');
     this.snackMk = ctx.marker(PLACES.snack, 1.3, '#ff8fb1', 'PIER 9 SNACKS');
     this.safeMk = ctx.marker(PLACES.safehouse, 1.3, '#9be8a6', 'SAFEHOUSE  ·  SAVE');
     this.buildRamps();
+    this.robberies = new Robberies(game, ui, (x, z) => ctx.groundY(x, z));
   }
   /** Re-creates postcard pickups after loading a save. */
   spawnCards() {
@@ -67,6 +70,7 @@ export class Activities {
     const b: MinimapBlip[] = [
       { x: PLACES.arms.x, z: PLACES.arms.z, kind: 'arms', label: 'Tidewater Arms' }, { x: PLACES.garage.x, z: PLACES.garage.z, kind: 'garage', label: 'Glow Garage' },
       { x: PLACES.snack.x, z: PLACES.snack.z, kind: 'shop', label: 'Pier 9 Snacks' }, { x: PLACES.safehouse.x, z: PLACES.safehouse.z, kind: 'safehouse', label: 'Safehouse' },
+      ...this.robberies.blips(),
     ];
     return b;
   }
@@ -115,18 +119,19 @@ export class Activities {
     if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
     if (this.safeMk.inside(p, 2.5)) return `${key}  Save game`;
-    return null;
+    return this.robberies.prompt();
   }
   update(dt: number) {
     const g = this.game, p = g.player.pos, t = g.time;
     for (const c of this.cards) if (c) { c.rotation.y += dt * 1.5; c.position.y += Math.sin(t * 2) * 0.002; }
+    if (!g.paused) this.robberies.update(dt);
     if (g.inputBlocked && !this.shopOpen) return;
     if (this.shopOpen) { if (g.input.justPressed('pause')) this.closeShop(); return; }
     // interactions
     if (!g.playerVehicle && g.input.justPressed('interact')) {
       if (this.shopMk.inside(p, 2.5)) this.openShop('arms');
       else if (this.snackMk.inside(p, 2.5)) this.openShop('snack');
-      else if (this.safeMk.inside(p, 2.5)) { this.onSaveRequested?.(); g.player.health = g.player.maxHealth; this.ui.toast('Game saved. Rested to full health.', 'info'); g.audio.play('uiClick'); }
+      else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }
     }
     // Respray garage
     this.garageCool = Math.max(0, this.garageCool - dt);

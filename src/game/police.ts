@@ -9,8 +9,9 @@ import { samplePath } from '../world/citymap';
 import type { GameAudio, LoopVoice } from '../ui/contracts';
 import type { WeaponId } from '../combat/weapons';
 
-export type Crime = 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson';
+export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson';
 const CRIME: Record<Crime, { add: number; min: number }> = {
+  robbery: { add: 0, min: 2 },
   assault: { add: 0, min: 1 }, shooting: { add: 0, min: 1 }, kill: { add: 1, min: 2 }, copAttack: { add: 1, min: 2 }, copKill: { add: 2, min: 3 },
   carjack: { add: 0, min: 1 }, vehicleWreck: { add: 0, min: 1 }, copCarTheft: { add: 1, min: 2 }, hitPerson: { add: 0, min: 1 },
 };
@@ -63,6 +64,18 @@ export class Police {
     if (!nearCop && !nearCiv && crime !== 'copKill' && crime !== 'copAttack') return;
     if (this.state.add(crime)) { this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); }
     this.state.lastSeen.copy(at);
+  }
+  /** Sets the wanted level directly (sandbox tools). */
+  setHeat(level: number, at: THREE.Vector3) {
+    const before = this.state.heat, h = Math.max(0, Math.min(5, level));
+    if (h === 0) { this.clear(); return; }
+    this.state.heat = h; this.state.lastSeen.copy(at); this.state.unseenT = 0;
+    if (h > before) { this.audio.play('heatUp'); this.onHeatChange?.(h, false); }
+  }
+  /** A crime reported by an alarm or a phone call: no witness check. */
+  alarm(crime: Crime, at: THREE.Vector3) {
+    if (this.state.add(crime)) { this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); }
+    this.state.lastSeen.copy(at); this.state.unseenT = 0;
   }
   clear() {
     if (this.state.heat > 0) { this.state.heat = 0; this.onHeatChange?.(0, true); }

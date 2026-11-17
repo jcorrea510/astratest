@@ -13,6 +13,16 @@ export const PLACES = {
 } satisfies Record<string, Place>;
 export type PlaceId = keyof typeof PLACES;
 
+/** Street kiosks that can be held up (yaw = direction the counter faces; cash = a full till). */
+export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number }
+export const STORES: Store[] = [
+  { x: -232, z: 130, yaw: -Math.PI / 2, name: 'Lucky Gull 24/7', color: '#d1495b', cash: 320 },
+  { x: 67, z: -118, yaw: -Math.PI / 2, name: 'Sundial Deli', color: '#2f8f8a', cash: 600 },
+  { x: 100, z: -318, yaw: 0, name: 'Juniper Snack Hut', color: '#6a994e', cash: 220 },
+  { x: -120, z: 414, yaw: Math.PI, name: 'Promenade Pops', color: '#ef8354', cash: 260 },
+  { x: 486, z: 60, yaw: -Math.PI / 2, name: 'Dockside Bait & Tackle', color: '#3d5a80', cash: 420 },
+];
+
 /** Hidden postcards (collectibles): sidewalks, park, pier, beach, docks. */
 export const POSTCARDS: Place[] = [
   { x: -446, z: -300, name: 'Ridge corner' }, { x: 100, z: -350, name: 'Juniper Park' }, { x: -50, z: 545, y: 1.2, name: 'Pier end' },

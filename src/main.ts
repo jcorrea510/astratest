@@ -10,6 +10,7 @@ import { Audio } from './audio/audio';
 import type { GameAudio, WheelSlot } from './ui/contracts';
 import { MissionCtx, Missions, MISSIONS } from './game/missions';
 import { Activities } from './game/activities';
+import { Sandbox } from './game/sandbox';
 import { readSave, writeSave, type SaveData } from './game/save';
 import { WEAPONS, WEAPON_ORDER, type WeaponId } from './combat/weapons';
 import { PLACES } from './game/places';
@@ -32,6 +33,7 @@ const city = generateCity();
 let game: Game | null = null;
 let missions: Missions | null = null;
 let activities: Activities | null = null;
+let sandbox: Sandbox | null = null;
 let audio: GameAudio | null = null;
 let assetsPromise: Promise<Assets> | null = null;
 let assetFrac = 0, assetLabel = 'Preparing the city';
@@ -52,8 +54,8 @@ function webglOk(): boolean {
 ui.init({
   city, settings, callbacks: {
     onStart: cont => { void startGame(cont); },
-    onSandbox: () => { /* sandbox mode: wired up after the UI pass */ },
-    onOpenSandbox: () => { /* sandbox tools: wired up after the UI pass */ },
+    onSandbox: () => { void startGame(false, true); },
+    onOpenSandbox: () => { if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
     onQuitToTitle: () => quitToTitle(),
     onSettingsChanged: s => applySettings(s),
@@ -87,7 +89,7 @@ function preload() {
   return assetsPromise;
 }
 
-async function startGame(cont: boolean) {
+async function startGame(cont: boolean, sandboxMode = false) {
   if (started) return;
   started = true;
   ui.showLoading(assetFrac * 0.6, assetLabel);
@@ -104,8 +106,10 @@ async function startGame(cont: boolean) {
     activities.onSaveRequested = () => saveGame();
     activities.missionActive = () => !!missions?.active;
     wireGame(game);
-    const save = cont ? readSave(storage) : null;
+    const save = cont && !sandboxMode ? readSave(storage) : null;
     if (save) applySave(save); else newGameSetup();
+    if (sandboxMode) { sandbox = new Sandbox(game, ui); sandbox.setup(); missions.enabled = false; ui.setMode('sandbox'); }
+    else ui.setMode('story');
     activities.spawnCards();
     game.cam.update(0.016, game.player.pos, 'foot');
     game.prewarm();
@@ -114,7 +118,10 @@ async function startGame(cont: boolean) {
     game.onFrame = dt => frame(dt);
     game.start();
     game.input.requestLock();
-    if (!save) {
+    if (sandbox) {
+      ui.missionCard('Sandbox', 'Everything unlocked. Open the pause menu for sandbox tools.', 'start');
+      setTimeout(() => ui.showControlsHint('Sandbox: you start invincible with every weapon and $50,000. Esc, then Sandbox tools, to spawn cars, change the time, set your wanted level or teleport. Sandbox games are not saved.', 10), 3200);
+    } else if (!save) {
       ui.missionCard('Port Meridian', 'Golden hour. Find Juno on Lantern Ave to get started.', 'start');
       setTimeout(() => ui.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc pauses. Walk into the glowing amber marker to start a mission.', 9), 3200);
     } else ui.toast('Welcome back to Port Meridian', 'info');
@@ -143,7 +150,7 @@ function applySave(s: SaveData) {
   g.cam.snapBehind(s.pos.yaw + Math.PI);
 }
 function saveGame(): boolean {
-  if (!game || !missions || !activities || game.deathT >= 0) return false;
+  if (!game || !missions || !activities || game.deathT >= 0 || sandbox) return false;
   const g = game;
   const onFoot = !g.playerVehicle;
   const pos = onFoot && !missions.active ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
@@ -229,6 +236,7 @@ function frame(raw: number) {
       if (!input.held('wheel') || !canWheel) closeWheel();
     }
     m.update(raw * g.timeScale);
+    sandbox?.update();
     a.update(raw * g.timeScale);
     autosaveT += raw;
     if (autosaveT > 60 && !m.active && g.deathT < 0 && !g.playerVehicle) { autosaveT = 0; saveGame(); }
@@ -262,7 +270,7 @@ function minimapState() {
 /** Test / debugging surface used by the automated playthrough tests. */
 function exposeApi() {
   window.__meridian = {
-    game, missions, activities, ui, settings, PLAYER_LOOK,
+    game, missions, activities, sandbox, ui, settings, PLAYER_LOOK,
     save: () => saveGame(), read: () => readSave(storage),
     pause, resume, openWheel, closeWheel,
   };
@@ -275,7 +283,7 @@ if (!webglOk()) {
   ui.showMobileGate();
 } else {
   void preload().catch(e => console.error(e));
-  if (params.get('autostart') === '1') void startGame(params.get('continue') === '1');
+  if (params.get('autostart') === '1') void startGame(params.get('continue') === '1', params.get('sandbox') === '1');
   else ui.showTitle(!!readSave(storage));
 }
 document.title = 'Meridian Afterglow';
