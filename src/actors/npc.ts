@@ -57,7 +57,7 @@ export class Npc {
 
 export interface NpcEnv {
   physics: Physics; city: CityMap; combat: Combat; scene: THREE.Scene; time: () => number;
-  player: Character; playerHeat: () => number; others: () => Iterable<Character>;
+  player: Character; playerHeat: () => number; copsLethal?: () => boolean; others: () => Iterable<Character>;
   onArrest: (by: Npc) => void; onWitness: (npc: Npc, what: 'shot' | 'attack' | 'kill' | 'carjack') => void;
 }
 
@@ -67,6 +67,7 @@ export class NpcBrainRunner {
   private ball = new RAPIER.Ball(0.35);
   constructor(private env: NpcEnv) { }
 
+  private lethal() { return this.env.copsLethal ? this.env.copsLethal() : this.env.playerHeat() >= 2; }
   hasLOS(from: THREE.Vector3, to: THREE.Vector3): boolean {
     const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z; const d = Math.hypot(dx, dy, dz);
     if (d < 0.01) return true;
@@ -113,9 +114,9 @@ export class NpcBrainRunner {
         const d = c.pos.distanceTo(p.pos);
         const sees = d < 70 && (n.think <= 0 ? this.hasLOS(this.eye(c, tv), this.chest(p, tv2)) : n.losT > 0);
         if (n.think <= 0) { n.losT = sees ? 1 : 0; }
-        if (sees) { n.seenTime = t; n.lastSeen.copy(p.pos); const want2 = n.role === 'police' && env.playerHeat() < 2 ? 'chase' : 'combat'; if (n.brain !== want2) { n.brain = want2; n.stateT = 0; n.goal = null; } n.target = p; }
+        if (sees) { n.seenTime = t; n.lastSeen.copy(p.pos); const want2 = n.role === 'police' && !this.lethal() ? 'chase' : 'combat'; if (n.brain !== want2) { n.brain = want2; n.stateT = 0; n.goal = null; } n.target = p; }
         else if (n.brain === 'combat' && t - n.seenTime > 12) { n.brain = 'chase'; }
-        if (n.role === 'police' && env.playerHeat() >= 2 && n.brain === 'chase') n.brain = 'combat';
+        if (n.role === 'police' && this.lethal() && n.brain === 'chase') n.brain = 'combat';
         if (n.brain !== 'combat' && n.brain !== 'chase' && d < 30) { n.brain = 'chase'; n.target = p; n.lastSeen.copy(p.pos); }
       } else if (n.brain === 'combat' || n.brain === 'chase') { n.brain = n.role === 'police' ? 'idle' : 'idle'; n.target = null; }
     }
@@ -141,7 +142,7 @@ export class NpcBrainRunner {
         const tgt = n.target ?? env.player;
         tv.copy(n.lastSeen).sub(c.pos); tv.y = 0; const d = tv.length();
         if (d > 1.2) { desired.copy(tv.normalize()); speed = n.role === 'police' ? 5.8 : 5.2; }
-        if (n.role === 'police' && env.playerHeat() <= 1 && tgt.alive && !tgt.inVehicle && c.pos.distanceTo(tgt.pos) < 1.8) {
+        if (n.role === 'police' && !this.lethal() && tgt.alive && !tgt.inVehicle && c.pos.distanceTo(tgt.pos) < 1.8) {
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           if (tgt.speed < 2.5) { n.arrestT += dt; if (n.arrestT > 1.6) { n.arrestT = 0; env.onArrest(n); } } else n.arrestT = Math.max(0, n.arrestT - dt);
         } else n.arrestT = 0;

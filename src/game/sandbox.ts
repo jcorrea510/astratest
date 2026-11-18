@@ -6,6 +6,9 @@ import { WEAPONS, WEAPON_ORDER } from '../combat/weapons';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { PLACES } from './places';
 import type { SandboxTools } from './save';
+import type { UnitKind } from './dispatch';
+
+const UNITS: { value: UnitKind; label: string }[] = [{ value: 'police', label: 'Police cruiser' }, { value: 'fbi', label: 'FBI SUV' }, { value: 'swat', label: 'SWAT van' }, { value: 'army', label: 'Army truck' }, { value: 'tank', label: 'Tank' }];
 
 const KINDS: { value: VehicleKind; label: string }[] = (Object.keys(VEHICLES) as VehicleKind[]).map(k => ({ value: k, label: VEHICLES[k].name }));
 const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[] = [
@@ -23,6 +26,7 @@ const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[
 export class Sandbox {
   god = false; infiniteAmmo = false; neverWanted = false; clockRunning = true;
   traffic: number; peds: number;
+  private unit: UnitKind = 'police';
   private kind: VehicleKind = 'coupe'; private spot = 'pier';
   open = false;
   constructor(private game: Game, private ui: GameUI) {
@@ -58,6 +62,9 @@ export class Sandbox {
       { id: 'cash', group: 'Player', label: 'Add $10,000', detail: `$${g.money.toLocaleString('en-US')}`, kind: 'button' },
       { id: 'arsenal', group: 'Player', label: 'Give every weapon', kind: 'button' },
       { id: 'heat', group: 'Police', label: 'Wanted level', kind: 'slider', value: g.police.heat, min: 0, max: 5, step: 1 },
+      { id: 'unit', group: 'Police', label: 'Unit type', kind: 'select', value: this.unit, options: UNITS },
+      { id: 'spawnUnit', group: 'Police', label: 'Spawn police unit', kind: 'button' },
+      { id: 'heli', group: 'Police', label: 'Spawn helicopter', kind: 'button' },
       { id: 'never', group: 'Police', label: 'Police ignore you', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
       { id: 'clock', group: 'World', label: 'Clock running', kind: 'toggle', value: this.clockRunning },
@@ -84,6 +91,9 @@ export class Sandbox {
       case 'cash': g.addMoney(10000); break;
       case 'arsenal': this.arsenal(); break;
       case 'heat': if (Number.isFinite(num)) g.police.setHeat(Math.round(num), g.player.pos); break;
+      case 'unit': if (UNITS.some(u => u.value === v)) this.unit = v as UnitKind; break;
+      case 'spawnUnit': g.police.callUnit(this.unit, g.playerVehicle ? g.playerVehicle.position : g.player.pos, g.renderer.camera); break;
+      case 'heli': g.spawnHelicopter('civilian'); break;
       case 'never': this.neverWanted = !!v; if (this.neverWanted) g.police.clear(); break;
       case 'hour': if (Number.isFinite(num)) g.hour = ((num % 24) + 24) % 24; break;
       case 'clock': this.clockRunning = !!v; g.clockRunning = this.clockRunning; break;

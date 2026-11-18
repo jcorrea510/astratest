@@ -145,11 +145,19 @@ export class Game {
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
       physics: this.physics, city: this.city, combat: this.combat, scene: this.renderer.scene, time: () => this.time,
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
-      onArrest: () => this.playerDown('busted'), onWitness: () => { },
+      onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, onWitness: () => { },
     }, this.audio);
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
+    this.police.setHooks({
+      combat: this.combat, cam: this.cam, night: () => this.renderer.skyState.night,
+      dragOut: (v, side, puller) => this.carEntry.dragOut(v, side, puller),
+      busted: () => this.playerDown('busted'),
+      spawnHeli: (x, z, yaw) => this.spawnHelicopter('police', x, z, yaw),
+      removeHeli: h => this.helis.remove(h),
+    });
+    this.events.arrestAnimationDone = this.police.dispatch.animHook; // [POLICE] the cop cuffs the player before the ARRESTED card
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
     this.playerCtl.onSound = (snd, vol) => { this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: snd === 'footstep' ? 0.9 + Math.random() * 0.2 : 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
@@ -451,7 +459,7 @@ export class Game {
     this.player.setCollision(true);
     this.renderer.scene.add(this.player.human.root);
     this.cam.snapBehind(place.yaw);
-    this.police.clear();
+    this.police.clear(); this.police.dispatch.endArrest(this.player);
     this.deathT = -1;
     this.player.human.setState('loco');
     this.events.onRespawn();
@@ -529,7 +537,7 @@ export class Game {
     if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > this.respawnDelay) this.respawn(); }
     if (!this.player.alive && this.deathT < 0) this.playerDown('down'); // safety net: never leave a dead player without the respawn flow
     this.cam.baseFov = this.settings.fov;
-    if (this.deathT >= 0) this.cam.update(raw, this.player.pos, 'dead');
+    if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
