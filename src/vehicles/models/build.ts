@@ -51,7 +51,8 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
   const seats = seatsFor(kind);
   const doorBone = (row: number, side: 1 | -1) => bl.doorBones[row * 2 + (side === 1 ? 0 : 1)];
   const lods: CarTemplate['lods'] = [];
-  let doors: DoorDef[] = [], panes: PaneDef[] = [], bbox = new THREE.Box3(), hood = new THREE.Vector3(), trackLen = 1;
+  let doors: DoorDef[] = [], panes: PaneDef[] = [], bbox = new THREE.Box3(), trackLen = 1;
+  const hood = new THREE.Vector3();
   for (const lod of [0, 1]) {
     const kit = bodyKit(s, lod);
     const lower = cutLower(kit, lod, doorBone);
@@ -62,7 +63,7 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     for (const d of lower.doors) { body.append(d.soup).append(d.inner); const extra = gh?.doorParts.get(d.bone); if (extra) body.append(extra); }
     body.append(details(kit, lod, seats, doorBone));
     const w = wheelSoup(s, lod);
-    if (s.type !== 'tank') bl.wheelBones.forEach((b, i) => {
+    if (s.type !== 'tank') bl.wheelBones.forEach(b => {
       const p = bl.bones[b].pos, left = p[0] > 0;
       const ws = (left ? w.clone() : w.mirrorX()).translate(p[0], s.R, p[2]).paint({ bone: b });
       body.append(ws);

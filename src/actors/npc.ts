@@ -52,7 +52,7 @@ export class Npc {
   }
   get alive() { return this.char.alive; }
   get pos() { return this.char.pos; }
-  dispose() { if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); this.model = null; } this.target = null; this.char.dispose(); }
+  dispose() { if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }
 }
 
 export interface NpcEnv {
@@ -230,6 +230,7 @@ export class NpcBrainRunner {
       const hit = meleeTargets(c, [tgt], 1.3);
       if (!hit.length) return;
       this.env.combat.melee(c, WEAPONS.fists, hit, []);
+      tgt.vel.x = 0; tgt.vel.z = 0;
       if (tgt.alive) tgt.hitReact(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z, MELEE_POWER[kind] * 0.8);
     };
     if (c.startMelee('fists')) n.cooldown = 0.75 + Math.random() * 0.6;

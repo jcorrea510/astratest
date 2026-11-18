@@ -57,9 +57,9 @@ const WIND_R: Pose = { chest: [0, -28, 0], armR: [28, 0, -12], foreR: [-40, 0, 0
 /** Built-in actions. Clip names from the UAL are also valid action names. */
 export const ACTIONS: Record<string, ActionDef> = {
   // --- melee (wind-up -> strike -> recover); 'strike' is the contact frame
-  punch_jab: { clip: 'Punch_Jab', layer: 'upper', rate: 1.1, fade: 0.06, events: [[0.38, 'strike']], poses: [[0, { chest: [0, 10, 0] }], [0.25, { chest: [4, 14, 0] }], [0.4, { chest: [6, -8, 0] }], [1, {}]] },
-  punch_cross: { clip: 'Punch_Cross', layer: 'upper', rate: 1.05, fade: 0.06, events: [[0.42, 'strike']], poses: [[0, {}], [0.22, { chest: [0, -24, 0], spine: [0, -8, 0] }], [0.45, { chest: [8, 20, 0], spine: [4, 8, 0] }], [1, {}]] },
-  punch_hook: { clip: 'Punch_Cross', layer: 'upper', rate: 0.95, fade: 0.07, events: [[0.46, 'strike']], poses: [[0, {}], [0.25, { chest: [0, -38, -4], spine: [0, -12, 0], armR: [10, 0, -35] }], [0.5, { chest: [10, 32, 6], spine: [4, 14, 0], armR: [0, 0, -55], foreR: [0, 30, 0] }], [1, {}]] },
+  punch_jab: { clip: 'Punch_Jab', layer: 'upper', rate: 1.3, fade: 0.06, events: [[0.38, 'strike']], poses: [[0, { chest: [0, 10, 0] }], [0.25, { chest: [4, 14, 0] }], [0.4, { chest: [6, -8, 0] }], [1, {}]] },
+  punch_cross: { clip: 'Punch_Cross', layer: 'upper', rate: 1.2, fade: 0.06, events: [[0.42, 'strike']], poses: [[0, {}], [0.22, { chest: [0, -24, 0], spine: [0, -8, 0] }], [0.45, { chest: [8, 20, 0], spine: [4, 8, 0] }], [1, {}]] },
+  punch_hook: { clip: 'Punch_Cross', layer: 'upper', rate: 1.05, fade: 0.07, events: [[0.46, 'strike']], poses: [[0, {}], [0.25, { chest: [0, -38, -4], spine: [0, -12, 0], armR: [10, 0, -35] }], [0.5, { chest: [10, 32, 6], spine: [4, 14, 0], armR: [0, 0, -55], foreR: [0, 30, 0] }], [1, {}]] },
   stab: { clip: 'Punch_Jab', layer: 'upper', rate: 1.25, fade: 0.05, events: [[0.4, 'strike']], poses: [[0, {}], [0.2, { armR: [20, 0, 0], foreR: [-30, 0, 0] }], [0.42, { chest: [8, 10, 0] }], [1, {}]] },
   swing_bat: { clip: 'Sword_Attack', layer: 'upper', rate: 1.15, fade: 0.08, events: [[0.42, 'strike']] },
   punch_windup: { layer: 'upper', dur: 0.22, fade: 0.05, poses: [[0, {}], [1, WIND_R]] },

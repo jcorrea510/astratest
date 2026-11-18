@@ -23,7 +23,6 @@ export interface VehicleSpec {
 type Tune = Omit<VehicleSpec, 'name' | 'cls' | 'paints' | 'price'>;
 const car: Tune = { mass: 1350, engine: 9200, brake: 11, topSpeed: 44, reverseSpeed: 9, maxSteer: 0.66, highSteer: 0.16, grip: 0.8, rearGrip: 0.8, traction: 0.95, peakSlip: 0.13, slide: 0.72, handbrakeGrip: 0.32, driftGrip: 0.78, tc: true, stability: 0.55, suspRest: 0.32, suspTravel: 0.25, stiffness: 32, compression: 2.6, relaxation: 3.0, comY: -0.35, downforce: 2.2, drive: 'rear', health: 1000 };
 const t = (o: Partial<Tune>): Tune => ({ ...car, ...o });
-const sedanT = t({});
 const bigT = t({ mass: 1750, engine: 11800, brake: 10.5, topSpeed: 47, grip: 0.78, rearGrip: 0.78, stiffness: 28, compression: 2.4, relaxation: 2.8, comY: -0.3, health: 1250 });
 const truckT = t({ mass: 2300, engine: 15500, brake: 9.5, topSpeed: 42, reverseSpeed: 8, maxSteer: 0.62, highSteer: 0.15, grip: 0.74, rearGrip: 0.74, traction: 0.92, peakSlip: 0.15, slide: 0.75, handbrakeGrip: 0.38, driftGrip: 0.84, stability: 0.75, suspRest: 0.38, suspTravel: 0.3, stiffness: 26, compression: 2.4, relaxation: 2.6, comY: -0.25, downforce: 1.5, health: 1600, sound: 'truck' });
 const spec = (name: string, cls: VehicleClass, tune: Tune, paints: string[]): VehicleSpec => ({ name, cls, ...tune, price: 0, paints });

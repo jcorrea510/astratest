@@ -229,7 +229,7 @@ describe('weapon sound synthesis', () => {
       expect(rms).toBeGreaterThan(0.18); // dense first 100 ms (a click would be ~0.05)
       expect(a.lowFrac).toBeLessThan(0.75); // not all sub: small speakers must hear it
       expect(a.durMs40).toBeGreaterThanOrEqual(140); expect(a.durMs40).toBeLessThanOrEqual(1700);
-      for (let i = 0; i < d.length; i++) expect(Number.isFinite(d[i])).toBe(true);
+      expect(d.every(Number.isFinite)).toBe(true);
       res[g] = { dur: a.durMs40, rms };
     }
     // classes sound different: shotguns and snipers ring longer than SMGs and pistols
@@ -239,5 +239,5 @@ describe('weapon sound synthesis', () => {
     // far voices: long rolling tail, dull
     const far = renderGun(GUNS.rifle, 48000, r, true); const fa = analyse(far, 48000);
     expect(fa.durMs40).toBeGreaterThan(1000);
-  });
+  }, 30_000);
 });

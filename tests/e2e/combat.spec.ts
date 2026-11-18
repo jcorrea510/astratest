@@ -99,3 +99,28 @@ test('bullets land on the reticle point on a wall', async ({ page }) => {
   expect(res.miss).toBeLessThan(0.05 + res.dist * 0.012);
   clean(p);
 });
+
+test('rounds break car glass and kill the driver inside; the car coasts', async ({ page }) => {
+  const p = watch(page);
+  await setup(page, 'rifle');
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game; const T = g.renderer.camera.position.constructor;
+    const yaw = g.player.yaw, x = g.player.pos.x + Math.sin(yaw) * 8, z = g.player.pos.z + Math.cos(yaw) * 8;
+    const v = g.vehicles.spawn(g.vehicles.list[0]?.kind ?? 'sedan', x, z, yaw + Math.PI / 2);
+    const n = g.pop.spawn('civilian', x, z, 0.5); n.persistent = true; v.persistent = true;
+    g.traffic.seat(n, v);
+    for (let i = 0; i < 20; i++) g.frame(1 / 60, false);
+    // aim at the driver's head through the side window
+    for (let k = 0; k < 6; k++) {
+      const q = n.char.human.head.getWorldPosition(new T()); q.y += 0.08; g.frame(1 / 60, false);
+      const cam = g.renderer.camera.getWorldPosition(new T()); const d = new T(q.x - cam.x, q.y - cam.y, q.z - cam.z).normalize();
+      g.cam.pitch = Math.asin(d.y); g.cam.yaw = Math.atan2(-d.x, -d.z); g.frame(1 / 60, false);
+    }
+    const shots: any[] = []; const prev = g.combat.onShot; g.combat.onShot = (e: any) => { shots.push(e); prev?.(e); };
+    g.input.tap('Mouse0'); g.frame(1 / 60, false); g.combat.onShot = prev;
+    const h = shots[0]?.hits[0];
+    return { kind: h?.kind, glass: h?.throughGlass, zone: h?.zone, alive: n.char.alive, handbrake: v.input.handbrake, broken: (v as any).brokenMask ?? -1 };
+  });
+  expect(r).toMatchObject({ kind: 'character', glass: true, alive: false, handbrake: false });
+  clean(p);
+});

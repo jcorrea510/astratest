@@ -67,7 +67,8 @@ function gunMeta(): Record<GunKey, SfxMeta> {
   for (const g of GUN_SOUNDS) {
     const big = g === 'shotgun' || g === 'sawnoff' || g === 'sniper' || g === 'rpg' || g === 'revolver';
     const rapid = g === 'smg' || g === 'compactSmg' || g === 'machinePistol' || g === 'lmg' || g === 'rifle' || g === 'carbine';
-    m[`gun_${g}`] = W(big ? 7 : 6, rapid ? 7 : 4, rapid ? 0.025 : 0.05, 0.22, 1, 0.035, big ? 1.2 : 1);
+    // generous echo / environment sends: the street, alley or open-air tail is what makes a shot sound like a real gunshot
+    m[`gun_${g}`] = W(big ? 7 : 6, rapid ? 7 : 4, rapid ? 0.025 : 0.05, rapid ? 0.42 : 0.55, 1, 0.035, big ? 1.8 : rapid ? 1.3 : 1.5);
     m[`gunFar_${g}`] = W(4, rapid ? 4 : 2, 0.04, 0.35, 0.9, 0.04, 1.3);
   }
   return m;

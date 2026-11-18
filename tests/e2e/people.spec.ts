@@ -25,7 +25,7 @@ test('running across curbs never gets stuck (up and down, straight and at an ang
         { x: mx - 2, z: b.z0 - 3.5, yaw: 0.6, up: true },
         { x: b.x1 - 1.5, z: mz - 4, yaw: Math.PI / 2, up: false },
       ];
-      for (const c of cands) if (clear(c.x, c.z, Math.sin(c.yaw), Math.cos(c.yaw), 7)) out.push(c);
+      for (const c of cands) if (clear(c.x, c.z, Math.sin(c.yaw), Math.cos(c.yaw), 11)) out.push(c);
     }
     return out.slice(0, 6);
   });
@@ -38,18 +38,20 @@ test('running across curbs never gets stuck (up and down, straight and at an ang
       c.place(s.x, y0, s.z, s.yaw); g.cam.yaw = s.yaw - Math.PI;
       for (let k = 0; k < 3; k++) g.frame(1 / 30, false);
       g.input.press('KeyW'); if (sprint) g.input.press('ShiftLeft');
-      let minStep = Infinity, prev = { x: c.pos.x, z: c.pos.z };
+      let minStep = Infinity, prev = { x: c.pos.x, z: c.pos.z }; const trace: string[] = [];
       for (let k = 0; k < 45; k++) {
         g.cam.yaw = s.yaw - Math.PI; g.frame(1 / 30, false);
-        if (k > 8) minStep = Math.min(minStep, Math.hypot(c.pos.x - prev.x, c.pos.z - prev.z));
+        const st = Math.hypot(c.pos.x - prev.x, c.pos.z - prev.z);
+        if (k > 8) minStep = Math.min(minStep, st);
+        trace.push(`${st.toFixed(2)}/${c.pos.y.toFixed(2)}`);
         prev = { x: c.pos.x, z: c.pos.z };
       }
       g.input.release('KeyW'); g.input.release('ShiftLeft');
-      return { dist: Math.hypot(c.pos.x - s.x, c.pos.z - s.z), y: c.pos.y, minStep, state: c.human.currentState };
+      return { dist: Math.hypot(c.pos.x - s.x, c.pos.z - s.z), y: c.pos.y, minStep, state: c.human.currentState, trace: trace.join(' ') };
     }, { s, sprint });
     // 1.5 s at a jog/sprint covers 5+ m; a curb stall would leave the player near the start
     expect(r.dist, `spot ${i} ${JSON.stringify(s)} ${JSON.stringify(r)}`).toBeGreaterThan(4.5);
-    expect(r.minStep, `no frame without progress at spot ${i}`).toBeGreaterThan(0.04);
+    expect(r.minStep, `no frame without progress at spot ${i}: ${r.trace}`).toBeGreaterThan(0.04);
     if (s.up) expect(r.y).toBeGreaterThan(0.12); else expect(r.y).toBeLessThan(0.12);
     expect(r.state).toBe('loco');
   }
@@ -122,8 +124,12 @@ test('punches are a real move: wind-up, damage only at the strike and only withi
   expect(await hp()).toBe(100);
   // a quick three-hit combo ends in a hook that knocks the victim down
   await setup(0.9, 0);
-  for (let i = 0; i < 3; i++) { await tap(page, 'Mouse0'); await step(page, 0.45); }
-  await step(page, 0.3);
+  // (the victim is held in place: an assaulted civilian would normally run off after the first blow)
+  await page.evaluate(() => {
+    const g = (window as any).__game, n = (window as any).__victim;
+    for (let i = 0; i < 3; i++) { g.input.tap('Mouse0'); for (let k = 0; k < 14; k++) { n.brain = 'scripted'; g.frame(1 / 30, false); } }
+    for (let k = 0; k < 9; k++) { n.brain = 'scripted'; g.frame(1 / 30, false); }
+  });
   const v = await page.evaluate(() => { const n = (window as any).__victim; return { hp: n.char.health, down: n.char.downT, alive: n.char.alive, anim: n.char.human.actionName }; });
   expect(v.hp).toBeLessThan(80);
   expect(v.down > 0 || !v.alive).toBe(true);

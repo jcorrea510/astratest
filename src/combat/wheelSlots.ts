@@ -9,7 +9,7 @@ export function wheelSlots(inv: Inventory, canHeal: boolean): WheelSlot[] {
     const id = inv.categoryPick(cat); const list = inv.inCategory(cat);
     if (!id) return { id: CAT_PREFIX + cat, label: CATEGORY_NAME[cat], icon: cat === 'melee' ? 'fists' : cat === 'throw' ? 'grenade' : cat === 'heavy' ? 'lmg' : (cat as 'pistol' | 'smg' | 'shotgun' | 'rifle'), detail: 'Empty', enabled: false };
     const w = WEAPONS[id], st = inv.weapons[id];
-    const more = list.length > 1 ? `  (${list.indexOf(id) + 1}/${list.length}, scroll)` : '';
+    const more = list.length > 1 ? `  · ${list.indexOf(id) + 1}/${list.length}` : ''; // scroll the mouse wheel over the slot to switch
     const detail = w.melee ? `Melee${more}` : w.cat === 'throw' ? `x${inv.total(id)}${more}` : `${st.clip} / ${st.reserve}${more}`;
     return { id: CAT_PREFIX + cat, label: w.name, icon: w.icon, detail, enabled: true };
   });

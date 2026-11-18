@@ -37,7 +37,7 @@ test('every vehicle model spawns, drives, opens its doors and loses its glass', 
     }
     // drive the sedan: it should turn a full circle quickly at city speed
     const s = out.sedan as any; s.doors.forEach((_: unknown, j: number) => s.setDoor(j, 0));
-    s.phys.teleport(-200, 0.6, 102, Math.PI / 2); g.seatPlayer(s);
+    s.phys.teleport(-262, 0.6, -96, Math.PI / 2); g.seatPlayer(s);
     return res;
   });
   for (const [k, v] of Object.entries(r) as [string, any][]) {
@@ -56,6 +56,7 @@ test('every vehicle model spawns, drives, opens its doors and loses its glass', 
   const y0 = await page.evaluate(() => (window as any).__game.playerVehicle.yaw);
   await step(page, 1.0, { hold: ['KeyW', 'KeyA'] });
   const y1 = await page.evaluate(() => (window as any).__game.playerVehicle.yaw);
+  expect(await page.evaluate(() => (window as any).__game.playerVehicle.speed)).toBeGreaterThan(5);
   expect(Math.abs(Math.atan2(Math.sin(y1 - y0), Math.cos(y1 - y0)))).toBeGreaterThan(0.6);
   await step(page, 0.2, { render: true });
   expect(problems.errors).toEqual([]);

@@ -80,7 +80,7 @@ export class Traffic {
         // driver gone (carjacked, killed, destroyed car)
         const idx = this.cars.indexOf(car); if (idx >= 0) this.cars.splice(idx, 1);
         if (car.driver.alive && car.driver.char.inVehicle === v) this.eject(null, v, 1);
-        v.input.throttle = 0; v.input.handbrake = true;
+        v.input.throttle = 0; v.input.handbrake = car.driver.alive || v.destroyed; // COMBAT: a driver shot dead in the seat lets the car coast
         continue;
       }
       v.syncTransform();

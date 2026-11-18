@@ -64,7 +64,7 @@ export class Character {
   private getUpAt = 0;
   /** Called at the contact frame of a melee move (see startMelee). */
   onMeleeStrike: ((kind: MeleeKind) => void) | null = null;
-  private meleeLock = 0; private meleeCombo = 0; private sinceMelee = 9;
+  private meleeLock = 0; private meleeCombo = 0; private sinceMelee = 9; private queuedMelee: 'fists' | 'knife' | 'bat' | null = null;
   private lastYaw = 0; private turnRateS = 0;
   /** Picks this person's speaking voice/pitch (see audio/voices.ts). */
   voiceSeed = Math.random() * 1000;
@@ -253,7 +253,7 @@ export class Character {
     } else if (power >= 0.5) {
       this.yaw = Math.atan2(-dx, -dz);
       this.human.playAction('stagger');
-      this.vel.x += dx * 2.4 * power; this.vel.z += dz * 2.4 * power;
+      this.vel.x += dx * 1.5 * power; this.vel.z += dz * 1.5 * power;
       this.knockT = Math.max(this.knockT, 0.55);
     } else this.human.playAction(Math.random() < 0.5 ? 'hit_head' : 'hit_light', { soft: true });
   }
@@ -263,7 +263,8 @@ export class Character {
    * Returns the move started, or null while still recovering.
    */
   startMelee(weapon: 'fists' | 'knife' | 'bat' = 'fists'): MeleeKind | null {
-    if (!this.alive || this.inVehicle || this.downT > 0 || this.meleeLock > 0) return null;
+    if (!this.alive || this.inVehicle || this.downT > 0) return null;
+    if (this.meleeLock > 0) { if (this.meleeLock < 0.35) this.queuedMelee = weapon; return null; } // buffered follow-up
     let kind: MeleeKind;
     if (weapon === 'fists') { this.meleeCombo = this.sinceMelee < 0.65 ? (this.meleeCombo + 1) % 3 : 0; kind = (['jab', 'cross', 'hook'] as const)[this.meleeCombo]; }
     else kind = weapon === 'bat' ? 'swing' : 'stab';
@@ -278,6 +279,7 @@ export class Character {
   updateVisual(dt: number) {
     const h = this.human;
     this.meleeLock -= dt; this.sinceMelee += dt;
+    if (this.meleeLock <= 0 && this.queuedMelee) { const w = this.queuedMelee; this.queuedMelee = null; this.startMelee(w); }
     if (this.downT > 0) {
       const before = this.downT; this.downT -= dt;
       if (this.alive && before > this.getUpAt && this.downT <= this.getUpAt) h.playAction('get_up');

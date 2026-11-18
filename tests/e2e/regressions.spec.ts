@@ -41,7 +41,7 @@ test('a respray never dents other cars of the same model; the garage only charge
     const charged = 1000 - g.money;
     v.damage(400, v.position.clone(), null); // dent again after respray
     void a;
-    return { cleanCharge, charged, tplUnchanged: Math.abs(sum(other.tpl.body) - tplSum) < 1e-6, otherShared: other.bodyMesh.geometry === other.tpl.body, vOwn: v.bodyMesh.geometry !== v.tpl.body };
+    return { cleanCharge, charged, tplUnchanged: Math.abs(sum(other.tpl.body) - tplSum) < 1e-6, otherShared: other.tpl.lods.some((l: any) => l.body === other.bodyMesh.geometry), vOwn: v.bodyMesh.geometry !== v.tpl.body };
   });
   expect(r.cleanCharge).toBe(0);
   expect(r.charged).toBe(150);

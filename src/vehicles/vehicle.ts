@@ -21,12 +21,12 @@ import { carMaterial, glassMaterial, type CarUniforms } from './models/carMateri
 import { GROUND } from './shapes';
 
 /** Height of the rig's hips above its root in the sitting/driving clips. */
-export const HIP_ABOVE_ROOT = 0.42;
+export const HIP_ABOVE_ROOT = 0.55;
 /** Swing angle of a fully open door (rad). */
 const DOOR_MAX = 1.15;
 const LOD_FAR = 36;
 
-export interface VehicleTemplate extends CarTemplate { model: string }
+export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }
 export interface PaneState { id: number; name: string; broken: boolean; door: number }
 
@@ -92,7 +92,7 @@ export class Vehicle {
   constructor(physics: Physics, public kind: VehicleKind, _tpl: unknown, x: number, y: number, z: number, yaw: number, _atlas: unknown = null, paintIndex = -1) {
     this.spec = VEHICLES[kind];
     const t = getTemplate(kind);
-    this.tpl = Object.assign(Object.create(t), { model: kind }) as VehicleTemplate;
+    this.tpl = Object.assign(Object.create(t), { model: kind, body: t.lods[0].body }) as VehicleTemplate;
     this.health = this.spec.health;
     this.phys = new VehiclePhysics(physics, this.spec, t.layout, x, y + 0.6, z, yaw);
     physics.tag(this.phys.collider, { kind: 'vehicle', ref: this });
@@ -181,7 +181,7 @@ export class Vehicle {
   /** Root position (inside `visual`) for a human sitting in a seat. */
   seatLocal(seat = 0): THREE.Vector3 {
     const s = this.tpl.seats[Math.min(seat, this.tpl.seats.length - 1)];
-    return new THREE.Vector3(s.x, s.y - HIP_ABOVE_ROOT, s.z - 0.12);
+    return new THREE.Vector3(s.x, s.y - HIP_ABOVE_ROOT, s.z + 0.04);
   }
   /** Driver seat (kept for older callers). */
   seatOffset(): THREE.Vector3 { return this.seatLocal(0); }
@@ -203,7 +203,7 @@ export class Vehicle {
     const tp = this.tpl.panes.find(x => x.id === id)!;
     // centre of the pane in the world
     const c = new THREE.Vector3(); const n = tp.tris.length / 3;
-    for (let i = 0; i < n; i++) c.x += tp.tris[i * 3], c.y += tp.tris[i * 3 + 1], c.z += tp.tris[i * 3 + 2];
+    for (let i = 0; i < n; i++) { c.x += tp.tris[i * 3]; c.y += tp.tris[i * 3 + 1]; c.z += tp.tris[i * 3 + 2]; }
     c.multiplyScalar(1 / Math.max(1, n));
     this.bodyMesh.updateMatrixWorld();
     c.applyMatrix4(this.boneMatrix(tp.bone, _m));

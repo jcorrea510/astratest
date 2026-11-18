@@ -276,6 +276,7 @@ export class PlayerCombat {
       if (!hit) return;
       this.hitMarker = 1; if (!hit.alive) this.killMarker = 1;
       this.cam.addShake(def.id === 'bat' ? 0.2 : kind === 'hook' ? 0.16 : 0.1); this.kick = 1;
+      hit.vel.x = 0; hit.vel.z = 0; // the reaction below sets the push (a punch moves people a step, not metres)
       if (hit.alive) hit.hitReact(hit.pos.x - c.pos.x, hit.pos.z - c.pos.z, MELEE_POWER[kind]);
     };
     if (c.startMelee(def.id === 'bat' ? 'bat' : def.id === 'knife' ? 'knife' : 'fists')) { this.kickDef = def; this.kick = 0.3; }

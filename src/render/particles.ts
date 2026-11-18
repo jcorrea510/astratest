@@ -175,7 +175,7 @@ export class Particles {
 }
 
 const DECAL_TINT: Partial<Record<ImpactKind, [number, number, number, number]>> = {
-  concrete: [0.16, 0.15, 0.14, 0.11], metal: [0.1, 0.1, 0.11, 0.07], wood: [0.18, 0.11, 0.06, 0.1], dirt: [0.2, 0.15, 0.1, 0.16],
+  concrete: [0.12, 0.11, 0.1, 0.15], metal: [0.08, 0.08, 0.09, 0.09], wood: [0.14, 0.09, 0.05, 0.13], dirt: [0.16, 0.12, 0.08, 0.2],
 };
 /** Instanced, surface-aligned bullet holes in a ring buffer (one draw call), plus a few per car parented to its body. */
 export class Decals {

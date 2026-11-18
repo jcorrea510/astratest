@@ -161,11 +161,27 @@ export class Combat {
 
   // ---------------------------------------------------------------- tracing
   private *targets(): Iterable<Character> { if (this.player) yield this.player; for (const c of this.people()) if (c !== this.player) yield c; }
-  /** Whether a world hit on a vehicle is on a window pane (and which). */
-  glassPane(v: Vehicle, p: THREE.Vector3, n: { x: number; y: number; z: number }): string | number | null {
+  /**
+   * Whether a world hit on a vehicle is a window (intact pane id, or 'open' for an already broken window), else null.
+   * Uses the vehicle's glassAt() when available; the height/normal heuristic finds broken openings and covers vehicles
+   * without the glass API.
+   */
+  glassPane(v: Vehicle, p: THREE.Vector3, n: { x: number; y: number; z: number }, d?: THREE.Vector3): string | number | null {
     const api = v as unknown as GlassApi;
-    if (typeof api.glassAt === 'function') return api.glassAt(p);
-    // fallback: upper body, mostly vertical surface, above the beltline
+    if (typeof api.glassAt === 'function') {
+      // the physics hull is coarser than the body: look for the pane a little further along the ray
+      const q = this.v2;
+      for (let s = 0; s <= 0.9; s += 0.05) {
+        q.copy(p); if (d) q.addScaledVector(d, s); else if (s > 0) break;
+        const id = api.glassAt(q); if (id !== null && id !== undefined) return id;
+      }
+      const zone = this.windowZone(v, p, d && Math.abs(d.y) < 0.5 ? { x: 0, y: 0, z: 0 } : n);
+      return zone !== null && this.anyBroken(v) ? 'open' : null;
+    }
+    return this.windowZone(v, p, n);
+  }
+  /** Heuristic window zone: upper body, mostly vertical surface, above the beltline. */
+  private windowZone(v: Vehicle, p: THREE.Vector3, n: { x: number; y: number; z: number }): string | null {
     const local = this.v3.copy(p).sub(v.position);
     const h = local.y; const s = v.size;
     if (h < 0.78 * s || Math.abs(n.y) > 0.75) return null;
@@ -173,14 +189,20 @@ export class Combat {
     const fx = Math.sin(yaw), fz = Math.cos(yaw), f = local.x * fx + local.z * fz, r = local.x * fz - local.z * fx;
     return Math.abs(f) > 1.0 * s ? (f > 0 ? 'front' : 'rear') : r > 0 ? 'right' : 'left';
   }
+  private anyBroken(v: Vehicle): boolean {
+    const mask = (v as unknown as { brokenMask?: number }).brokenMask;
+    if (typeof mask === 'number') return mask !== 0;
+    return (this.brokenPanes.get(v)?.size ?? 0) > 0;
+  }
   private paneBroken(v: Vehicle, pane: string | number): boolean {
-    const api = v as unknown as GlassApi; if (typeof api.isGlassBroken === 'function') return api.isGlassBroken(pane);
+    if (pane === 'open') return true;
+    const api = v as unknown as GlassApi; if (typeof api.isGlassBroken === 'function' && typeof pane === 'number') return api.isGlassBroken(pane);
     return this.brokenPanes.get(v)?.has(pane) ?? false;
   }
   private breakPane(v: Vehicle, pane: string | number, at: THREE.Vector3) {
     if (this.paneBroken(v, pane)) return;
     const api = v as unknown as GlassApi;
-    if (typeof api.breakGlass === 'function') api.breakGlass(pane);
+    if (typeof api.breakGlass === 'function' && typeof pane === 'number') { api.breakGlass(pane); return; } // the vehicle plays its own shatter (Vehicle.onGlassBreak)
     let set = this.brokenPanes.get(v); if (!set) this.brokenPanes.set(v, set = new Set()); set.add(pane);
     this.extra('glassShatter', at, 0.9, 0.95 + Math.random() * 0.1, 'glass');
     for (let i = 0; i < 3; i++) this.particles.impact(at.x, at.y - i * 0.12, at.z, 0, 0.3, 0, 'glass', 1);
@@ -220,7 +242,7 @@ export class Combat {
       res.t = worldT; res.point.set(ox + d.x * hit.toi, oy + d.y * hit.toi, oz + d.z * hit.toi); res.normal.set(hit.normal.x, hit.normal.y, hit.normal.z); res.collider = hit.collider; res.tag = tag;
       if (tag?.kind === 'vehicle') {
         const v = tag.ref as Vehicle; res.kind = 'vehicle'; res.vehicle = v;
-        const pane = !v.destroyed ? this.glassPane(v, res.point, res.normal) : null;
+        const pane = !v.destroyed ? this.glassPane(v, res.point, res.normal, d) : null;
         if (pane !== null && !res.glass.includes(v)) {
           // through the window into the cabin
           if (!opts.dry) this.breakPane(v, pane, res.point);
