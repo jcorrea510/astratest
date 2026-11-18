@@ -121,8 +121,9 @@ export class CarEntry {
     const solid = groups(ALL, G_STATIC | G_VEHICLE | G_PROP);
     const seat = v.seatLocal(Math.max(0, this.seatOfDoor(v, door)));
     const p = v.group.localToWorld(_w.set(f.sg * (f.outX + 0.6), f.ground + 0.95, seat.z));
-    if (ph.overlapsCapsule(p.x, p.y, p.z, 0.5, 0.3, solid, v.phys.body)) return false;
-    const c = v.group.localToWorld(new THREE.Vector3(0, f.ground + 0.95, seat.z));
+    if (ph.overlapsCapsule(p.x, p.y + 0.3, p.z, 0.5, 0.3, solid, v.phys.body)) return false;
+    if (!ph.ray(p.x, p.y, p.z, 0, -1, 0, 2.2, solid, null, v.phys.body)) return false; // no ground there (pier edge, drop): use the other door
+    const c = v.group.localToWorld(new THREE.Vector3(f.sg * f.outX * 0.9, f.ground + 0.95, seat.z));
     const dx = p.x - c.x, dz = p.z - c.z, len = Math.hypot(dx, dz) || 1;
     return !ph.ray(c.x, c.y, c.z, dx / len, 0, dz / len, len, solid, null, v.phys.body);
   }
@@ -289,6 +290,8 @@ export class CarEntry {
    * them to the ground; `puller` (e.g. a cop) plays the grab. Works on the player (police arrests) and on NPCs.
    * Returns false if nobody is in that seat.
    */
+  /** Police hook: drag the player/driver out of a stopped vehicle (side 1 = left/driver, -1 = right). */
+  dragOut(v: Enterable, side: 1 | -1 = 1, puller: Character | null = null): boolean { return this.pullOut(v, side, puller, 0); }
   pullOut(v: Enterable, side: 1 | -1, puller: Character | null, seat = 0): boolean {
     const door = v.doorIndex(side === 1 ? 'left' : 'right', 0);
     if (door < 0) return false;

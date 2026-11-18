@@ -170,7 +170,7 @@ test('getting out next to the pier railing keeps you on the pier', async ({ page
       if (g.playerVehicle) g.exitVehicle(true);
       const v = g.vehicles.spawn('sedan', x, z, 0, 0, 1.6); v.persistent = true; g.seatPlayer(v);
       for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-      g.input.tap('KeyF'); for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+      g.input.tap('KeyF'); for (let i = 0; i < 150; i++) g.frame(1 / 30, false);
       out.push([g.player.pos.x, g.player.pos.y, g.player.swimming ? 1 : 0]);
     }
     return out;

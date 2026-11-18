@@ -12,7 +12,7 @@ test('getting in walks to the driver door, opens it and takes more than a second
   await step(page, 0.3);
   await tap(page, 'KeyF');
   const trace = await page.evaluate(() => {
-    const g = (window as any).__game, v = (window as any).__v; let maxDoor = 0, seatedAt = -1, phases = new Set<string>();
+    const g = (window as any).__game, v = (window as any).__v; const phases = new Set<string>(); let maxDoor = 0, seatedAt = -1;
     for (let i = 0; i < 300 && seatedAt < 0; i++) { g.frame(1 / 30, false); maxDoor = Math.max(maxDoor, v.doors[0].amount); if (g.carEntry.phase) phases.add(g.carEntry.phase); if (g.playerVehicle === v) seatedAt = i / 30; }
     for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
     const r = g.player.human.root, s = v.seatLocal(0);
@@ -136,7 +136,7 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   expect(pads.length).toBeGreaterThanOrEqual(2);
   expect(pads.every((s: any) => s.heli)).toBe(true);
   expect(pads.some((s: any) => s.y > 12)).toBe(true); // a rooftop pad
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-280, 0.25, -100, 0); (window as any).__h = g.spawnHelicopter('news', -270, -100, 0); });
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-280, 0.25, -100, 0); (window as any).__h = g.spawnHelicopter('news', -275, -100, 0); });
   await step(page, 0.5);
   const g0 = await page.evaluate(() => { const h = (window as any).__h; return { y: h.position.y, grounded: h.grounded }; });
   expect(g0.grounded).toBe(true);
@@ -151,9 +151,9 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   expect(up.rotor).toBeGreaterThan(0.95);
   expect(up.agl).toBeGreaterThan(10);
   expect(up.destroyed).toBe(false);
-  await step(page, 4, { hold: ['KeyW'] });
+  await step(page, 2.2, { hold: ['KeyW'] });
   const fwd = await page.evaluate(() => { const h = (window as any).__h; return { x: h.position.x, z: h.position.z, agl: h.agl, destroyed: h.destroyed, speed: h.speed }; });
-  expect(Math.hypot(fwd.x - up.x, fwd.z - up.z)).toBeGreaterThan(25);
+  expect(Math.hypot(fwd.x - up.x, fwd.z - up.z)).toBeGreaterThan(20);
   expect(fwd.destroyed).toBe(false);
   // let go: it levels and brakes; then descend and land
   await step(page, 4);
