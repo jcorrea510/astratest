@@ -227,7 +227,7 @@ export class Character {
     const f = this.lastDamageFrom;
     if (f && f !== this && !this.inVehicle) {
       const dx = f.pos.x - this.pos.x, dz = f.pos.z - this.pos.z;
-      if (dx * dx + dz * dz > 0.01) { this.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.5; const l = Math.hypot(dx, dz); this.vel.x -= dx / l * 1.6; this.vel.z -= dz / l * 1.6; }
+      if (dx * dx + dz * dz > 0.01) { this.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.5; const l = Math.hypot(dx, dz); this.vel.x -= dx / l * 1.6; this.vel.z -= dz / l * 1.6; this.knockT = Math.max(this.knockT, 0.7); }
     }
     this.human.setState('dead'); this.human.setUpperMode('none');
     this.collider.setCollisionGroups(groups(0, 0));
