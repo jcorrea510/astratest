@@ -20,7 +20,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
 - W3 QA done: gate green (149 unit, 44 e2e on build), 2 clean bug-bash passes, perf aerial ~360 calls. Merged to main c848023; CI timeout raised to 110 min (850e2a6 on main) — check run #16+ succeeded and deployed.
-- Running (Sonnet): memory agent a0e17df79c6eeb4d4 (20:55 UTC): soak heap 967->1311 MB; target baseline <450 MB, growth <40 MB.
+- Memory fixed: soak 327 -> 318 MB (was 967 -> 1311). Pushed to main; verify CI run deploys.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
