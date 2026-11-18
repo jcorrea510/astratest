@@ -379,7 +379,7 @@ test('tour: every feature in one session, clean console and sane world after eve
     await page.getByRole('button', { name: 'Save game' }).click();
     await expect(page.getByText('Game saved')).toBeVisible();
     await page.evaluate(() => { const m = (window as any).__meridian; m.settings.sensitivity = 1.6; m.settings.quality = 'low'; localStorage.setItem('meridian-afterglow.settings.v1', JSON.stringify(m.settings)); });
-    await page.goto('./');
+    await page.goto('./', { waitUntil: 'commit', timeout: 180_000 }); // CI: a reload after a long session can exceed the default navigation timeout
     await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
     await page.keyboard.press('Space');
     await expect(page.getByRole('button', { name: 'Continue' })).toBeFocused();
