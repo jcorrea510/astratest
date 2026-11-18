@@ -14,12 +14,12 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
       models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
 - [x] W2a Car entry (done) —: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
       smash window + hotwire. Helicopters (helipad to steal, flyable).
-- [ ] W2b Police: foot cops that act, escalation by stars (cruisers, SWAT, FBI SUVs, army + tank, helicopter), handcuff
+- [x] W2b Police (done e29396d) —: foot cops that act, escalation by stars (cruisers, SWAT, FBI SUVs, army + tank, helicopter), handcuff
       arrest animation, WASTED / ARRESTED cards.
 - [x] W2c City (done dbe7425; aerial 516 draw calls > budget, trim later) —: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running (Sonnet): W2b police agent a2564bdc0eaa77d64 (18:50 UTC). Then W3: full e2e on build, bug-bash x2 (Sonnet), perf trim, merge to main.
+- Running (Sonnet): W3 QA agent a5c3824e375393e90 (19:40 UTC): full gate on build, perf trim, bug-bash until 2 clean passes, soak. Then lead merges to main.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
