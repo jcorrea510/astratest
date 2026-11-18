@@ -1,5 +1,7 @@
 # Rules for build agents (overnight quality push)
 
+- Read CLAUDE.md (project map) instead of exploring the tree. Never open public/assets, dist, node_modules, lockfiles or
+  screenshots unless judging visuals. grep before reading; read big files with offset/limit. Keep reports short.
 - Read docs/BRIEF2.md (the owner's verbatim request) first. Quality bar: "an actual high-quality game", GTA-genre, realistic
   look, but ALL names/art/UI original (no real brands, no GTA assets/fonts/logos). Teen tone.
 - Work in /home/user/astratest (shared checkout; other agents edit other files at the same time). Only edit files you own;
