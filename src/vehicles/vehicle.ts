@@ -34,7 +34,7 @@ const beamTex = (() => {
   if (typeof document === 'undefined') return null;
   const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d')!;
   g.setTransform(1, 0, 0, 2, 0, 0);
-  const gr = g.createRadialGradient(32, 50, 2, 32, 40, 30); gr.addColorStop(0, 'rgba(255,240,200,0.9)'); gr.addColorStop(0.6, 'rgba(255,240,200,0.35)'); gr.addColorStop(1, 'rgba(255,240,200,0)');
+  const gr = g.createRadialGradient(32, 50, 2, 32, 40, 30); gr.addColorStop(0, 'rgba(255,238,200,0.55)'); gr.addColorStop(0.55, 'rgba(255,238,200,0.18)'); gr.addColorStop(1, 'rgba(255,240,200,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
 })();
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
@@ -142,7 +142,7 @@ export class Vehicle {
     for (const d of t.doors) this.doors.push({ side: d.side, row: d.row, open: 0, amount: 0, vel: 0, hanging: false, bone: this.bones[d.bone] });
     for (const p of t.panes) this.panes.push({ id: p.id, name: p.name, broken: false, door: t.doorBones.indexOf(p.bone) });
     if (beamTex && s.type !== 'tank') {
-      this.beam = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 9).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 4.4), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
+      this.beam = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 3.6), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
       this.beam.renderOrder = 2; this.visual.add(this.beam);
     }
     this.group.add(this.visual);
@@ -316,10 +316,10 @@ export class Vehicle {
     const u = this.material.userData.u;
     const occupied = !!this.driver || this.persistent;
     const on = (this.headlights || night > 0.35) && !this.destroyed && !this.lightsBroken && occupied;
-    u.uHead.value = on ? 4 : 0;
-    if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.28 * Math.max(night, 0.2) : 0; this.beam.visible = on; }
+    u.uHead.value = on ? 2.2 : 0;
+    if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.5 * night : 0; this.beam.visible = on && night > 0.05; }
     const lit = !this.destroyed && occupied;
-    u.uTail.value = this.destroyed ? 0 : braking && lit ? 7 : on ? 2.2 : 0;
+    u.uTail.value = this.destroyed ? 0 : braking && lit ? 3.5 : on ? 1.2 : 0;
     u.uRev.value = lit && this.input.throttle < -0.1 && this.speed < -0.3 ? 3 : 0;
     const blink = Math.floor(time * 2.6) % 2 ? 3.5 : 0;
     const steerBlink = lit && !this.siren && !this.hazard && Math.abs(this.input.steer) > 0.6 && Math.abs(this.speed) < 12 && !!this.driver;
@@ -398,19 +398,27 @@ export class Vehicle {
   }
   /** Restores the undamaged shared body (respray): panels, glass, doors. */
   resetBody() {
-    if (this.ownGeo) { this.bodyMesh.geometry.dispose(); this.ownGeo = false; }
+    if (this.ownGeo) { this.disposeOwnGeo(); this.ownGeo = false; }
     this.lod = -1; this.setLod(0);
     this.lightsBroken = false;
     this.brokenMask = 0; for (const p of this.panes) p.broken = false;
     if (this.glassMat) this.glassMat.userData.broken.value = 0;
     for (const d of this.doors) { d.hanging = false; d.open = 0; }
   }
+  /** The dented copy shares most attributes with the template, whose CPU arrays were freed after upload: disposing them
+   *  would drop the shared GPU buffers and the next re-upload would be empty (invisible car bodies). Only free the private ones. */
+  private disposeOwnGeo() {
+    const g = this.bodyMesh.geometry;
+    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+    g.setIndex(null);
+    g.dispose();
+  }
   /** True once removed from the world (its physics body is gone: never query it). */
   disposed = false;
   dispose() {
     if (this.disposed) return; this.disposed = true;
     this.phys.dispose(); this.group.removeFromParent();
-    if (this.ownGeo) this.bodyMesh.geometry.dispose();
+    if (this.ownGeo) this.disposeOwnGeo();
     this.material.dispose(); this.glassMat?.dispose();
     this.skeleton.dispose();
     this.phys.physics.untag(this.phys.collider);

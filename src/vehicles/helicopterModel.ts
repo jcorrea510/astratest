@@ -66,12 +66,11 @@ function classify(c: THREE.Vector3, n: THREE.Vector3): { cat: Cat; side: number 
   const side = c.x > 0 ? 0 : 1;
   const doorZ = c.z > HELI_DOOR.z0 && c.z < HELI_DOOR.z1;
   const sideFace = Math.abs(n.x) > 0.55;
-  if (doorZ && sideFace && c.y > -0.58) return { cat: c.y > HELI_DOOR.belt ? 'doorGlass' : 'door', side };
-  // canopy: the front upper surface and the chin windows
-  if (c.z > 1.35 && c.y > -0.4) return { cat: 'glass', side };
-  if (c.z > 1.6 && c.y > -0.55 && Math.abs(c.x) < 0.42) return { cat: 'glass', side };
-  if (c.z > -0.9 && c.z < HELI_DOOR.z0 - 0.06 && sideFace && c.y > 0.0 && c.y < 0.62) return { cat: 'glass', side }; // rear cabin windows
-  if (c.z > 1.0 && c.z <= 1.35 && c.y > 0.55) return { cat: 'glass', side }; // roof eyebrow windows
+  // doors are painted skin with a window only in their upper part
+  if (doorZ && sideFace && c.y > -0.58) return { cat: c.y > HELI_DOOR.belt + 0.12 && c.y < 0.5 ? 'doorGlass' : 'door', side };
+  // glass is only the cockpit canopy: the windscreen up front and a small chin window; everything else is opaque paint
+  if (c.z > 1.55 && c.y > -0.12) return { cat: 'glass', side };
+  if (c.z > 1.75 && c.y > -0.4 && Math.abs(c.x) < 0.36) return { cat: 'glass', side };
   return { cat: 'paint', side };
 }
 
@@ -90,15 +89,15 @@ export function buildHeliModel(variant: HeliVariant, paintIndex = -1): HeliModel
   const L = LIVERY[variant];
   const baseHex = L.base[paintIndex >= 0 ? paintIndex % L.base.length : Math.floor(Math.random() * L.base.length)];
   const base = new THREE.Color(baseHex).convertSRGBToLinear(), stripe = new THREE.Color(L.stripe).convertSRGBToLinear(), belly = new THREE.Color(L.belly).convertSRGBToLinear();
-  const paint = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.12 });
-  const glass = new THREE.MeshPhysicalMaterial({ color: '#1b2630', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false });
+  const paint = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.15, clearcoat: 0.6, clearcoatRoughness: 0.12 });
+  const glass = new THREE.MeshPhysicalMaterial({ color: '#1b2630', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.4, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false });
   const dark = new THREE.MeshStandardMaterial({ color: '#202226', roughness: 0.6, metalness: 0.4 });
   const metal = new THREE.MeshStandardMaterial({ color: '#9aa0a6', roughness: 0.35, metalness: 0.85 });
   const bladeMat = new THREE.MeshStandardMaterial({ color: '#1c1d20', roughness: 0.5, metalness: 0.3, transparent: true });
   const discMat = new THREE.MeshBasicMaterial({ map: rotorDiscTexture(), transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide });
-  const lightRed = new THREE.MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false });
-  const lightGreen = new THREE.MeshBasicMaterial({ color: '#1aff5a', toneMapped: false });
-  const lightWhite = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false });
+  const lightRed = new THREE.MeshBasicMaterial({ color: '#b81a10', toneMapped: false });
+  const lightGreen = new THREE.MeshBasicMaterial({ color: '#10b83a', toneMapped: false });
+  const lightWhite = new THREE.MeshBasicMaterial({ color: '#c8c8c8', toneMapped: false });
   const root = new THREE.Group();
 
   // ---- cabin pod, split into paint / canopy / door panels
@@ -205,11 +204,11 @@ export function buildHeliModel(variant: HeliVariant, paintIndex = -1): HeliModel
   const tailDisc = new THREE.Mesh(new THREE.CircleGeometry(0.66, 24).rotateY(Math.PI / 2), discMat); tailDisc.position.copy(TAIL_ROTOR); tailDisc.position.x += 0.02; tailDisc.visible = false; root.add(tailDisc);
 
   // ---- lights: nav (red left/port... body +x is left), green right, white tail, red beacon, police strobes
-  const bulb = new THREE.SphereGeometry(0.05, 8, 6);
+  const bulb = new THREE.SphereGeometry(0.03, 8, 6);
   const nl = new THREE.Mesh(bulb, lightRed); nl.position.set(0.85, 0.45, -4.55); root.add(nl);
   const nr = new THREE.Mesh(bulb, lightGreen); nr.position.set(-0.85, 0.45, -4.55); root.add(nr);
   const tail = new THREE.Mesh(bulb, lightWhite); tail.position.set(0, 0.6, -5.95); root.add(tail);
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), lightRed.clone()); beacon.position.set(0, 1.15, -0.85); root.add(beacon);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), lightRed.clone()); beacon.position.set(0, 1.15, -0.85); root.add(beacon);
   const strobes: THREE.Mesh[] = [];
   if (variant === 'police') for (const sx of [1, -1]) { const s = new THREE.Mesh(bulb, new THREE.MeshBasicMaterial({ color: sx > 0 ? '#ff2020' : '#2050ff', toneMapped: false })); s.position.set(sx * 0.35, -0.6, -0.9); root.add(s); strobes.push(s); }
 

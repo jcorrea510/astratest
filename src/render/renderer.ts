@@ -101,7 +101,7 @@ export class Renderer {
     const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: this.quality.msaa });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.6, 0.85);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -128,7 +128,7 @@ export class Renderer {
       this.envRT?.dispose(); this.envRT = rt;
       this.scene.environment = rt.texture;
     }
-    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.42, 0.2, s.night);
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.42, 0.4, s.night);
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
     this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
@@ -141,8 +141,8 @@ export class Renderer {
     this.shadowTarget.set(Math.round(fx / texel) * texel, 0, Math.round(fz / texel) * texel);
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(s.lightDir, 180);
-    this.bloom.strength = THREE.MathUtils.lerp(0.2, 0.5, s.night);
-    this.bloom.threshold = THREE.MathUtils.lerp(0.92, 0.78, s.night);
+    this.bloom.strength = THREE.MathUtils.lerp(0.12, 0.26, s.night);
+    this.bloom.threshold = THREE.MathUtils.lerp(0.95, 0.88, s.night);
     this.grade.uniforms.uNight.value = s.night;
     this.grade.uniforms.uTime.value = time % 100;
   }

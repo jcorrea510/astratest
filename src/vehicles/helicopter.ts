@@ -215,7 +215,7 @@ export class Helicopter {
     }
     // lights: beacon pulse, police strobes
     const beat = Math.sin(time * 6) > 0.6 && this.rotor > 0.1 ? 1 : 0.15;
-    m.beacon.visible = !this.destroyed; (m.beacon.material as THREE.MeshBasicMaterial).color.setRGB(beat, beat * 0.08, beat * 0.04);
+    m.beacon.visible = !this.destroyed; (m.beacon.material as THREE.MeshBasicMaterial).color.setRGB(beat * 0.7, beat * 0.05, beat * 0.03);
     for (let i = 0; i < m.strobes.length; i++) m.strobes[i].visible = !this.destroyed && this.rotor > 0.2 && Math.floor(time * 5 + i) % 2 === 0;
     if (this.flashT > 0) this.flashT -= dt;
     void night;
