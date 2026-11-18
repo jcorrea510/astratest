@@ -9,7 +9,7 @@ Resume: read CLAUDE.md, docs/BRIEF3.md, this file. Continue unfinished items. Ow
 - [ ] R3-D City: bigger, curves/character, ~10x walk-in robbable stores, GPS over bridge.
 - [ ] R3-E UI: realistic weapon wheel + gun icons, settings close button (Esc breaks), Continue on rooftop breaks.
 - [ ] R3-Z Full gate, publish.
-Running agents: (see below)
+Running (Sonnet, 23:30 UTC): A adb0a121e53dbc94f, B a49b7fa1bd116d640, C a97c7eebff869bd25, E aa9f94672af96bc41, D a8674013a05f7425c. Resume stopped ones via SendMessage.
 
 ## Done before
 - Overnight brief (BRIEF2) delivered and live 18 Nov 23:15 UTC (gh-pages 3cd57c4 from main 20e0f25): realistic cars/people/city,
