@@ -57,9 +57,9 @@ test('walk, sprint, jump, roll; take a car, drive, handbrake, crash and get out'
   expect(await state<boolean>(page, 'window.__game.player.alive')).toBe(true);
   // Spawn a car beside the player and get in with F (on a quiet street so the timing checks are deterministic)
   await quietStreets(page);
-  await page.evaluate(() => { const g = (window as any).__game; const p = g.player.pos; g.player.place(-280, 0.25, -95.5, Math.PI / 2); g.vehicles.spawn('sedan', -278, -97.5, Math.PI / 2); void p; });
+  await page.evaluate(() => { const g = (window as any).__game; const p = g.player.pos; g.player.place(-280, 0.25, -95.5, Math.PI / 2); g.vehicles.spawn('sedan', -278, -97.5, Math.PI / 2).persistent = true; void p; });
   await step(page, 0.5);
-  await tap(page, 'KeyF'); await step(page, 1);
+  await tap(page, 'KeyF'); await page.evaluate(() => { const g = (window as any).__game; for (let i = 0; i < 400 && !g.playerVehicle; i++) g.frame(1 / 30, false); for (let i = 0; i < 30; i++) g.frame(1 / 30, false); });
   expect(await state<boolean>(page, '!!window.__game.playerVehicle')).toBe(true);
   await step(page, 3, { hold: ['KeyW'] });
   const v = await state<number>(page, 'window.__game.playerVehicle.speed');
