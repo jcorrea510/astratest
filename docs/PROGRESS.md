@@ -1,84 +1,16 @@
-# Progress (Meridian Afterglow)
+# Progress (newest first; keep short — git has history)
 
-Resume rule: read docs/BRIEF2.md (current overnight brief) and this file; continue the first unfinished item under
-"Overnight plan". Never restart. Keep context lean: delegate big chunks to agents with file ownership, commit often.
-Auto-resume: none (hourly check-in deleted 23:16 UTC 18 Nov; overnight brief delivered).
+Resume: read CLAUDE.md, docs/BRIEF3.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
-## Overnight plan (BRIEF2) — status
-- [x] W0 setup —: brief saved, hourly task, story mode removed (sandbox-only game).
-- [x] W1a Vehicles (done: 20 procedural skinned models, doors/glass/seat API in Vehicle, see report in git log) —: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
-      convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
-- [x] W1b People (done db1c060: UBC bodies, looks, locomotion, curbs, melee, voices, human.playAction API) —: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
-      curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
-- [x] W1c Shooting (done 35bbd40: dot reticle, aim fix, hit zones, 18 guns, gun audio, glass) —: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
-      models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
-- [x] W2a Car entry (done) —: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
-      smash window + hotwire. Helicopters (helipad to steal, flyable).
-- [x] W2b Police (done e29396d) —: foot cops that act, escalation by stars (cruisers, SWAT, FBI SUVs, army + tank, helicopter), handcuff
-      arrest animation, WASTED / ARRESTED cards.
-- [x] W2c City (done dbe7425; aerial 516 draw calls > budget, trim later) —: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
-      highway/overpass, alleys, more districts), walk-in robbable stores.
-- [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- W3 QA done: gate green (149 unit, 44 e2e on build), 2 clean bug-bash passes, perf aerial ~360 calls. Merged to main c848023; CI timeout raised to 110 min (850e2a6 on main) — check run #16+ succeeded and deployed.
-- Memory fixed: soak 327 -> 318 MB (was 967 -> 1311). Pushed to main; verify CI run deploys.
-- [x] W3 Bug-bash (live: manual gh-pages publish of 20e0f25 at 23:15 UTC) x2 clean, tests, soak, deploy, final report.
+## Round 3 (owner playtest, 19 Nov) — status
+- [ ] R3-A Combat/death: trails persist, dead cops upright, hit-zone death falls, gun lowered while firing, rocket launcher, lag near cops.
+- [ ] R3-B Police/people: remove NPC voices, many more NPCs, smart realistic cops (guns not fists), heli theft = stars + shot down, spotlight dim.
+- [ ] R3-C Visuals: invisible car bodies, headlights/lights, night brighter, helicopter all-glass.
+- [ ] R3-D City: bigger, curves/character, ~10x walk-in robbable stores, GPS over bridge.
+- [ ] R3-E UI: realistic weapon wheel + gun icons, settings close button (Esc breaks), Continue on rooftop breaks.
+- [ ] R3-Z Full gate, publish.
+Running agents: (see below)
 
-## Done
-- M1 foundation (Codex): Vite + TS + Three.js + Rapier scaffold, lint/typecheck/test tooling.
-- Assets (CC0): KayKit City Builder Bits (buildings, cars, props) and Quaternius Universal Animation Library (46 human animations) in public/assets; licences copied alongside.
-- City layout (src/world/citymap.ts): 10x9 road grid (~900 x 800 m), districts, lanes + intersection connectors, signals, pedestrian graph. 8 unit tests pass.
-- City build (src/world/citybuild.ts): asphalt, sidewalks, markings/crosswalks, KayKit buildings in district palettes, procedural towers/midrises with shader facades (night windows), docks (warehouses, containers, cranes), beach, water, hills, pier + Ferris wheel, street lights, traffic lights with live lamps, trees/palms/props, static colliders.
-- Rendering: ACES, bloom, teal/apricot colour grade, sky dome with clouds/stars/sun/moon, time-of-day palette.
-- People (src/actors/human.ts): UAL rig, smoothed clothed body, crisp clothing borders, sculpted stylised head (eyes, brows, nose, mouth, ears), 7 hair styles, hats, body variation; two-layer animation with stride-matched locomotion.
-- Player on foot: Rapier character controller, sprint/jump/roll/swim, collision-aware camera.
-
-- Vehicles: Rapier ray-cast physics (7 types: sedan, cab, interceptor, hatch, wagon, GT coupe, box van), tuned headlessly (tests print accel/brake/lateral g), paint/glass shader, lights, deformation, fire/explosions, skid marks, enter/exit/carjack.
-- Combat: fists + 4 guns (Kestrel P9, Mako Compact, Breaker 12, Longline Carbine), hitscan, recoil, spread, reload, tracers, muzzle flash; inventory wheel with slow-mo.
-- NPCs: civilians wander/obey crossings/flee/cower/dodge cars; gang + police AI with LOS, cover, flanking, burst fire, arrests.
-- Traffic: lane following with signals, spacing, corner slowdown, honks, panic; parked cars; police pursuit/ramming. Heat 0-5 with search radius and losing heat.
-- Missions m1-m5 (delivery, tailing, shootout+escape, steal+lose heat, street race), shops (Tidewater Arms, Pier 9 Snacks), Glow Garage respray, safehouse save, 12 postcards, 3 stunt ramps, autosave.
-- UI (agent): title, loading, pause, settings + rebinding, controls, HUD, minimap, map, wheel, shop, death/arrest, mobile gate.
-- Audio (agent): 42 synthesized SFX, engine/siren/skid voices, ambience, 3 procedural radio stations, mission moods.
-- Tests: 64 unit tests; 7 Playwright e2e tests on the production build at /astratest/ (title->game, walk/drive/crash, combat/wheel/heat, death+arrest, all 5 missions, save/continue/settings, mobile gate). All passing.
-- Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
-- Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
-
-## Status (~00:00 UTC, 18 Nov): first brief DONE
-- Quality round on main (UI overhaul, movement, shooting + gun audio, driving + car glass, store hold-ups, sandbox).
-- Bug-bash history: pass 1 (7 bugs), A (6), B (1), C (1), D (clean), E (1: beach ramps into the sea), F CLEAN, G CLEAN.
-  Every bug has a regression e2e test. Two consecutive clean passes (F, G) on bb1dfe0.
-- Tests: 77 unit, 32 e2e (all green on the production build at /astratest/), soak re-run on the final build.
-- CI: run #11 (bb1dfe0) green and deployed to GitHub Pages; earlier failures (#5, #8, #10) were test flakiness
-  (random traffic, aborted font prefetch on reload), both fixed in the tests.
-- Screenshots: docs/screenshots (in README).
-- Remaining: final report to the owner, delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
-
-Bug-bash pass 1 (fixed in 4a1206a, 7 regression tests): open water/swimming/flooding, safe exits, lane-graph routing, traffic passing,
-beach ramps, M2 keeps player car, contact respawn cooldown; shoreline-only foam.
-
-## Done since 10:00
-- Memory leak fixed (collider tags); soak passes: 20 game-min chaos, 0 issues, heap 108->114 MB flat, no console errors.
-- Code-review fixes (11 bugs + minors) with 7 regression e2e tests; playtest fixes (16 items) with 1 more regression test. 15 e2e tests total, all green. CI deploys from main.
-
-## Next
-1. Bug-bash pass 1 (scripted tour, all districts/times, menus) -> fix -> pass 2 -> must be clean twice.
-2. Final screenshots for the report; final report; delete scheduled task trig_01QHNBHfHX5vN6UurzWLwPga.
-
-## Decisions
-- Original game "Meridian Afterglow" in "Port Meridian". Stylised low-poly, apricot/teal grade.
-- KayKit scale x5 (1 tile = 10 m). Humans 1.78 m nominal.
-- Motorcycles cut (no in-style CC0 model; bike physics risk). Touch controls not built: phones get a desktop-only screen.
-- (old note) Motorcycles cut (Kenney bike model clashed with the art style; bike physics not worth the risk).
-- Pedestrians are not physically pushed by cars; hits are resolved by game logic.
-- Deploy via gh-pages branch (Pages REST API is blocked from this sandbox; github.io not reachable from here, verified via Actions API).
-
-## Known issues
-- Not measured on real hardware (M1); budgets measured in software GL.
-
-## Bug-bash (overnight)
-- Gate (pass 0, dist build): tsc clean, vitest 149, e2e 43/43 green; lint failed on a stray scratch file `.cityshots.mjs` (unused var) -> fixed.
-- Perf: aerial view 431-470 -> 352-367 draw calls, street 408-427 -> 345-363 (triangles -20%): store interiors only render within 110 m
-  of the camera (Robberies.cull), people outside the view frustum are hidden (population.ts; their skinned meshes are never frustum-culled
-  by three), small props (bins, trees, lights, signs) cull at 140 m instead of 200 m. Regression: tour.spec 'perf culling' step.
-- Tour spec tests/e2e/tour.spec.ts (one session, every feature, console + sanity invariants after each step).
-- Pass 1 tour: no product bugs found (test-side fixes only: clear firing lanes, hotwire completes after seating, god mode vs 5-star squads).
+## Done before
+- Overnight brief (BRIEF2) delivered and live 18 Nov 23:15 UTC (gh-pages 3cd57c4 from main 20e0f25): realistic cars/people/city,
+  combat, car entry, helicopters, police escalation, sandbox-only menus, memory fix (soak 327->318 MB).

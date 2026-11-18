@@ -2,7 +2,14 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/tender-turing-bkf701.
-Current brief: docs/BRIEF2.md. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current brief: docs/BRIEF3.md (earlier: BRIEF2.md). Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+
+## Standing rules from the owner (always apply)
+- Usage: delegate coding to Sonnet subagents (`model: sonnet`); use Opus only for architecture or a bug Sonnet failed twice on.
+  Lead (main session) stays thin: plan, dispatch, review reports, commit. Agents start from this file, not by exploring.
+- Keep MDs tight (this file < 80 lines; PROGRESS short, newest first; old detail gets deleted, git has history).
+- Never open big/generated files (list below). Split giant scripts into modules so agents read only what they need.
+- No questions to the owner; finish end to end; publish when done (gh-pages via CI, or manual dist push if CI is slow).
 
 ## Commands
 `npx tsc --noEmit` · `npx eslint <files>` · `npx vitest run` · e2e: start `npx vite --port 5199 --strictPort &`, then
