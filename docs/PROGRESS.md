@@ -73,3 +73,11 @@ beach ramps, M2 keeps player car, contact respawn cooldown; shoreline-only foam.
 
 ## Known issues
 - Not measured on real hardware (M1); budgets measured in software GL.
+
+## Bug-bash (overnight)
+- Gate (pass 0, dist build): tsc clean, vitest 149, e2e 43/43 green; lint failed on a stray scratch file `.cityshots.mjs` (unused var) -> fixed.
+- Perf: aerial view 431-470 -> 352-367 draw calls, street 408-427 -> 345-363 (triangles -20%): store interiors only render within 110 m
+  of the camera (Robberies.cull), people outside the view frustum are hidden (population.ts; their skinned meshes are never frustum-culled
+  by three), small props (bins, trees, lights, signs) cull at 140 m instead of 200 m. Regression: tour.spec 'perf culling' step.
+- Tour spec tests/e2e/tour.spec.ts (one session, every feature, console + sanity invariants after each step).
+- Pass 1 tour: no product bugs found (test-side fixes only: clear firing lanes, hotwire completes after seating, god mode vs 5-star squads).

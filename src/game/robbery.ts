@@ -79,7 +79,13 @@ export class Robberies {
     return dir.dot(to) > Math.cos(Math.min(0.5, Math.atan2(1.3, d) + 0.12));
   }
   /** missionActive: hold-ups are off during story missions (and one in progress is called off). */
+  /** Store interiors (about 9 draw calls each) only render when the camera is near enough to see into them. */
+  cull() {
+    const cp = this.game.renderer.camera.position;
+    for (const k of this.kiosks) k.root.visible = Math.hypot(k.def.x - cp.x, k.def.z - cp.z) < 110;
+  }
   update(dt: number, missionActive = false) {
+    this.cull();
     const g = this.game, t = g.time, p = g.player.pos;
     if (missionActive && this.active) this.reset();
     for (const k of this.kiosks) {

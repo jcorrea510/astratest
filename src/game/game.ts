@@ -615,7 +615,7 @@ export class Game {
       const bs = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
       if (!bs) continue;
       const d = Math.hypot(bs.center.x - cp.x, bs.center.z - cp.z) - bs.radius;
-      mesh.visible = d < (mesh.userData.small ? Math.min(max, 200) : max * (mesh.userData.farScale ?? 1)); // CITY: facades reach further (farScale)
+      mesh.visible = d < (mesh.userData.small ? Math.min(max, 140) : max * (mesh.userData.farScale ?? 1)); // CITY: facades reach further (farScale)
       if (mesh.userData.shadow === undefined) mesh.userData.shadow = mesh.castShadow;
       const ds = Math.hypot(bs.center.x - this.player.pos.x, bs.center.z - this.player.pos.z) - bs.radius;
       mesh.castShadow = mesh.userData.shadow && ds < shadowR;

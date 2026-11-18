@@ -19,6 +19,7 @@ export class Population {
   private spawnT = 0;
   private frustum = new THREE.Frustum();
   private projScreen = new THREE.Matrix4();
+  private cullSphere = new THREE.Sphere(); private cullCentre = new THREE.Vector3();
   onKilled: ((n: Npc, by: Character | null, how: 'shot' | 'melee' | 'vehicle' | 'explosion') => void) | null = null;
   constructor(private scene: THREE.Scene, private tpl: HumanTemplate, private city: CityMap, private env: NpcEnv, private audio: GameAudio) {
     this.runner = new NpcBrainRunner(env);
@@ -152,7 +153,9 @@ export class Population {
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, quality: number) {
     VOICES.update(dt);
     this.maxCivilians = quality;
-    // Visuals (throttled animation far away)
+    // Visuals (throttled animation far away). The skinned meshes are not frustum-culled by three (their bounds are the bind
+    // pose), so people outside the view are hidden here: that saves two draw calls (plus shadows) per person behind the camera.
+    this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
     for (const n of this.npcs) {
       const c = n.char, h = c.human;
       if (!c.alive) {
@@ -162,7 +165,7 @@ export class Population {
         if (h.currentState !== 'crouch' && h.currentState !== 'cower' && h.currentState !== 'sit' && h.currentState !== 'talk') h.setState(c.swimming ? 'swim' : 'loco');
         h.setSpeed(c.speed);
       }
-      if (c.inVehicle) { h.update(dt); continue; }
+      if (c.inVehicle) { h.mesh.visible = true; h.update(dt); continue; }
       const d = c.pos.distanceTo(focus);
       h.root.visible = d < 160;
       if (!h.root.visible) continue;
@@ -171,7 +174,9 @@ export class Population {
       if (n.animAcc >= every) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 40;
-      h.setDetail(d < 70); if (h.extras) h.extras.castShadow = d < 30;
+      const inView = d < 6 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 2.4));
+      h.mesh.visible = inView;
+      h.setDetail(d < 70 && inView); if (h.extras) h.extras.castShadow = d < 30;
     }
     // Despawn
     for (const n of [...this.npcs]) {
