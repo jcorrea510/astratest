@@ -2,7 +2,7 @@
 
 Resume rule: read docs/BRIEF2.md (current overnight brief) and this file; continue the first unfinished item under
 "Overnight plan". Never restart. Keep context lean: delegate big chunks to agents with file ownership, commit often.
-Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hour") fires into this session; delete it when all done.
+Auto-resume: none (hourly check-in deleted 23:16 UTC 18 Nov; overnight brief delivered).
 
 ## Overnight plan (BRIEF2) — status
 - [x] W0 setup —: brief saved, hourly task, story mode removed (sandbox-only game).
@@ -21,7 +21,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
 - W3 QA done: gate green (149 unit, 44 e2e on build), 2 clean bug-bash passes, perf aerial ~360 calls. Merged to main c848023; CI timeout raised to 110 min (850e2a6 on main) — check run #16+ succeeded and deployed.
 - Memory fixed: soak 327 -> 318 MB (was 967 -> 1311). Pushed to main; verify CI run deploys.
-- [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
+- [x] W3 Bug-bash (live: manual gh-pages publish of 20e0f25 at 23:15 UTC) x2 clean, tests, soak, deploy, final report.
 
 ## Done
 - M1 foundation (Codex): Vite + TS + Three.js + Rapier scaffold, lint/typecheck/test tooling.
