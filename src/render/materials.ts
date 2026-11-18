@@ -1,156 +1,246 @@
 /** Procedural textures and shared materials. Everything here is generated in code (no external files). */
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
+import { FACADE_FRAG_COLOR, FACADE_FRAG_PARS, FACADE_VERT_MAIN, FACADE_VERT_PARS, FACADE_VERT_WORLD } from '../world/facadeShader';
 
 /** Night factor shared by every material that glows after dusk. */
 export const nightUniform = { value: 0 };
 export const timeUniform = { value: 0 };
 
-function canvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, g: c.getContext('2d')! }; }
+function canvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, g: c.getContext('2d', { willReadFrequently: true })! }; }
 function tex(c: HTMLCanvasElement, repeat = true, srgb = true) {
   const t = new THREE.CanvasTexture(c);
   if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  t.anisotropy = 4; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = 8; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
 
-export function asphaltTexture(): THREE.Texture {
-  const { c, g } = canvas(512, 512); const r = new Rng(3);
-  g.fillStyle = '#5d6266'; g.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 9000; i++) { const v = r.range(-22, 22); g.fillStyle = `rgba(${128 + v},${132 + v},${138 + v},0.09)`; g.fillRect(r.range(0, 512), r.range(0, 512), r.range(1, 3), r.range(1, 3)); }
-  for (let i = 0; i < 26; i++) { g.strokeStyle = 'rgba(20,22,26,0.18)'; g.lineWidth = r.range(1, 3); g.beginPath(); let x = r.range(0, 512), y = r.range(0, 512); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += r.range(-40, 40); y += r.range(-40, 40); g.lineTo(x, y); } g.stroke(); }
-  for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(25,28,32,0.14)'; g.beginPath(); g.ellipse(r.range(0, 512), r.range(0, 512), r.range(10, 50), r.range(8, 30), r.range(0, 3), 0, Math.PI * 2); g.fill(); }
-  return tex(c);
-}
-export function pavementTexture(): THREE.Texture {
-  const { c, g } = canvas(256, 256); const r = new Rng(5);
-  g.fillStyle = '#b9b1a6'; g.fillRect(0, 0, 256, 256);
-  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-    const v = r.range(-10, 10); g.fillStyle = `rgb(${186 + v},${178 + v},${168 + v})`; g.fillRect(x * 64 + 1.5, y * 64 + 1.5, 61, 61);
-  }
-  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(90,80,70,${r.range(0.03, 0.09)})`; g.fillRect(r.range(0, 256), r.range(0, 256), 2, 2); }
-  return tex(c);
-}
-export function grassTexture(): THREE.Texture {
-  const { c, g } = canvas(256, 256); const r = new Rng(9);
-  g.fillStyle = '#6f9a4c'; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 5000; i++) { const v = r.range(-25, 25); g.fillStyle = `rgba(${100 + v},${150 + v},${70 + v * 0.5},0.25)`; g.fillRect(r.range(0, 256), r.range(0, 256), 1.5, r.range(2, 5)); }
-  return tex(c);
-}
-export function sandTexture(): THREE.Texture {
-  const { c, g } = canvas(256, 256); const r = new Rng(11);
-  g.fillStyle = '#e8cf9e'; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 6000; i++) { const v = r.range(-20, 20); g.fillStyle = `rgba(${210 + v},${185 + v},${140 + v},0.25)`; g.fillRect(r.range(0, 256), r.range(0, 256), 1.5, 1.5); }
-  return tex(c);
-}
-
-/** Facade material: windows, frames and night lights computed per pixel from metre-space UVs. */
-export function facadeMaterial(): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05 });
-  m.onBeforeCompile = shader => {
-    shader.uniforms.uNight = nightUniform;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 facade;\nflat varying vec4 vFacade;\nvarying vec2 vFUv;\nvarying vec3 vWPos;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvFacade = facade; vFUv = uv;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
-        uniform float uNight; flat varying vec4 vFacade; varying vec2 vFUv; varying vec3 vWPos;
-        float fh(vec2 p){ p = mod(p, 61.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        // vFacade: x = style (0 none/roof, 1 glass grid, 2 punched windows, 3 corrugated, 4 storefront band), y = seed, z = cell width, w = floor height
-        float style = floor(vFacade.x + 0.5); float seed = floor(vFacade.y + 0.5); float glow = 0.0; float glass = 0.0; vec3 fGlowC = vec3(0.0);
-        if (style > 0.5) {
-          vec2 cs = vec2(vFacade.z, vFacade.w);
-          vec2 cell = floor(vFUv / cs); vec2 f = fract(vFUv / cs);
-          if (style < 1.5) {
-            float frame = step(0.06, f.x) * step(f.x, 0.94) * step(0.1, f.y) * step(f.y, 0.92);
-            glass = frame;
-            float mull = 1.0 - step(0.48, f.x) * step(f.x, 0.52);
-            glass *= mull;
-          } else if (style < 2.5) {
-            glass = step(0.24, f.x) * step(f.x, 0.76) * step(0.3, f.y) * step(f.y, 0.86);
-            float sill = step(0.2, f.x) * step(f.x, 0.8) * step(0.24, f.y) * step(f.y, 0.3);
-            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.9, 0.86), sill);
-          } else if (style < 3.5) {
-            float rib = 0.5 + 0.5 * sin(vFUv.x * 6.2831 * 2.5);
-            diffuseColor.rgb *= 0.86 + 0.14 * rib;
-            glass = step(0.94, f.y) * step(mod(cell.x, 3.0), 0.5) * step(0.15, f.x) * step(f.x, 0.85);
-          }
-          if (cell.y < 0.5 && style < 2.5) { glass = step(0.04, f.x) * step(f.x, 0.96) * step(0.08, f.y) * step(f.y, 0.8); }
-          float lit = step(0.64, fh(cell + vec2(mod(seed, 37.0), 0.0)));
-          float warm = fh(cell * 1.7 + vec2(mod(seed, 29.0), 3.0));
-          vec3 day = mix(vec3(0.22, 0.34, 0.4), vec3(0.5, 0.66, 0.74), clamp(f.y * 0.8 + 0.1, 0.0, 1.0));
-          vec3 litCol = mix(vec3(1.0, 0.6, 0.26), vec3(0.6, 0.78, 1.0), step(0.8, warm));
-          diffuseColor.rgb = mix(diffuseColor.rgb, mix(day, day * 0.35, uNight), glass);
-          float bright = 0.35 + 0.65 * fh(cell * 2.3 + vec2(7.0, mod(seed, 13.0)));
-          glow = glass * lit * uNight * bright * (0.55 + 0.45 * (1.0 - f.y));
-          if (cell.y < 0.5) { glow = glass * uNight * 0.18; litCol = vec3(1.0, 0.72, 0.42); }
-          fGlowC = litCol * glow;
-        }
-        vec3 fGlow = fGlowC;
-        float fGlass = glass;`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.18, fGlass);')
-      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.6, fGlass);')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fGlow * 0.6;');
+/** Tileable value noise on an n x n lattice. */
+function noiseField(size: number, cells: number, rng: Rng): (x: number, y: number) => number {
+  const g = new Float32Array(cells * cells); for (let i = 0; i < g.length; i++) g[i] = rng.next();
+  return (x: number, y: number) => {
+    const fx = (x / size) * cells, fy = (y / size) * cells;
+    const ix = Math.floor(fx), iy = Math.floor(fy); let tx = fx - ix, ty = fy - iy;
+    tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+    const a = (i: number, j: number) => g[((j % cells + cells) % cells) * cells + ((i % cells + cells) % cells)];
+    return (a(ix, iy) * (1 - tx) + a(ix + 1, iy) * tx) * (1 - ty) + (a(ix, iy + 1) * (1 - tx) + a(ix + 1, iy + 1) * tx) * ty;
   };
+}
+function fbmField(size: number, rng: Rng, base: number, oct = 4) {
+  const fs = Array.from({ length: oct }, (_, i) => noiseField(size, base << i, rng));
+  return (x: number, y: number) => { let v = 0, a = 0.5, n = 0; for (const f of fs) { v += f(x, y) * a; n += a; a *= 0.5; } return v / n; };
+}
+
+export interface Surface { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture }
+/**
+ * Builds albedo + normal + roughness textures from per-pixel albedo/height/roughness buffers.
+ * paint() fills col (rgb 0..1), h (metres-ish) and rough (0..1); strokes may also be drawn on the 2D context `g`
+ * (it is composited over col first).
+ */
+function surface(size: number, bumpScale: number, paint: (col: Float32Array, h: Float32Array, rough: Float32Array, overlay: CanvasRenderingContext2D) => void): Surface {
+  const n = size * size;
+  const col = new Float32Array(n * 3), h = new Float32Array(n), rough = new Float32Array(n).fill(0.9);
+  const ov = canvas(size, size);
+  paint(col, h, rough, ov.g);
+  // composite overlay strokes (alpha = darkening/colour, blue channel encodes depth)
+  const od = ov.g.getImageData(0, 0, size, size).data;
+  const { c, g } = canvas(size, size); const img = g.createImageData(size, size); const d = img.data;
+  for (let i = 0; i < n; i++) {
+    const a = od[i * 4 + 3] / 255;
+    for (let k = 0; k < 3; k++) { const v = col[i * 3 + k] * (1 - a) + (od[i * 4 + k] / 255) * a; d[i * 4 + k] = Math.max(0, Math.min(255, Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255))); }
+    d[i * 4 + 3] = 255;
+    h[i] -= a * 0.6;
+  }
+  g.putImageData(img, 0, 0);
+  const nc = canvas(size, size), nimg = nc.g.createImageData(size, size), nd = nimg.data;
+  const rc = canvas(size, size), rimg = rc.g.createImageData(size, size), rd = rimg.data;
+  const H = (x: number, y: number) => h[((y + size) % size) * size + ((x + size) % size)];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = y * size + x;
+    const dx = (H(x + 1, y) - H(x - 1, y)) * bumpScale, dy = (H(x, y + 1) - H(x, y - 1)) * bumpScale;
+    const l = Math.hypot(dx, dy, 1);
+    nd[i * 4] = Math.round((-dx / l * 0.5 + 0.5) * 255); nd[i * 4 + 1] = Math.round((dy / l * 0.5 + 0.5) * 255); nd[i * 4 + 2] = Math.round((1 / l * 0.5 + 0.5) * 255); nd[i * 4 + 3] = 255;
+    const r = Math.round(Math.max(0, Math.min(1, rough[i])) * 255); rd[i * 4] = r; rd[i * 4 + 1] = r; rd[i * 4 + 2] = r; rd[i * 4 + 3] = 255;
+  }
+  nc.g.putImageData(nimg, 0, 0); rc.g.putImageData(rimg, 0, 0);
+  return { map: tex(c), normalMap: tex(nc.c, true, false), roughnessMap: tex(rc.c, true, false) };
+}
+
+/** Road asphalt: aggregate, tar-sealed cracks, repair patches, oil stains. One tile covers 12 m. */
+export function asphaltSurface(): Surface {
+  const S = 1024, r = new Rng(3);
+  return surface(S, 3.0, (col, h, rough, g) => {
+    const big = fbmField(S, r, 4), mid = fbmField(S, r, 16), fine = noiseField(S, 256, r);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const b = big(x, y), m = mid(x, y), f = fine(x, y);
+      const grain = r.next();
+      let v = 0.085 + b * 0.035 + m * 0.03 + (grain > 0.93 ? 0.06 : grain < 0.08 ? -0.02 : 0) + f * 0.015;
+      const worn = Math.max(0, b - 0.55) * 0.12; v += worn; // polished lighter wheel tracks feel
+      col[i * 3] = v * 0.98; col[i * 3 + 1] = v; col[i * 3 + 2] = v * 1.04;
+      h[i] = grain * 0.35 + m * 0.6;
+      rough[i] = 0.82 + grain * 0.12 - worn;
+    }
+    // repair patches: slightly darker, crisp edges
+    for (let k = 0; k < 7; k++) {
+      const px = r.range(0, S), py = r.range(0, S), pw = r.range(60, 220), ph = r.range(40, 160);
+      for (let y = Math.floor(py); y < py + ph; y++) for (let x = Math.floor(px); x < px + pw; x++) {
+        const i = ((y % S) * S + (x % S)); const tone = k % 2 ? 0.75 : 1.18;
+        col[i * 3] *= tone; col[i * 3 + 1] *= tone; col[i * 3 + 2] *= tone; h[i] += 0.25;
+      }
+    }
+    // oil stains
+    for (let k = 0; k < 18; k++) {
+      const cx = r.range(0, S), cy = r.range(0, S), rad = r.range(10, 46), sq = r.range(0.5, 1);
+      for (let y = Math.floor(cy - rad); y < cy + rad; y++) for (let x = Math.floor(cx - rad); x < cx + rad; x++) {
+        const d = Math.hypot((x - cx) / rad, (y - cy) / (rad * sq)); if (d > 1) continue;
+        const i = (((y % S) + S) % S) * S + (((x % S) + S) % S); const a = (1 - d) * 0.55;
+        col[i * 3] *= 1 - a; col[i * 3 + 1] *= 1 - a; col[i * 3 + 2] *= 1 - a * 0.9; rough[i] = Math.min(rough[i], 0.55 + d * 0.3);
+      }
+    }
+    // tar-sealed cracks: branching dark lines
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let k = 0; k < 34; k++) {
+      let x = r.range(0, S), y = r.range(0, S), a = r.range(0, Math.PI * 2);
+      g.strokeStyle = `rgba(14,14,15,${r.range(0.55, 0.9)})`; g.lineWidth = r.range(1.2, 3.2);
+      g.beginPath(); g.moveTo(x, y);
+      for (let s = 0; s < r.int(6, 18); s++) {
+        a += r.range(-0.6, 0.6); x += Math.cos(a) * r.range(8, 22); y += Math.sin(a) * r.range(8, 22); g.lineTo(x, y);
+        if (r.chance(0.15)) { g.stroke(); g.beginPath(); g.moveTo(x, y); }
+      }
+      g.stroke();
+    }
+  });
+}
+/** Concrete sidewalk slabs (1.5 m) with joints, stains, gum and occasional cracks. One tile covers 6 m. */
+export function pavementSurface(): Surface {
+  const S = 512, r = new Rng(5), slabs = 4, sp = S / slabs;
+  return surface(S, 4.0, (col, h, rough, g) => {
+    const mid = fbmField(S, r, 8), fine = noiseField(S, 128, r);
+    const tones: number[] = []; for (let k = 0; k < slabs * slabs; k++) tones.push(r.range(0.9, 1.08));
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const sx = Math.floor(x / sp), sy = Math.floor(y / sp);
+      const jx = Math.min(x % sp, sp - (x % sp)), jy = Math.min(y % sp, sp - (y % sp));
+      const joint = Math.min(jx, jy) < 1.6 ? 1 : 0;
+      const edge = Math.min(jx, jy) < 4 ? 0.96 : 1;
+      const v = (0.42 + mid(x, y) * 0.1 + fine(x, y) * 0.04 + (r.next() - 0.5) * 0.04) * tones[sy * slabs + sx] * edge * (joint ? 0.55 : 1);
+      col[i * 3] = v * 1.0; col[i * 3 + 1] = v * 0.985; col[i * 3 + 2] = v * 0.95;
+      h[i] = joint ? -0.5 : fine(x, y) * 0.1;
+      rough[i] = 0.88;
+    }
+    for (let k = 0; k < 40; k++) { const x = r.range(0, S), y = r.range(0, S); g.fillStyle = `rgba(40,38,36,${r.range(0.15, 0.45)})`; g.beginPath(); g.arc(x, y, r.range(1, 2.6), 0, 7); g.fill(); }
+    for (let k = 0; k < 8; k++) { const x = r.range(0, S), y = r.range(0, S); const gr = g.createRadialGradient(x, y, 0, x, y, r.range(12, 40)); gr.addColorStop(0, 'rgba(60,52,44,0.25)'); gr.addColorStop(1, 'rgba(60,52,44,0)'); g.fillStyle = gr; g.fillRect(x - 40, y - 40, 80, 80); }
+    g.strokeStyle = 'rgba(30,30,30,0.5)'; g.lineWidth = 1;
+    for (let k = 0; k < 5; k++) { let x = r.range(0, S), y = r.range(0, S); g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += r.range(-14, 14); y += r.range(-14, 14); g.lineTo(x, y); } g.stroke(); }
+  });
+}
+export function grassSurface(): Surface {
+  const S = 512, r = new Rng(7);
+  return surface(S, 2.0, (col, h, rough) => {
+    const big = fbmField(S, r, 4), mid = fbmField(S, r, 24);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x; const b = big(x, y), m = mid(x, y), blade = r.next();
+      const dry = Math.max(0, b - 0.55) * 1.6;
+      const v = 0.75 + blade * 0.45 + m * 0.2;
+      col[i * 3] = (0.12 + dry * 0.12) * v; col[i * 3 + 1] = (0.2 + dry * 0.06) * v; col[i * 3 + 2] = (0.07 + dry * 0.02) * v;
+      if (blade > 0.985) { col[i * 3] *= 0.5; col[i * 3 + 1] *= 0.5; col[i * 3 + 2] *= 0.5; }
+      h[i] = blade * 0.5; rough[i] = 0.95;
+    }
+  });
+}
+export function sandSurface(): Surface {
+  const S = 256, r = new Rng(11);
+  return surface(S, 1.5, (col, h, rough) => {
+    const mid = fbmField(S, r, 8), rip = noiseField(S, 32, r);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x; const v = 0.62 + mid(x, y) * 0.12 + (r.next() - 0.5) * 0.08;
+      col[i * 3] = v * 0.93; col[i * 3 + 1] = v * 0.8; col[i * 3 + 2] = v * 0.6;
+      h[i] = Math.sin((y + rip(x, y) * 30) * 0.35) * 0.3 + r.next() * 0.2; rough[i] = 0.97;
+    }
+  });
+}
+/** Back-compat helpers returning only the albedo. */
+export function grassTexture(): THREE.Texture { return grassSurface().map; }
+export function sandTexture(): THREE.Texture { return sandSurface().map; }
+
+/** World-space macro variation (breaks texture tiling) for ground materials using map uv in metres / tile. */
+export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18, scale = 0.012, key = 'macro') {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vMW;
+      float mh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float mn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mh(i), mh(i + vec2(1, 0)), f.x), mix(mh(i + vec2(0, 1)), mh(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      { float mv = mn(vMW.xz * ${scale.toFixed(4)}) * 0.6 + mn(vMW.xz * ${(scale * 4.1).toFixed(4)}) * 0.4;
+        diffuseColor.rgb *= 1.0 + (mv - 0.5) * ${(strength * 2).toFixed(3)}; }`);
+  };
+  m.customProgramCacheKey = () => key;
   return m;
 }
 
-/** KayKit atlas variants: the same models in a different palette per district, plus night window glow. */
-export function atlasVariant(base: THREE.Texture, kind: 'original' | 'pastel' | 'muted'): THREE.Texture {
-  if (kind === 'original') return base;
-  const img = base.image as HTMLImageElement | ImageBitmap;
-  const { c, g } = canvas(img.width, img.height);
-  g.drawImage(img as CanvasImageSource, 0, 0);
-  const data = g.getImageData(0, 0, c.width, c.height);
-  const d = data.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
-    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
-    const sat = mx - mn;
-    if (sat < 0.12) continue; // keep neutrals (frames, glass, roofs)
-    const col = new THREE.Color(r, gg, b); const hsl = { h: 0, s: 0, l: 0 }; col.getHSL(hsl);
-    if (kind === 'pastel') { hsl.l = 0.55 + hsl.l * 0.35; hsl.s *= 0.62; hsl.h = (hsl.h + 0.02) % 1; }
-    else { hsl.s *= 0.6; hsl.l = 0.2 + hsl.l * 0.7; }
-    col.setHSL(hsl.h, hsl.s, hsl.l);
-    d[i] = col.r * 255; d[i + 1] = col.g * 255; d[i + 2] = col.b * 255;
-  }
-  g.putImageData(data, 0, 0);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = base.flipY; t.magFilter = base.magFilter; t.minFilter = base.minFilter;
-  return t;
-}
-/** Emissive mask for the KayKit atlas: the dark glass swatch glows warm at night. */
-export function atlasEmissive(base: THREE.Texture): THREE.Texture {
-  const img = base.image as HTMLImageElement;
-  const { c, g } = canvas(img.width, img.height);
-  g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
-  const cw = c.width / 8, ch = c.height / 4;
-  const grad = g.createLinearGradient(0, 0, 0, ch);
-  grad.addColorStop(0, '#ffd08a'); grad.addColorStop(1, '#ff9f4a');
-  g.save(); g.translate(0, ch * 3); g.fillStyle = grad; g.fillRect(2, 2, cw * 2 - 4, ch - 4); g.restore(); // window-glass swatch spans cells (0,3)-(1,3)
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = base.flipY;
-  return t;
-}
-export function kaykitMaterial(map: THREE.Texture, emissive: THREE.Texture | null): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ map, roughness: 0.82, metalness: 0.0 });
-  if (emissive) {
-    m.emissiveMap = emissive; m.emissive = new THREE.Color(1, 1, 1); m.emissiveIntensity = 0;
-    m.onBeforeCompile = shader => {
-      shader.uniforms.uNight = nightUniform;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos2;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos2 = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uNight; varying vec3 vWPos2; float kh(vec3 p){ return fract(sin(dot(p, vec3(12.7, 78.2, 37.9))) * 43758.5); }')
-        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          float wl = step(0.5, kh(floor(vWPos2 * vec3(0.55, 0.32, 0.55))));
-          totalEmissiveRadiance = texture2D(emissiveMap, vEmissiveMapUv).rgb * uNight * wl * 0.9;`);
-    };
-    m.customProgramCacheKey = () => 'kaykit-night';
-  }
+/** Shared procedural building surface material (see world/facadeShader.ts). */
+export function buildingMaterial(): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uNight = nightUniform;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + FACADE_VERT_PARS)
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + FACADE_VERT_MAIN)
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n' + FACADE_VERT_WORLD);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + FACADE_FRAG_PARS)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + FACADE_FRAG_COLOR)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = fRough;')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = fMetal;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        { vec3 sp = -vViewPosition; vec3 sx = dFdx(sp), sy = dFdy(sp);
+          float dhx = dFdx(fBump), dhy = dFdy(fBump);
+          vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+          float det = dot(sx, r1) * faceDirection;
+          vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+          normal = normalize(abs(det) * normal - grad); }`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fEmis;');
+  };
+  m.customProgramCacheKey = () => 'meridian-building';
   return m;
 }
 
+/**
+ * Trim / prop material: vertex colour plus a `trim` attribute (roughness, metalness, pattern, glow).
+ * pattern: 0 plain, 1 awning stripes (uv.x), 2 grime noise, 3 glows only at night, 4 always glows.
+ */
+export function trimMaterial(): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uNight = nightUniform;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 trim; flat varying vec4 vTrim; varying vec2 vTUv; varying vec3 vTW;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvTrim = trim; vTUv = uv;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvTW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      uniform float uNight; flat varying vec4 vTrim; varying vec2 vTUv; varying vec3 vTW;
+      float th(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      float tn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(th(i), th(i + vec2(1, 0)), f.x), mix(th(i + vec2(0, 1)), th(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float tp = floor(vTrim.z + 0.5);
+        if (tp > 0.5 && tp < 1.5) { float st = step(0.5, fract(vTUv.x / 0.6)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.9, 0.85), st); }
+        if (tp > 1.5 && tp < 2.5) { diffuseColor.rgb *= 0.8 + 0.3 * tn(vTW.xz * 1.7 + vTW.y * 2.3); }
+        diffuseColor.rgb *= 0.94 + 0.08 * tn(vTW.xz * 0.9 + vTW.yy * 1.3);`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vTrim.x;')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = vTrim.y;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float tg = tp > 3.5 ? 1.0 : (tp > 2.5 ? smoothstep(0.1, 0.6, uNight) : 0.0);
+        totalEmissiveRadiance += diffuseColor.rgb * vTrim.w * tg;`);
+  };
+  m.customProgramCacheKey = () => 'meridian-trim';
+  return m;
+}
+
+/** Invented shop brands for signs (never real companies). */
 export const BRANDS = [
   { name: 'TIDEWATER ARMS', bg: '#1f3b40', fg: '#ffcf7a' }, { name: 'GLOW GARAGE', bg: '#2a1e3f', fg: '#7ff3ff' },
   { name: 'JUNIPER COFFEE', bg: '#244234', fg: '#f6e7c8' }, { name: "SAL'S NOODLES", bg: '#7a2b25', fg: '#ffe0a3' },
@@ -160,38 +250,70 @@ export const BRANDS = [
   { name: 'SUNDIAL BOOKS', bg: '#6b3d1e', fg: '#ffe8c2' }, { name: 'MERIDIAN BANK', bg: '#20343c', fg: '#d9f0f2' },
   { name: 'FIZZWELL SODA', bg: '#c4433a', fg: '#fff7e0' }, { name: 'ORBIT LAUNDRY', bg: '#3a6d8c', fg: '#ffffff' },
   { name: 'SALT & SAGE', bg: '#5a5d3a', fg: '#fff1d0' }, { name: 'COASTLINE FM', bg: '#2b1b33', fg: '#ff9e5e' },
+  { name: 'DOUBLE DOWN PAWN', bg: '#1c1c1c', fg: '#ffd84d' }, { name: 'HOT PLATE DINER', bg: '#8c1c22', fg: '#fff2d6' },
+  { name: 'BRASS KEY LOCKS', bg: '#3a3020', fg: '#e8c26a' }, { name: 'VELVET NAILS', bg: '#5c2346', fg: '#ffd1ec' },
+  { name: 'MOTOR CITY TIRES', bg: '#222831', fg: '#f05454' }, { name: 'CHECK CASHING', bg: '#0e5132', fg: '#d8ffcf' },
+  { name: 'TAQUERIA SOL', bg: '#d17b0f', fg: '#2a1400' }, { name: 'PIXEL ARCADE', bg: '#101030', fg: '#6af0ff' },
+  { name: 'GOLDLEAF JEWELERS', bg: '#141414', fg: '#e9c46a' }, { name: 'HARBOR LIQUOR', bg: '#29335c', fg: '#f3d34a' },
+  { name: 'SUDS & DUDS', bg: '#d8e2dc', fg: '#2b4162' }, { name: 'IRONWORKS GYM', bg: '#232323', fg: '#ff6b35' },
+  { name: 'DRAGON WOK', bg: '#a4161a', fg: '#ffd166' }, { name: 'FRESH CUTS', bg: '#f1faee', fg: '#1d3557' },
+  { name: 'QUICK FIX PHONES', bg: '#1d3557', fg: '#a8dadc' }, { name: 'PALM TREE MOTEL', bg: '#ff7b9c', fg: '#ffffff' },
 ];
-/** A 4x4 atlas of illuminated shop signs for invented brands. */
+/** An 4x8 atlas of shop signs for invented brands (lit at night). */
 export function signAtlas(): THREE.Texture {
-  const { c, g } = canvas(1024, 256);
+  const { c, g } = canvas(1024, 512);
   BRANDS.forEach((b, i) => {
     const x = (i % 4) * 256, y = Math.floor(i / 4) * 64;
-    g.fillStyle = b.bg; g.fillRect(x + 2, y + 2, 252, 60);
-    g.strokeStyle = b.fg; g.globalAlpha = 0.5; g.lineWidth = 2; g.strokeRect(x + 7, y + 7, 242, 50); g.globalAlpha = 1;
-    g.fillStyle = b.fg; g.font = '700 26px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    let size = 26; while (g.measureText(b.name).width > 228 && size > 14) { size--; g.font = `700 ${size}px "Arial Narrow", Arial, sans-serif`; }
-    g.fillText(b.name, x + 128, y + 33);
+    const gr = g.createLinearGradient(0, y, 0, y + 64); gr.addColorStop(0, b.bg); gr.addColorStop(1, shade(b.bg, -0.25));
+    g.fillStyle = gr; g.fillRect(x + 2, y + 2, 252, 60);
+    g.strokeStyle = shade(b.bg, 0.25); g.lineWidth = 3; g.strokeRect(x + 4, y + 4, 248, 56);
+    g.fillStyle = b.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+    let size = 30; g.font = `800 ${size}px "Arial Narrow", Arial, sans-serif`;
+    while (g.measureText(b.name).width > 226 && size > 13) { size--; g.font = `800 ${size}px "Arial Narrow", Arial, sans-serif`; }
+    g.shadowColor = b.fg; g.shadowBlur = 6; g.fillText(b.name, x + 128, y + 34); g.shadowBlur = 0;
   });
   const t = tex(c, false); t.anisotropy = 8; return t;
 }
-/** Billboard posters for rooftops. */
+function shade(hex: string, k: number) { const c = new THREE.Color(hex); if (k > 0) c.lerp(new THREE.Color(1, 1, 1), k); else c.multiplyScalar(1 + k); return `#${c.getHexString()}`; }
+
+export const BILLBOARD_COUNT = 8;
+/** Billboard posters (2 x 4 atlas) for invented products. */
 export function billboardAtlas(): THREE.Texture {
-  const { c, g } = canvas(1024, 512);
+  const { c, g } = canvas(2048, 1024);
   const ads = [
-    { t: 'FIZZWELL', s: 'Taste the tide.', a: '#ff6b4a', b: '#ffd166' },
-    { t: 'COASTLINE FM', s: '98.6 · Afterglow hits', a: '#2b1b6b', b: '#ff7ab6' },
-    { t: 'HALYARD', s: 'Rooms with a view', a: '#14535c', b: '#f6e7c8' },
-    { t: 'ORBITAL', s: 'Phones that listen less', a: '#1d1d1d', b: '#7ff3ff' },
+    { t: 'FIZZWELL', s: 'Taste the tide.', a: '#ff6b4a', b: '#ffd166', shape: 'can' },
+    { t: 'COASTLINE FM', s: '98.6 · Afterglow hits all night', a: '#2b1b6b', b: '#ff7ab6', shape: 'wave' },
+    { t: 'HALYARD HOTEL', s: 'Rooms with a view of everything', a: '#14535c', b: '#f6e7c8', shape: 'tower' },
+    { t: 'ORBITAL', s: 'Phones that listen less.', a: '#121212', b: '#7ff3ff', shape: 'phone' },
+    { t: 'VANTA MOTORS', s: 'The new Stallion GT. Unreasonable.', a: '#0c0c0c', b: '#d62828', shape: 'car' },
+    { t: 'CLUCK SHACK', s: 'Fried. Fast. Forgiven.', a: '#f77f00', b: '#fcbf49', shape: 'bucket' },
+    { t: 'BLUE MARLIN', s: 'Island rum for city nights', a: '#003049', b: '#2a9d8f', shape: 'bottle' },
+    { t: 'SECOND CHANCE LAW', s: 'Arrested? Call 555-0199', a: '#e9ecef', b: '#adb5bd', shape: 'scale' },
   ];
   ads.forEach((ad, i) => {
-    const x = (i % 2) * 512, y = Math.floor(i / 2) * 256;
-    const gr = g.createLinearGradient(x, y, x + 512, y + 256); gr.addColorStop(0, ad.a); gr.addColorStop(1, ad.b);
-    g.fillStyle = gr; g.fillRect(x, y, 512, 256);
-    g.fillStyle = 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + 420, y + 60, 120, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#fff'; g.font = '900 64px Arial, sans-serif'; g.textAlign = 'left'; g.fillText(ad.t, x + 30, y + 130);
-    g.font = '500 30px Arial, sans-serif'; g.fillText(ad.s, x + 32, y + 185);
+    const x = (i % 4) * 512, y = Math.floor(i / 4) * 512, W = 512, H = 256, oy = y + 128;
+    const gr = g.createLinearGradient(x, oy, x + W, oy + H); gr.addColorStop(0, ad.a); gr.addColorStop(1, ad.b);
+    g.fillStyle = gr; g.fillRect(x, oy, W, H);
+    const dark = ad.shape === 'scale';
+    g.fillStyle = dark ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + 410, oy + 90, 120, 0, Math.PI * 2); g.fill();
+    // product glyph
+    g.save(); g.translate(x + 400, oy + 140); g.fillStyle = dark ? '#343a40' : 'rgba(255,255,255,0.9)';
+    if (ad.shape === 'can') { g.fillRect(-35, -70, 70, 130); g.fillStyle = ad.a; g.fillRect(-35, -20, 70, 30); }
+    else if (ad.shape === 'car') { g.beginPath(); g.moveTo(-110, 30); g.lineTo(-90, -5); g.lineTo(-30, -25); g.lineTo(40, -25); g.lineTo(90, 0); g.lineTo(110, 30); g.closePath(); g.fill(); g.fillStyle = '#222'; g.beginPath(); g.arc(-60, 32, 18, 0, 7); g.arc(60, 32, 18, 0, 7); g.fill(); }
+    else if (ad.shape === 'phone') { g.fillRect(-40, -80, 80, 150); g.fillStyle = ad.b; g.fillRect(-32, -66, 64, 116); }
+    else if (ad.shape === 'tower') { g.fillRect(-30, -90, 60, 170); g.fillRect(-55, 10, 110, 70); }
+    else if (ad.shape === 'bottle') { g.fillRect(-14, -90, 28, 40); g.beginPath(); g.moveTo(-14, -50); g.lineTo(-40, -10); g.lineTo(-40, 80); g.lineTo(40, 80); g.lineTo(40, -10); g.lineTo(14, -50); g.fill(); }
+    else if (ad.shape === 'bucket') { g.beginPath(); g.moveTo(-60, -50); g.lineTo(60, -50); g.lineTo(45, 70); g.lineTo(-45, 70); g.closePath(); g.fill(); g.fillStyle = ad.a; g.fillRect(-55, -20, 110, 22); }
+    else if (ad.shape === 'scale') { g.fillRect(-4, -80, 8, 150); g.fillRect(-70, -70, 140, 8); g.beginPath(); g.arc(-60, -20, 26, 0, Math.PI); g.arc(60, -20, 26, 0, Math.PI); g.fill(); }
+    else { for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(0, 40 + k * 10, 90 - k * 14, Math.PI, 0); g.lineWidth = 8; g.strokeStyle = 'rgba(255,255,255,0.8)'; g.stroke(); } }
+    g.restore();
+    g.fillStyle = dark ? '#1d1d1d' : '#fff'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    let size = 62; g.font = `900 ${size}px Arial, sans-serif`; while (g.measureText(ad.t).width > 300 && size > 30) { size--; g.font = `900 ${size}px Arial, sans-serif`; }
+    g.fillText(ad.t, x + 28, oy + 120);
+    g.font = '600 24px Arial, sans-serif'; g.fillText(ad.s, x + 30, oy + 170, 330);
+    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, oy + H - 6, W, 6);
   });
-  return tex(c, false);
+  const t = tex(c, false); t.anisotropy = 8; return t;
 }
 /** Soft radial gradient used for light pools, glows and particles. */
 export function glowTexture(): THREE.Texture {
@@ -200,4 +322,35 @@ export function glowTexture(): THREE.Texture {
   gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+/** Worn paint mask for road markings (white = paint present). */
+export function paintWearTexture(): THREE.Texture {
+  const S = 256, r = new Rng(19); const { c, g } = canvas(S, S); const img = g.createImageData(S, S); const d = img.data;
+  const f = fbmField(S, r, 16), fine = noiseField(S, 128, r);
+  for (let i = 0; i < S * S; i++) { const x = i % S, y = Math.floor(i / S); const v = f(x, y) * 0.75 + fine(x, y) * 0.25 + (r.next() - 0.5) * 0.15; const a = v > 0.36 ? 255 : 0; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255; d[i * 4 + 3] = a; }
+  g.putImageData(img, 0, 0);
+  return tex(c, true, true);
+}
+/** Leaf cluster card (alpha) for trees. */
+export function leafTexture(kind: 'broad' | 'palm' = 'broad'): THREE.Texture {
+  const S = 256, r = new Rng(kind === 'broad' ? 23 : 29); const { c, g } = canvas(S, S);
+  if (kind === 'broad') {
+    for (let k = 0; k < 420; k++) {
+      const a = r.range(0, Math.PI * 2), rad = Math.sqrt(r.next()) * 112;
+      const x = 128 + Math.cos(a) * rad, y = 128 + Math.sin(a) * rad * 0.9;
+      const l = r.range(0.55, 1.05), hue = r.range(0.22, 0.3);
+      const col = new THREE.Color().setHSL(hue, r.range(0.35, 0.6), 0.16 + l * 0.18 * (1 - rad / 200));
+      g.fillStyle = `#${col.getHexString()}`;
+      g.save(); g.translate(x, y); g.rotate(r.range(0, Math.PI * 2)); g.beginPath(); g.ellipse(0, 0, r.range(5, 10), r.range(3, 5), 0, 0, Math.PI * 2); g.fill(); g.restore();
+    }
+  } else {
+    // a single frond: central rib with leaflets
+    g.strokeStyle = '#5a6b2e'; g.lineWidth = 4; g.beginPath(); g.moveTo(8, 128); g.quadraticCurveTo(128, 100, 250, 140); g.stroke();
+    for (let k = 0; k < 46; k++) {
+      const t = k / 46, x = 8 + t * 240, y = 128 - Math.sin(t * Math.PI) * 22 + t * 12;
+      const len = Math.sin(Math.min(1, t * 1.3) * Math.PI) * 70 + 10;
+      for (const s of [-1, 1]) { g.strokeStyle = `hsl(${r.range(80, 100)}, ${r.range(35, 55)}%, ${r.range(22, 34)}%)`; g.lineWidth = 3.2; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 14, y + s * len * 0.5, x + 26, y + s * len); g.stroke(); }
+    }
+  }
+  const t = tex(c, false, true); return t;
 }
