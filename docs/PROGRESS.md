@@ -10,7 +10,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
       convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
 - [ ] W1b People: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
       curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
-- [ ] W1c Shooting: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
+- [x] W1c Shooting (done 35bbd40: dot reticle, aim fix, hit zones, 18 guns, gun audio, glass) —: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
       models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
 - [ ] W2a Car entry: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
       smash window + hotwire. Helicopters (helipad to steal, flyable).
@@ -19,8 +19,8 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running (started 02:20 UTC): W1a vehicles agent a8d1c0f8913e5446f, W1b people agent aad3c429bd7a6894f,
-  W1c combat agent a911474b5708d5a9f (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
+- Running: W1a vehicles agent a8d1c0f8913e5446f, W1b people agent aad3c429bd7a6894f,
+  W2c city agent a6bd1913e4509c77d (started 08:00 UTC) (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
