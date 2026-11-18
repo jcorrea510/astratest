@@ -8,11 +8,11 @@ import { generateCity } from './world/citymap';
 import { UI } from './ui/ui';
 import { Audio } from './audio/audio';
 import type { GameAudio, WheelSlot } from './ui/contracts';
+import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } from './combat/wheelSlots';
 import { MissionCtx, Missions, MISSIONS } from './game/missions';
 import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
 import { readSave, writeSave, type SaveData } from './game/save';
-import { WEAPONS, WEAPON_ORDER, type WeaponId } from './combat/weapons';
 import { PLACES } from './game/places';
 import { AVENUES, STREETS } from './world/citymap';
 
@@ -196,15 +196,12 @@ function quitToTitle() {
 
 // ---------------- Inventory wheel ----------------
 function wheelSlots(): WheelSlot[] {
-  const inv = game!.pcombat.inv;
-  const slots: WheelSlot[] = WEAPON_ORDER.filter(id => inv.weapons[id].owned).map(id => ({ id, label: WEAPONS[id].name, icon: WEAPONS[id].icon, detail: WEAPONS[id].melee ? 'Melee' : `${inv.weapons[id].clip} / ${inv.weapons[id].reserve}`, enabled: true }));
-  slots.push({ id: 'medkit', label: 'First-aid kit', icon: 'medkit', detail: `x${inv.medkits}`, enabled: inv.medkits > 0 && game!.player.health < game!.player.maxHealth });
-  return slots;
+  return combatWheelSlots(game!.pcombat.inv, game!.player.health < game!.player.maxHealth); // COMBAT: category wheel
 }
 function openWheel() {
   const g = game!;
   g.wheelOpen = true; g.targetTimeScale = 0.25; audio?.setSlowMo(1); audio?.play('wheelOpen');
-  ui.openWheel(wheelSlots(), g.pcombat.inv.current);
+  ui.openWheel(wheelSlots(), currentSlot(g.pcombat.inv));
 }
 function closeWheel(discard = false) {
   const g = game!;
@@ -212,7 +209,7 @@ function closeWheel(discard = false) {
   g.wheelOpen = false; g.targetTimeScale = 1; audio?.setSlowMo(0); audio?.play('wheelClose');
   if (!id || discard || !g.player.alive || g.deathT >= 0) return;
   if (id === 'medkit') { const inv = g.pcombat.inv; if (inv.medkits > 0 && g.player.health < g.player.maxHealth) { inv.medkits--; g.player.health = Math.min(g.player.maxHealth, g.player.health + 60); audio?.play('pickup'); ui.toast('+60 health', 'info'); } }
-  else if (g.pcombat.inv.select(id as WeaponId)) audio?.play('equip');
+  else if (selectSlot(g.pcombat.inv, id)) audio?.play('equip');
 }
 
 // ---------------- Per-frame UI glue ----------------
@@ -233,6 +230,10 @@ function frame(raw: number) {
     if (g.wheelOpen) {
       const pad = input.pad;
       ui.updateWheel(input.mouseDX + (pad.connected ? pad.rx * 30 : 0), input.mouseDY + (pad.connected ? pad.ry * 30 : 0));
+      // COMBAT: scrolling over a category slot steps through the weapons in it
+      const scroll = input.justPressed('nextWeapon') ? 1 : input.justPressed('prevWeapon') ? -1 : 0;
+      const hl = scroll ? ui.peekWheel?.() : null;
+      if (hl && scroll && scrollSlot(g.pcombat.inv, hl, scroll)) { ui.openWheel(wheelSlots(), hl); audio?.play('uiHover'); }
       if (!input.held('wheel') || !canWheel) closeWheel();
     }
     m.update(raw * g.timeScale);

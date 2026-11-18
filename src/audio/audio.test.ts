@@ -216,16 +216,28 @@ describe('weapon sound synthesis', () => {
     const { EXTRA_META, EXTRA_RECIPES } = await import('./sfx');
     expect(Object.keys(EXTRA_RECIPES).sort()).toEqual(Object.keys(EXTRA_META).sort());
   });
-  it('gunshots have a sharp transient, a heavy low body and a 0.15-0.8 s near-field tail', async () => {
+  it('gunshots are loud and full-bodied (energy in the mids, not a click), with class-dependent tails', async () => {
     const { GUNS, renderGun, analyse } = await import('./gunsynth');
     const r = rng(7);
+    const res: Record<string, { dur: number; rms: number }> = {};
     for (const g of Object.keys(GUNS) as (keyof typeof GUNS)[]) {
       const d = renderGun(GUNS[g], 48000, r); const a = analyse(d, 48000);
-      let onset = 0; for (let i = 0; i < 96; i++) onset = Math.max(onset, Math.abs(d[i]));
-      expect(onset).toBeGreaterThan(0.6 * a.peak); // most of the pressure arrives in the first 2 ms
-      expect(a.lowFrac).toBeGreaterThan(0.35); // body under 200 Hz
-      expect(a.durMs40).toBeGreaterThanOrEqual(150); expect(a.durMs40).toBeLessThanOrEqual(800);
+      let onset = 0; for (let i = 0; i < 144; i++) onset = Math.max(onset, Math.abs(d[i]));
+      expect(onset).toBeGreaterThan(0.5 * a.peak); // the bang arrives within 3 ms
+      expect(a.peak).toBeGreaterThan(0.9);
+      let rms = 0; const n = 4800; for (let i = 0; i < n; i++) rms += d[i] * d[i]; rms = Math.sqrt(rms / n);
+      expect(rms).toBeGreaterThan(0.18); // dense first 100 ms (a click would be ~0.05)
+      expect(a.lowFrac).toBeLessThan(0.75); // not all sub: small speakers must hear it
+      expect(a.durMs40).toBeGreaterThanOrEqual(140); expect(a.durMs40).toBeLessThanOrEqual(1700);
       for (let i = 0; i < d.length; i++) expect(Number.isFinite(d[i])).toBe(true);
+      res[g] = { dur: a.durMs40, rms };
     }
+    // classes sound different: shotguns and snipers ring longer than SMGs and pistols
+    expect(res.shotgun.dur).toBeGreaterThan(res.smg.dur * 2);
+    expect(res.sniper.dur).toBeGreaterThan(res.pistol.dur * 2);
+    expect(res.shotgun.rms).toBeGreaterThan(res.compact.rms);
+    // far voices: long rolling tail, dull
+    const far = renderGun(GUNS.rifle, 48000, r, true); const fa = analyse(far, 48000);
+    expect(fa.durMs40).toBeGreaterThan(1000);
   });
 });

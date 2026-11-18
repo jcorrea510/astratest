@@ -81,7 +81,7 @@ test('shoot, punch, inventory wheel, heat gain and loss', async ({ page }) => {
   await page.evaluate(() => { (window as any).__game.input.release('Mouse2'); });
   expect(await state<number>(page, 'window.__game.pcombat.inv.state.clip')).toBe(clip - 2);
   await tap(page, 'KeyR'); await step(page, 1.6);
-  expect(await state<number>(page, 'window.__game.pcombat.inv.state.clip')).toBe(12);
+  expect(await state<number>(page, 'window.__game.pcombat.inv.state.clip')).toBe(15); // Kestrel P9 magazine
   // escalate and then lose the heat by getting far away and out of sight
   await page.evaluate(() => { const g = (window as any).__game; g.police.report('kill', g.player.pos); });
   expect(await state<number>(page, 'window.__game.police.heat')).toBeGreaterThanOrEqual(2);

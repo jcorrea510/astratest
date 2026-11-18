@@ -4,7 +4,7 @@
  */
 import type { SfxName, Vec3Like } from '../ui/contracts';
 import { type Kit, type BankSpec, bq, gain, noise, osc, perc, ahr, glide, sample, variant, playBuf } from './dsp';
-import { GUNS, renderGun, renderFoley, type FoleyName, type GunName } from './gunsynth';
+import { GUNS, renderGun, renderFoley, type FoleyName, type GunSound } from './gunsynth';
 
 export interface SfxArgs { kit: Kit; out: AudioNode; t: number; /** pitch multiplier */ p: number }
 type Recipe = (a: SfxArgs) => number;
@@ -13,7 +13,10 @@ type Recipe = (a: SfxArgs) => number;
  * Weapon foley that is not (yet) part of the shared SfxName contract. Played through `Audio.playExtra` (feature-detected
  * by the combat code, so the NullAudio stand-in keeps working).
  */
-export type ExtraSfx = 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert' | 'pump' | 'whizz' | 'crackBy' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'casingHull';
+export type GunKey = `gun_${GunSound}` | `gunFar_${GunSound}`;
+export type ExtraSfx = 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert' | 'pump' | 'whizz' | 'crackBy' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'casingHull'
+  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen' | 'swing' | GunKey;
+export const GUN_SOUNDS = Object.keys(GUNS) as GunSound[];
 export type SfxKey = SfxName | ExtraSfx;
 /** Surroundings of the listener for gunshot reflections: nearby walls (distance + horizontal direction) and openness 0..1. */
 export interface Acoustics { walls: { d: number; x: number; z: number }[]; open: number; indoors?: number }
@@ -54,7 +57,21 @@ export const EXTRA_META: Record<ExtraSfx, SfxMeta> = {
   shellInsert: W(5, 2, 0.1, 0.03, 0.55, 0.05), pump: W(6, 2, 0.15, 0.08, 0.75, 0.03), whizz: W(6, 3, 0.04, 0.05, 0.8, 0.1), crackBy: W(6, 2, 0.04, 0.2, 0.7, 0.05, 0.3),
   hitWood: W(3, 4, 0.025, 0.1, 0.6, 0.08, 0.1), hitDirt: W(3, 4, 0.025, 0.05, 0.55, 0.1), hitWater: W(3, 4, 0.03, 0.05, 0.6, 0.1), hitGlass: W(4, 3, 0.04, 0.15, 0.6, 0.06),
   casingHull: W(1, 3, 0.05, 0.02, 0.4, 0.08),
+  pinPull: W(5, 1, 0.1, 0.02, 0.6, 0.03), grenadeBounce: W(4, 3, 0.05, 0.08, 0.6, 0.08), glassShatter: W(6, 3, 0.05, 0.2, 0.85, 0.06, 0.2),
+  cylinderOpen: W(5, 1, 0.1, 0.03, 0.6, 0.03), swing: W(4, 2, 0.08, 0.02, 0.6, 0.06),
+  ...gunMeta(),
 };
+/** Gunshot voices: close (full report, environment send) and far (dull report heard across the city). */
+function gunMeta(): Record<GunKey, SfxMeta> {
+  const m = {} as Record<GunKey, SfxMeta>;
+  for (const g of GUN_SOUNDS) {
+    const big = g === 'shotgun' || g === 'sawnoff' || g === 'sniper' || g === 'rpg' || g === 'revolver';
+    const rapid = g === 'smg' || g === 'compactSmg' || g === 'machinePistol' || g === 'lmg' || g === 'rifle' || g === 'carbine';
+    m[`gun_${g}`] = W(big ? 7 : 6, rapid ? 7 : 4, rapid ? 0.025 : 0.05, 0.22, 1, 0.035, big ? 1.2 : 1);
+    m[`gunFar_${g}`] = W(4, rapid ? 4 : 2, 0.04, 0.35, 0.9, 0.04, 1.3);
+  }
+  return m;
+}
 export const ALL_META: Record<SfxKey, SfxMeta> = { ...SFX_META, ...EXTRA_META };
 
 // ---------- building blocks ----------
@@ -109,31 +126,35 @@ const SPECS = new Map<string, BankSpec>();
 function spec(key: string, count: number, render: BankSpec['render']): BankSpec {
   let sp = SPECS.get(key); if (!sp) { sp = { key, count, render }; SPECS.set(key, sp); } return sp;
 }
-const gunSpec = (g: GunName) => spec('gun:' + g, 4, (sr, r) => renderGun(GUNS[g], sr, r));
+const gunSpec = (g: GunSound, far = false) => spec((far ? 'gunFar:' : 'gun:') + g, far ? 2 : 4, (sr, r) => renderGun(GUNS[g], sr, r, far));
 const foleySpec = (n: FoleyName, count = 3) => spec('f:' + n, count, (sr, r) => renderFoley(n, sr, r));
 const FOLEY_COUNTS: Partial<Record<FoleyName, number>> = { hitBody: 4, hitMetal: 4, hitConcrete: 4, casingBrass: 4, whizz: 4, mechSmg: 4, mechRifle: 4 };
 /** Every procedurally rendered bank, in warm-up order (guns first). The engine renders missing variants in the background. */
 export function allBanks(): BankSpec[] {
-  const guns = (Object.keys(GUNS) as GunName[]).map(gunSpec);
-  const foley: FoleyName[] = ['mechPistol', 'mechSmg', 'mechRifle', 'pump', 'hitBody', 'hitConcrete', 'hitMetal', 'casingBrass', 'dryFire', 'whizz', 'crackBy', 'ricochet', 'magOut', 'magIn', 'slideRelease', 'boltRack', 'shellInsert', 'casingHull', 'equip', 'hitWood', 'hitDirt', 'hitWater', 'hitGlass'];
+  const guns = [...GUN_SOUNDS.map(g => gunSpec(g)), ...GUN_SOUNDS.map(g => gunSpec(g, true))];
+  const foley: FoleyName[] = ['pinPull', 'grenadeBounce', 'glassShatter', 'cylinderOpen', 'mechPistol', 'mechSmg', 'mechRifle', 'pump', 'hitBody', 'hitConcrete', 'hitMetal', 'casingBrass', 'dryFire', 'whizz', 'crackBy', 'ricochet', 'magOut', 'magIn', 'slideRelease', 'boltRack', 'shellInsert', 'casingHull', 'equip', 'hitWood', 'hitDirt', 'hitWater', 'hitGlass'];
   return [...guns, ...foley.map(n => foleySpec(n, FOLEY_COUNTS[n] ?? 3))];
 }
 function fol(a: SfxArgs, n: FoleyName, at = 0, level = 1, out: AudioNode = a.out): number {
   const k = a.kit; return playBuf(k, out, variant(k, foleySpec(n, FOLEY_COUNTS[n] ?? 3)), a.t + at, a.p * R(k, 0.97, 1.03), level);
 }
-/** Mechanical action heard with every shot: [foley, delay, level]. The shotgun's is the pump. */
-const ACTION: Record<GunName, [FoleyName, number, number]> = { pistol: ['mechPistol', 0, 0.3], smg: ['mechSmg', 0, 0.28], rifle: ['mechRifle', 0, 0.26], shotgun: ['pump', 0.36, 0.6] };
+/** Mechanical action heard with every shot: [foley, delay, level]. Pump and bolt guns hear their cycle a beat later. */
+const ACTION: Partial<Record<GunSound, [FoleyName, number, number]>> = {
+  compact: ['mechPistol', 0, 0.26], pistol: ['mechPistol', 0, 0.3], heavyPistol: ['mechPistol', 0, 0.32], machinePistol: ['mechSmg', 0, 0.26], compactSmg: ['mechSmg', 0, 0.28], smg: ['mechSmg', 0, 0.28],
+  shotgun: ['pump', 0.36, 0.6], autoShotgun: ['mechRifle', 0, 0.3], carbine: ['mechRifle', 0, 0.26], rifle: ['mechRifle', 0, 0.26], battleRifle: ['mechRifle', 0, 0.3], marksman: ['mechRifle', 0, 0.28],
+  sniper: ['boltRack', 0.45, 0.55], lmg: ['mechRifle', 0, 0.26],
+};
 /**
- * A gunshot: a round-robin variant of the rendered shot (crack + blast + body + sub + boom + tail), a random presence EQ
- * tilt and level so automatic fire never repeats exactly, plus the gun's mechanical action. Street slapback and the
- * open-air tail are added by the mixer (see AudioCore.play), scaled by distance and surroundings.
+ * A gunshot: a round-robin variant of the rendered shot (crack + blast + body resonances + thump + tail), a random
+ * presence EQ tilt and level so automatic fire never repeats exactly, plus the gun's mechanical action. Street slapback
+ * and the open-air tail are added by the mixer (see AudioCore.play), scaled by distance and surroundings.
  */
-function gunshot(a: SfxArgs, g: GunName): number {
+function gunshot(a: SfxArgs, g: GunSound, far = false): number {
   const { kit: k, out, t, p } = a;
   const eq = bq(k.ctx, 'peaking', R(k, 1800, 4200), 0.9); eq.gain.value = R(k, -3, 2); eq.connect(out);
-  let end = playBuf(k, eq, variant(k, gunSpec(g)), t, p, R(k, 0.9, 1));
-  const [m, at, lvl] = ACTION[g];
-  end = mx(end, fol(a, m, at * R(k, 0.96, 1.06), lvl * R(k, 0.8, 1)));
+  let end = playBuf(k, eq, variant(k, gunSpec(g, far)), t, p, R(k, 0.9, 1));
+  const act = ACTION[g];
+  if (act && !far) end = mx(end, fol(a, act[0], act[1] * R(k, 0.96, 1.06), act[2] * R(k, 0.8, 1)));
   return end;
 }
 
@@ -307,6 +328,14 @@ export const EXTRA_RECIPES: Record<ExtraSfx, Recipe> = {
   shellInsert: a => fol(a, 'shellInsert'), pump: a => fol(a, 'pump'), whizz: a => fol(a, 'whizz'), crackBy: a => fol(a, 'crackBy'),
   hitWood: a => fol(a, 'hitWood'), hitDirt: a => fol(a, 'hitDirt'), hitWater: a => fol(a, 'hitWater'), hitGlass: a => fol(a, 'hitGlass'),
   casingHull: a => fol(a, 'casingHull', R(a.kit, 0.3, 0.45)),
+  pinPull: a => fol(a, 'pinPull'), grenadeBounce: a => fol(a, 'grenadeBounce'), glassShatter: a => fol(a, 'glassShatter'), cylinderOpen: a => fol(a, 'cylinderOpen'),
+  swing: ({ kit: k, out, t, p }) => burst(k, out, t, { type: 'bandpass', f: 380 * p, f2: 1500 * p, glideDur: 0.14, q: 1.4, a: 0.08, peak: 0.7, dec: 0.12, color: 'pink' }),
+  ...gunRecipes(),
 };
+function gunRecipes(): Record<GunKey, Recipe> {
+  const m = {} as Record<GunKey, Recipe>;
+  for (const g of GUN_SOUNDS) { m[`gun_${g}`] = a => gunshot(a, g); m[`gunFar_${g}`] = a => gunshot(a, g, true); }
+  return m;
+}
 
 export function renderSfx(name: SfxKey, args: SfxArgs): number { return (RECIPES as Record<string, Recipe>)[name]?.(args) ?? EXTRA_RECIPES[name as ExtraSfx](args); }

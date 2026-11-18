@@ -7,7 +7,7 @@ import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
 import type { Npc } from '../actors/npc';
 import type { Character } from '../actors/character';
-import { TRAFFIC_MIX, type VehicleKind } from '../vehicles/specs';
+import { TRAFFIC_MIX, PARKED_MIX, type VehicleKind } from '../vehicles/specs';
 import type { GameAudio } from '../ui/contracts';
 import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
@@ -246,8 +246,7 @@ export class Traffic {
         for (let i = 0; i < n; i++) {
           const x = ix0 + 4 + (i % 5) * ((ix1 - ix0 - 8) / 4.5), z = r.chance(0.5) ? iz0 + 5 : iz1 - 5;
           if (this.vehicles.list.some(o => Math.hypot(o.position.x - x, o.position.z - z) < 5)) continue;
-          const kinds: VehicleKind[] = ['sedan', 'hatch', 'wagon', 'coupe', 'van', 'sedan', 'hatch'];
-          const v = this.vehicles.spawn(r.pick(kinds), x, z, z < cz ? 0 : Math.PI, r.int(0, 6), CURB_HEIGHT + 0.25);
+          const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, z < cz ? 0 : Math.PI, r.int(0, 11), CURB_HEIGHT + 0.25);
           v.parked = true; list.push(v);
         }
         this.parkedBlocks.set(b.id, list);

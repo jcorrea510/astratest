@@ -673,6 +673,7 @@ export class UI implements GameUI {
     this.root.classList.add('is-wheel');
   }
   updateWheel(dirX: number, dirY: number): void { this.wheel.update(dirX, dirY); }
+  peekWheel(): string | null { return this.wheel.peek(); } // COMBAT
   closeWheel(): string | null {
     this.root.classList.remove('is-wheel');
     return this.wheel.hide();

@@ -3,13 +3,10 @@ import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, SandboxAction } from '../ui/contracts';
 import { WEAPONS, WEAPON_ORDER } from '../combat/weapons';
-import type { VehicleKind } from '../vehicles/specs';
+import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { PLACES } from './places';
 
-const KINDS: { value: VehicleKind; label: string }[] = [
-  { value: 'coupe', label: 'Pipit GT (coupe)' }, { value: 'sedan', label: 'Solano sedan' }, { value: 'hatch', label: 'Hatchback' },
-  { value: 'wagon', label: 'Wagon' }, { value: 'taxi', label: 'Taxi' }, { value: 'police', label: 'Police cruiser' }, { value: 'van', label: 'Box van' },
-];
+const KINDS: { value: VehicleKind; label: string }[] = (Object.keys(VEHICLES) as VehicleKind[]).map(k => ({ value: k, label: VEHICLES[k].name }));
 const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[] = [
   { value: 'safehouse', label: 'Lantern Ave apartment', x: PLACES.safehouse.x + 4, z: PLACES.safehouse.z },
   { value: 'midtown', label: 'Midtown plaza', x: -200, z: 150 },
@@ -34,7 +31,7 @@ export class Sandbox {
   setup() {
     const g = this.game;
     g.money = 50000; g.hour = 18.2; g.player.armor = 100;
-    for (const id of WEAPON_ORDER) if (!WEAPONS[id].melee) g.pcombat.give(id, WEAPONS[id].clip * 6);
+    for (const id of WEAPON_ORDER) g.pcombat.give(id, WEAPONS[id].clip * 6 + (WEAPONS[id].cat === 'throw' ? 4 : 0)); // COMBAT: every weapon incl. melee and throwables
     g.pcombat.inv.medkits = 5;
     g.trafficCap = this.traffic; g.pedCap = this.peds;
   }

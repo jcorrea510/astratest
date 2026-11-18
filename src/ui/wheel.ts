@@ -67,6 +67,8 @@ export class Wheel {
   }
 
   isOpen() { return this.open; }
+  /** COMBAT: id of the highlighted slot (null when closed). */
+  peek(): string | null { return this.open ? this.slots[this.highlighted]?.id ?? null : null; }
 
   show(slots: WheelSlot[], selectedId: string) {
     this.slots = slots.slice(0, 8);

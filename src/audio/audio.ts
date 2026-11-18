@@ -92,6 +92,10 @@ export class Audio implements GameAudio, AudioExtras {
   }
 
   setVolumes(master: number, music: number, sfx: number): void { this.vols = [master, music, sfx]; this.core?.setVolumes(master, music, sfx); }
+  /** [PEOPLE] Lends the SFX bus to pedestrian voices (src/audio/voices.ts); null until the context exists. */
+  voiceBus(): { ctx: BaseAudioContext; out: AudioNode; volume: number } | null {
+    return this.core && this.ctx && this.ctx.state === 'running' ? { ctx: this.ctx, out: this.core.sfxIn, volume: this.vols[0] * this.vols[2] } : null;
+  }
 
   setListener(pos: Vec3Like, forward: Vec3Like): void {
     if (!isFiniteVec(pos)) return;

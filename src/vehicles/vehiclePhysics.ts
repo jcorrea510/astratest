@@ -9,7 +9,7 @@ import { RAPIER, type Physics, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER, groups } f
 import type { VehicleSpec } from './specs';
 
 export interface WheelDef { x: number; y: number; z: number; front: boolean; left: boolean }
-export interface VehicleLayout { half: [number, number, number]; centerY: number; wheels: WheelDef[]; radius: number }
+export interface VehicleLayout { half: [number, number, number]; centerY: number; wheels: WheelDef[]; radius: number; zCenter?: number }
 export interface DriveInput { throttle: number; steer: number; handbrake: boolean; brake?: number }
 
 type V3 = { x: number; y: number; z: number };
@@ -71,7 +71,7 @@ export class VehiclePhysics {
     const q = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
     this.body = w.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y, z).setRotation(q).setLinearDamping(0.05).setAngularDamping(0.6).setCcdEnabled(true).setCanSleep(true));
     const [hx, hy, hz] = layout.half;
-    const desc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(0, layout.centerY, 0).setFriction(0.3).setRestitution(0.05)
+    const desc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(0, layout.centerY, layout.zCenter ?? 0).setFriction(0.3).setRestitution(0.05)
       .setCollisionGroups(groups(G_VEHICLE, G_STATIC | G_VEHICLE | G_PROP | G_PLAYER))
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(spec.mass * 2);
     // Mass with a lowered centre of mass for stability; inertia from a box (a bit more yaw inertia = weightier).
@@ -121,9 +121,9 @@ export class VehiclePhysics {
   get yaw() { const f = this.forward(); return Math.atan2(f.x, f.z); }
   /** Maximum road-wheel angle at a given speed: generous when parking, calm on the highway. */
   steerLimit(absV: number) {
-    const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(2, 34, absV);
+    const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(5, 42, absV);
     // never ask the front tyres for much more slip than their peak: full lock = best possible turn, not a plough
-    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 1.15;
+    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 1.45;
     return Math.min(geo, grip);
   }
 
@@ -162,7 +162,7 @@ export class VehiclePhysics {
     // Steering: rate-limited input with faster return-to-centre, speed-sensitive lock, countersteer help.
     const sIn = clamp(input.steer, -1, 1);
     const toward = Math.abs(sIn) > Math.abs(this.steerIn) && Math.sign(sIn) === Math.sign(this.steerIn || sIn);
-    const rate = (toward ? 4.2 - 1.8 * smooth(5, 35, absV) : 6.5) * dt;
+    const rate = (toward ? 6.2 - 2.6 * smooth(5, 38, absV) : 8) * dt;
     this.steerIn += clamp(sIn - this.steerIn, -rate, rate);
     let steerAngle = this.steerIn * (drifting ? spec.maxSteer * 0.9 : this.steerLimit(absV));
     if (fwdSpeed > 4) {
@@ -304,6 +304,16 @@ export class VehiclePhysics {
             const vx = lv.x / planar, vz = lv.z / planar, push = spec.mass * 3.2 * thr * Math.min(1, Math.abs(b) * 3) * dt;
             body.applyImpulse({ x: vx * push, y: 0, z: vz * push }, true);
           }
+        } else if (this.hb < 0.05 && Math.abs(this.steerIn) > 0.05 && fwdSpeed > 2) {
+          // turn-in assist: an under-rotating car gets help up to the yaw rate its front wheels ask for
+          // (fades out at speed, where stability matters more than agility)
+          const rRef = fwdSpeed * Math.tan(steerAngle) / this.wheelBase;
+          const rMax = (spec.grip * GRIP * G * 1.15) / Math.max(4, planar);
+          const target = clamp(rRef, -rMax, rMax);
+          const lack = target - yawRate;
+          const fade = 1 - smooth(22, 40, absV);
+          if (Math.sign(lack) === Math.sign(target) && Math.abs(yawRate) < Math.abs(target)) body.applyTorqueImpulse({ x: 0, y: lack * I * 3.2 * fade * dt, z: 0 }, true);
+          else if (spec.stability > 0 && Math.abs(this.beta) > 0.05 && Math.sign(-lack) === Math.sign(yawRate)) body.applyTorqueImpulse({ x: 0, y: lack * I * spec.stability * 5 * dt, z: 0 }, true);
         } else if (spec.stability > 0) {
           // stability: damp yaw beyond what the steering asks for (only when the car is stepping out)
           const rRef = fwdSpeed * Math.tan(steerAngle) / this.wheelBase;

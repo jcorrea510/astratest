@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Character } from './character';
 import type { HumanTemplate, Look } from './human';
+import { meleeTargets, MELEE_POWER } from './character';
 import { RAPIER, type Physics, groups, G_STATIC, G_VEHICLE } from '../core/physics';
 import { type CityMap, pedestrianMayCross } from '../world/citymap';
 import { WEAPONS, weaponMesh, MUZZLE, type WeaponId } from '../combat/weapons';
@@ -9,7 +10,7 @@ import type { Combat } from '../combat/combat';
 import { Rng, wrapAngle } from '../core/rng';
 
 export type Role = 'civilian' | 'gang' | 'police';
-export type Brain = 'wander' | 'idle' | 'flee' | 'cower' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger';
+export type Brain = 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger';
 
 const EYE = 1.55;
 let NPC_ID = 0;
@@ -129,7 +130,13 @@ export class NpcBrainRunner {
         if (n.stateT > 7) { n.brain = 'wander'; n.node = -1; n.stateT = 0; }
         break;
       }
-      case 'cower': { speed = 0; c.human.setState('crouch'); if (n.stateT > 6) { n.brain = 'flee'; n.stateT = 0; c.human.setState('loco'); } break; }
+      case 'cower': { speed = 0; c.human.setState('cower'); if (n.stateT > 6) { n.brain = 'flee'; n.stateT = 0; c.human.setState('loco'); } break; }
+      case 'surrender': { // hands up while a gun is pointed at them, then bolt
+        speed = 0; faceYaw = Math.atan2(env.player.pos.x - c.pos.x, env.player.pos.z - c.pos.z);
+        if (c.human.actionName !== 'hands_up' && n.stateT < 0.3) c.human.playAction('hands_up');
+        if (n.stateT > n.waitT) { c.human.stopAction('hands_up'); n.brain = Math.random() < 0.3 ? 'cower' : 'flee'; n.fleeFrom.copy(env.player.pos); n.stateT = 0; }
+        break;
+      }
       case 'chase': {
         const tgt = n.target ?? env.player;
         tv.copy(n.lastSeen).sub(c.pos); tv.y = 0; const d = tv.length();
@@ -204,16 +211,28 @@ export class NpcBrainRunner {
     if (yaw !== null) c.faceTowards(yaw, aiming ? 10 : 7, dt);
     c.twist = 0;
     const h = c.human;
-    if (n.brain !== 'cower' && n.brain !== 'scripted' && h.currentState === 'crouch') h.setState('loco');
+    if (n.brain !== 'cower' && n.brain !== 'scripted' && (h.currentState === 'crouch' || h.currentState === 'cower')) h.setState('loco');
+    // panicked running: arms up for the first seconds of a flight
+    if (n.role === 'civilian') {
+      const panicking = n.brain === 'flee' && n.stateT < 3.5 && c.speed > 2.5;
+      if (panicking && !h.actionName && !h.busy) h.playAction('panic', { weight: 0.75 });
+      else if (!panicking && h.actionName === 'panic') h.stopAction('panic');
+    }
     h.setUpperMode(n.weapon !== 'fists' && (aiming || n.brain === 'combat') ? 'pistol' : n.weapon !== 'fists' && n.brain === 'chase' ? 'carry' : 'loco');
     h.aimPitch = 0;
   }
+  /** Throws a real punch: wind-up, strike; damage only lands if the target is still within reach in front. */
   private meleeAttack(n: Npc, tgt: Character) {
-    if (n.cooldown > 0 || !tgt.alive) return;
-    n.cooldown = 0.9 + Math.random() * 0.5;
-    n.char.human.playOnce(Math.random() < 0.5 ? 'Punch_Jab' : 'Punch_Cross', 'upper', 0.06);
-    n.char.yaw = Math.atan2(tgt.pos.x - n.pos.x, tgt.pos.z - n.pos.z);
-    this.env.combat.melee(n.char, WEAPONS.fists, [tgt], []);
+    if (n.cooldown > 0 || !tgt.alive || n.char.downT > 0) return;
+    const c = n.char;
+    c.yaw = Math.atan2(tgt.pos.x - n.pos.x, tgt.pos.z - n.pos.z);
+    c.onMeleeStrike = kind => {
+      const hit = meleeTargets(c, [tgt], 1.3);
+      if (!hit.length) return;
+      this.env.combat.melee(c, WEAPONS.fists, hit, []);
+      if (tgt.alive) tgt.hitReact(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z, MELEE_POWER[kind] * 0.8);
+    };
+    if (c.startMelee('fists')) n.cooldown = 0.75 + Math.random() * 0.6;
   }
   private fire(n: Npc, tgt: Character, dist: number) {
     const w = WEAPONS[n.weapon];

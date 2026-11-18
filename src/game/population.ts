@@ -8,6 +8,7 @@ import type { Character } from '../actors/character';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
+import { VOICES, type VoiceBus } from '../audio/voices';
 
 let LOOK_SEED = 1000;
 export class Population {
@@ -21,6 +22,39 @@ export class Population {
   onKilled: ((n: Npc, by: Character | null, how: 'shot' | 'melee' | 'vehicle' | 'explosion') => void) | null = null;
   constructor(private scene: THREE.Scene, private tpl: HumanTemplate, private city: CityMap, private env: NpcEnv, private audio: GameAudio) {
     this.runner = new NpcBrainRunner(env);
+    const a = audio as GameAudio & { voiceBus?: () => VoiceBus | null };
+    VOICES.attach(() => a.voiceBus?.() ?? null, () => env.player.pos);
+  }
+  /** Where the player is pointing a gun (set by the game each frame; null when not aiming). */
+  aimProvider: (() => { from: THREE.Vector3; dir: THREE.Vector3 } | null) | null = null;
+  private reactT = 0;
+  /** Civilians react to the player: brushing past ("Watch it!"), running into them, aiming a gun at them. */
+  private reactToPlayer(dt: number) {
+    this.reactT -= dt; if (this.reactT > 0) return;
+    this.reactT = 0.1;
+    const p = this.env.player; if (!p.alive || p.inVehicle) return;
+    const aim = this.aimProvider?.() ?? null;
+    for (const n of this.npcs) {
+      if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.far) continue;
+      const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
+      if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender') {
+        // shoulder-checked: stumble, glare, complain
+        if (d < 0.8 && p.speed > 5 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
+        else c.yaw = Math.atan2(-dx, -dz);
+        VOICES.say(c, Math.random() < 0.5 ? 'watch' : 'hey');
+      } else if (n.role === 'gang' && d < 1.2 && p.speed > 3.2) VOICES.say(c, 'gang');
+      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower') {
+        const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
+        const along = cx * aim.dir.x + cy * aim.dir.y + cz * aim.dir.z;
+        if (along > 0) {
+          const off = Math.hypot(cx - aim.dir.x * along, cy - aim.dir.y * along, cz - aim.dir.z * along);
+          if (off < 0.9 + along * 0.02) {
+            if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
+            VOICES.say(c, Math.random() < 0.75 ? 'dontShoot' : 'what', true);
+          }
+        }
+      }
+    }
   }
   spawn(role: Role, x: number, z: number, y = 0.2, look?: Look, weapon: WeaponId = 'fists'): Npc {
     const n = new Npc(this.env.physics, this.tpl, look ?? randomLook(LOOK_SEED++), role, x, z, y);
@@ -41,6 +75,9 @@ export class Population {
       if (n.brain !== 'flee' && n.brain !== 'cower') {
         n.brain = Math.random() < 0.25 && d > 8 ? 'cower' : 'flee'; n.stateT = 0;
         n.fleeFrom.copy(source ? source.pos : at);
+        if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
+        const r = Math.random();
+        VOICES.say(n.char, d < radius * 0.5 && r < 0.45 ? 'scream' : r < 0.6 ? 'help' : r < 0.75 ? 'what' : 'panic');
       } else if (n.brain === 'flee') { n.fleeFrom.copy(source ? source.pos : at); n.stateT = Math.min(n.stateT, 2); }
     }
   }
@@ -62,6 +99,7 @@ export class Population {
         if (!test(n.char)) continue;
         const vel = v.phys.body.linvel();
         n.char.knockT = 1;
+        VOICES.say(n.char, sp > 8 ? 'scream' : 'oof', true);
         if (sp > 8) {
           n.char.damage(sp * 9, v.driver, this.env.time());
           n.char.vel.set(vel.x * 0.6, 3, vel.z * 0.6);
@@ -92,6 +130,7 @@ export class Population {
         if (Math.abs(lat) > 2.2) continue;
         if (n.brain !== 'flee') {
           n.brain = 'flee'; n.stateT = 4; // short dash
+          VOICES.say(n.char, Math.random() < 0.6 ? 'whoa' : 'scream');
           n.fleeFrom.set(n.pos.x - f.z * Math.sign(lat || 1) * 5, 0, n.pos.z + f.x * Math.sign(lat || 1) * 5);
           if (Math.random() < 0.4 && !n.char.human.busy) n.char.human.playOnce('Roll', 'full', 0.05);
         }
@@ -99,6 +138,7 @@ export class Population {
     }
   }
   fixedUpdate(dt: number, focus: THREE.Vector3) {
+    this.reactToPlayer(dt);
     for (const n of this.npcs) {
       n.far = n.pos.distanceTo(focus) > 75 && n.role === 'civilian' && n.brain === 'wander';
       if (n.char.inVehicle) continue;
@@ -110,6 +150,7 @@ export class Population {
     }
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, quality: number) {
+    VOICES.update(dt);
     this.maxCivilians = quality;
     // Visuals (throttled animation far away)
     for (const n of this.npcs) {
@@ -118,7 +159,7 @@ export class Population {
         c.deadTime += dt;
         if (c.deadTime > 0.05 && c.deadTime < 0.1) h.setState('dead');
       } else if (n.brain !== 'scripted' && n.brain !== 'passenger') {
-        if (h.currentState !== 'crouch' && h.currentState !== 'sit' && h.currentState !== 'talk') h.setState(c.swimming ? 'swim' : 'loco');
+        if (h.currentState !== 'crouch' && h.currentState !== 'cower' && h.currentState !== 'sit' && h.currentState !== 'talk') h.setState(c.swimming ? 'swim' : 'loco');
         h.setSpeed(c.speed);
       }
       if (c.inVehicle) { h.update(dt); continue; }
@@ -130,6 +171,7 @@ export class Population {
       if (n.animAcc >= every) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 40;
+      h.setDetail(d < 70); if (h.extras) h.extras.castShadow = d < 30;
     }
     // Despawn
     for (const n of [...this.npcs]) {

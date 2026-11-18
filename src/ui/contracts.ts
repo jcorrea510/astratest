@@ -13,14 +13,16 @@ export interface HudState {
   objective: string | null; // short imperative line under the minimap / top centre
   vehicleSpeedKmh: number | null; vehicleName: string | null; vehicleHealth: number | null; // null when on foot
   district: string; streetName: string; clock: string; // e.g. "18:42"
-  crosshair: 'none' | 'dot' | 'aim'; crosshairSpread: number; hitMarker: number; // hitMarker 0..1 fades
+  crosshair: 'none' | 'dot' | 'aim' | 'scope'; crosshairSpread: number; hitMarker: number; // hitMarker 0..1 fades
+  /** COMBAT: reticle over a hittable person (dot turns red); kill marker 0..1 fades; headshot flag for the last hit; scope magnification */
+  reticleHot?: boolean; killMarker?: number; headshotMarker?: boolean; scopeZoom?: number;
   interactPrompt: string | null; // e.g. "E  Enter vehicle"
   radio: string | null; // radio station name when in a vehicle
   missionTimer: number | null; // seconds remaining
   stamina: number; // 0..1
   fps: number | null;
 }
-export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor';
+export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
 export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms'; label?: string; pulse?: boolean }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
 export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean }
@@ -48,6 +50,7 @@ export interface GameUI {
   openWheel(slots: WheelSlot[], selectedId: string): void;
   updateWheel(dirX: number, dirY: number): void; // accumulate pointer/stick direction; highlights a slot
   closeWheel(): string | null; // returns chosen slot id (or null if none)
+  peekWheel?(): string | null; // COMBAT: id of the highlighted slot while the wheel is open
   // Shop
   openShop(title: string, items: ShopItem[], money: number, onBuy: (id: string) => void, onClose: () => void): void;
   refreshShop(items: ShopItem[], money: number): void;

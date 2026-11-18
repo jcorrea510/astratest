@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { RAPIER, Physics, initPhysics } from '../core/physics';
 import { VehiclePhysics, type VehicleLayout } from './vehiclePhysics';
 import { VEHICLES, type VehicleKind } from './specs';
+import { layoutFor } from './shapes';
 
 export const TEST_LAYOUT: VehicleLayout = {
   half: [1.0, 0.62, 2.3], centerY: 0.68, radius: 0.36,
@@ -24,7 +25,7 @@ describe('vehicle handling', () => {
   for (const kind of Object.keys(VEHICLES) as VehicleKind[]) {
     it(`${kind}: settles, accelerates, brakes and corners without flipping`, () => {
       const p = world();
-      const car = new VehiclePhysics(p, VEHICLES[kind], TEST_LAYOUT, 0, 1.2, 0, 0);
+      const car = new VehiclePhysics(p, VEHICLES[kind], layoutFor(kind), 0, 1.2, 0, 0);
       run(car, p, 2, { throttle: 0, steer: 0, handbrake: false });
       const restY = car.position.y;
       expect(restY).toBeGreaterThan(0.1); expect(restY).toBeLessThan(1.0);

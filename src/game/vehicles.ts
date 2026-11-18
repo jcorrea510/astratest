@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import type { Assets } from '../world/assets';
-import { Vehicle, makeKayKitTemplate, makeVanTemplate, type VehicleTemplate } from '../vehicles/vehicle';
-import { VEHICLES, type VehicleKind } from '../vehicles/specs';
+import { Vehicle } from '../vehicles/vehicle';
+import type { VehicleKind } from '../vehicles/specs';
 import { WATER_LEVEL } from '../world/citymap';
 import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
@@ -11,7 +11,6 @@ import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
 export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vector3 }
 export class VehicleManager {
   list: Vehicle[] = [];
-  templates = new Map<string, VehicleTemplate>();
   onCrash: ((e: CrashEvent) => void) | null = null;
   onExplode: ((v: Vehicle, at: THREE.Vector3) => void) | null = null;
   private engines = new Map<number, EngineVoice>();
@@ -19,15 +18,17 @@ export class VehicleManager {
   private skidWas = false;
   private tmp = new THREE.Vector3();
 
-  constructor(private scene: THREE.Scene, private physics: Physics, private assets: Assets, private particles: Particles, private skids: SkidMarks, private audio: GameAudio) {
-    const models = ['car_sedan', 'car_taxi', 'car_police', 'car_hatchback', 'car_stationwagon'] as const;
-    for (const m of models) this.templates.set(m, makeKayKitTemplate(assets.kaykit[m], m));
-    this.templates.set('coupe', makeKayKitTemplate(assets.kaykit.car_hatchback, 'car_hatchback', [1.04, 0.9, 1.06]));
-    this.templates.set('van', makeVanTemplate(this.templates.get('car_sedan')!));
+  constructor(private scene: THREE.Scene, private physics: Physics, assets: Assets, private particles: Particles, private skids: SkidMarks, private audio: GameAudio) {
+    void assets;
+    // shattered windows: a burst of glass and the crunch
+    Vehicle.onGlassBreak = (_v, _pane, at) => {
+      this.particles.impact(at.x, at.y, at.z, 0, 0.6, 0, 'glass', 2.2);
+      this.particles.impact(at.x, at.y - 0.2, at.z, 0, -0.3, 0, 'glass', 1.5);
+      this.audio.play('glass', { pos: at, volume: 0.8 });
+    };
   }
-  templateFor(kind: VehicleKind) { return kind === 'coupe' ? this.templates.get('coupe')! : this.templates.get(VEHICLES[kind].model)!; }
   spawn(kind: VehicleKind, x: number, z: number, yaw: number, paintIndex = -1, y = 0.2): Vehicle {
-    const v = new Vehicle(this.physics, kind, this.templateFor(kind), x, y, z, yaw, this.assets.atlas, paintIndex);
+    const v = new Vehicle(this.physics, kind, null, x, y, z, yaw, null, paintIndex);
     this.scene.add(v.group); this.list.push(v);
     return v;
   }
@@ -77,6 +78,7 @@ export class VehicleManager {
       const dist = v.position.distanceTo(listener);
       v.group.visible = dist < 260 || v === playerVehicle;
       v.bodyMesh.castShadow = dist < 60;
+      v.updateLod(v === playerVehicle ? 0 : dist);
       // Skid marks + tyre smoke
       const c = v.phys.ctrl;
       for (let i = 0; i < v.tpl.layout.wheels.length; i++) {
@@ -105,7 +107,7 @@ export class VehicleManager {
       let ev = this.engines.get(v.id);
       if (hasEngine) {
         if (!ev) { ev = this.audio.engine(); this.engines.set(v.id, ev); }
-        ev.update({ rpm: v.phys.rpm, throttle: Math.abs(v.input.throttle), pos: v.position, kind: v.kind === 'van' ? 'truck' : 'car', damage: 1 - frac });
+        ev.update({ rpm: v.phys.rpm, throttle: Math.abs(v.input.throttle), pos: v.position, kind: v.spec.sound ?? 'car', damage: 1 - frac });
       } else if (ev) { ev.stop(); this.engines.delete(v.id); }
     }
   }
@@ -123,7 +125,7 @@ export class VehicleManager {
       this.skidWas = false;
     }
   }
-  private hoodPoint(v: Vehicle) { return new THREE.Vector3(0, v.tpl.bbox.max.y * 0.7, v.tpl.bbox.max.z - 0.9).applyMatrix4(v.group.matrixWorld); }
+  private hoodPoint(v: Vehicle) { return v.tpl.hood.clone().applyMatrix4(v.group.matrixWorld); }
   explode(v: Vehicle) {
     const p = v.position.clone();
     this.particles.explosion(p.x, p.y + 0.5, p.z);

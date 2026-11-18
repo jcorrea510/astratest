@@ -28,6 +28,24 @@ export const WEAPON_PATHS: Record<WeaponIcon, string> = {
   rifle:
     'M3 9.6L18 8V6H31V8H34V9.6H46V11H62V13H46V15H34V16Q36 22 34.6 28H29.6Q31 22 29.4 16H25.6L23.6 25H18.6L20.4 16H18L3 17.6Z' +
     'M37 11.2h7v1.2h-7z',
+  knife:
+    'M5 15.2L35 12H39.5V20H35L9 18.6Z' + rr(40, 11.2, 19, 9.6, 3) + 'M38.6 10H40V22H38.6Z',
+  bat:
+    rr(2, 12.6, 4.4, 7, 2) + 'M7 13.6L38 11.2Q57 9.4 61 11.6Q62.5 12.5 62.5 16Q62.5 19.5 61 20.4Q57 22.6 38 20.8L7 18.4Z',
+  revolver:
+    'M10 9.5H29V8.5H40V10H48.5V8.5H50.5V13.6H40V17H32.5L30.6 19Q29 20.2 27 19.8L24.8 28H15.4L20 16.6Q17.5 16.4 16.6 14.6H10Z',
+  sniper:
+    'M2 14.2L16 12.6V11.4H40V12.6H63V14.6H40V17H31Q32 22 30 27H25Q26 22 24.6 17H18L2 19.6Z' + 'M21 4.6H41V9.4H21Z' + 'M25.5 9.4h2.4v2h-2.4zM34.5 9.4h2.4v2h-2.4z',
+  lmg:
+    'M3 10.4L16 9H49V11.4H62V13.4H49V16H37V25H26V16H18L3 18Z' + 'M52 13.4H54L57.5 27H55.6Z' + 'M20 6.4H34V9H20Z',
+  launcher:
+    'M4 13.4L16 11.4H23V7.6H44V11.4H58V16.6H44V21.4H23V18H20.6L18.4 26H13.4L15.6 18L4 19.4Z',
+  rpg:
+    'M2 12.6H47V17.4H2Z' + 'M47 10L55 10.6Q63 13 63 15Q63 17 55 19.4L47 20Z' + 'M19.5 17.4H23.5L22 25H18Z' + 'M31 17.4H35L33.5 25H29.5Z' + 'M9 8.6H15V12.6H9Z',
+  grenade:
+    'M23 19A9 9 0 1 0 41 19A9 9 0 1 0 23 19Z' + 'M27 9.2L28.6 6.4H37.4L42 9.6L40.6 10.6L37 8.2H35V9.6Z' + 'M18 6A3 3 0 1 0 24 6A3 3 0 1 0 18 6ZM19.4 6A1.6 1.6 0 1 1 22.6 6A1.6 1.6 0 1 1 19.4 6Z',
+  molotov:
+    'M27 12.4H37V14.6Q41.4 16.6 41.4 21V28Q41.4 29.6 39.8 29.6H24.2Q22.6 29.6 22.6 28V21Q22.6 16.6 27 14.6Z' + 'M29.4 5H34.6V12.4H29.4Z' + 'M30 4.4Q29 2 31 0.4Q31 2.4 33 2.4Q32.4 0.8 34.6 0Q35.6 2.6 34 4.4Z',
   medkit:
     'M22.4 8H41.6Q44 8 44 10.4V24.6Q44 27 41.6 27H22.4Q20 27 20 24.6V10.4Q20 8 22.4 8Z' +
     'M29.8 11.5H34.2V15.3H38V19.7H34.2V23.5H29.8V19.7H26V15.3H29.8Z' +
@@ -55,7 +73,7 @@ export const WRENCH_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fil
 /** Guesses a weapon/item icon for a shop item id or label (falls back to null). */
 export function guessIcon(text: string): WeaponIcon | null {
   const t = text.toLowerCase();
-  for (const k of ['pistol', 'smg', 'shotgun', 'rifle', 'medkit', 'armor'] as WeaponIcon[]) if (t.includes(k)) return k;
+  for (const k of ['revolver', 'sniper', 'lmg', 'launcher', 'rpg', 'grenade', 'molotov', 'knife', 'bat', 'pistol', 'smg', 'shotgun', 'rifle', 'medkit', 'armor'] as WeaponIcon[]) if (t.includes(k)) return k;
   if (t.includes('vest') || t.includes('kevlar') || t.includes('armour')) return 'armor';
   if (t.includes('med') || t.includes('health') || t.includes('first aid')) return 'medkit';
   return null;

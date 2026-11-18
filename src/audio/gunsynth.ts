@@ -53,62 +53,108 @@ export function finish(d: Float32Array, sr: number, peak = 0.9): Float32Array {
 }
 
 // ---------------- gunshots ----------------
+/**
+ * One gun's voice. Energy is deliberately placed where small (laptop / phone) speakers can reproduce it: the blast and
+ * the body resonances sit at 150-1200 Hz and are saturated so their harmonics carry the "bang"; the sub thump adds weight
+ * on headphones. Without that mid body a synthetic shot reads as a click ("tic-tac").
+ */
 export interface GunVoice {
   dur: number;
-  crackAmp: number; crackTau: number; crackHp: number; nAmp: number; nWidth: number;
-  blastAmp: number; blastTau: number; blastLo: number; blastHi: number;
-  bodyAmp: number; bodyF0: number; bodyF1: number; bodyPitchTau: number; bodyTau: number;
-  subAmp: number; subTau: number; subHz: number;
-  boomAmp: number; boomHz: number; boomQ: number; boomTau: number;
-  tailAmp: number; tailTau: number; tailHz0: number; tailHz1: number; tailClose: number;
+  /** transient: amplitude, decay (s), high-pass (Hz) */ crack: number; crackTau: number; crackHp: number;
+  /** supersonic N-wave amplitude (0 = subsonic round) */ sonic: number;
+  /** muzzle blast: band-passed noise burst */ blast: number; blastTau: number; blastHz: number; blastQ: number;
+  /** body resonances [Hz, amplitude, decay s] (chamber, barrel, the "boom") */ modes: [number, number, number][];
+  /** chest thump: pitch-dropping sine */ thump: number; thumpF0: number; thumpF1: number; thumpTau: number;
+  /** near-field noise tail with a closing low-pass */ tail: number; tailTau: number; tailHz: number;
+  /** rocket motor hiss (launchers) */ hiss?: number;
   drive: number;
 }
-export type GunName = 'pistol' | 'smg' | 'shotgun' | 'rifle';
-export const GUNS: Record<GunName, GunVoice> = {
-  // 9 mm: sharp snap, firm mid punch, medium tail
-  pistol: { dur: 0.65, crackAmp: 1.0, crackTau: 0.0011, crackHp: 1800, nAmp: 0, nWidth: 0, blastAmp: 0.95, blastTau: 0.0065, blastLo: 280, blastHi: 3200, bodyAmp: 1.05, bodyF0: 190, bodyF1: 62, bodyPitchTau: 0.013, bodyTau: 0.05, subAmp: 0.75, subTau: 0.055, subHz: 120, boomAmp: 0.45, boomHz: 620, boomQ: 3, boomTau: 0.035, tailAmp: 0.26, tailTau: 0.16, tailHz0: 4800, tailHz1: 650, tailClose: 0.05, drive: 2.1 },
-  // compact SMG: tighter, brighter, less low end, short tail so bursts stay articulate
-  smg: { dur: 0.48, crackAmp: 1.0, crackTau: 0.0009, crackHp: 2400, nAmp: 0, nWidth: 0, blastAmp: 0.85, blastTau: 0.0045, blastLo: 380, blastHi: 4000, bodyAmp: 0.8, bodyF0: 230, bodyF1: 88, bodyPitchTau: 0.009, bodyTau: 0.032, subAmp: 0.5, subTau: 0.035, subHz: 135, boomAmp: 0.45, boomHz: 820, boomQ: 3.5, boomTau: 0.025, tailAmp: 0.2, tailTau: 0.085, tailHz0: 5200, tailHz1: 900, tailClose: 0.04, drive: 2.3 },
-  // 12 gauge: huge low boom, long rolling tail
-  shotgun: { dur: 1.05, crackAmp: 1.25, crackTau: 0.0018, crackHp: 1200, nAmp: 0, nWidth: 0, blastAmp: 1.35, blastTau: 0.012, blastLo: 220, blastHi: 3600, bodyAmp: 1.15, bodyF0: 150, bodyF1: 44, bodyPitchTau: 0.02, bodyTau: 0.075, subAmp: 0.7, subTau: 0.15, subHz: 95, boomAmp: 0.45, boomHz: 640, boomQ: 2.5, boomTau: 0.07, tailAmp: 0.36, tailTau: 0.27, tailHz0: 3200, tailHz1: 330, tailClose: 0.12, drive: 3 },
-  // supersonic carbine: N-wave crack on top of a heavy body
-  rifle: { dur: 0.85, crackAmp: 1.25, crackTau: 0.0008, crackHp: 3000, nAmp: 0.85, nWidth: 0.00035, blastAmp: 1.15, blastTau: 0.007, blastLo: 300, blastHi: 4200, bodyAmp: 1.05, bodyF0: 170, bodyF1: 52, bodyPitchTau: 0.016, bodyTau: 0.065, subAmp: 0.85, subTau: 0.085, subHz: 105, boomAmp: 0.42, boomHz: 560, boomQ: 2.5, boomTau: 0.045, tailAmp: 0.3, tailTau: 0.2, tailHz0: 6000, tailHz1: 480, tailClose: 0.08, drive: 2.4 },
+export type GunSound = 'compact' | 'pistol' | 'heavyPistol' | 'revolver' | 'machinePistol' | 'compactSmg' | 'smg' | 'sawnoff' | 'shotgun' | 'autoShotgun'
+  | 'carbine' | 'rifle' | 'battleRifle' | 'marksman' | 'sniper' | 'lmg' | 'launcher' | 'rpg';
+/** @deprecated old name */
+export type GunName = GunSound;
+type M = [number, number, number][];
+const V = (o: Partial<GunVoice> & { modes: M }): GunVoice => ({ dur: 0.7, crack: 1, crackTau: 0.0009, crackHp: 2500, sonic: 0, blast: 1, blastTau: 0.009, blastHz: 900, blastQ: 0.6, thump: 0.8, thumpF0: 150, thumpF1: 55, thumpTau: 0.06, tail: 0.3, tailTau: 0.18, tailHz: 2500, drive: 3, ...o });
+export const GUNS: Record<GunSound, GunVoice> = {
+  compact: V({ dur: 0.6, blastHz: 1200, blastTau: 0.008, modes: [[220, 0.5, 0.035], [410, 0.45, 0.025], [700, 0.3, 0.018]], thump: 0.55, thumpF0: 170, tail: 0.25, tailTau: 0.13, drive: 3.2 }),
+  pistol: V({ modes: [[180, 0.6, 0.05], [330, 0.5, 0.035], [560, 0.35, 0.025]] }),
+  heavyPistol: V({ dur: 0.8, blastHz: 750, blastTau: 0.011, modes: [[150, 0.7, 0.06], [290, 0.55, 0.04], [480, 0.35, 0.03]], thump: 1, thumpF0: 130, tail: 0.35, tailTau: 0.22, drive: 3.2 }),
+  revolver: V({ dur: 1, crack: 1.2, blastHz: 650, blastTau: 0.013, modes: [[120, 0.8, 0.08], [240, 0.6, 0.05], [430, 0.4, 0.04]], thump: 1.15, thumpF0: 125, thumpTau: 0.08, tail: 0.45, tailTau: 0.3, drive: 3.5 }),
+  machinePistol: V({ dur: 0.45, blastHz: 1100, blastTau: 0.006, modes: [[240, 0.45, 0.03], [460, 0.4, 0.02]], thump: 0.5, thumpF0: 180, thumpTau: 0.035, tail: 0.2, tailTau: 0.09, drive: 3.2 }),
+  compactSmg: V({ dur: 0.5, blastHz: 1000, blastTau: 0.0065, modes: [[210, 0.5, 0.035], [420, 0.4, 0.022]], thump: 0.55, thumpF0: 170, thumpTau: 0.04, tail: 0.22, tailTau: 0.1, drive: 3.2 }),
+  smg: V({ dur: 0.55, blastTau: 0.007, modes: [[190, 0.55, 0.04], [380, 0.45, 0.025], [650, 0.3, 0.018]], thump: 0.6, thumpTau: 0.045, tail: 0.24, tailTau: 0.12 }),
+  sawnoff: V({ dur: 1.25, crack: 1.3, crackTau: 0.0015, crackHp: 1800, blastTau: 0.02, blastHz: 550, blastQ: 0.5, modes: [[95, 0.9, 0.1], [190, 0.7, 0.07], [340, 0.5, 0.05]], thump: 1.3, thumpF0: 110, thumpF1: 40, thumpTau: 0.1, tail: 0.55, tailTau: 0.38, tailHz: 1800, drive: 4 }),
+  shotgun: V({ dur: 1.15, crack: 1.2, crackTau: 0.0014, crackHp: 1800, blastTau: 0.017, blastHz: 600, blastQ: 0.5, modes: [[100, 0.85, 0.09], [200, 0.65, 0.06], [360, 0.45, 0.045]], thump: 1.2, thumpF0: 115, thumpF1: 42, thumpTau: 0.09, tail: 0.5, tailTau: 0.34, tailHz: 2000, drive: 3.8 }),
+  autoShotgun: V({ dur: 0.85, crack: 1.1, crackTau: 0.0012, crackHp: 2000, blastTau: 0.013, blastHz: 650, blastQ: 0.5, modes: [[110, 0.8, 0.07], [220, 0.6, 0.05], [380, 0.4, 0.035]], thump: 1.1, thumpF0: 120, thumpTau: 0.07, tail: 0.4, tailTau: 0.22, tailHz: 2200, drive: 3.6 }),
+  carbine: V({ dur: 0.75, sonic: 0.8, crack: 1.25, crackTau: 0.0007, crackHp: 3500, blastHz: 1000, modes: [[160, 0.6, 0.05], [320, 0.5, 0.035], [600, 0.35, 0.025]], thump: 0.85, tail: 0.35, tailTau: 0.2, tailHz: 3500, drive: 3.3 }),
+  rifle: V({ dur: 0.85, sonic: 0.9, crack: 1.25, crackTau: 0.0007, crackHp: 3200, blastTau: 0.01, modes: [[150, 0.65, 0.055], [300, 0.5, 0.04], [560, 0.35, 0.028]], thump: 0.95, thumpF0: 140, tail: 0.38, tailTau: 0.24, tailHz: 3200, drive: 3.4 }),
+  battleRifle: V({ dur: 1, sonic: 1, crack: 1.3, crackTau: 0.0008, crackHp: 3000, blastTau: 0.013, blastHz: 750, modes: [[125, 0.8, 0.07], [260, 0.6, 0.05], [480, 0.4, 0.035]], thump: 1.15, thumpF0: 130, thumpTau: 0.085, tail: 0.45, tailTau: 0.3, tailHz: 3000, drive: 3.6 }),
+  marksman: V({ dur: 1.1, sonic: 1, crack: 1.3, crackTau: 0.0008, crackHp: 3000, blastTau: 0.013, blastHz: 720, modes: [[120, 0.8, 0.075], [250, 0.6, 0.05], [470, 0.4, 0.035]], thump: 1.15, thumpF0: 125, thumpTau: 0.09, tail: 0.5, tailTau: 0.35, tailHz: 3000, drive: 3.6 }),
+  sniper: V({ dur: 1.5, sonic: 1.2, crack: 1.4, crackTau: 0.0008, crackHp: 3000, blastTau: 0.016, blastHz: 650, modes: [[105, 0.9, 0.09], [220, 0.7, 0.06], [420, 0.45, 0.04]], thump: 1.3, thumpF0: 120, thumpF1: 38, thumpTau: 0.11, tail: 0.6, tailTau: 0.5, tailHz: 2800, drive: 4 }),
+  lmg: V({ dur: 0.7, sonic: 0.9, crack: 1.2, crackTau: 0.0008, crackHp: 3000, blastTau: 0.011, blastHz: 820, modes: [[140, 0.7, 0.06], [280, 0.55, 0.04], [520, 0.35, 0.03]], thump: 1, thumpF0: 135, thumpTau: 0.07, tail: 0.3, tailTau: 0.16, tailHz: 3000, drive: 3.5 }),
+  launcher: V({ dur: 0.7, crack: 0.3, crackHp: 1500, blast: 0.6, blastTau: 0.02, blastHz: 400, modes: [[90, 0.9, 0.12], [180, 0.6, 0.07], [520, 0.25, 0.03]], thump: 1.3, thumpF0: 140, thumpF1: 50, thumpTau: 0.12, tail: 0.25, tailTau: 0.2, tailHz: 900, drive: 2.5 }),
+  rpg: V({ dur: 1.6, crack: 0.8, crackHp: 2000, blast: 1.2, blastTau: 0.03, blastHz: 500, modes: [[80, 0.9, 0.15], [160, 0.7, 0.1], [300, 0.4, 0.06]], thump: 1.4, thumpF0: 110, thumpF1: 40, thumpTau: 0.14, tail: 0.7, tailTau: 0.6, tailHz: 2500, hiss: 0.5, drive: 3.5 }),
 };
 
-/** Renders one gunshot variant (mono). */
-export function renderGun(v0: GunVoice, sr: number, r: Rand): Float32Array {
-  // per-variant humanisation
-  const v: GunVoice = { ...v0, blastTau: vary(r, v0.blastTau, 0.12), bodyF0: vary(r, v0.bodyF0, 0.06), bodyF1: vary(r, v0.bodyF1, 0.06), bodyTau: vary(r, v0.bodyTau, 0.1), boomHz: vary(r, v0.boomHz, 0.08), tailTau: vary(r, v0.tailTau, 0.12), tailHz0: vary(r, v0.tailHz0, 0.15), subAmp: vary(r, v0.subAmp, 0.1) };
-  const n = Math.floor(v.dur * sr); const out = new Float32Array(n);
-  const crackHp = new Biquad(sr, 'hp', v.crackHp, 0.6), crackHp2 = new Biquad(sr, 'hp', v.crackHp * 0.7, 0.6);
-  const blHp = new Biquad(sr, 'hp', v.blastLo, 0.7), blLp = new Biquad(sr, 'lp', v.blastHi, 0.7);
-  const subLp = new Biquad(sr, 'lp', v.subHz, 0.9), subLp2 = new Biquad(sr, 'lp', v.subHz * 1.3, 0.7);
-  const boom = new Biquad(sr, 'bp', v.boomHz, v.boomQ);
-  const tailLp = new Biquad(sr, 'lp', v.tailHz0, 0.6), tailLp2 = new Biquad(sr, 'lp', v.tailHz0, 0.6), tailHp = new Biquad(sr, 'hp', 90, 0.7);
-  let ph = Math.PI / 2, brown = 0; // cosine start: the body is at full pressure on the first sample
+/**
+ * Renders one gunshot variant (mono). `far` renders the distant version: no near crack (except the supersonic snap,
+ * which arrives first), a dull low-passed report and a long rolling tail, for shots heard across the city.
+ */
+export function renderGun(v0: GunVoice, sr: number, r: Rand, far = false): Float32Array {
+  const v: GunVoice = { ...v0, blastTau: vary(r, v0.blastTau, 0.12), blastHz: vary(r, v0.blastHz, 0.1), thumpF0: vary(r, v0.thumpF0, 0.06), thumpTau: vary(r, v0.thumpTau, 0.1), tailTau: vary(r, v0.tailTau, 0.12), tailHz: vary(r, v0.tailHz, 0.15),
+    modes: v0.modes.map(([f, a, tau]) => [vary(r, f, 0.05), vary(r, a, 0.1), vary(r, tau, 0.1)] as [number, number, number]) };
+  const dur = far ? Math.max(1.6, v.dur * 1.8) : v.dur;
+  const n = Math.floor(dur * sr); const out = new Float32Array(n);
+  const delay = far && v.sonic > 0 ? Math.floor(0.07 * sr) : 0; // the bullet's shock wave beats the muzzle report
+  const crackHp = new Biquad(sr, 'hp', v.crackHp, 0.6), crackHp2 = new Biquad(sr, 'hp', v.crackHp * 0.8, 0.6);
+  const bp = new Biquad(sr, 'bp', v.blastHz, v.blastQ), blLp = new Biquad(sr, 'lp', v.blastHz * 4, 0.7), blHp = new Biquad(sr, 'hp', 120, 0.7);
+  const modes = v.modes.map(([f]) => new Biquad(sr, 'bp', f, 9));
+  const tailLp = new Biquad(sr, 'lp', v.tailHz, 0.6), tailLp2 = new Biquad(sr, 'lp', v.tailHz, 0.6), tailHp = new Biquad(sr, 'hp', 70, 0.7);
+  const hissBp = new Biquad(sr, 'bp', 3200, 0.8);
+  const rumbleLp = new Biquad(sr, 'lp', 500, 0.7), rumbleLp2 = new Biquad(sr, 'lp', 700, 0.7);
+  let ph = Math.PI / 2, brown = 0;
   for (let i = 0; i < n; i++) {
-    const t = i / sr; const w = r() * 2 - 1;
-    brown = (brown + 0.04 * w) / 1.04;
-    // crack (+ N-wave)
-    let x = crackHp2.run(crackHp.run(w * v.crackAmp * 3 * env(t, 0.00004, v.crackTau)));
-    if (v.nAmp > 0 && t < v.nWidth) x += v.nAmp * (1 - 2 * t / v.nWidth);
-    // blast
-    x += blLp.run(blHp.run(w)) * v.blastAmp * 3.6 * env(t, 0.00012, v.blastTau * 1.6);
-    // body: pitch-dropping sine, with a touch of 2nd harmonic
-    const f = v.bodyF1 + (v.bodyF0 - v.bodyF1) * Math.exp(-t / v.bodyPitchTau);
-    ph += 2 * Math.PI * f / sr;
-    x += (Math.sin(ph) + 0.18 * Math.sin(2 * ph)) * v.bodyAmp * 0.55 * env(t, 0.0004, v.bodyTau);
-    // sub thump
-    x += subLp2.run(subLp.run(brown * 9)) * v.subAmp * 0.5 * env(t, 0.0015, v.subTau);
-    // boom ring (slight downward sweep)
-    if (i % 32 === 0) boom.set(v.boomHz * (0.85 + 0.15 * Math.exp(-t / 0.02)), v.boomQ);
-    x += boom.run(w) * v.boomAmp * 4 * env(t, 0.0003, v.boomTau);
-    // closing noise tail
-    if (i % 16 === 0) { const fc = v.tailHz1 + (v.tailHz0 - v.tailHz1) * Math.exp(-t / v.tailClose); tailLp.set(fc, 0.6); tailLp2.set(fc, 0.6); }
-    x += tailHp.run(tailLp2.run(tailLp.run(w))) * v.tailAmp * 1.4 * env(t, 0.003, v.tailTau);
-    out[i] = Math.tanh(x * v.drive) / Math.tanh(v.drive);
+    const w = r() * 2 - 1;
+    brown = (brown + 0.05 * w) / 1.05;
+    let x = 0;
+    // supersonic snap (also in the far version, undelayed)
+    const ts = i / sr;
+    if (v.sonic > 0) { const nw = 0.0004; if (ts < nw) x += v.sonic * (far ? 0.7 : 1) * (1 - 2 * ts / nw); }
+    const j = i - delay;
+    if (j >= 0) {
+      const t = j / sr;
+      if (!far) x += crackHp2.run(crackHp.run(w * v.crack * 3 * env(t, 0.00003, v.crackTau)));
+      // blast: a fast burst plus a slower "boom" decay
+      const b = blLp.run(blHp.run(bp.run(w)));
+      x += b * v.blast * 4.2 * (env(t, 0.00015, v.blastTau) + 0.22 * env(t, 0.001, v.blastTau * 4));
+      // body resonances (noise-excited, so every shot rings slightly differently)
+      for (let k = 0; k < modes.length; k++) { const [, a, tau] = v.modes[k]; x += modes[k].run(w) * a * 16 * env(t, 0.0006, tau); }
+      // chest thump
+      const f = Math.max(62, v.thumpF1) + (v.thumpF0 - v.thumpF1) * Math.exp(-t / (v.thumpTau * 0.35));
+      ph += 2 * Math.PI * f / sr;
+      x += Math.sin(ph) * v.thump * 0.32 * env(t, 0.0005, v.thumpTau);
+      // tail with a closing low-pass
+      if (i % 16 === 0) { const fc = 300 + (v.tailHz - 300) * Math.exp(-t / (v.tailTau * 0.5)); tailLp.set(fc, 0.6); tailLp2.set(fc, 0.6); }
+      x += tailHp.run(tailLp2.run(tailLp.run(w))) * v.tail * 1.6 * env(t, 0.002, v.tailTau);
+      if (v.hiss) x += hissBp.run(w) * v.hiss * env(t, 0.03, 0.35) * (0.7 + 0.3 * Math.sin(t * 90));
+      if (far) {
+        // distance: the near layers get dull (handled below), plus a long rolling rumble off the city
+        x += rumbleLp2.run(rumbleLp.run(brown * 6)) * (0.5 + 0.5 * Math.sin(t * 7 + 1.3) * Math.sin(t * 2.3)) * v.tail * 2.2 * env(t, 0.04, v.tailTau * 2.5 + 0.4);
+      }
+    }
+    out[i] = x;
   }
-  return finish(out, sr);
+  if (far) {
+    // air absorption: two-pole low-pass on everything after the snap
+    const a1 = new Biquad(sr, 'lp', 1400, 0.6), a2 = new Biquad(sr, 'lp', 1800, 0.6);
+    for (let i = delay; i < n; i++) out[i] = a2.run(a1.run(out[i]));
+  } else {
+    // ground bounce ~4 ms behind the direct sound thickens the report like a real recording at head height
+    const g = Math.floor(0.0042 * sr), g2 = Math.floor(0.013 * sr);
+    for (let i = n - 1; i >= g2; i--) out[i] += out[i - g] * 0.42 + out[i - g2] * 0.18;
+  }
+  for (let i = 0; i < n; i++) out[i] = Math.tanh(out[i] * v.drive * 0.5) / Math.tanh(v.drive * 0.5);
+  return finish(out, sr, 0.95);
 }
 
 // ---------------- mechanical / foley ----------------
@@ -151,7 +197,8 @@ const BRASS = (base: number): Mode[] => [{ f: base, a: 0.5, tau: 0.09 }, { f: ba
 export type FoleyName =
   | 'mechPistol' | 'mechSmg' | 'mechRifle' | 'pump' | 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert'
   | 'casingBrass' | 'casingHull' | 'dryFire' | 'equip'
-  | 'hitBody' | 'hitMetal' | 'hitConcrete' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'whizz' | 'crackBy' | 'ricochet';
+  | 'hitBody' | 'hitMetal' | 'hitConcrete' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'whizz' | 'crackBy' | 'ricochet'
+  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen';
 
 /** Renders one variant of a foley / impact sound (mono). */
 export function renderFoley(name: FoleyName, sr: number, r: Rand): Float32Array {
@@ -237,6 +284,20 @@ export function renderFoley(name: FoleyName, sr: number, r: Rand): Float32Array 
     }
     case 'crackBy': // supersonic snap overhead
       d = mk(0.12); addClack(d, sr, 0, r, { amp: 1, click: 1.6, clickHp: 2500, clickTau: 0.0008, modes: [] }); addSwish(d, sr, 0.001, 0.08, r, { amp: 0.25, f0: 5000, f1: 2500, q: 0.8, attack: 0.05 }); break;
+    case 'pinPull': // ring pin scraping out + spoon flick
+      d = mk(0.35); addSwish(d, sr, 0, 0.08, r, { amp: 0.3, f0: 3500, f1: 5000, q: 2 }); addClack(d, sr, 0.08, r, { amp: 0.6, modes: METAL(R(3800, 4400)), click: 0.6 });
+      addClack(d, sr, R(0.2, 0.24), r, { amp: 0.8, modes: [{ f: R(2600, 3000), a: 0.5, tau: 0.05 }, { f: R(6100, 6600), a: 0.3, tau: 0.03 }], click: 0.8 }); break;
+    case 'grenadeBounce': // heavy steel body knocking on pavement
+      d = mk(0.3); addClack(d, sr, 0, r, { amp: 0.9, click: 0.9, clickHp: 1200, modes: [{ f: R(700, 900), a: 0.5, tau: 0.03 }, { f: R(1900, 2300), a: 0.3, tau: 0.02 }] }); addThunk(d, sr, 0, r, { amp: 0.5, f0: 260, f1: 140, tau: 0.03 }); break;
+    case 'glassShatter': { // tempered car glass: a crack then a shower of tiny cubes
+      d = mk(1.1); addClack(d, sr, 0, r, { amp: 1, click: 1.6, clickHp: 2500, clickTau: 0.002, modes: [{ f: R(2400, 3000), a: 0.4, tau: 0.05 }, { f: R(4800, 5600), a: 0.3, tau: 0.04 }] });
+      addSwish(d, sr, 0.005, 0.5, r, { amp: 0.35, f0: 6000, f1: 3500, q: 0.6, attack: 0.05 });
+      for (let i = 0; i < 40; i++) addClack(d, sr, Math.pow(r(), 1.7) * 0.9, r, { amp: R(0.05, 0.2), click: 0.6, clickHp: 4500, modes: [{ f: R(3500, 9000), a: 0.4, tau: R(0.01, 0.04) }] });
+      break;
+    }
+    case 'cylinderOpen': // revolver cylinder swings out, ejector rod, spin
+      d = mk(0.45); addClack(d, sr, 0, r, { amp: 0.7, modes: METAL(R(2200, 2500)), click: 0.7 }); addSwish(d, sr, 0.05, 0.12, r, { amp: 0.2, f0: 2000, f1: 3000, q: 2 });
+      for (let i = 0; i < 6; i++) addClack(d, sr, 0.18 + i * 0.022, r, { amp: 0.25, modes: METAL(R(3000, 3600)), click: 0.3 }); break;
     case 'ricochet': { // tick + descending whine with flutter
       const dur = R(0.3, 0.45); d = mk(dur + 0.02); addClack(d, sr, 0, r, { amp: 0.7, click: 1, clickHp: 2500, modes: [] });
       const f0 = R(2800, 3800); let ph = 0; const fl = R(28, 45);

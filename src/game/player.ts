@@ -115,6 +115,14 @@ export class PlayerController {
     this.landLag -= dt; this.recoverT -= dt;
 
     if (this.mantle) { this.stepMantle(dt); return; }
+    // Knocked down: no control until back on the feet.
+    if (c.downT > 0) {
+      c.vel.x *= Math.exp(-dt * 4); c.vel.z *= Math.exp(-dt * 4);
+      c.vel.y = c.grounded ? -2 : Math.max(-MOVE.maxFall, c.vel.y - MOVE.gravity * dt);
+      c.integrate(dt); c.leanRoll = 0; c.leanPitch = 0; c.twist = 0; this.jumping = false;
+      this.afterMove();
+      return;
+    }
     // Dodge roll (also used for hard landings while moving)
     if (this.rollT > 0) {
       this.rollT -= dt;
@@ -197,6 +205,7 @@ export class PlayerController {
           }
         }
         if (this.recoverT > 0) speed = Math.min(speed, 1.2);
+        if (c.meleeActive) speed = Math.min(speed, 1.4); // plant the feet to throw a punch
         const lk = Math.exp(-14 * dt); latX *= lk; latZ *= lk;
         c.vel.x = Math.sin(yaw) * speed + latX; c.vel.z = Math.cos(yaw) * speed + latZ;
         c.yaw = wrapAngle(yaw);
@@ -242,7 +251,9 @@ export class PlayerController {
       this.jumping = true; this.sinceJump = 0; this.coyoteT = 0; this.jumpLock = 0.2; this.jumpBuffer = 0;
       this.takeoffSpeed = Math.hypot(c.vel.x, c.vel.z); this.takeoffY = c.pos.y;
       this.stamina = Math.max(0, this.stamina - MOVE.staminaJump);
-      h.playOnce('Jump_Start', 'full', 0.06, { from: 0.08, rate: 1.15 });
+      // Standing jumps crouch and spring; running jumps leap straight out of the stride (no wind-up).
+      if (this.takeoffSpeed < 2.5) h.playOnce('Jump_Start', 'full', 0.06, { from: 0.08, to: 0.55, rate: 1.3 });
+      else if (h.oneShotName && !h.busy) h.stopOnce();
       this.onSound?.('jump', 0.7);
     } else if (grounded) c.vel.y = -2;
     else {
@@ -355,11 +366,12 @@ export class PlayerController {
       }
       return;
     }
-    this.landLag = this.airTime > 0.3 ? 0.12 : 0;
+    this.landLag = this.airTime > 0.3 && sp < 2 ? 0.12 : 0;
+    if (h.oneShotName === 'Jump_Start') h.stopOnce('Jump_Start');
     if (this.airTime > 0.3) {
       if (sp < 2) h.playOnce('Jump_Land', 'full', 0.06, { to: 0.75, rate: 1.35, weight: clamp(0.35 + impact * 0.04, 0.4, 0.75), soft: true });
-      else h.playOnce('Jump_Land', 'upper', 0.06, { to: 0.5, rate: 1.4, weight: 0.45, soft: true });
-    } else if (h.oneShotName === 'Jump_Start') h.stopOnce('Jump_Start');
+      else h.playOnce('Jump_Land', 'upper', 0.05, { to: 0.4, rate: 1.6, weight: 0.3, soft: true }); // absorb with the arms, legs keep running
+    }
     if (impact > 3.5) this.onSound?.('land', clamp(0.35 + impact * 0.05, 0.4, 0.9));
   }
 
@@ -381,9 +393,12 @@ export class PlayerController {
     if (c.inVehicle) return;
     if (h.currentState !== 'crouch') {
       if (c.swimming) h.setState('swim');
-      else if (!c.grounded && (this.jumping || this.airTime > 0.2) && this.rollT <= 0) h.setState('jump');
+      else if (!c.grounded && !this.mantle && (this.jumping || this.airTime > 0.25) && this.rollT <= 0) h.setState('jump');
       else h.setState('loco');
     }
+    // Never stay in a jump pose on the ground: a leftover take-off/landing one-shot is cut as soon as we run.
+    if (c.grounded && h.currentState === 'loco' && c.speed > 2 && (h.oneShotName === 'Jump_Start' || h.oneShotName === 'Jump_Land') && this.rollT <= 0) h.stopOnce();
+    h.airMove = clamp((Math.hypot(c.vel.x, c.vel.z) - 1.5) / 3.5, 0, 1);
     h.setSpeed(c.speed);
     h.aimPitch = -this.cam.pitch;
     // Footsteps on the animation's foot plants.

@@ -21,6 +21,8 @@ export class CameraRig {
   baseFov = 62;
   zoomLevel = 0;
   cinematic: { pos: THREE.Vector3; look: THREE.Vector3 } | null = null;
+  /** COMBAT: vertical FOV (degrees) while looking through a weapon scope (set by PlayerCombat), null = none. */
+  scopeFov: number | null = null;
   /** On-foot motion fed by the player controller each step: sprint blend 0..1, ground speed, step phase (cycles), airborne. */
   foot = { sprint: 0, speed: 0, stepPhase: 0, airborne: false, falling: false };
   private sprintBlend = 0;
@@ -110,7 +112,7 @@ export class CameraRig {
     this.camera.rotateZ(n(3) * s * 0.12);
     this.camera.rotateX(n(1) * s * 0.08);
     this.camera.rotateY(n(2) * s * 0.08);
-    const fov = this.baseFov + this.fovExtra;
+    const fov = mode === 'aim' && this.scopeFov ? this.scopeFov : this.baseFov + this.fovExtra; // COMBAT: scope zoom
     if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
   private cast(from: THREE.Vector3, dir: THREE.Vector3, maxDist: number, exclude?: RAPIER.RigidBody | null): number | null {

@@ -77,11 +77,12 @@ export class Activities {
   armsItems(): ShopItem[] {
     const g = this.game, inv = g.pcombat.inv;
     const items: ShopItem[] = [];
-    for (const id of WEAPON_ORDER) {
+    for (const id of WEAPON_ORDER) { // COMBAT: full Tidewater Arms catalogue, grouped by category
       if (id === 'fists') continue;
-      const w = WEAPONS[id];
-      if (!inv.weapons[id].owned) items.push({ id: `w:${id}`, label: w.name, description: `${w.clip}-round ${id === 'shotgun' ? 'pump shotgun' : id}. Includes ${w.ammoPack} rounds.`, price: w.price, disabled: g.money < w.price });
-      else items.push({ id: `a:${id}`, label: `${w.name} ammo`, description: `+${w.ammoPack} rounds (carrying ${inv.weapons[id].reserve + inv.weapons[id].clip}).`, price: w.ammoPrice, disabled: g.money < w.ammoPrice });
+      const w = WEAPONS[id], st = inv.weapons[id];
+      const kind = w.melee ? 'Melee' : w.cat === 'throw' ? `Pack of ${w.ammoPack + w.clip}` : `${w.clip}-round ${w.mode === 'burst' ? 'burst' : w.mode}${w.scope ? ', scoped' : ''}`;
+      if (!st.owned || (w.cat === 'throw' && inv.total(id) === 0)) items.push({ id: `w:${id}:${w.icon}`, label: w.name, description: `${w.blurb} ${kind}.`, price: w.price, disabled: g.money < w.price });
+      else if (!w.melee) items.push({ id: `a:${id}:${w.icon}`, label: w.cat === 'throw' ? `${w.name} x${w.ammoPack}` : `${w.name} ammo`, description: `+${w.ammoPack} ${w.cat === 'throw' ? '' : 'rounds '}(carrying ${st.reserve + st.clip}).`, price: w.ammoPrice, disabled: g.money < w.ammoPrice });
     }
     items.push({ id: 'armor', label: 'Body armor', description: 'Full armor plating. Absorbs most incoming damage.', price: 350, disabled: g.money < 350 || g.player.armor >= 100, owned: g.player.armor >= 100 });
     items.push({ id: 'medkit', label: 'First-aid kit', description: `Restores 60 health from the wheel (carrying ${inv.medkits}).`, price: 120, disabled: g.money < 120 || inv.medkits >= 5 });
@@ -97,8 +98,8 @@ export class Activities {
   private buy(id: string) {
     const g = this.game, inv = g.pcombat.inv;
     const pay = (n: number) => { if (g.money < n) return false; g.addMoney(-n); g.audio.play('purchase'); return true; };
-    if (id.startsWith('w:')) { const w = id.slice(2) as WeaponId; if (pay(WEAPONS[w].price)) { g.pcombat.give(w, WEAPONS[w].ammoPack + WEAPONS[w].clip); inv.select(w); } }
-    else if (id.startsWith('a:')) { const w = id.slice(2) as WeaponId; if (pay(WEAPONS[w].ammoPrice)) g.pcombat.give(w, WEAPONS[w].ammoPack); }
+    if (id.startsWith('w:')) { const w = id.split(':')[1] as WeaponId; if (pay(WEAPONS[w].price)) { g.pcombat.give(w, WEAPONS[w].ammoPack + WEAPONS[w].clip); inv.select(w); } }
+    else if (id.startsWith('a:')) { const w = id.split(':')[1] as WeaponId; if (pay(WEAPONS[w].ammoPrice)) g.pcombat.give(w, WEAPONS[w].ammoPack); }
     else if (id === 'armor') { if (g.player.armor < 100 && pay(350)) g.player.armor = 100; }
     else if (id === 'medkit') { const price = this.shopOpen === 'snack' ? 140 : 120; if (inv.medkits < 5 && pay(price)) inv.medkits++; }
     else if (id === 'snack') { if (g.player.health < g.player.maxHealth && pay(20)) g.player.health = g.player.maxHealth; }
@@ -149,7 +150,7 @@ export class Activities {
         g.addMoney(-150); g.audio.play('purchase');
         pv.health = pv.spec.health; pv.lightsBroken = false; pv.phys.enginePower = 1;
         const paints = ['#2fa39a', '#f26b3a', '#1f2a44', '#e8e2d0', '#7b2cbf', '#ffcc4d', '#3d3d42'];
-        pv.material.userData.u.uPaint.value.set(paints[Math.floor(Math.random() * paints.length)]).convertSRGBToLinear(); pv.material.userData.u.uPaintOn.value = pv.kind === 'police' ? 0 : 1;
+        pv.respray(paints[Math.floor(Math.random() * paints.length)]);
         pv.resetBody();
         const hadHeat = g.police.heat > 0; g.police.clear();
         this.ui.toast(hadHeat ? 'Fresh paint. The heat is off.' : 'Fresh paint, good as new.', 'money');

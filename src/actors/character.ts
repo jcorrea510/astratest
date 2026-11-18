@@ -4,9 +4,32 @@ import { RAPIER, type Physics, G_STATIC, G_VEHICLE, G_CHAR, groups } from '../co
 import { Human, type HumanTemplate, type Look } from './human';
 import { damp, dampAngle, wrapAngle } from '../core/rng';
 import { WATER_LEVEL } from '../world/citymap';
+import { VOICES } from '../audio/voices';
 
 export type Team = 'player' | 'civilian' | 'gang' | 'police';
+/** Melee move kinds: the fist combo (jab, cross, hook) and weapon swings. */
+export type MeleeKind = 'jab' | 'cross' | 'hook' | 'stab' | 'swing';
 const CAP_HALF = 0.55, CAP_R = 0.32, CENTER = CAP_HALF + CAP_R;
+const MELEE_ACTION: Record<MeleeKind, string> = { jab: 'punch_jab', cross: 'punch_cross', hook: 'punch_hook', stab: 'stab', swing: 'swing_bat' };
+/** How hard each blow hits for reactions: < 0.5 flinch, < 1 stagger, >= 1 knockdown. */
+export const MELEE_POWER: Record<MeleeKind, number> = { jab: 0.35, cross: 0.65, hook: 1.05, stab: 0.5, swing: 1.2 };
+
+/**
+ * People a melee strike can connect with right now: alive, on foot, within `range` metres (centre to centre) and
+ * inside a ~65 degree cone in front of the attacker, nearest first.
+ */
+export function meleeTargets(att: Character, cands: Iterable<Character>, range = 1.25, minDot = 0.55): Character[] {
+  const fx = Math.sin(att.yaw), fz = Math.cos(att.yaw);
+  const out: { c: Character; d: number }[] = [];
+  for (const c of cands) {
+    if (c === att || !c.alive || c.inVehicle) continue;
+    const dx = c.pos.x - att.pos.x, dz = c.pos.z - att.pos.z, d = Math.hypot(dx, dz);
+    if (d > range || Math.abs(c.pos.y - att.pos.y) > 1.1) continue;
+    if (d > 0.25 && (dx * fx + dz * fz) / d < minDot) continue;
+    out.push({ c, d });
+  }
+  return out.sort((a, b) => a.d - b.d).map(o => o.c);
+}
 
 export class Character {
   human: Human;
@@ -34,6 +57,18 @@ export class Character {
   private leanRollS = 0; private leanPitchS = 0;
   /** Vertical speed just before the most recent landing (m/s, positive = downwards); set by integrate(). */
   landingSpeed = 0;
+  /** Visual-only vertical offset that smooths curb/step climbs (decays to 0). */
+  stepOffset = 0;
+  /** Seconds left on the ground after a knockdown (no control; includes getting up). */
+  downT = 0;
+  private getUpAt = 0;
+  /** Called at the contact frame of a melee move (see startMelee). */
+  onMeleeStrike: ((kind: MeleeKind) => void) | null = null;
+  private meleeLock = 0; private meleeCombo = 0; private sinceMelee = 9;
+  private lastYaw = 0; private turnRateS = 0;
+  /** Picks this person's speaking voice/pitch (see audio/voices.ts). */
+  voiceSeed = Math.random() * 1000;
+  get sex() { return this.human.look.sex; }
 
   constructor(public physics: Physics, tpl: HumanTemplate, look: Look, public team: Team, x: number, z: number, y = 0.2) {
     this.human = new Human(tpl, look);
@@ -80,21 +115,54 @@ export class Character {
   private sweep(dt: number) {
     const vyBefore = this.vel.y;
     const delta = { x: this.vel.x * dt, y: this.vel.y * dt, z: this.vel.z * dt };
+    // Step up curbs and low steps before the round capsule bottom starts riding up the edge (which stalls a run):
+    // look for a low face just ahead at ankle height and, if there is a flat top within reach, rise onto it.
+    const hs = Math.hypot(delta.x, delta.z);
+    let stepped = false;
+    if (this.grounded && this.vel.y <= 0.5 && hs > 0.003) {
+      const ledge = this.findLedge(delta.x, delta.z, 0.42, 0.04, 0.1 + hs, [0.06, 0.14]);
+      if (ledge && ledge.rise > 0.04) { delta.y = ledge.rise + 0.01; stepped = true; }
+    }
     this.controller.computeColliderMovement(this.collider, delta, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(0xffff, G_STATIC | G_VEHICLE | G_CHAR));
-    const m = this.controller.computedMovement();
+    const cm = this.controller.computedMovement();
+    const m = { x: cm.x, y: cm.y, z: cm.z };
     const wasGrounded = this.grounded;
-    this.grounded = this.controller.computedGrounded();
+    let grounded = this.controller.computedGrounded();
+    // Stay glued to the ground over small drops (curb edges, slopes) instead of flickering into the air.
+    if (!grounded && wasGrounded && this.vel.y <= 0.5) {
+      const g = this.groundBelow(this.pos.x + m.x, this.pos.y + m.y, this.pos.z + m.z, 0.36);
+      if (g !== null) { m.y = g - this.pos.y; grounded = true; }
+    }
+    if (stepped) grounded = true;
+    // Step up curbs and small steps when the controller's autostep did not manage it.
+    const want = Math.hypot(delta.x, delta.z), got = Math.hypot(m.x, m.z);
+    if (!stepped && grounded && want > 0.004 && got < want * 0.55 && this.vel.y <= 0.5) {
+      const ledge = this.findLedge(delta.x, delta.z, 0.42, 0.04, 0.12 + want);
+      if (ledge && ledge.rise > 0.04) {
+        const k = Math.min(1, (want - got) / want);
+        m.y = ledge.rise + 0.01; m.x += delta.x * k * 0.5; m.z += delta.z * k * 0.5;
+        grounded = true;
+      }
+    }
+    this.grounded = grounded;
     if (this.grounded && !wasGrounded) this.landingSpeed = Math.max(0, -vyBefore);
     if (!this.grounded && !wasGrounded && m.y > delta.y + 0.001 && this.vel.y < 0) this.vel.y = 0;
     if (!this.grounded && this.vel.y > 0 && m.y < delta.y - 0.001) this.vel.y = 0; // bonk
+    // Visual smoothing of instant height changes while walking (steps up and down).
+    if (wasGrounded && this.grounded && Math.abs(m.y) > 0.04 && Math.abs(m.y) < 0.6) this.stepOffset = Math.max(-0.5, Math.min(0.5, this.stepOffset - m.y));
     this.pos.x += m.x; this.pos.y += m.y; this.pos.z += m.z;
     // horizontal velocity follows actual movement so blocked characters do not run on the spot
     if (dt > 0) { const ax = m.x / dt, az = m.z / dt; if (Math.hypot(ax, az) < Math.hypot(this.vel.x, this.vel.z) - 0.5) { this.vel.x = damp(this.vel.x, ax, 20, dt); this.vel.z = damp(this.vel.z, az, 20, dt); } }
     this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER, z: this.pos.z });
   }
+  /** Height of walkable ground within `reach` metres below the feet at (x, y, z), or null. */
+  groundBelow(x: number, y: number, z: number, reach: number): number | null {
+    const hit = this.physics.ray(x, y + 0.3, z, 0, -1, 0, 0.3 + reach, groups(0xffff, G_STATIC | G_VEHICLE), this.collider);
+    return hit ? y + 0.3 - hit.toi : null;
+  }
   /** Teleports the body (no collision). */
   place(x: number, y: number, z: number, yaw?: number) {
-    this.pos.set(x, y, z); this.vel.set(0, 0, 0);
+    this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0;
     this.body.setTranslation({ x, y: y + CENTER, z }, true); this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
     if (yaw !== undefined) this.yaw = yaw;
     this.human.root.position.copy(this.pos); this.human.root.rotation.y = this.yaw;
@@ -108,13 +176,13 @@ export class Character {
    * Looks for a ledge the character can climb in direction (dx, dz): an obstacle face within `reach` metres of the
    * capsule and a flat, free top between `minRise` and `maxRise` above the feet. Returns where to stand, or null.
    */
-  findLedge(dx: number, dz: number, maxRise: number, minRise = 0.05, reach = 0.45): { x: number; y: number; z: number; rise: number } | null {
+  findLedge(dx: number, dz: number, maxRise: number, minRise = 0.05, reach = 0.45, heights: number[] = [0.25, 0.65, 1.05]): { x: number; y: number; z: number; rise: number } | null {
     const w = this.physics.world, flt = groups(0xffff, G_STATIC | G_VEHICLE);
     const flags = RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
     const l = Math.hypot(dx, dz); if (l < 1e-4) return null; dx /= l; dz /= l;
     // 1) an obstacle face ahead (rays at shin, hip and chest height)
     let face = Infinity;
-    for (const hgt of [0.25, 0.65, 1.05]) {
+    for (const hgt of heights) {
       const hit = w.castRayAndGetNormal(new RAPIER.Ray({ x: this.pos.x, y: this.pos.y + hgt, z: this.pos.z }, { x: dx, y: 0, z: dz }), CAP_R + reach, true, flags, flt, this.collider);
       if (hit && Math.abs(hit.normal.y) < 0.5) face = Math.min(face, hit.timeOfImpact);
     }
@@ -148,22 +216,82 @@ export class Character {
     this.health -= amount; this.lastDamageFrom = from; this.lastHitTime = time;
     this.human.flash();
     if (this.health <= 0) { this.health = 0; this.kill(); return true; }
+    // a small flinch on every hit (never interrupts a move in progress)
+    if (!this.inVehicle && this.downT <= 0 && !this.human.busy) this.human.playAction('hit_light', { soft: true, weight: 0.8 });
     return false;
   }
   kill() {
     if (!this.alive) return;
-    this.alive = false; this.deadTime = 0;
+    this.alive = false; this.deadTime = 0; this.downT = 0;
+    // Fall away from whoever dealt the blow: Death01 falls backwards, so face the attacker.
+    const f = this.lastDamageFrom;
+    if (f && f !== this && !this.inVehicle) {
+      const dx = f.pos.x - this.pos.x, dz = f.pos.z - this.pos.z;
+      if (dx * dx + dz * dz > 0.01) { this.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.5; const l = Math.hypot(dx, dz); this.vel.x -= dx / l * 1.6; this.vel.z -= dz / l * 1.6; }
+    }
     this.human.setState('dead'); this.human.setUpperMode('none');
     this.collider.setCollisionGroups(groups(0, 0));
+    if (!this.isPlayer && Math.random() < 0.5) VOICES.say(this, 'oof', true);
   }
   revive(health = 100) {
-    this.alive = true; this.health = health; this.human.setState('loco');
+    this.alive = true; this.health = health; this.downT = 0; this.human.setState('loco'); this.human.stopAction();
     this.collider.setCollisionGroups(groups(G_CHAR, G_STATIC | G_CHAR));
   }
+  /**
+   * Reaction to a blow coming from (dx, dz) (attacker towards this character). power < 0.5 flinches, < 1 staggers
+   * back a step, >= 1 knocks the character down (they get up again after ~2 s).
+   */
+  hitReact(dx: number, dz: number, power: number) {
+    if (!this.alive || this.inVehicle) return;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    VOICES.say(this, power >= 1 ? 'scream' : 'oof', true);
+    if (power >= 1 && !(this.isPlayer && power < 1.2)) {
+      this.yaw = Math.atan2(-dx, -dz); // face the attacker, fall backwards
+      this.human.playAction('knockdown');
+      this.downT = 2.6; this.getUpAt = 1.25; this.knockT = Math.max(this.knockT, 2.6);
+      this.vel.x = dx * 2.2; this.vel.z = dz * 2.2;
+    } else if (power >= 0.5) {
+      this.yaw = Math.atan2(-dx, -dz);
+      this.human.playAction('stagger');
+      this.vel.x += dx * 2.4 * power; this.vel.z += dz * 2.4 * power;
+      this.knockT = Math.max(this.knockT, 0.55);
+    } else this.human.playAction(Math.random() < 0.5 ? 'hit_head' : 'hit_light', { soft: true });
+  }
+  /**
+   * Starts a melee move: wind-up, strike, recover. Fists chain jab -> cross -> hook when pressed within ~0.6 s of
+   * the previous blow. `onMeleeStrike(kind)` fires at the contact frame; resolve hits there (see meleeTargets).
+   * Returns the move started, or null while still recovering.
+   */
+  startMelee(weapon: 'fists' | 'knife' | 'bat' = 'fists'): MeleeKind | null {
+    if (!this.alive || this.inVehicle || this.downT > 0 || this.meleeLock > 0) return null;
+    let kind: MeleeKind;
+    if (weapon === 'fists') { this.meleeCombo = this.sinceMelee < 0.65 ? (this.meleeCombo + 1) % 3 : 0; kind = (['jab', 'cross', 'hook'] as const)[this.meleeCombo]; }
+    else kind = weapon === 'bat' ? 'swing' : 'stab';
+    const dur = this.human.playAction(MELEE_ACTION[kind], { onEvent: e => { if (e === 'strike' && this.alive) this.onMeleeStrike?.(kind); } });
+    this.meleeLock = dur * (kind === 'hook' || kind === 'swing' ? 0.85 : 0.62);
+    this.sinceMelee = -dur * 0.5;
+    return kind;
+  }
+  /** True while a melee move is winding up or striking. */
+  get meleeActive() { return this.meleeLock > 0; }
   /** Updates visuals; twist rotates the upper body to aim while legs follow movement. */
   updateVisual(dt: number) {
     const h = this.human;
+    this.meleeLock -= dt; this.sinceMelee += dt;
+    if (this.downT > 0) {
+      const before = this.downT; this.downT -= dt;
+      if (this.alive && before > this.getUpAt && this.downT <= this.getUpAt) h.playAction('get_up');
+      if (this.downT <= 0 && this.alive) h.stopAction('get_up');
+    }
+    this.stepOffset *= Math.exp(-dt * 11);
+    if (dt > 0) {
+      const yr = wrapAngle(this.yaw - this.lastYaw) / dt;
+      this.turnRateS = damp(this.turnRateS, Math.abs(yr) > 30 ? 0 : yr, 10, dt);
+      h.turnRate = this.turnRateS;
+    }
+    this.lastYaw = this.yaw;
     h.root.position.copy(this.pos);
+    h.root.position.y += this.stepOffset;
     if (this.swimming) h.root.position.y += 0.15;
     h.root.rotation.y = this.yaw;
     this.leanRollS = damp(this.leanRollS, this.leanRoll, 9, dt);

@@ -7,7 +7,7 @@ import type { Settings } from '../core/settings';
 import { generateCity, type CityMap, signalState, districtAt, surfaceAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import type { Assets } from '../world/assets';
-import { createHumanTemplate, type HumanTemplate, randomLook } from '../actors/human';
+import { loadHumanTemplate, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
 import { Character } from '../actors/character';
 import { CameraRig } from './camera';
 import { PlayerController } from './player';
@@ -25,7 +25,7 @@ import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
 
-export const PLAYER_LOOK = { skin: '#c68c63', top: '#2f8790', bottom: '#2a2f3d', shoes: '#f2efe8', hair: '#1f1a17', hat: '#264653', detail: '#e8b05a', sleeves: 'long' as const, legs: 'pants' as const, hairStyle: 'short' as const, hatStyle: 'none' as const, height: 1.0, build: 1.02 };
+export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
 export const CLINIC = { x: -60, z: -110, yaw: Math.PI, name: 'Juniper Clinic' };
 export const PRECINCT = { x: 40, z: 108, yaw: 0, name: 'Meridian PD' };
@@ -110,7 +110,7 @@ export class Game {
     this.buildLamps();
     onProgress(0.55, 'Waking up the locals');
     await tick();
-    this.humanTpl = createHumanTemplate(this.assets.human);
+    this.humanTpl = await loadHumanTemplate(this.assets.human); // [PEOPLE] realistic bodies + retargeted clips
     this.player = new Character(this.physics, this.humanTpl, PLAYER_LOOK, 'player', SPAWN.x, SPAWN.z, SPAWN.y);
     this.player.yaw = SPAWN.yaw; this.player.maxHealth = 100;
     this.renderer.scene.add(this.player.human.root);
@@ -131,6 +131,7 @@ export class Game {
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
       onArrest: () => this.playerDown('busted'), onWitness: () => { },
     }, this.audio);
+    this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
@@ -161,6 +162,7 @@ export class Game {
       if (target === this.player) this.cam.addShake(0.15);
     };
     this.combat.onVehicleHit = (v, from) => { if (from === this.player) this.traffic.panic(v); };
+    this.combat.onExplosion = (at, by) => this.explosion(at, by); // COMBAT: grenades / rockets damage people like car explosions
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
     this.vehicles.onCrash = e => {
       if (e.vehicle === this.playerVehicle) { this.cam.addShake(Math.min(0.8, e.impact / 18)); this.stats.crashes++; this.pop.danger(e.point, 15, this.player); }
@@ -421,7 +423,7 @@ export class Game {
     const blocked = this.inputBlocked;
     if (!this.paused && !blocked) {
       const look = this.input.lookDelta(raw);
-      this.cam.addInput(look.x, look.y, this.settings.sensitivity * (this.pcombat.aiming ? 0.6 : 1), this.settings.invertY);
+      this.cam.addInput(look.x, look.y, this.settings.sensitivity * this.pcombat.lookScale, this.settings.invertY);
     }
     if (!this.paused && !blocked && this.input.justPressed('enter')) this.toggleVehicle();
     this.updateEntering(dt);
@@ -549,12 +551,12 @@ export class Game {
     return {
       health: this.player.health, maxHealth: this.player.maxHealth, armor: this.player.armor, money: this.money,
       heat: this.police.heat, heatMax: 5, heatFlash: this.police.heat > 0 && !this.police.state.seen,
-      weaponName: def.name, weaponIcon: def.icon, ammoClip: def.melee ? -1 : inv.state.clip, ammoReserve: inv.state.reserve, reloading: inv.reloading,
+      weaponName: def.name, weaponIcon: def.icon, reloading: inv.reloading,
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
       clock: `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`,
-      crosshair: pv || this.deathT >= 0 ? 'none' : this.pcombat.armed ? (this.pcombat.aiming ? 'aim' : 'dot') : 'none', crosshairSpread: this.pcombat.hudSpread(this.renderer.camera.fov, window.innerHeight),
-      hitMarker: this.pcombat.hitMarker, interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
+      ...this.pcombat.hud(), ...(pv || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
+      interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
       fps: this.settings.showFps ? Math.round(this.fps) : null,
     };
   }

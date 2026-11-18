@@ -75,6 +75,8 @@ export class Hud {
   private radioLast: string | null = null;
   private crosshair: HTMLDivElement;
   private hitmarker: HTMLDivElement;
+  /** COMBAT: kill marker (skull) and scope overlay */
+  private killmark!: HTMLDivElement; private scopeEl!: HTMLDivElement; private scopeZoom!: HTMLDivElement;
   private promptEl: HTMLDivElement;
   private promptKey: TextSlot;
   private promptText: TextSlot;
@@ -209,6 +211,14 @@ export class Hud {
     this.hitmarker = h('div', 'ma-hitmarker');
     for (const d of ['a', 'b', 'c', 'd']) this.hitmarker.appendChild(h('span', `ma-hm-${d}`));
     this.el.appendChild(this.hitmarker);
+    // COMBAT: kill marker (an original skull glyph) and the scope overlay
+    this.killmark = h('div', 'ma-killmark');
+    this.killmark.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 3C9.4 3 5 7.6 5 13.4c0 3.3 1.5 5.6 3.6 7.1V25c0 1.1.9 2 2 2h1.6v-2.4h1.8V27h4v-2.4h1.8V27h1.6c1.1 0 2-.9 2-2v-4.5c2.1-1.5 3.6-3.8 3.6-7.1C27 7.6 22.6 3 16 3zm-5 9.2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm10 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM16 18.6l2 3.4h-4z"/></svg>';
+    this.el.appendChild(this.killmark);
+    this.scopeEl = h('div', 'ma-scope');
+    this.scopeEl.innerHTML = '<div class="ma-scope-ring"></div><div class="ma-scope-h"></div><div class="ma-scope-v"></div><div class="ma-scope-dots"></div>';
+    this.scopeZoom = h('div', 'ma-scope-zoom'); this.scopeEl.appendChild(this.scopeZoom);
+    this.el.appendChild(this.scopeEl);
 
     // Bottom centre: interact prompt
     this.promptEl = h('div', 'ma-prompt');
@@ -376,18 +386,19 @@ export class Hud {
     }
     if (!inVeh && !s.radio && this.radioPop.el.classList.contains('is-visible')) this.radioPop.hide();
 
-    // Crosshair + hit marker
+    // Crosshair (COMBAT: a centred dot that turns red over a target), hit marker, kill marker, scope
     if (this.changed('ch', s.crosshair)) {
       setClass(this.crosshair, 'is-dot', s.crosshair === 'dot');
       setClass(this.crosshair, 'is-aim', s.crosshair === 'aim');
+      setClass(this.scopeEl, 'is-on', s.crosshair === 'scope');
     }
-    if (s.crosshair === 'aim') {
-      const spread = Math.max(0, Math.min(1.5, s.crosshairSpread));
-      const px = Math.round((4 + spread * 30) * 2) / 2;
-      if (this.changed('spread', px)) this.crosshair.style.setProperty('--ma-spread', String(px));
-    }
+    if (this.changed('hot', !!s.reticleHot)) { setClass(this.crosshair, 'is-hot', !!s.reticleHot); setClass(this.scopeEl, 'is-hot', !!s.reticleHot); }
+    if (s.crosshair === 'scope' && this.changed('zoom', s.scopeZoom ?? 0)) this.scopeZoom.textContent = `${(s.scopeZoom ?? 0).toFixed(1)}x`;
     const hm = Math.round(Math.max(0, Math.min(1, s.hitMarker)) * 20) / 20;
     if (this.changed('hm', hm)) { this.hitmarker.style.opacity = String(hm); this.hitmarker.style.setProperty('--ma-hm', String(hm)); }
+    const km = Math.round(Math.max(0, Math.min(1, s.killMarker ?? 0)) * 20) / 20;
+    if (this.changed('km', km)) { this.killmark.style.opacity = String(Math.min(1, km * 1.6)); this.killmark.style.setProperty('--ma-km', String(km)); setClass(this.hitmarker, 'is-kill', km > 0); }
+    if (this.changed('hs', !!s.headshotMarker)) setClass(this.killmark, 'is-head', !!s.headshotMarker);
 
     // Interact prompt: "E  Enter vehicle" -> key cap + text
     if (s.interactPrompt !== this.promptLast) {

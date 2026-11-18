@@ -5,28 +5,15 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { RAPIER, Physics, initPhysics } from '../core/physics';
-import { VehiclePhysics, type VehicleLayout, type DriveInput } from './vehiclePhysics';
+import { VehiclePhysics, type DriveInput } from './vehiclePhysics';
+import { layoutFor } from './shapes';
 import { VEHICLES, type VehicleKind } from './specs';
 
-const CAR: VehicleLayout = {
-  half: [1.0, 0.64, 2.27], centerY: 0.74, radius: 0.36,
-  wheels: [
-    { x: 0.88, y: 0.056, z: 1.227, front: true, left: true }, { x: -0.88, y: 0.056, z: 1.227, front: true, left: false },
-    { x: 0.88, y: 0.056, z: -1.281, front: false, left: true }, { x: -0.88, y: 0.056, z: -1.281, front: false, left: false },
-  ],
-};
-const VAN: VehicleLayout = {
-  half: [1.12, 1.15, 2.95], centerY: 1.55, radius: 0.4,
-  wheels: [
-    { x: 0.98, y: 0.456, z: 1.95, front: true, left: true }, { x: -0.98, y: 0.456, z: 1.95, front: true, left: false },
-    { x: 0.98, y: 0.456, z: -1.9, front: false, left: true }, { x: -0.98, y: 0.456, z: -1.9, front: false, left: false },
-  ],
-};
 const DT = 1 / 60;
 function setup(kind: VehicleKind) {
   const p = new Physics();
   p.world.createCollider(RAPIER.ColliderDesc.cuboid(4000, 1, 4000).setTranslation(0, -1, 0).setFriction(0.7));
-  const car = new VehiclePhysics(p, VEHICLES[kind], kind === 'van' ? VAN : CAR, 0, 1.2, 0, 0);
+  const car = new VehiclePhysics(p, VEHICLES[kind], layoutFor(kind), 0, 1.2, 0, 0);
   const step = (input: DriveInput) => { car.fixedUpdate(DT, input); p.step(DT); car.postStep(); };
   for (let i = 0; i < 90; i++) step({ throttle: 0, steer: 0, handbrake: false });
   return { p, car, step };
@@ -42,7 +29,7 @@ function sideSlip(car: VehiclePhysics) {
 }
 export interface HandlingMetrics {
   kind: VehicleKind; t100: number; vTop: number; brake100: number; latG15: number; latG25: number; steerT90: number;
-  hbYawDeg: number; hbSpeedKeep: number; driftHold: number; driftSpeed: number; hbRecover: boolean; smallInputSlipDeg: number; revT5: number; slalomUp: number; revOk: boolean; maxSlipLaunch: number; upright: number;
+  turnR8: number; turnR15: number; yaw05: number; hbYawDeg: number; hbSpeedKeep: number; driftHold: number; driftSpeed: number; hbRecover: boolean; smallInputSlipDeg: number; revT5: number; slalomUp: number; revOk: boolean; maxSlipLaunch: number; upright: number;
 }
 export function measure(kind: VehicleKind): HandlingMetrics {
   const m = {} as HandlingMetrics; m.kind = kind;
@@ -76,6 +63,19 @@ export function measure(kind: VehicleKind): HandlingMetrics {
       upright = Math.min(upright, car.upVec().y);
     }
     if (vs === 15) m.latG15 = g / n; else m.latG25 = g / n;
+  }
+  for (const vs of [8, 15]) { // turning circle at full lock (radius of the driven path, m)
+    const { car, step } = setup(kind);
+    for (let i = 0; i < 60 * 20 && car.speed < vs; i++) step({ throttle: 1, steer: 0, handbrake: false });
+    let rs = 0, n = 0;
+    for (let i = 0; i < 60 * 4; i++) { step({ throttle: hold(car, vs), steer: 1, handbrake: false }); if (i > 120) { const v = car.body.linvel(); rs += Math.hypot(v.x, v.z) / Math.max(0.05, Math.abs(car.body.angvel().y)); n++; } }
+    if (vs === 8) m.turnR8 = rs / n; else m.turnR15 = rs / n;
+  }
+  { // yaw rate 0.5 s after a full-lock tap at 12 m/s (turn-in)
+    const { car, step } = setup(kind);
+    for (let i = 0; i < 60 * 20 && car.speed < 12; i++) step({ throttle: 1, steer: 0, handbrake: false });
+    for (let i = 0; i < 30; i++) step({ throttle: hold(car, 12), steer: 1, handbrake: false });
+    m.yaw05 = Math.abs(car.body.angvel().y);
   }
   { // steering response at 20 m/s: time to 90% of the yaw rate reached after 1.5 s
     const { car, step } = setup(kind);
@@ -141,12 +141,18 @@ describe('handling benchmark', () => {
     it(`${kind} handles like its class`, () => {
       const m = measure(kind);
       const f = (x: number, d = 2) => Number.isFinite(x) ? x.toFixed(d) : String(x);
-      process.stdout.write(`HANDLING ${kind.padEnd(6)} 0-100 ${f(m.t100, 1)}s top ${f(m.vTop, 0)}km/h brake100 ${f(m.brake100, 1)}m latG15 ${f(m.latG15)} latG25 ${f(m.latG25)} steerT90 ${f(m.steerT90)}s hbYaw ${f(m.hbYawDeg, 0)}deg hbKeep ${f(m.hbSpeedKeep)} recover ${m.hbRecover} driftHold ${f(m.driftHold)} @${f(m.driftSpeed, 1)}m/s smallSlip ${f(m.smallInputSlipDeg, 1)}deg rev5 ${f(m.revT5, 1)}s launchSlip ${f(m.maxSlipLaunch, 1)} upright ${f(m.upright)} slalomUp ${f(m.slalomUp)}\n`);
+      process.stdout.write(`HANDLING ${kind.padEnd(11)} 0-100 ${f(m.t100, 1)}s top ${f(m.vTop, 0)}km/h brake100 ${f(m.brake100, 1)}m latG15 ${f(m.latG15)} latG25 ${f(m.latG25)} steerT90 ${f(m.steerT90)}s R8 ${f(m.turnR8, 1)}m R15 ${f(m.turnR15, 1)}m yaw05 ${f(m.yaw05)} hbYaw ${f(m.hbYawDeg, 0)}deg hbKeep ${f(m.hbSpeedKeep)} recover ${m.hbRecover} driftHold ${f(m.driftHold)} @${f(m.driftSpeed, 1)}m/s smallSlip ${f(m.smallInputSlipDeg, 1)}deg rev5 ${f(m.revT5, 1)}s launchSlip ${f(m.maxSlipLaunch, 1)} upright ${f(m.upright)} slalomUp ${f(m.slalomUp)}\n`);
       expect(m.upright).toBeGreaterThan(0.7);
       expect(m.revOk).toBe(true);
       expect(m.slalomUp).toBeGreaterThan(0.6);
       expect(m.hbRecover).toBe(true);
-      expect(m.driftHold).toBeGreaterThan(0.6);
+      const mil = VEHICLES[kind].cls === 'military';
+      if (!mil) expect(m.driftHold).toBeGreaterThan(0.6);
+      // easy steering: quick turn-in, tight city turning circle, no plough at moderate speed
+      expect(m.steerT90).toBeLessThan(mil ? 0.4 : 0.25);
+      if (!mil) expect(m.turnR8).toBeLessThan(6.5);
+      if (!mil) expect(m.turnR15).toBeLessThan(18);
+      expect(m.yaw05).toBeGreaterThan(0.95);
       expect(m.smallInputSlipDeg).toBeLessThan(6);
       expect(m.brake100).toBeLessThan(45);
     });
