@@ -8,7 +8,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [ ] W0 setup: brief saved, hourly task, story mode removed (sandbox-only game).
 - [x] W1a Vehicles (done: 20 procedural skinned models, doors/glass/seat API in Vehicle, see report in git log) —: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
       convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
-- [ ] W1b People: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
+- [x] W1b People (done db1c060: UBC bodies, looks, locomotion, curbs, melee, voices, human.playAction API) —: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
       curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
 - [x] W1c Shooting (done 35bbd40: dot reticle, aim fix, hit zones, 18 guns, gun audio, glass) —: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
       models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
@@ -19,8 +19,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running: W1b people agent aad3c429bd7a6894f,
-  W2c city agent a6bd1913e4509c77d (08:00), W2d UI agent a19838b1ed2230462 (08:20) (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
+- Running: W2c city agent a6bd1913e4509c77d (08:00), W2d UI agent a19838b1ed2230462 (08:20), W2a car-entry agent ac08b21a2f1ec6198 (08:35). Next: W2b police after W2a. (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
