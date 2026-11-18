@@ -405,7 +405,8 @@ export class Vehicle {
     if (this.glassMat) this.glassMat.userData.broken.value = 0;
     for (const d of this.doors) { d.hanging = false; d.open = 0; }
   }
-  private disposed = false;
+  /** True once removed from the world (its physics body is gone: never query it). */
+  disposed = false;
   dispose() {
     if (this.disposed) return; this.disposed = true;
     this.phys.dispose(); this.group.removeFromParent();

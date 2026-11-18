@@ -17,6 +17,8 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _n = new THREE.Vector3
 
 export class FacadeBuilder {
   pos: number[] = []; nor: number[] = []; uv: number[] = []; col: number[] = []; f1: number[] = []; f2: number[] = []; f3: number[] = [];
+  /** Drops the JS number arrays once the GPU-bound typed arrays exist (they cost 8 bytes/element and stay reachable via Chunked). */
+  release() { this.pos = []; this.nor = []; this.uv = []; this.col = []; this.f1 = []; this.f2 = []; this.f3 = []; }
   get empty() { return this.pos.length === 0; }
   private vert(p: THREE.Vector3, n: THREE.Vector3, u: number, v: number, c: THREE.Color, s: WallSpec) {
     this.pos.push(p.x, p.y, p.z); this.nor.push(n.x, n.y, n.z); this.uv.push(u, v); this.col.push(c.r, c.g, c.b);
@@ -113,6 +115,7 @@ export class FacadeBuilder {
     g.setAttribute('facade2', new THREE.Float32BufferAttribute(this.f2, 4));
     g.setAttribute('facade3', new THREE.Float32BufferAttribute(this.f3, 4));
     g.computeBoundingSphere(); g.computeBoundingBox();
+    this.release();
     return g;
   }
 }
@@ -143,6 +146,7 @@ function template(key: string, make: () => THREE.BufferGeometry) {
 
 export class TrimBuilder {
   pos: number[] = []; nor: number[] = []; uv: number[] = []; col: number[] = []; tr: number[] = [];
+  release() { this.pos = []; this.nor = []; this.uv = []; this.col = []; this.tr = []; }
   get empty() { return this.pos.length === 0; }
   get vertexCount() { return this.pos.length / 3; }
   /** Appends a template geometry transformed by m. uvs are scaled to metres by `uvScale`. */
@@ -195,8 +199,21 @@ export class TrimBuilder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('trim', new THREE.Float32BufferAttribute(this.tr, 4));
     g.computeBoundingSphere(); g.computeBoundingBox();
+    this.release();
     return g;
   }
+}
+
+/** Static geometry only: once uploaded to the GPU the CPU copies are never read again (no raycast/clone), so drop them (saves ~300 MB). */
+export function freeAfterUpload(g: THREE.BufferGeometry, keep: readonly string[] = []) {
+  g.computeBoundingSphere(); if (!g.boundingBox) g.computeBoundingBox();
+  const drop = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+    if ((a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) return;
+    const ba = a as THREE.BufferAttribute; const Ctor = ba.array.constructor as new (n: number) => typeof ba.array;
+    ba.onUpload(() => { ba.array = new Ctor(0); });
+  };
+  for (const k in g.attributes) if (!keep.includes(k)) drop(g.attributes[k]);
+  if (g.index) drop(g.index);
 }
 
 /** Spatial buckets of builders so every chunk is one draw call per material. */
@@ -211,7 +228,8 @@ export class Chunked<T extends { empty: boolean; build(): THREE.BufferGeometry }
     const out: THREE.Mesh[] = [];
     for (const [k, b] of this.map) {
       if (b.empty) continue;
-      const m = new THREE.Mesh(b.build(), mat); m.castShadow = opts.cast ?? true; m.receiveShadow = opts.receive ?? true;
+      const geo = b.build(); freeAfterUpload(geo);
+      const m = new THREE.Mesh(geo, mat); m.castShadow = opts.cast ?? true; m.receiveShadow = opts.receive ?? true;
       m.name = `${opts.name ?? 'chunk'}@${k}`; if (opts.small) m.userData.small = true;
       parent.add(m); out.push(m);
     }

@@ -6,6 +6,7 @@
  *  - cached "extras" geometry per hairstyle/facial hair/hat/garment combination (hair shells generated from the
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
+import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -601,28 +602,41 @@ const HAIR_SHELL: Partial<Record<HairStyle, { thick: (hn: THREE.Vector3, p: THRE
 };
 
 /** Builds (and caches) the extras geometry for a look. */
-export function extrasGeometry(base: BodyBase, assets: HumanAssets, look: FullLook): THREE.BufferGeometry | null {
+export function extrasGeometries(base: BodyBase, assets: HumanAssets, look: FullLook): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const ubc = ['long', 'buns', 'parted', 'buzz'].includes(look.hairStyle);
+  // The scanned (UBC) hair/beard meshes are ~100k vertices (7 MB) each: they are cached on their own so every person with
+  // that hair shares one copy, instead of one per hair x hat x garment combination.
+  for (const [kind, key] of [['hair', ubc ? `hair|${look.hairStyle}` : ''], ['facial', look.facial !== 'none' ? `facial|${look.facial}` : ''], ['misc', `${ubc ? 'ubc' : look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`]] as const) {
+    if (!key) continue;
+    const g = extrasPart(base, assets, look, kind, key); if (g) out.push(g);
+  }
+  return out;
+}
+function extrasPart(base: BodyBase, assets: HumanAssets, look: FullLook, kind: 'hair' | 'facial' | 'misc', key: string): THREE.BufferGeometry | null {
   const hat = look.hatStyle, hairS = look.hairStyle;
-  const key = `${hairS}|${look.facial}|${hat}|${look.topStyle}|${look.bottomStyle}`;
   if (base.extras.has(key)) return base.extras.get(key)!;
   const parts: Part[] = [];
+  const hairOnly = kind === 'hair', facialOnly = kind === 'facial', misc = kind === 'misc';
   const hairThick = (hn: THREE.Vector3, p: THREE.Vector3) => HAIR_SHELL[hairS]?.thick(hn, p) ?? 0.012;
   // ---- hair
   const shell = HAIR_SHELL[hairS];
-  if (shell && !(hat !== 'none' && ['crew', 'fade', 'cornrows'].includes(hairS))) parts.push(scalpShell(base, shell.line ?? hairline, shell.thick, R.HAIRP, 0.1, shell.along));
+  if (misc && shell && !(hat !== 'none' && ['crew', 'fade', 'cornrows'].includes(hairS))) parts.push(scalpShell(base, shell.line ?? hairline, shell.thick, R.HAIRP, 0.1, shell.along));
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-  switch (hairS) {
-    case 'long': parts.push(ubcHair(base, assets, 'long')); break;
-    case 'buns': parts.push(ubcHair(base, assets, 'buns')); break;
-    case 'parted': parts.push(ubcHair(base, assets, 'parted')); break;
-    case 'buzz': parts.push(ubcHair(base, assets, base.sex === 'f' ? 'buzzF' : 'buzz')); break;
+  if (hairOnly || misc) switch (hairS) {
+    case 'long': if (hairOnly) parts.push(ubcHair(base, assets, 'long')); break;
+    case 'buns': if (hairOnly) parts.push(ubcHair(base, assets, 'buns')); break;
+    case 'parted': if (hairOnly) parts.push(ubcHair(base, assets, 'parted')); break;
+    case 'buzz': if (hairOnly) parts.push(ubcHair(base, assets, base.sex === 'f' ? 'buzzF' : 'buzz')); break;
     case 'ponytail': {
+      if (!misc) break;
       parts.push(tube([V(0, 0.35, -1.0), V(0, 0.18, -1.22), V(0, -0.3, -1.25), V(0, -0.9, -1.15), V(0, -1.5, -1.05)], t => 0.026 * (1 - t * 0.55) + 0.01 * Math.sin(t * 3.14), base));
       parts.push(headPart(base, new THREE.TorusGeometry(0.19, 0.06, 6, 12).rotateX(0.5).translate(0, 0.3, -1.03), R.HAT));
       break;
     }
-    case 'bun': parts.push(headPart(base, new THREE.SphereGeometry(0.38, 14, 10).scale(1, 0.85, 0.85).translate(0, 0.72, -0.95), R.HAIRP)); break;
+    case 'bun': if (misc) parts.push(headPart(base, new THREE.SphereGeometry(0.38, 14, 10).scale(1, 0.85, 0.85).translate(0, 0.72, -0.95), R.HAIRP)); break;
     case 'braids': {
+      if (!misc) break;
       for (let i = 0; i < 14; i++) {
         const a = -2.2 + (i / 13) * 4.4; const sx = Math.sin(a) * 1.02, sz = -Math.cos(a) * 1.02;
         const len = 1.9 + (i % 3) * 0.15;
@@ -631,6 +645,7 @@ export function extrasGeometry(base: BodyBase, assets: HumanAssets, look: FullLo
       break;
     }
     case 'bob': {
+      if (!misc) break;
       // a curtain of hair from the hairline down to the jaw, open at the face
       const ring = new THREE.CylinderGeometry(1.1, 1.18, 1.0, 22, 3, true, Math.PI * 0.32, Math.PI * 1.36);
       ring.translate(0, -0.22, -0.06);
@@ -639,11 +654,11 @@ export function extrasGeometry(base: BodyBase, assets: HumanAssets, look: FullLo
     }
   }
   // ---- facial hair
-  if (look.facial === 'beard') parts.push(ubcHair(base, assets, 'beard'));
+  if (!facialOnly) { /* no facial hair here */ } else if (look.facial === 'beard') parts.push(ubcHair(base, assets, 'beard'));
   else if (look.facial === 'goatee') parts.push(ubcHair(base, assets, 'beard', R.HAIR, (x, y) => Math.abs(x - base.head.center.x) < 0.028 && y < base.head.joint.y + 0.07));
   else if (look.facial === 'moustache') parts.push(ubcHair(base, assets, 'beard', R.HAIR, (x, y, z) => Math.abs(x - base.head.center.x) < 0.035 && y > base.head.joint.y + 0.045 && z > base.head.center.z + 0.06));
   // ---- hats
-  if (hat === 'cap' || hat === 'police') {
+  if (!misc) { /* hats are in the misc part */ } else if (hat === 'cap' || hat === 'police') {
     const capLine = (_x: number, z: number) => THREE.MathUtils.lerp(0.02, 0.36, THREE.MathUtils.smoothstep(z, 0.1, 0.75));
     parts.push(scalpShell(base, capLine, (hn, p) => hairThick(hn, p) * 0.6 + 0.009, R.HAT, 0.04));
     const brim = new THREE.CylinderGeometry(0.9, 0.9, 0.04, 18, 1, false, -Math.PI / 2, Math.PI).scale(0.95, 1, 0.75).rotateX(-0.12).translate(0, 0.3, 0.72);
@@ -654,39 +669,41 @@ export function extrasGeometry(base: BodyBase, assets: HumanAssets, look: FullLo
     parts.push(headPart(base, new THREE.TorusGeometry(1.04, 0.1, 6, 26).rotateX(Math.PI / 2 - 0.42).translate(0, 0.22, -0.02), R.HAT));
   }
   // ---- garments
+  const gl = (misc ? look : { topStyle: '', bottomStyle: '' }) as { topStyle: string; bottomStyle: string };
   const J = base.J;
   const T = (p: number) => p; // torso param helper (0 crotch .. 1 neck base)
   const sm = THREE.MathUtils.smoothstep;
-  if (look.topStyle === 'hoodie') {
+  if (gl.topStyle === 'hoodie') {
     // hood: a soft roll of fabric lying around the back of the neck and over the upper back
     parts.push(bodyBand(base, (reg, c, p, n) => reg === R.TORSO && n.z < 0.35 && c > T(0.86) && c < 1.1
       ? 0.04 * sm(c, 0.86, 0.95) * (1 - sm(c, 1.02, 1.1)) * sm(-n.z, -0.35, 0.2) + 0.02 : -1, R.CTOP));
   }
-  if (['shirt', 'polo', 'uniform', 'jacket', 'suit', 'blouse'].includes(look.topStyle)) {
-    const big = look.topStyle === 'jacket' || look.topStyle === 'suit';
+  if (['shirt', 'polo', 'uniform', 'jacket', 'suit', 'blouse'].includes(gl.topStyle)) {
+    const big = gl.topStyle === 'jacket' || gl.topStyle === 'suit';
     parts.push(bodyBand(base, (reg, c, p, n) => {
       if (reg !== R.TORSO || c < 0.985 || c > (big ? 1.11 : 1.08)) return -1;
       if (n.z > 0.6 && Math.abs(p.x) < (big ? 0.035 : 0.018)) return -1; // open at the throat
       return (big ? 0.03 : 0.017) * (1 - sm(c, big ? 1.07 : 1.05, big ? 1.11 : 1.08) * 0.5);
     }, R.CTOP));
   }
-  if (look.topStyle === 'hoodie' || look.topStyle === 'jacket') {
+  if (gl.topStyle === 'hoodie' || gl.topStyle === 'jacket') {
     // ribbed cuffs and waistband
     parts.push(bodyBand(base, (reg, c) => reg === R.ARM && c > 0.93 && c < 0.985 ? 0.026 : -1, R.CTOP));
   }
-  if (look.bottomStyle === 'skirt' || look.topStyle === 'dress') {
-    const hipY = J.thighL.y + 0.02, kneeY = J.shinL.y + (look.topStyle === 'dress' ? 0.02 : 0.07);
+  if (gl.bottomStyle === 'skirt' || gl.topStyle === 'dress') {
+    const hipY = J.thighL.y + 0.02, kneeY = J.shinL.y + (gl.topStyle === 'dress' ? 0.02 : 0.07);
     const hipR = Math.abs(J.thighL.x) + 0.115, len = hipY - kneeY;
     const sk = new THREE.CylinderGeometry(hipR, hipR + 0.11, len, 24, 4, true);
     sk.scale(1, 1, 0.82).translate(0, (hipY + kneeY) / 2, J.hips.z - 0.005);
     const hipsI = base.boneNames.indexOf('DEF-hips'), tl = base.boneNames.indexOf('DEF-thighL'), tr = base.boneNames.indexOf('DEF-thighR');
-    parts.push(garment(base, sk, look.topStyle === 'dress' ? R.CTOP : R.CBOT, p => {
+    parts.push(garment(base, sk, gl.topStyle === 'dress' ? R.CTOP : R.CBOT, p => {
       const down = THREE.MathUtils.clamp((hipY - p.y) / len, 0, 1) * 0.75;
       const side = THREE.MathUtils.clamp(p.x / (hipR * 0.8), -1, 1) * 0.5 + 0.5; // 1 = left
       return { si: [hipsI, tl, tr, 0], sw: [1 - down, down * side, down * (1 - side), 0] };
     }));
   }
   const g = assemble(base, parts);
+  if (g) freeAfterUpload(g); // extras are never read on the CPU again (frustumCulled is off): keep only the GPU copy
   base.extras.set(key, g);
   return g;
 }

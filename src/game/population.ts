@@ -176,7 +176,7 @@ export class Population {
       h.mesh.castShadow = d < 40;
       const inView = d < 6 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 2.4));
       h.mesh.visible = inView;
-      h.setDetail(d < 70 && inView); if (h.extras) h.extras.castShadow = d < 30;
+      h.setDetail(d < 70 && inView); for (const e of h.extras) e.castShadow = d < 30;
     }
     // Despawn
     for (const n of [...this.npcs]) {

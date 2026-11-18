@@ -357,3 +357,22 @@ test('the respray prompt goes away once the car has been resprayed', async ({ pa
   expect(r.after).toBe(null);
   clean(p);
 });
+
+test('a car despawned mid car-entry job drops the job instead of panicking the physics world', async ({ page }) => {
+  const p = watch(page);
+  await boot(page);
+  await quietStreets(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.player.place(-420, 0.3, -102, 0);
+    const v = g.vehicles.spawn('sedan', -420, -98, -Math.PI / 2); v.persistent = true;
+    g.player.place(v.doorPoint(1).x, v.position.y, v.doorPoint(1).z, 0); g.input.tap('KeyF');
+    for (let i = 0; i < 3; i++) g.frame(1 / 30, false);
+    const started = g.carEntry.active;
+    g.vehicles.remove(v); // what traffic does when the player teleports away
+    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
+    return { started, active: g.carEntry.active };
+  });
+  expect(r.active).toBe(false);
+  clean(p);
+});

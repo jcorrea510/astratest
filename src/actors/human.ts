@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { loadHumanAssets, extrasGeometry, type HumanAssets, type BodyBase } from './humanAssets';
+import { loadHumanAssets, extrasGeometries, type HumanAssets, type BodyBase } from './humanAssets';
 import { personMaterial, applyLookUniforms, type PersonUniforms } from './humanMaterial';
 import { ACTIONS, BONE_OF, BONE_ORDER, samplePose, type ActionDef, type BoneKey, type Euler } from './actions';
 import { resolveLook, type Look, type FullLook } from './look';
@@ -52,7 +52,7 @@ export class Human {
   root = new THREE.Group();
   model: THREE.Object3D;
   mesh: THREE.SkinnedMesh;
-  extras: THREE.SkinnedMesh | null = null;
+  extras: THREE.SkinnedMesh[] = [];
   mixer: THREE.AnimationMixer;
   material: THREE.MeshStandardMaterial;
   rightHand: THREE.Object3D;
@@ -130,14 +130,16 @@ export class Human {
     this.model.scale.set(s * b, s, s * (0.55 + b * 0.45));
   }
   private buildExtras() {
-    if (this.extras) { this.extras.removeFromParent(); this.extras = null; }
-    const g = extrasGeometry(this.base, this.tpl.assets, this.look);
-    if (!g) return;
-    const ex = new THREE.SkinnedMesh(g, this.material);
-    ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
-    ex.castShadow = true; ex.receiveShadow = true; ex.frustumCulled = false;
-    this.mesh.parent!.add(ex);
-    this.extras = ex;
+    for (const e of this.extras) e.removeFromParent();
+    this.extras = [];
+    for (const g of extrasGeometries(this.base, this.tpl.assets, this.look)) {
+      const ex = new THREE.SkinnedMesh(g, this.material);
+      ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
+      ex.boundingSphere = g.boundingSphere!.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
+      ex.castShadow = true; ex.receiveShadow = true; ex.frustumCulled = false;
+      this.mesh.parent!.add(ex);
+      this.extras.push(ex);
+    }
   }
   /** Re-dresses this person (sex changes are not supported in place: create a new Human for that). */
   applyLook(look: Look) {
@@ -340,7 +342,7 @@ export class Human {
     }
   }
   /** Shows/hides hair and garment extras (far LOD). */
-  setDetail(full: boolean) { if (this.extras) this.extras.visible = full; }
+  setDetail(full: boolean) { for (const e of this.extras) e.visible = full; }
   dispose() {
     this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); this.material.dispose(); this.root.removeFromParent(); this.mesh.skeleton.dispose();
   }

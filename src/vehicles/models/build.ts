@@ -11,6 +11,7 @@ import { wheelSoup, blob, rbox, cyl, tube, plate, decalQuad, interiorSoup, at } 
 import { SHAPES, GROUND, axlesOf, layoutFor, seatsFor, type CarShape, type SeatDef } from '../shapes';
 import type { VehicleKind } from '../specs';
 import type { VehicleLayout } from '../vehiclePhysics';
+import { freeAfterUpload } from '../../world/builders';
 
 export interface BoneDef { parent: number; pos: [number, number, number]; name: string }
 export interface DoorDef { side: 'left' | 'right'; row: 0 | 1; bone: number; hinge: THREE.Vector3; z0: number; z1: number; outX: number; beltY: number }
@@ -71,6 +72,8 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     if (s.type === 'tank') trackLen = tankParts(kit, body, lod, bl);
     body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0);
     lods.push({ body: body.toGeometry(), glass: glass && glass.tris ? glass.toGeometry() : null });
+    // CPU copies are dead weight once uploaded (~7 MB per kind); only the lod-0 body keeps what dent deformation reads.
+    freeAfterUpload(lods[lod].body, lod === 0 ? ['position', 'normal', 'skinIndex'] : []); if (lods[lod].glass) freeAfterUpload(lods[lod].glass!);
     if (lod === 0) {
       lods[0].body.computeBoundingBox(); bbox = lods[0].body.boundingBox!.clone();
       // door hinges at the front edge of each door, on the outer skin

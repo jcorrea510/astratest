@@ -40,6 +40,7 @@ export interface CityVisuals {
 /** Non-indexed geometry builder with metre-space UVs and per-vertex colour (ground slabs, markings). */
 class GeoBuilder {
   pos: number[] = []; nor: number[] = []; uv: number[] = []; col: number[] = [];
+  release() { this.pos = []; this.nor = []; this.uv = []; this.col = []; }
   quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, uvs: number[], color: THREE.Color) {
     const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(d, a)).normalize();
     const vs = [a, b, c, a, c, d], us = [0, 1, 2, 0, 2, 3];
@@ -52,6 +53,7 @@ class GeoBuilder {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.computeBoundingSphere(); g.computeBoundingBox();
+    this.release();
     return g;
   }
 }

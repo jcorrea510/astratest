@@ -10,6 +10,13 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
   const p = watch(page);
   await boot(page);
   const minutes = Number(process.env.SOAK_MINUTES ?? 20);
+  // Heap is measured after forced full GCs (--expose-gc). NOTE: HeapProfiler.collectGarbage over CDP also runs wasm-object
+  // finalizers eagerly and makes Rapier panic ("unreachable") mid-run, so the in-page gc() is used instead.
+  const heapMB = async () => {
+    return page.evaluate(async () => { const w = window as any; for (let i = 0; i < 3; i++) { w.gc(); await new Promise(r => setTimeout(r, 30)); } const g = (window as any).__game; const i = g.renderer.renderer?.info; return { heap: (performance as any).memory.usedJSHeapSize / 1048576, geo: i?.memory.geometries ?? 0, tex: i?.memory.textures ?? 0 }; });
+  };
+  const start = await heapMB();
+  console.log(`heap at start (forced GC): ${start.heap.toFixed(1)} MB, geometries ${start.geo}, textures ${start.tex}`);
   const samples: { min: number; heap: number; npcs: number; vehicles: number; particles: number; sceneChildren: number; pickups: number }[] = [];
   const issues: string[] = [];
   for (let minute = 0; minute < minutes; minute++) {
@@ -46,11 +53,10 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
         if (g.wheelOpen && !g.input.held('wheel')) { /* closes next frame */ }
       }
       for (const k of ['KeyW', 'KeyA', 'KeyD', 'Space', 'Mouse0', 'Mouse2', 'ShiftLeft', 'Tab']) g.input.release(k);
-      if (w.gc) { w.gc(); w.gc(); }
-      const mem = (performance as any).memory;
-      return { issues, sample: { min: minute, heap: mem ? mem.usedJSHeapSize / 1048576 : 0, npcs: g.pop.npcs.length, vehicles: g.vehicles.list.length, particles: g.particles.count, sceneChildren: g.renderer.scene.children.length, pickups: g.pickups.length } };
+      return { issues, sample: { min: minute, heap: 0, npcs: g.pop.npcs.length, vehicles: g.vehicles.list.length, particles: g.particles.count, sceneChildren: g.renderer.scene.children.length, pickups: g.pickups.length } };
     }, minute);
     issues.push(...r.issues);
+    const hm = await heapMB(); r.sample.heap = hm.heap; (r.sample as any).geo = hm.geo; (r.sample as any).tex = hm.tex;
     samples.push(r.sample);
     console.log(JSON.stringify(r.sample));
   }
@@ -58,12 +64,11 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
   expect(issues).toEqual([]);
   // Bounded populations
   for (const s of samples) { expect(s.npcs).toBeLessThan(90); expect(s.vehicles).toBeLessThan(90); expect(s.sceneChildren).toBeLessThan(900); }
-  // No steady memory growth: compare the average of the last 3 samples to minutes 3-5 (after warm-up).
-  const avg = (a: typeof samples) => a.reduce((x, y) => x + y.heap, 0) / a.length;
-  if (samples[0].heap > 0 && samples.length >= 8) {
-    const early = avg(samples.slice(2, 5)), late = avg(samples.slice(-3));
-    console.log(`heap early ${early.toFixed(1)} MB, late ${late.toFixed(1)} MB`);
-    expect(late).toBeLessThan(early * 1.3 + 15);
-  }
+  // Memory: no leak and no bloat. Forced-GC heap at the very start vs the very end of the run.
+  // Live population differs per sample (a crowd costs ~50 MB), so the end value is the minimum of the last 3 samples.
+  const end = { heap: Math.min(...samples.slice(-3).map(x => x.heap)) };
+  console.log(`heap start ${start.heap.toFixed(1)} MB -> end ${end.heap.toFixed(1)} MB (growth ${(end.heap - start.heap).toFixed(1)} MB)`);
+  expect(start.heap, 'baseline heap (MB)').toBeLessThan(450);
+  expect(end.heap - start.heap, 'heap growth over the soak (MB)').toBeLessThan(40);
   clean(p);
 });

@@ -178,6 +178,7 @@ export class CarEntry {
     const c = this.player;
     if (j.phase !== 'approach' && j.phase !== 'smash' && j.phase !== 'open' && j.phase !== 'jack') return;
     const v = j.v;
+    if (this.vanished(j)) return;
     v.group.updateMatrixWorld();
     if (j.phase === 'approach') {
       j.life += dt;
@@ -365,6 +366,7 @@ export class CarEntry {
     if (!j) return dragged;
     j.t += dt;
     const v = j.v;
+    if (this.vanished(j)) return dragged;
     if (v.destroyed && j.kind === 'enter' && !this.parented) { this.abort(); return dragged; }
     // moving cancels the walk-up (and the break-in before the glass goes)
     if ((j.phase === 'approach' || (j.phase === 'open' && !j.opened) || (j.phase === 'smash' && j.t < 0.3)) && j.life + j.t > 0.2 && !this.game.inputBlocked) {
@@ -536,6 +538,11 @@ export class CarEntry {
       g.audio.play('engineStart', { pos: v.position, volume: 1 });
       this.job = null;
     }
+  }
+  /** The target car was despawned mid-job (e.g. the player teleported far away): its physics body is gone, so drop the job. */
+  private vanished(j: NonNullable<CarEntry['job']>): boolean {
+    if (!(j.v instanceof Vehicle) || !j.v.disposed) return false;
+    j.opened = false; this.abort(); return true;
   }
   private abort(msg?: string) {
     const j = this.job; if (!j) return;
