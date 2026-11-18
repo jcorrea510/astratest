@@ -1,7 +1,27 @@
 # Progress (Meridian Afterglow)
 
-Resume rule: read docs/BRIEF.md and this file, continue the first unfinished item under "Next". Never restart.
-Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meridian Afterglow build") fires into this session; delete it when everything is done.
+Resume rule: read docs/BRIEF2.md (current overnight brief) and this file; continue the first unfinished item under
+"Overnight plan". Never restart. Keep context lean: delegate big chunks to agents with file ownership, commit often.
+Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hour") fires into this session; delete it when all done.
+
+## Overnight plan (BRIEF2) — status
+- [ ] W0 setup: brief saved, hourly task, story mode removed (sandbox-only game).
+- [ ] W1a Vehicles: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
+      convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
+- [ ] W1b People: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
+      curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
+- [ ] W1c Shooting: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
+      models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
+- [ ] W2a Car entry: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
+      smash window + hotwire. Helicopters (helipad to steal, flyable).
+- [ ] W2b Police: foot cops that act, escalation by stars (cruisers, SWAT, FBI SUVs, army + tank, helicopter), handcuff
+      arrest animation, WASTED / ARRESTED cards.
+- [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
+      highway/overpass, alleys, more districts), walk-in robbable stores.
+- [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
+- Running (started 02:20 UTC): W1a vehicles agent a8d1c0f8913e5446f, W1b people agent aad3c429bd7a6894f,
+  W1c combat agent a911474b5708d5a9f (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
+- [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
 - M1 foundation (Codex): Vite + TS + Three.js + Rapier scaffold, lint/typecheck/test tooling.
@@ -23,7 +43,7 @@ Auto-resume: hourly scheduled task `trig_01QHNBHfHX5vN6UurzWLwPga` ("Resume Meri
 - Deploy: gh-pages branch pushed manually -> Pages auto-enabled (has_pages: true, pages-build-deployment succeeded). Workflow .github/workflows/deploy.yml runs tests then publishes dist to gh-pages on push to main.
 - Perf (medium, swiftshader measurement): 184-311 draw calls, 0.46-0.89 M triangles per frame.
 
-## Status (~00:00 UTC, 18 Nov): DONE
+## Status (~00:00 UTC, 18 Nov): first brief DONE
 - Quality round on main (UI overhaul, movement, shooting + gun audio, driving + car glass, store hold-ups, sandbox).
 - Bug-bash history: pass 1 (7 bugs), A (6), B (1), C (1), D (clean), E (1: beach ramps into the sea), F CLEAN, G CLEAN.
   Every bug has a regression e2e test. Two consecutive clean passes (F, G) on bb1dfe0.
