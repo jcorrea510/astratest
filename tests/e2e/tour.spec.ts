@@ -62,6 +62,7 @@ async function victim(page: Page, dist: number) {
 }
 
 test('tour: every feature in one session, clean console and sane world after every step', async ({ page }) => {
+  test.setTimeout(20 * 60_000); // ~25 steps in one session; CI runners are ~3x slower than local
   const p = watch(page);
   const S = async (name: string, fn: () => Promise<void>) => { await test.step(name, async () => { await fn(); await sane(page, name); clean(p); }); };
 

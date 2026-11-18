@@ -160,7 +160,7 @@ test('civilians react to the player: brushing past, aiming a gun, gunfire', asyn
   clean(p);
 });
 
-test('people are varied: both sexes, many heights, skin tones, hairstyles and outfits; two draw calls each', async ({ page }) => {
+test('people are varied: both sexes, many heights, skin tones, hairstyles and outfits; at most four draw calls each', async ({ page }) => {
   const p = watch(page);
   await boot(page);
   const r = await page.evaluate(() => {
@@ -181,6 +181,6 @@ test('people are varied: both sexes, many heights, skin tones, hairstyles and ou
   expect(r.hairs).toBeGreaterThanOrEqual(10);
   expect(r.tops).toBeGreaterThanOrEqual(7);
   expect(r.maxH - r.minH).toBeGreaterThan(0.2);
-  expect(r.maxMeshes).toBeLessThanOrEqual(2);
+  expect(r.maxMeshes).toBeLessThanOrEqual(4); // body + shared scanned hair + facial hair + other extras (memory fix shares hair geometry)
   clean(p);
 });
