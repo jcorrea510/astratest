@@ -1,10 +1,11 @@
-/** Sandbox mode: free play with everything unlocked and a tools panel (spawn cars, set the clock, wanted level, teleport...). */
+/** The game is a sandbox: free roam with a tools panel in the pause menu (spawn cars, set the clock, wanted level, teleport...). */
 import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, SandboxAction } from '../ui/contracts';
 import { WEAPONS, WEAPON_ORDER } from '../combat/weapons';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { PLACES } from './places';
+import type { SandboxTools } from './save';
 
 const KINDS: { value: VehicleKind; label: string }[] = (Object.keys(VEHICLES) as VehicleKind[]).map(k => ({ value: k, label: VEHICLES[k].name }));
 const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[] = [
@@ -20,20 +21,33 @@ const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[
 ];
 
 export class Sandbox {
-  god = true; infiniteAmmo = true; neverWanted = false; clockRunning = true;
+  god = false; infiniteAmmo = false; neverWanted = false; clockRunning = true;
   traffic: number; peds: number;
   private kind: VehicleKind = 'coupe'; private spot = 'pier';
   open = false;
   constructor(private game: Game, private ui: GameUI) {
     this.traffic = game.renderer.quality.traffic; this.peds = game.renderer.quality.pedestrians;
   }
-  /** New sandbox session: money, every weapon, full armor. */
+  /** A fresh game: some cash, a pistol, golden hour. Everything else is earned, bought or taken from the tools panel. */
   setup() {
     const g = this.game;
-    g.money = 50000; g.hour = 18.2; g.player.armor = 100;
-    for (const id of WEAPON_ORDER) g.pcombat.give(id, WEAPONS[id].clip * 6 + (WEAPONS[id].cat === 'throw' ? 4 : 0)); // COMBAT: every weapon incl. melee and throwables
-    g.pcombat.inv.medkits = 5;
-    g.trafficCap = this.traffic; g.pedCap = this.peds;
+    g.money = 2500; g.hour = 18.2; g.player.armor = 0;
+    g.pcombat.give('pistol', WEAPONS.pistol.clip * 3);
+    g.pcombat.inv.medkits = 1;
+    this.applyCaps();
+  }
+  applyCaps() { this.game.trafficCap = this.traffic; this.game.pedCap = this.peds; this.game.clockRunning = this.clockRunning; }
+  /** Every weapon incl. melee and throwables, with plenty of ammo. */
+  arsenal() {
+    const g = this.game;
+    for (const id of WEAPON_ORDER) g.pcombat.give(id, WEAPONS[id].clip * 6 + (WEAPONS[id].cat === 'throw' ? 4 : 0));
+    g.pcombat.inv.medkits = Math.max(g.pcombat.inv.medkits, 5);
+  }
+  tools(): SandboxTools { return { god: this.god, ammo: this.infiniteAmmo, never: this.neverWanted, clock: this.clockRunning }; }
+  loadTools(t: SandboxTools | undefined) {
+    if (!t) return;
+    this.god = t.god; this.infiniteAmmo = t.ammo; this.neverWanted = t.never; this.clockRunning = t.clock;
+    this.applyCaps();
   }
   actions(): SandboxAction[] {
     const g = this.game;
@@ -42,6 +56,7 @@ export class Sandbox {
       { id: 'ammo', group: 'Player', label: 'Infinite ammo', kind: 'toggle', value: this.infiniteAmmo },
       { id: 'heal', group: 'Player', label: 'Full health and armor', kind: 'button' },
       { id: 'cash', group: 'Player', label: 'Add $10,000', detail: `$${g.money.toLocaleString('en-US')}`, kind: 'button' },
+      { id: 'arsenal', group: 'Player', label: 'Give every weapon', kind: 'button' },
       { id: 'heat', group: 'Police', label: 'Wanted level', kind: 'slider', value: g.police.heat, min: 0, max: 5, step: 1 },
       { id: 'never', group: 'Police', label: 'Police ignore you', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
@@ -67,6 +82,7 @@ export class Sandbox {
       case 'ammo': this.infiniteAmmo = !!v; break;
       case 'heal': g.player.health = g.player.maxHealth; g.player.armor = 100; break;
       case 'cash': g.addMoney(10000); break;
+      case 'arsenal': this.arsenal(); break;
       case 'heat': if (Number.isFinite(num)) g.police.setHeat(Math.round(num), g.player.pos); break;
       case 'never': this.neverWanted = !!v; if (this.neverWanted) g.police.clear(); break;
       case 'hour': if (Number.isFinite(num)) g.hour = ((num % 24) + 24) % 24; break;

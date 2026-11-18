@@ -181,7 +181,7 @@ export function treeGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: T
   const h = r.range(3.2, 4.2);
   t.cyl(0, 0, 0, 0.2, 0.13, h, 7, bark, [0.95, 0, 2, 0]);
   const o = { pos: [] as number[], nor: [] as number[], uv: [] as number[], col: [] as number[] };
-  const tint = C(['#7d9a52', '#6f8f4a', '#86a05a'][seed % 3]);
+  const tint = C(['#a7c46a', '#98b860', '#b3c878', '#8fb05a'][seed % 4]);
   const nb = r.int(3, 5);
   for (let i = 0; i < nb; i++) {
     const a = (i / nb) * Math.PI * 2 + r.range(-0.3, 0.3), len = r.range(1.6, 2.6), up = r.range(0.9, 1.6);
@@ -223,7 +223,7 @@ export function palmGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: T
 }
 export function shrubGeos(seed: number): { leaves: THREE.BufferGeometry } {
   const r = new Rng(seed); const o = { pos: [] as number[], nor: [] as number[], uv: [] as number[], col: [] as number[] };
-  canopy(r, 0, 0.55, 0, 0.9, 0.6, 0.9, 10, 1.1, o, C('#6a8a48'));
+  canopy(r, 0, 0.55, 0, 0.9, 0.6, 0.9, 10, 1.1, o, C('#94b464'));
   return { leaves: leafGeo(o) };
 }
 export function leafMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {

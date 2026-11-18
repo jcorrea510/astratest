@@ -50,6 +50,7 @@ export class Renderer {
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
   private shadowTarget = new THREE.Vector3();
+  private _fwd = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator;
   private envScene = new THREE.Scene();
   private envSky = new Sky();
@@ -85,13 +86,13 @@ export class Renderer {
     if (q.shadowMap > 0) {
       this.sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
       this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget;
-      const c = this.sun.shadow.camera; c.left = -q.shadowRange; c.right = q.shadowRange; c.top = q.shadowRange; c.bottom = -q.shadowRange; c.near = 1; c.far = 400; c.updateProjectionMatrix();
+      const R = q.shadowRange * 1.6; const c = this.sun.shadow.camera; c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 400; c.updateProjectionMatrix();
     }
     this.renderer.shadowMap.needsUpdate = true;
     // Force materials to recompile for the new shadow configuration.
     this.scene.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined; if (m) (Array.isArray(m) ? m : [m]).forEach(mm => (mm.needsUpdate = true)); });
     this.buildComposer();
-    (this.scene.fog as THREE.Fog).far = q.drawDistance; this.camera.far = q.drawDistance + 1200; this.camera.updateProjectionMatrix();
+    (this.scene.fog as THREE.Fog).far = q.drawDistance * 1.9; this.camera.far = q.drawDistance + 1200; this.camera.updateProjectionMatrix();
     this.resize();
   }
   private buildComposer() {
@@ -131,11 +132,13 @@ export class Renderer {
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
     this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
-    (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(110, 60, s.night);
+    (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(150, 70, s.night);
     this.renderer.toneMappingExposure = s.exposure;
     // Snap the shadow camera to texels to avoid shimmering.
-    const range = this.quality.shadowRange || 60, texel = (range * 2) / (this.quality.shadowMap || 1024);
-    this.shadowTarget.set(Math.round(focus.x / texel) * texel, 0, Math.round(focus.z / texel) * texel);
+    const range = (this.quality.shadowRange || 60) * 1.6, texel = (range * 2) / (this.quality.shadowMap || 1024);
+    const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;
+    const fx = focus.x + (fwd.x / fl) * ahead, fz = focus.z + (fwd.z / fl) * ahead;
+    this.shadowTarget.set(Math.round(fx / texel) * texel, 0, Math.round(fz / texel) * texel);
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(s.lightDir, 180);
     this.bloom.strength = THREE.MathUtils.lerp(0.2, 0.5, s.night);

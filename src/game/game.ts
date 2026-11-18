@@ -24,6 +24,10 @@ import { Traffic } from './traffic';
 import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
+import { CarEntry, type Enterable } from './carEntry';
+import { HeliManager } from '../vehicles/helicopterManager';
+import { Helicopter } from '../vehicles/helicopter';
+import type { HeliVariant } from '../vehicles/helicopterModel';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -73,6 +77,10 @@ export class Game {
   private pickupId = 0;
   deathT = -1;
   deathKind: 'down' | 'busted' = 'down';
+  /** [UI] seconds from going down to respawning (the UI stretches it while an arrest animation / title card plays) */
+  respawnDelay = 4.2;
+  /** [UI] title-screen flyover: the hidden player cannot be hit or go down */
+  ghost = false;
   stats = { kills: 0, distance: 0, crashes: 0 };
   /** Hooks for UI / missions */
   events = {
@@ -85,11 +93,16 @@ export class Game {
     onVehicleExited: (_v: Vehicle) => { },
     onExplosion: (_at: THREE.Vector3) => { },
     onBeforeDown: () => { },
+    /** [UI] police hook: set to play the handcuff animation; call done() when it ends and the ARRESTED card follows */
+    arrestAnimationDone: null as ((done: () => void) => void) | null,
   };
   wheelOpen = false;
   blockedInput = false;
   waypoint: THREE.Vector3 | null = null;
-  private entering: { v: Vehicle; t: number; from: THREE.Vector3; jack: boolean } | null = null;
+  /** CAR-ENTRY: animated getting in / out, carjacks, break-ins and hotwiring */
+  carEntry!: CarEntry;
+  helis!: HeliManager;
+  playerHeli: Helicopter | null = null;
   private lampLights: THREE.PointLight[] = [];
   private lampBulbs!: THREE.InstancedMesh;
   private lampPools!: THREE.InstancedMesh;
@@ -123,6 +136,9 @@ export class Game {
     this.particles = new Particles(this.renderer.scene, this.renderer.quality.particles);
     this.skids = new SkidMarks(this.renderer.scene);
     this.vehicles = new VehicleManager(this.renderer.scene, this.physics, this.assets, this.particles, this.skids, this.audio);
+    this.helis = new HeliManager(this.renderer.scene, this.physics, this.particles, this.audio);
+    this.helis.init();
+    this.carEntry = new CarEntry(this);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
@@ -168,6 +184,8 @@ export class Game {
       if (e.vehicle === this.playerVehicle) { this.cam.addShake(Math.min(0.8, e.impact / 18)); this.stats.crashes++; this.pop.danger(e.point, 15, this.player); }
     };
     this.vehicles.onExplode = (v, at) => this.explosion(at, v.lastDamagedBy === this.player ? this.player : null);
+    this.helis.onExplode = (h, at) => this.explosion(at, h.lastDamagedBy === this.player ? this.player : null);
+    this.helis.onCrash = (h, imp) => { if (h === this.playerHeli) { this.cam.addShake(Math.min(0.9, imp / 14)); this.stats.crashes++; } };
   }
   private onNpcKilled(n: Npc, by: Character | null) {
     if (n.dropMoney > 0 || (n.role !== 'civilian' && Math.random() < 0.8) || Math.random() < 0.3) this.spawnPickup('cash', n.dropMoney || Math.floor(10 + Math.random() * 40), n.pos);
@@ -228,11 +246,19 @@ export class Game {
     const blocked = this.inputBlocked;
     if (pv) {
       const mv = this.input.moveAxes();
-      pv.input.throttle = pv.destroyed || blocked ? 0 : this.input.throttle();
+      pv.input.throttle = pv.destroyed || blocked || !pv.ignition || this.carEntry.blocksDriving ? 0 : this.input.throttle();
       pv.input.steer = blocked ? 0 : -mv.x;
       pv.input.handbrake = !blocked && this.input.held('handbrake');
     }
-    this.playerCtl.fixedUpdate(dt, { canAim: this.pcombat.armed, blocked: !!this.entering || blocked });
+    const ph = this.playerHeli;
+    if (ph) {
+      const mv = this.input.moveAxes(), on = !blocked && !ph.destroyed && !this.carEntry.blocksDriving;
+      ph.input.lift = !on ? 0 : this.input.held('handbrake') ? 1 : this.input.held('sprint') || this.input.held('crouch') ? -1 : 0;
+      ph.input.pitch = on ? this.input.throttle() : 0;
+      ph.input.yaw = on ? -mv.x : 0;
+    }
+    if (this.carEntry.ownsMovement) this.carEntry.fixedUpdate(dt);
+    else this.playerCtl.fixedUpdate(dt, { canAim: this.pcombat.armed, blocked: this.carEntry.active || blocked });
     if (this.player.knockT > 0) this.player.knockT -= dt;
     this.traffic.fixedUpdate(dt, this.player, pv);
     for (const v of this.vehicles.list) {
@@ -240,17 +266,20 @@ export class Game {
       v.phys.fixedUpdate(dt, v.input);
     }
     this.pop.fixedUpdate(dt, this.player.pos);
+    this.helis.fixedUpdate(dt);
     this.physics.step(dt);
     this.vehicles.postStep(this.time);
+    this.helis.postStep();
     this.pop.vehicleHits(this.vehicles.list, this.player, (v, sp) => this.hitByVehicle(v, sp));
     this.pop.dodge(this.vehicles.list);
     if (pv) { const p = pv.position; this.stats.distance += Math.abs(pv.speed) * dt; this.player.pos.set(p.x, p.y, p.z); }
+    if (ph) { const p = ph.position; this.player.pos.set(p.x, p.y, p.z); if (p.y < -25 || !Number.isFinite(p.x)) { this.exitVehicle(true); ph.teleport(Number.isFinite(p.x) ? p.x : 0, 2, Number.isFinite(p.z) ? p.z : 0, 0); } }
     // Safety net: never fall out of the world
     if (this.player.pos.y < -30 || !Number.isFinite(this.player.pos.x)) this.safeRespawn();
     for (const v of this.vehicles.list) { const p = v.position; if (p.y < -25 || !Number.isFinite(p.x)) { if (v === pv) this.exitVehicle(true); v.phys.teleport(Number.isFinite(p.x) ? p.x : 0, 2, Number.isFinite(p.z) ? p.z : 0, 0); } }
   }
   private hitByVehicle(v: Vehicle, sp: number) {
-    if (this.playerVehicle) return;
+    if (this.playerVehicle || this.ghost || this.player.inVehicle) return;
     const killed = this.player.damage(sp * 4, v.driver, this.time);
     const vel = v.phys.body.linvel();
     this.player.vel.set(vel.x * 0.7, 4, vel.z * 0.7); this.player.grounded = false; // let the knock-up happen
@@ -270,41 +299,71 @@ export class Game {
     this.pop.prewarming = this.traffic.prewarming = false;
     for (let i = 0; i < 30; i++) this.fixedUpdate(1 / 60);
   }
-  /** Enter the nearest vehicle (carjacking if occupied) or leave the current one. */
+  /** Enter the nearest vehicle (walk to the door; carjacking if occupied) or get out of the current one. */
   toggleVehicle() {
-    if (this.entering || !this.player.alive || this.deathT >= 0) return;
-    if (this.playerVehicle) { this.exitVehicle(); return; }
-    const v = this.vehicles.nearest(this.player.pos, 4.2, c => !c.destroyed && !c.locked && Math.abs(c.speed) < 6);
-    if (!v) return;
-    const jack = !!v.driver && v.driver !== this.player;
-    this.entering = { v, t: 0, from: this.player.pos.clone(), jack };
-    this.player.human.playOnce('Interact', 'upper', 0.1);
-    this.audio.play('doorOpen', { pos: v.position });
-  }
-  private updateEntering(dt: number) {
-    const e = this.entering; if (!e) return;
-    if (this.deathT >= 0 || !this.player.alive) { this.entering = null; return; }
-    e.t += dt;
-    const door = e.v.doorPoint(1);
-    const k = Math.min(1, e.t / 0.4);
-    this.player.pos.lerpVectors(e.from, door, k * k * (3 - 2 * k)); this.player.pos.y = e.from.y;
-    this.player.body.setNextKinematicTranslation({ x: this.player.pos.x, y: this.player.pos.y + 0.87, z: this.player.pos.z });
-    this.player.faceTowards(Math.atan2(e.v.position.x - door.x, e.v.position.z - door.z), 10, dt);
-    this.player.human.setSpeed(k < 1 ? 2 : 0);
-    if (e.jack && e.t > 0.3 && e.v.driver && e.v.driver !== this.player) {
-      const car = this.traffic.carOf(e.v);
-      const n = this.traffic.eject(car, e.v, -1);
-      if (n) n.char.human.playOnce('Hit_Chest', 'full', 0.05);
-      this.police.report(e.v.kind === 'police' ? 'copCarTheft' : 'carjack', this.player.pos);
-      this.pop.danger(this.player.pos, 20, this.player);
+    if (this.carEntry.active || this.carEntry.playerDragged || !this.player.alive || this.deathT >= 0) return;
+    if (this.playerVehicle) { this.carEntry.beginExit(this.playerVehicle); return; }
+    if (this.playerHeli) { this.carEntry.beginExit(this.playerHeli); return; }
+    const lift = this.helis.liftNear(this.player.pos);
+    if (lift) {
+      this.player.place(lift.to.x, lift.to.y + 0.05, lift.to.z, this.player.yaw);
+      this.audio.play('doorClose', { pos: lift.to, volume: 0.6 });
+      this.events.onToast(lift.up ? `${lift.pad.def.name}` : 'Street level', 'info');
+      return;
     }
-    if (e.t >= 0.55) {
-      this.entering = null;
-      if (e.v.destroyed || (e.v.driver && e.v.driver !== this.player)) return;
-      this.seatPlayer(e.v);
-    }
+    const t = this.enterTarget();
+    if (t) this.carEntry.begin(t);
   }
+  /** The vehicle F would get into (nearest car or helicopter within reach). */
+  enterTarget(): Enterable | null {
+    const p = this.player.pos;
+    const v = this.vehicles.nearest(p, 6, c => !c.destroyed && !c.locked && Math.abs(c.speed) < 6);
+    const h = this.helis.nearest(p, 8, c => !c.destroyed && !c.driver && c.grounded);
+    if (v && h) return v.position.distanceTo(p) <= h.position.distanceTo(p) - 1.5 ? v : h;
+    return v ?? h;
+  }
+  /** Called by CarEntry when the player has sat down (no camera snap: the follow camera eases over). */
+  boardFinished(v: Enterable, _seat = 0) {
+    const h = this.player.human;
+    h.setState('drive'); h.setUpperMode('none'); h.setSpeed(0);
+    this.player.inVehicle = v; v.driver = this.player; v.playerUsed = true;
+    if (v instanceof Helicopter) {
+      this.playerHeli = v; v.engineOn = true; v.parked = false;
+      this.audio.play('engineStart', { pos: v.position, pitch: 0.7 });
+      this.events.onVehicleEntered(v as unknown as Vehicle);
+      return;
+    }
+    const car = v as Vehicle;
+    this.playerVehicle = car; this.traffic.unpark(car);
+    this.audio.setRadioActive(car.ignition);
+    this.events.onVehicleEntered(car);
+  }
+  /** Ends driving `v` without moving the player (CarEntry animates the exit). */
+  detachPlayer(v: Enterable, fast: boolean) {
+    if (v === this.playerVehicle) {
+      const car = this.playerVehicle;
+      this.playerVehicle = null; this.lastPlayerVehicle = car;
+      car.input.throttle = 0; car.input.steer = 0; car.input.handbrake = !fast;
+    }
+    if (v === this.playerHeli) {
+      const hh = this.playerHeli; this.playerHeli = null;
+      hh.input.lift = 0; hh.input.pitch = 0; hh.input.yaw = 0;
+      if (hh.grounded) hh.engineOn = false;
+    }
+    if (v.driver === this.player) v.driver = null;
+    this.audio.setRadioActive(false);
+  }
+  /** Sandbox / debug: parks a helicopter (variant civilian | news | police) next to the player or at a point. */
+  spawnHelicopter(variant: HeliVariant = 'civilian', x = this.player.pos.x + 8, z = this.player.pos.z, yaw = this.player.yaw): Helicopter {
+    const hit = this.physics.ray(x, this.player.pos.y + 20, z, 0, -1, 0, 60);
+    const h = this.helis.spawn(variant, x, hit ? this.player.pos.y + 20 - hit.toi : this.player.pos.y, z, yaw);
+    h.persistent = true; return h;
+  }
+  /** Instantly seats the player (scripts/tests; players walk in through CarEntry). */
   seatPlayer(v: Vehicle) {
+    this.carEntry?.cancel();
+    if (this.playerHeli) this.exitVehicle(true);
+    v.playerUsed = true; v.doorsLocked = false; v.ignition = true;
     this.playerVehicle = v; v.driver = this.player; this.player.inVehicle = v;
     this.traffic.unpark(v);
     this.player.setCollision(false);
@@ -318,7 +377,19 @@ export class Game {
     this.audio.setRadioActive(true);
     this.events.onVehicleEntered(v);
   }
+  /** Instantly out of the vehicle (scripts, death, flooding); the F key goes through CarEntry.beginExit instead. */
   exitVehicle(force = false) {
+    this.carEntry?.cancel();
+    const ph = this.playerHeli;
+    if (ph) {
+      this.detachPlayer(ph, false);
+      const p = ph.doorPoint(1);
+      this.renderer.scene.add(this.player.human.root);
+      this.player.place(p.x, Math.max(p.y, ph.position.y - 1), p.z, ph.yaw);
+      this.player.inVehicle = null; this.player.setCollision(true); this.player.human.setState('loco');
+      this.events.onVehicleExited(ph as unknown as Vehicle);
+      return;
+    }
     const v = this.playerVehicle; if (!v) return;
     void force;
     const pos = v.flooded ? v.position.clone().setY(WATER_LEVEL - 1.3) : this.findExitPoint(v);
@@ -358,9 +429,9 @@ export class Game {
   }
   /** The player is down (health 0) or arrested. */
   playerDown(kind: 'down' | 'busted') {
-    if (this.deathT >= 0) return;
+    if (this.deathT >= 0 || this.ghost) return;
     this.deathT = 0; this.deathKind = kind;
-    this.entering = null;
+    this.carEntry?.cancel();
     this.events.onBeforeDown();
     this.wheelOpen = false; this.targetTimeScale = 1;
     if (this.playerVehicle) this.exitVehicle(true);
@@ -373,7 +444,7 @@ export class Game {
   }
   private respawn() {
     const place = this.deathKind === 'down' ? CLINIC : PRECINCT;
-    this.entering = null;
+    this.carEntry?.cancel();
     if (this.playerVehicle) this.exitVehicle(true);
     this.player.revive(this.player.maxHealth); this.player.armor = 0;
     this.player.place(place.x, 0.25, place.z, place.yaw);
@@ -426,10 +497,15 @@ export class Game {
       this.cam.addInput(look.x, look.y, this.settings.sensitivity * this.pcombat.lookScale, this.settings.invertY);
     }
     if (!this.paused && !blocked && this.input.justPressed('enter')) this.toggleVehicle();
-    this.updateEntering(dt);
-    const pv = this.playerVehicle;
-    if (pv) {
-      this.player.human.update(dt);
+    const handled = this.carEntry.update(dt);
+    const pv = this.playerVehicle, ph = this.playerHeli;
+    if (ph) {
+      if (!handled) this.player.human.update(dt);
+      if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 3;
+      // a burning chopper: jump
+      if (ph.destroyed && !this.carEntry.active) this.carEntry.beginExit(ph);
+    } else if (pv) {
+      if (!handled) this.player.human.update(dt);
       if (!blocked) {
         if (this.input.justPressed('horn')) { this.audio.play('horn', { pos: pv.position }); this.pop.danger(pv.position, 10, null); }
         if (this.input.justPressed('headlights')) pv.headlights = !pv.headlights;
@@ -438,22 +514,23 @@ export class Game {
       }
       if ((pv.destroyed && pv.burnTime > 2.5) || pv.flooded) this.exitVehicle(true);
     } else {
-      if (!this.entering) this.playerCtl.updateAnimation();
-      this.player.updateVisual(dt);
+      if (!handled) { this.playerCtl.updateAnimation(); this.player.updateVisual(dt); }
       if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
     }
-    this.pcombat.update(dt, blocked || this.paused || !!this.entering, () => this.pop.characters(), () => this.vehicles.list);
+    this.pcombat.update(dt, blocked || this.paused || this.carEntry.active, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
+    this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
-    this.police.update(dt, this.player, !!pv, this.renderer.camera);
+    this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updatePickups(dt);
     this.particles.update(dt, this.renderer.renderer.domElement.height);
-    if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > 4.2) this.respawn(); }
+    if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > this.respawnDelay) this.respawn(); }
     if (!this.player.alive && this.deathT < 0) this.playerDown('down'); // safety net: never leave a dead player without the respawn flow
     this.cam.baseFov = this.settings.fov;
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, 'dead');
+    else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
@@ -530,7 +607,7 @@ export class Game {
       const bs = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
       if (!bs) continue;
       const d = Math.hypot(bs.center.x - cp.x, bs.center.z - cp.z) - bs.radius;
-      mesh.visible = d < (mesh.userData.small ? Math.min(max, 200) : max);
+      mesh.visible = d < (mesh.userData.small ? Math.min(max, 200) : max * (mesh.userData.farScale ?? 1)); // CITY: facades reach further (farScale)
       if (mesh.userData.shadow === undefined) mesh.userData.shadow = mesh.castShadow;
       const ds = Math.hypot(bs.center.x - this.player.pos.x, bs.center.z - this.player.pos.z) - bs.radius;
       mesh.castShadow = mesh.userData.shadow && ds < shadowR;
@@ -546,7 +623,7 @@ export class Game {
     return '';
   }
   hudState(objective: string | null, timer: number | null): HudState {
-    const pv = this.playerVehicle, inv = this.pcombat.inv, def = inv.def;
+    const pv = this.playerVehicle ?? this.playerHeli, inv = this.pcombat.inv, def = inv.def; // CAR-ENTRY: helicopters too
     const h = Math.floor(this.hour), mi = Math.floor((this.hour % 1) * 60);
     return {
       health: this.player.health, maxHealth: this.player.maxHealth, armor: this.player.armor, money: this.money,
@@ -561,17 +638,26 @@ export class Game {
     };
   }
   interactPrompt(): string | null {
-    if (this.playerVehicle || this.entering || this.deathT >= 0) return null;
-    const v = this.vehicles.nearest(this.player.pos, 4.2, c => !c.destroyed && !c.locked && Math.abs(c.speed) < 6);
-    if (!v) return null;
     const key = this.settings.bindings.enter[0]?.replace('Key', '') ?? 'F';
-    return v.driver ? `${key}  Take the ${v.name}` : `${key}  Enter ${v.name}`;
+    if (this.deathT >= 0) return null;
+    const ce = this.carEntry;
+    if (ce.phase === 'hotwire') return 'Hotwiring...';
+    if (this.playerVehicle || this.playerHeli || ce.active) return null;
+    const lift = this.helis.liftNear(this.player.pos);
+    if (lift) return lift.up ? `${key}  Elevator to the helipad` : `${key}  Elevator down`;
+    const v = this.enterTarget();
+    if (!v) return null;
+    const name = (v as { name?: string }).name ?? 'vehicle';
+    if (v.driver) return `${key}  Take the ${name}`;
+    if (v.doorsLocked && !v.playerUsed) return `${key}  Break into the ${name}`;
+    return `${key}  Enter ${name}`;
   }
   baseBlips(): MinimapBlip[] {
     const b: MinimapBlip[] = [];
     for (const n of this.pop.npcs) if (n.alive && (n.role === 'police' || (n.role === 'gang' && n.hostile)) && n.pos.distanceTo(this.player.pos) < 120 && !n.char.inVehicle) b.push({ x: n.pos.x, z: n.pos.z, kind: n.role === 'police' ? 'police' : 'enemy' });
     for (const u of this.police.units) b.push({ x: u.v.position.x, z: u.v.position.z, kind: 'police' });
     if (this.waypoint) b.push({ x: this.waypoint.x, z: this.waypoint.z, kind: 'waypoint' });
+    for (const s of this.helis.pads) b.push({ x: s.pos.x, z: s.pos.z, kind: 'vehicle', label: s.def.name }); // CAR-ENTRY: helipads
     return b;
   }
   /** Debug helper: spawns a line-up of people in front of the player (used for visual checks). */

@@ -6,3 +6,5 @@ playwright-report/
 test-results/
 .shot*
 .gameshot*
+.citydbg.mjs
+.cityshots.mjs

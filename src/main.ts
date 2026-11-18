@@ -9,12 +9,15 @@ import { UI } from './ui/ui';
 import { Audio } from './audio/audio';
 import type { GameAudio, WheelSlot } from './ui/contracts';
 import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } from './combat/wheelSlots';
-import { MissionCtx, Missions, MISSIONS } from './game/missions';
+// Story missions are switched off: the game is a sandbox. missions.ts stays in the repo (unused) so it can return later;
+// only its MissionCtx helper (markers, ground height, dialogue) is used by the activities.
+import { MissionCtx } from './game/missions';
 import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
 import { readSave, writeSave, type SaveData } from './game/save';
 import { PLACES } from './game/places';
 import { AVENUES, STREETS } from './world/citymap';
+import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 
 declare global { interface Window { __meridian?: unknown; __game?: Game } }
 
@@ -31,16 +34,17 @@ const storage = safeStorage();
 const ui = new UI();
 const city = generateCity();
 let game: Game | null = null;
-let missions: Missions | null = null;
+let ctx: MissionCtx | null = null;
 let activities: Activities | null = null;
 let sandbox: Sandbox | null = null;
 let audio: GameAudio | null = null;
-let assetsPromise: Promise<Assets> | null = null;
-let assetFrac = 0, assetLabel = 'Preparing the city';
+let worldPromise: Promise<Game> | null = null;
 let started = false;
 let autosaveT = 0;
 let ourUnlock = false;
 let mapByKey = false;
+let attract: { shot: number; t: number; dipped: boolean } | null = null;
+const DEFAULT_SAT = 1.08;
 
 function isMobile(): boolean {
   const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
@@ -53,16 +57,16 @@ function webglOk(): boolean {
 
 ui.init({
   city, settings, callbacks: {
-    onStart: cont => { void startGame(cont); },
-    onSandbox: () => { void startGame(false, true); },
+    onStart: cont => { void play(cont); },
     onOpenSandbox: () => { if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
     onQuitToTitle: () => quitToTitle(),
+    onSaveGame: () => saveGame(),
     onSettingsChanged: s => applySettings(s),
     onQualityChanged: q => { settings.quality = q; saveSettings(settings); game?.renderer.setQuality(q); },
     onSetWaypoint: (x, z) => { if (game) { game.waypoint = new THREE.Vector3(x, 0, z); ui.toast('Waypoint set', 'info'); } },
     onUiSound: k => audio?.play(k === 'click' ? 'uiClick' : k === 'hover' ? 'uiHover' : 'uiBack'),
-    captureKey: cb => { if (game) game.input.captureNext(cb); else captureOnce(cb); },
+    captureKey: cb => { if (game && started) game.input.captureNext(cb); else captureOnce(cb); },
   },
 });
 
@@ -80,50 +84,96 @@ function applySettings(s: Settings) {
   if (game) { game.cam.shakeScale = settings.cameraShake; if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
 }
 
-function preload() {
-  if (assetsPromise) return assetsPromise;
-  assetsPromise = (async () => {
+/** Loads assets and builds the whole city once; the title screen then flies a camera over it. */
+function bootWorld(onProgress: (f: number, label: string) => void): Promise<Game> {
+  if (worldPromise) return worldPromise;
+  worldPromise = (async () => {
     await initPhysics();
-    return loadAssets((f, l) => { assetFrac = f; assetLabel = l; if (!started) return; ui.showLoading(f * 0.6, l); });
+    const assets: Assets = await loadAssets((f, l) => onProgress(f * 0.6, l));
+    if (!audio) { audio = new Audio(assets.audio); audio.setVolumes(settings.master, settings.music, settings.sfx); }
+    const g = new Game(canvas, settings, assets, audio);
+    game = g; window.__game = g;
+    await g.init((f, l) => onProgress(0.6 + f * 0.38, l));
+    ctx = new MissionCtx(g, ui);
+    return g;
   })();
-  return assetsPromise;
+  return worldPromise;
 }
 
-async function startGame(cont: boolean, sandboxMode = false) {
+// ---------------- Title flyover (attract mode) ----------------
+function startAttract(g: Game) {
+  g.ghost = true; g.blockedInput = true; g.clockRunning = false;
+  g.player.human.root.visible = false;
+  g.police.clear();
+  attract = { shot: 0, t: 0, dipped: false };
+  enterShot(g, 0);
+  g.prewarm();
+  g.onFrame = raw => attractFrame(g, raw);
+  g.start();
+}
+function enterShot(g: Game, i: number) {
+  const s = ATTRACT_SHOTS[i];
+  g.hour = s.hour;
+  g.police.clear();
+  // the (hidden) player stands at the focus so traffic and people fill the shot
+  g.player.place(s.focus[0], (ctx?.groundY(s.focus[0], s.focus[1]) ?? 0.2) + 0.05, s.focus[1], 0);
+  ui.titleShot(s.name, s.caption);
+}
+function attractFrame(g: Game, raw: number) {
+  const a = attract; if (!a) return;
+  const s = ATTRACT_SHOTS[a.shot];
+  a.t += raw;
+  if (!a.dipped && a.t > s.duration - 0.45) { a.dipped = true; ui.titleDip(); }
+  if (a.t >= s.duration) { a.shot = (a.shot + 1) % ATTRACT_SHOTS.length; a.t = 0; a.dipped = false; enterShot(g, a.shot); }
+  if (g.player.health < g.player.maxHealth) g.player.health = g.player.maxHealth;
+  const cam = g.renderer.camera, c = shotCamera(ATTRACT_SHOTS[a.shot], a.t);
+  cam.position.set(c.pos[0], c.pos[1], c.pos[2]);
+  cam.lookAt(c.look[0], c.look[1], c.look[2]);
+  if (cam.fov !== c.fov) { cam.fov = c.fov; cam.updateProjectionMatrix(); }
+}
+function stopAttract(g: Game) {
+  attract = null;
+  g.ghost = false; g.blockedInput = false; g.clockRunning = true;
+  g.player.human.root.visible = true;
+  g.onFrame = null;
+}
+
+// ---------------- Starting play ----------------
+async function play(cont: boolean) {
   if (started) return;
   started = true;
-  ui.showLoading(assetFrac * 0.6, assetLabel);
+  void audio?.resume();
+  ui.showLoading(0.1, 'Entering Port Meridian');
+  const t0 = performance.now();
   try {
-    const assets = await preload();
-    if (!audio) { audio = new Audio(assets.audio); audio.setVolumes(settings.master, settings.music, settings.sfx); }
-    void audio.resume();
-    game = new Game(canvas, settings, assets, audio);
-    window.__game = game;
-    await game.init((f, l) => ui.showLoading(0.6 + f * 0.4, l));
-    const ctx = new MissionCtx(game, ui);
-    missions = new Missions(ctx);
-    activities = new Activities(game, ui, ctx);
+    const g = await bootWorld((f, l) => ui.showLoading(f, l));
+    g.stop();
+    stopAttract(g);
+    ui.showLoading(0.6, 'Waking up the city');
+    activities = new Activities(g, ui, ctx!);
     activities.onSaveRequested = () => saveGame();
-    activities.missionActive = () => !!missions?.active;
-    wireGame(game);
-    const save = cont && !sandboxMode ? readSave(storage) : null;
+    activities.missionActive = () => false;
+    sandbox = new Sandbox(g, ui);
+    ui.setMode('sandbox');
+    wireGame(g);
+    const save = cont ? readSave(storage) : null;
+    g.police.clear();
     if (save) applySave(save); else newGameSetup();
-    if (sandboxMode) { sandbox = new Sandbox(game, ui); sandbox.setup(); missions.enabled = false; ui.setMode('sandbox'); }
-    else ui.setMode('story');
     activities.spawnCards();
-    game.cam.update(0.016, game.player.pos, 'foot');
-    game.prewarm();
+    g.cam.update(0.016, g.player.pos, 'foot');
+    ui.showLoading(0.85, 'Waking up the city');
+    g.prewarm();
+    // a short beat on the loading art so the switch from the flyover never flickers
+    if (!params.get('autostart')) await new Promise(r => setTimeout(r, Math.max(0, 1300 - (performance.now() - t0))));
+    ui.hideTitle();
     ui.hideLoading();
     ui.setHudVisible(true);
-    game.onFrame = dt => frame(dt);
-    game.start();
-    game.input.requestLock();
-    if (sandbox) {
-      ui.missionCard('Sandbox', 'Everything unlocked. Open the pause menu for sandbox tools.', 'start');
-      setTimeout(() => ui.showControlsHint('Sandbox: you start invincible with every weapon and $50,000. Esc, then Sandbox tools, to spawn cars, change the time, set your wanted level or teleport. Sandbox games are not saved.', 10), 3200);
-    } else if (!save) {
-      ui.missionCard('Port Meridian', 'Golden hour. Find Juno on Lantern Ave to get started.', 'start');
-      setTimeout(() => ui.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc pauses. Walk into the glowing amber marker to start a mission.', 9), 3200);
+    g.onFrame = dt => frame(dt);
+    g.start();
+    g.input.requestLock();
+    if (!save) {
+      ui.missionCard('Port Meridian', 'Golden hour. The city is yours.', 'start');
+      setTimeout(() => ui.showControlsHint(`WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools (spawn cars, set the clock, wanted level, teleport) and saving.`, 10), 3200);
     } else ui.toast('Welcome back to Port Meridian', 'info');
     exposeApi();
   } catch (e) {
@@ -134,47 +184,60 @@ async function startGame(cont: boolean, sandboxMode = false) {
 
 function newGameSetup() {
   const g = game!;
-  g.money = 250; g.hour = 17.4;
+  sandbox!.setup();
+  g.player.health = g.player.maxHealth;
   g.player.place(PLACES.safehouse.x + 4, 0.25, PLACES.safehouse.z, Math.PI * 0.5);
   g.cam.snapBehind(Math.PI * 0.5 + Math.PI);
 }
 function applySave(s: SaveData) {
-  const g = game!;
+  const g = game!, a = activities!;
   g.money = s.money; g.player.health = s.health; g.player.armor = s.armor; g.hour = s.hour;
   g.pcombat.inv.load({ weapons: s.weapons, current: s.current, medkits: s.medkits });
-  for (const id of s.missions) if (MISSIONS.some(m => m.id === id)) missions!.completed.add(id);
-  for (const c of s.collectibles) activities!.found.add(c);
-  for (const j of s.jumps) activities!.jumpsDone.add(j);
+  for (const c of s.collectibles) a.found.add(c);
+  for (const j of s.jumps) a.jumpsDone.add(j);
   g.stats = { ...s.stats };
-  g.player.place(s.pos.x, missions!.ctx.groundY(s.pos.x, s.pos.z, 0.2) + 0.05, s.pos.z, s.pos.yaw);
+  sandbox!.applyCaps();
+  sandbox!.loadTools(s.tools);
+  g.player.place(s.pos.x, ctx!.groundY(s.pos.x, s.pos.z, 0.2) + 0.05, s.pos.z, s.pos.yaw);
   g.cam.snapBehind(s.pos.yaw + Math.PI);
 }
 function saveGame(): boolean {
-  if (!game || !missions || !activities || game.deathT >= 0 || sandbox) return false;
+  if (!game || !activities || !sandbox || !started || game.deathT >= 0) return false;
   const g = game;
-  const onFoot = !g.playerVehicle; // (in a car, on a mission or swimming: wake up at the safehouse instead)
-  const pos = onFoot && !missions.active && !g.player.swimming ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
-  const ok = writeSave(storage, {
+  const onFoot = !g.playerVehicle; // (in a car or swimming: wake up at the safehouse instead)
+  const pos = onFoot && !g.player.swimming ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
+  return writeSave(storage, {
     version: 1, savedAt: Date.now(), money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
-    missions: [...missions.completed], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
-    pos, hour: g.hour, stats: g.stats,
+    missions: [], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
+    pos, hour: g.hour, stats: g.stats, tools: sandbox.tools(),
   });
-  return ok;
 }
 
 function wireGame(g: Game) {
   g.events.onToast = (t, k) => ui.toast(t, k);
-  g.events.onDeath = (k, detail) => { ui.showDeath(k, detail); missions?.onPlayerDown(k); };
+  g.events.onDeath = (k, detail) => {
+    // slow motion while the world drains to grey; the UI paces the card and tells us when to respawn
+    if (k === 'down') { g.targetTimeScale = 0.3; audio?.setSlowMo(1); }
+    g.respawnDelay = Infinity;
+    ui.showDeath(k, detail, { arrestAnimationDone: k === 'busted' ? g.events.arrestAnimationDone ?? undefined : undefined });
+  };
   g.events.onBeforeDown = () => { if (g.wheelOpen) closeWheel(true); activities?.closeShop(); };
-  g.events.onRespawn = () => { ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info'); };
-  missions!.onPassed = () => { activities?.disarmGarage(); saveGame(); };
+  g.events.onRespawn = () => {
+    g.respawnDelay = 4.2; g.targetTimeScale = 1; g.timeScale = 1; audio?.setSlowMo(0); setGrade(g, 0);
+    ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info');
+  };
   document.addEventListener('pointerlockchange', () => {
     if (!document.pointerLockElement && started && game && !game.paused && !ui.isMenuOpen() && !ourUnlock && !activities?.shopIsOpen) pause();
     ourUnlock = false;
   });
   canvas.addEventListener('click', () => { if (game && !game.paused && !ui.isMenuOpen()) game.input.requestLock(); void audio?.resume(); });
   window.addEventListener('blur', () => { if (game && !game.paused && started) pause(); });
+}
+function setGrade(g: Game, k: number) {
+  const u = g.renderer.grade?.uniforms; if (!u) return;
+  u.uSat.value = DEFAULT_SAT * (1 - k * 0.92);
+  u.uSlow.value = k;
 }
 function pause() {
   if (!game || game.paused) return;
@@ -214,7 +277,7 @@ function closeWheel(discard = false) {
 
 // ---------------- Per-frame UI glue ----------------
 function frame(raw: number) {
-  const g = game!, m = missions!, a = activities!;
+  const g = game!, a = activities!;
   const input = g.input;
   // pause / map
   if (input.justPressed('pause') && !a.shopIsOpen) { if (g.paused) { /* UI handles Esc in menus */ } else pause(); }
@@ -222,6 +285,12 @@ function frame(raw: number) {
   if (!g.paused && !ui.isMenuOpen() && !a.shopIsOpen && input.justPressed('map')) {
     if (g.wheelOpen) closeWheel();
     g.paused = true; mapByKey = true; audio?.setPausedMuffle(true); ourUnlock = true; g.input.exitLock(); ui.openMap(minimapState());
+  }
+  // WASTED / ARRESTED pacing (real time, so it also runs while the world is in slow motion)
+  if (g.deathT >= 0 && !g.paused) {
+    const d = ui.advanceDeath(raw);
+    setGrade(g, d.grade);
+    if (d.respawn || g.deathT > 20) g.respawnDelay = 0;
   }
   if (!g.paused) {
     // wheel (hold)
@@ -236,14 +305,14 @@ function frame(raw: number) {
       if (hl && scroll && scrollSlot(g.pcombat.inv, hl, scroll)) { ui.openWheel(wheelSlots(), hl); audio?.play('uiHover'); }
       if (!input.held('wheel') || !canWheel) closeWheel();
     }
-    m.update(raw * g.timeScale);
+    ctx!.tickDialogue(raw * g.timeScale);
     sandbox?.update();
     a.update(raw * g.timeScale);
     autosaveT += raw;
-    if (autosaveT > 60 && !m.active && g.deathT < 0 && !g.playerVehicle) { autosaveT = 0; saveGame(); }
+    if (autosaveT > 60 && g.deathT < 0 && !g.playerVehicle) { autosaveT = 0; saveGame(); }
   }
   // HUD
-  const hud = g.hudState(m.objective, m.timer);
+  const hud = g.hudState(null, null);
   hud.interactPrompt = a.prompt() ?? hud.interactPrompt;
   ui.updateHud(hud);
   ui.updateMinimap(minimapState());
@@ -253,10 +322,10 @@ function minimapState() {
   const yaw = g.playerVehicle ? g.playerVehicle.yaw : g.cam.yaw + Math.PI;
   // heading: 0 = facing north (-z), positive clockwise. Facing (sin yaw, cos yaw) in x/z.
   const heading = Math.atan2(Math.sin(yaw), -Math.cos(yaw));
-  const blips = [...g.baseBlips(), ...missions!.blips(), ...activities!.blips()];
+  const blips = [...g.baseBlips(), ...activities!.blips()];
   const heat = g.police.heat > 0 && !g.police.state.seen ? { x: g.police.state.lastSeen.x, z: g.police.state.lastSeen.z, r: g.police.state.searchRadius() } : null;
-  // GPS: follow the street grid (every grid line is a road) to the current objective
-  const goal = blips.find(b => b.kind === 'target' || b.kind === 'checkpoint') ?? blips.find(b => b.kind === 'waypoint') ?? (!missions!.active ? blips.find(b => b.kind === 'mission') : undefined);
+  // GPS: follow the street grid (every grid line is a road) to the waypoint
+  const goal = blips.find(b => b.kind === 'waypoint');
   let route: { x: number; z: number }[] | undefined;
   if (goal && Math.hypot(goal.x - g.player.pos.x, goal.z - g.player.pos.z) > 30) {
     const snap = (v: number, arr: number[]) => arr.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
@@ -271,7 +340,7 @@ function minimapState() {
 /** Test / debugging surface used by the automated playthrough tests. */
 function exposeApi() {
   window.__meridian = {
-    game, missions, activities, sandbox, ui, settings, PLAYER_LOOK,
+    game, activities, sandbox, ui, settings, PLAYER_LOOK, ctx,
     save: () => saveGame(), read: () => readSave(storage),
     pause, resume, openWheel, closeWheel, quit: quitToTitle,
   };
@@ -282,9 +351,24 @@ if (!webglOk()) {
   ui.showMobileGate();
 } else if (isMobile()) {
   ui.showMobileGate();
+} else if (params.get('autostart') === '1') {
+  void play(params.get('continue') === '1');
 } else {
-  void preload().catch(e => console.error(e));
-  if (params.get('autostart') === '1') void startGame(params.get('continue') === '1', params.get('sandbox') === '1');
-  else ui.showTitle(!!readSave(storage));
+  // loading screen -> live city flyover behind the title menu
+  ui.showLoading(0, 'Preparing the city');
+  window.addEventListener('pointerdown', () => void audio?.resume(), { once: true, capture: true });
+  window.addEventListener('keydown', () => void audio?.resume(), { once: true, capture: true });
+  bootWorld((f, l) => { if (!started) ui.showLoading(f, l); })
+    .then(g => {
+      if (started) return;
+      startAttract(g);
+      ui.setBackdropLive(true);
+      ui.hideLoading();
+      ui.showTitle(!!readSave(storage));
+      // title-screen debug: jump the flyover to shot i at t seconds (used for screenshots)
+      const shot = (i: number, t = 0) => { if (attract) { attract.shot = i % ATTRACT_SHOTS.length; attract.t = t; attract.dipped = false; enterShot(g, attract.shot); } };
+      (window as unknown as { __title?: unknown }).__title = { game: g, ui, settings, shot };
+    })
+    .catch(e => { console.error(e); ui.showLoading(1, 'Something went wrong while loading. Please reload the page.'); });
 }
 document.title = 'Meridian Afterglow';

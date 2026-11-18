@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { watch, boot, clean } from './helpers';
 
 /**
- * Soak: 20 minutes of game time of scripted chaos (driving, crashing, gunfights, heat, deaths, wheel, missions,
+ * Soak: 20 minutes of game time of scripted chaos (driving, crashing, gunfights, heat, deaths, wheel, sandbox spawns,
  * pause/resume, saving, district hopping) with invariant checks every second and heap sampling every minute.
  */
 test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
@@ -31,7 +31,7 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
           else if (act === 6) { g.police.report(Math.random() < 0.5 ? 'kill' : 'copKill', g.player.pos); }
           else if (act === 7) { if (Math.random() < 0.2) { g.player.damage(1000, null, g.time); g.playerDown('down'); } else if (Math.random() < 0.3) g.playerDown('busted'); }
           else if (act === 8) { g.input.press('Tab'); frame(5); g.input.mouseDX = rnd(-60, 60); g.input.mouseDY = rnd(-60, 60); frame(2); g.input.release('Tab'); }
-          else if (act === 9) { const avail = M.missions.available(); if (!M.missions.active && avail.length && Math.random() < 0.5) M.missions.start(avail[0]); else if (M.missions.active) M.missions.finish('failed', 'soak'); }
+          else if (act === 9) { M.sandbox.act('spawn'); } // (story missions are off: sandbox only)
           else if (act === 10) { M.pause(); frame(3); M.resume(); if (Math.random() < 0.3) M.save(); }
           else if (act === 11) { const v = g.vehicles.list[Math.floor(Math.random() * g.vehicles.list.length)]; if (v && v !== g.playerVehicle) v.damage(rnd(100, 900), v.position.clone(), null); }
         } catch (e) { issues.push(`action ${act}: ${(e as Error).message}`); }
@@ -40,7 +40,7 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
         const pp = g.player.pos;
         if (!Number.isFinite(pp.x) || !Number.isFinite(pp.y) || !Number.isFinite(pp.z)) issues.push(`player NaN at ${minute}:${sec}`);
         if (pp.y < -20) issues.push(`player fell through the world at ${minute}:${sec} (${pp.x.toFixed(1)},${pp.y.toFixed(1)},${pp.z.toFixed(1)})`);
-        if (g.deathT > 6) issues.push(`stuck in death screen at ${minute}:${sec}`);
+        if (g.deathT > 8) issues.push(`stuck in death screen at ${minute}:${sec}`);
         if (g.time < 0) issues.push('time negative');
         for (const v of g.vehicles.list) { const q = v.position; if (!Number.isFinite(q.x) || q.y < -30) { issues.push(`vehicle lost at ${minute}:${sec}`); break; } }
         if (g.wheelOpen && !g.input.held('wheel')) { /* closes next frame */ }

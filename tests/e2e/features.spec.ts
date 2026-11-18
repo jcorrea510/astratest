@@ -11,7 +11,7 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
     // a store whose clerk keeps no gun under the counter
     const k = R.kiosks[0];
     g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol'); g.money = 0;
-    g.player.place(k.def.x + k.front.x * 5, 0.4, k.def.z + k.front.z * 5, 0);
+    g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, 0);
     for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
     k.brave = false;
     const prompt = (window as any).__meridian.activities.prompt();
@@ -35,7 +35,7 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
     const g = (window as any).__game; const R = (window as any).__meridian.activities.robberies;
     g.police.clear();
     const k = R.kiosks[2];
-    g.player.place(k.def.x + k.front.x * 5, 0.4, k.def.z + k.front.z * 5, 0);
+    g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, 0);
     for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
     k.brave = false; const c = k.clerk;
     g.input.press('Mouse2');
@@ -52,24 +52,26 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
   clean(p);
 });
 
-test('sandbox mode: everything unlocked, no story or saving, tools work', async ({ page }) => {
+test('sandbox tools: arsenal, cash, wanted level, frozen clock, spawn, invincible, teleport; saving works', async ({ page }) => {
   const p = watch(page);
-  await boot(page, '&sandbox=1');
+  await boot(page);
   await step(page, 1);
   const r = await page.evaluate(() => {
     const g = (window as any).__game, M = (window as any).__meridian, sb = M.sandbox; const out: Record<string, unknown> = {};
-    out.money = g.money;
-    out.guns = ['pistol', 'smg', 'shotgun', 'rifle'].every(id => g.pcombat.inv.weapons[id].owned);
-    out.missions = M.missions.available().length; out.saved = M.save();
+    out.start = g.money;
+    sb.act('arsenal'); out.guns = ['pistol', 'smg', 'shotgun', 'rifle'].every(id => g.pcombat.inv.weapons[id].owned);
+    sb.act('cash'); out.money = g.money;
+    out.saved = M.save();
     sb.act('heat', 3); for (let i = 0; i < 15; i++) g.frame(1 / 30, false); out.heat = g.police.heat;
     sb.act('heat', 0); out.heat0 = g.police.heat;
     sb.act('hour', 2.5); sb.act('clock', false); const h = g.hour; for (let i = 0; i < 90; i++) g.frame(1 / 30, false); out.frozen = g.hour === h && h === 2.5;
     const n = g.vehicles.list.length; sb.act('kind', 'coupe'); sb.act('spawn'); out.spawned = g.vehicles.list.length === n + 1;
-    g.player.damage(80, null, g.time); for (let i = 0; i < 3; i++) g.frame(1 / 30, false); out.health = g.player.health; out.alive = g.player.alive;
+    sb.act('god', true); g.player.damage(80, null, g.time); for (let i = 0; i < 3; i++) g.frame(1 / 30, false); out.health = g.player.health; out.alive = g.player.alive;
     sb.act('spot', 'docks'); sb.act('go'); for (let i = 0; i < 15; i++) g.frame(1 / 30, false); out.tp = Math.hypot(g.player.pos.x - 470, g.player.pos.z - 150) < 3;
     return out;
   });
-  expect(r).toEqual({ money: 50000, guns: true, missions: 0, saved: false, heat: 3, heat0: 0, frozen: true, spawned: true, health: 100, alive: true, tp: true });
-  expect(await state<boolean>(page, '!!window.__meridian.read()')).toBe(false);
+  expect(r).toEqual({ start: 2500, guns: true, money: 12500, saved: true, heat: 3, heat0: 0, frozen: true, spawned: true, health: 100, alive: true, tp: true });
+  expect(await state<boolean>(page, '!!window.__meridian.read()')).toBe(true);
+  expect(await state<number>(page, 'window.__meridian.read().money')).toBe(12500);
   clean(p);
 });

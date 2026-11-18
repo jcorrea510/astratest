@@ -14,7 +14,7 @@ test('bailing out of a fast car at low health shows the down screen and respawns
   await page.evaluate(() => (window as any).__game.exitVehicle());
   await step(page, 0.5);
   expect(await state<number>(page, 'window.__game.deathT')).toBeGreaterThanOrEqual(0);
-  await step(page, 5);
+  await step(page, 7);
   expect(await state<boolean>(page, 'window.__game.player.alive')).toBe(true);
   expect(await state<number>(page, 'window.__game.deathT')).toBe(-1);
   clean(p);
@@ -70,22 +70,6 @@ test('dead officers and wrecked cruisers are not kept forever', async ({ page })
   clean(p);
 });
 
-test('race rivals wait for the countdown', async ({ page }) => {
-  const p = watch(page);
-  await boot(page);
-  await page.evaluate(() => { const M = (window as any).__meridian.missions; for (const id of ['m1', 'm2', 'm3', 'm4']) M.completed.add(id); M.start(M.available()[0]); });
-  await step(page, 1);
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); v.phys.teleport(-436, 0.7, 403.5, Math.PI / 2); });
-  await step(page, 2.2);
-  const speeds = await state<number[]>(page, 'window.__game.traffic.cars.filter(c => c.v.kind === "coupe" && c.persistent).map(c => Math.abs(c.v.speed))');
-  expect(speeds.length).toBe(3);
-  for (const s of speeds) expect(s).toBeLessThan(2);
-  await step(page, 4);
-  const after = await state<number[]>(page, 'window.__game.traffic.cars.filter(c => c.v.kind === "coupe" && c.persistent).map(c => Math.abs(c.v.speed))');
-  expect(Math.max(...after)).toBeGreaterThan(5);
-  clean(p);
-});
-
 test('dying while getting into a car does not seat the body', async ({ page }) => {
   const p = watch(page);
   await boot(page);
@@ -132,23 +116,11 @@ test('pausing closes the shop; the wheel never spends a medkit on a downed playe
   clean(p);
 });
 
-test('playtest fixes: populated start, M3 enemies on the ground, fast police response, damage cap, no respray charge after a delivery', async ({ page }) => {
+test('playtest fixes: populated start, fast police response, damage cap', async ({ page }) => {
   const p = watch(page);
   await boot(page);
   expect(await state<number>(page, 'window.__game.traffic.cars.length')).toBeGreaterThanOrEqual(5);
   expect(await state<number>(page, 'window.__game.pop.npcs.length')).toBeGreaterThanOrEqual(6);
-  // M3 enemies must all stand on the ground (none on warehouse roofs)
-  const ys = await page.evaluate(() => {
-    const g = (window as any).__game; const M = (window as any).__meridian.missions;
-    for (const id of ['m1', 'm2']) M.completed.add(id);
-    M.start(M.available().find((d: any) => d.id === 'm3'));
-    g.player.place(398, 0.3, 100, 0);
-    for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
-    return g.pop.npcs.filter((n: any) => n.role === 'gang' && n.persistent).map((n: any) => n.pos.y);
-  });
-  expect(ys.length).toBe(8);
-  for (const y of ys) expect(y).toBeLessThan(1);
-  await page.evaluate(() => { (window as any).__meridian.missions.abort(); });
   // police show up quickly at heat 2+
   await page.evaluate(() => { const g = (window as any).__game; g.player.place(-150, 0.3, -96, 0); g.police.report('kill', g.player.pos); g.police.state.add('kill'); });
   await step(page, 8);
@@ -156,21 +128,6 @@ test('playtest fixes: populated start, M3 enemies on the ground, fast police res
   // damage cap: a single burst can't take more than 45 health in one second
   const hp = await page.evaluate(() => { const g = (window as any).__game; g.player.health = 100; g.player.armor = 0; for (let i = 0; i < 20; i++) g.player.damage(20, null, g.time + 100); return g.player.health; });
   expect(hp).toBeGreaterThanOrEqual(55);
-  // M1 delivery at the garage doesn't trigger a paid respray
-  await page.evaluate(() => { const g = (window as any).__game; g.police.clear(); g.player.health = 100; });
-  const money = await page.evaluate(() => {
-    const g = (window as any).__game; const M = (window as any).__meridian.missions;
-    M.completed.clear(); M.start(M.available()[0]);
-    const v = g.vehicles.spawn('sedan', -262, -96, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
-    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-    v.phys.teleport(470, 0.7, 120, 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-    v.damage(300, v.position.clone(), null);
-    const before = g.money;
-    v.phys.teleport(-200, 0.7, 102, Math.PI / 2); for (let i = 0; i < 200; i++) g.frame(1 / 30, false);
-    return { gained: g.money - before, done: M.completed.has('m1') };
-  });
-  expect(money.done).toBe(true);
-  expect(money.gained).toBe(600);
   clean(p);
 });
 
@@ -219,22 +176,6 @@ test('getting out next to the pier railing keeps you on the pier', async ({ page
     return out;
   });
   for (const [x, y, swim] of spots) { expect(y).toBeGreaterThan(0.8); expect(x).toBeGreaterThan(-56.6); expect(x).toBeLessThan(-43.4); expect(swim).toBe(0); }
-  clean(p);
-});
-
-test('race rivals follow the route and keep racing', async ({ page }) => {
-  test.setTimeout(600_000);
-  const p = watch(page);
-  await boot(page);
-  await page.evaluate(() => { const M = (window as any).__meridian.missions; for (const id of ['m1', 'm2', 'm3', 'm4']) M.completed.add(id); M.start(M.available()[0]); });
-  await step(page, 1);
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); v.phys.teleport(-436, 0.7, 403.5, Math.PI / 2); });
-  await step(page, 6);
-  for (let i = 0; i < 9; i++) await step(page, 10);
-  const cp = await state<number[]>(page, 'window.__meridian.missions.active.run.rivalProgress()');
-  // after 90 s every rival is well into the 11-checkpoint course (they used to get lost after checkpoint 2)
-  expect(Math.max(...cp), JSON.stringify(cp)).toBeGreaterThanOrEqual(6);
-  expect(cp.filter(c => c >= 4).length, JSON.stringify(cp)).toBeGreaterThanOrEqual(2);
   clean(p);
 });
 
@@ -293,44 +234,6 @@ test('beach stunt ramps pay when hit from Coastal Drive', async ({ page }) => {
   clean(p);
 });
 
-test('starting the courier mission leaves your parked car alone', async ({ page }) => {
-  const p = watch(page);
-  await boot(page);
-  const kept = await page.evaluate(() => {
-    const g = (window as any).__game; const M = (window as any).__meridian.missions;
-    M.completed.add('m1');
-    g.player.place(-229, 0.3, -101, 0);
-    const mine = g.vehicles.spawn('sedan', -229, -98, Math.PI / 2); g.seatPlayer(mine);
-    for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-    g.exitVehicle(); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-    g.player.place(-262, 0.25, -106.6, 0);
-    for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
-    const van = g.traffic.cars.find((c: any) => c.v.locked);
-    return { active: M.active?.def.id, kept: g.vehicles.list.includes(mine), van: !!van, gap: van ? Math.hypot(van.v.position.x - mine.position.x, van.v.position.z - mine.position.z) : 0 };
-  });
-  expect(kept.active).toBe('m2');
-  expect(kept.kept).toBe(true);
-  expect(kept.van).toBe(true);
-  expect(kept.gap).toBeGreaterThan(5);
-  clean(p);
-});
-
-test('a mission contact who is hurt does not pop back in beside the body', async ({ page }) => {
-  const p = watch(page);
-  await boot(page);
-  const r = await page.evaluate(() => {
-    const g = (window as any).__game; const M = (window as any).__meridian.missions;
-    g.player.place(-280, 0.3, -106.6, 0);
-    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
-    const juno = M.contacts.get('Juno'); juno.char.damage(500, g.player, g.time);
-    for (let i = 0; i < 30 * 30; i++) g.frame(1 / 30, false);
-    return { hadContact: !!juno, back: M.contacts.has('Juno') };
-  });
-  expect(r.hadContact).toBe(true);
-  expect(r.back).toBe(false);
-  clean(p);
-});
-
 // ---------- Bug-bash A ----------
 test('police in cars find an on-foot player off the road (plaza) and get out', async ({ page }) => {
   test.setTimeout(300_000);
@@ -375,9 +278,9 @@ test('a quick tap fires automatic weapons once', async ({ page }) => {
   clean(p);
 });
 
-test('sandbox: spawning from a car puts the new car ahead; hold-ups stop when a mission starts', async ({ page }) => {
+test('sandbox: spawning from a car puts the new car ahead', async ({ page }) => {
   const p = watch(page);
-  await boot(page, '&sandbox=1');
+  await boot(page);
   const ahead = await page.evaluate(() => {
     const g = (window as any).__game, sb = (window as any).__meridian.sandbox; const out: number[] = [];
     for (const yaw of [1.0, -2.0]) {
@@ -396,30 +299,11 @@ test('sandbox: spawning from a car puts the new car ahead; hold-ups stop when a 
   clean(p);
 });
 
-test('a hold-up is called off when a story mission starts', async ({ page }) => {
+test('sandbox tools are a pause-menu tab; sliders can be dragged; quitting a debug-URL game lands on the title', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  const r = await page.evaluate(() => {
-    const g = (window as any).__game, M = (window as any).__meridian; const R = M.activities.robberies; const k = R.kiosks[0];
-    g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol');
-    g.player.place(k.def.x + k.front.x * 5, 0.4, k.def.z + k.front.z * 5, 0);
-    for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
-    k.brave = false; const c = k.clerk; g.input.press('Mouse2');
-    for (let i = 0; i < 30; i++) { g.cam.yaw = Math.atan2(-(c.pos.x - g.player.pos.x), -(c.pos.z - g.player.pos.z)); g.frame(1 / 30, false); }
-    const during = R.robbing;
-    M.missions.start(M.missions.available()[0]);
-    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
-    g.input.release('Mouse2');
-    return { during, after: R.robbing };
-  });
-  expect(r).toEqual({ during: true, after: false });
-  clean(p);
-});
-
-test('sandbox sliders can be dragged; quitting a debug-URL game lands on the title', async ({ page }) => {
-  const p = watch(page);
-  await boot(page, '&sandbox=1');
-  await page.evaluate(() => { const g = (window as any).__game; g.paused = true; g.menuOpen = true; (window as any).__meridian.sandbox.openPanel(() => {}); });
+  await page.evaluate(() => (window as any).__meridian.pause());
+  await page.locator('.ma-ptab', { hasText: 'Sandbox' }).click();
   await expect(page.getByLabel('Wanted level')).toBeVisible();
   // a drag is a stream of input events on the same element: the panel must not rebuild (and drop) the slider mid-drag
   const drag = await page.evaluate(() => {
@@ -431,28 +315,11 @@ test('sandbox sliders can be dragged; quitting a debug-URL game lands on the tit
   expect(await state<number>(page, 'window.__game.police.heat')).toBe(5);
   await page.evaluate(() => (window as any).__meridian.quit());
   await page.waitForURL(u => !u.search.includes('autostart'), { timeout: 60_000 });
-  await expect(page.getByText('New game')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
   clean(p);
 });
 
 // ---------- Bug-bash B ----------
-test('the race ends (failed) once every rival has crossed the line', async ({ page }) => {
-  test.setTimeout(600_000);
-  const p = watch(page);
-  await boot(page);
-  await page.evaluate(() => { const M = (window as any).__meridian.missions; for (const id of ['m1', 'm2', 'm3', 'm4']) M.completed.add(id); M.start(M.available()[0]); });
-  await step(page, 1);
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); v.phys.teleport(-436, 0.7, 403.5, Math.PI / 2); });
-  let st = { active: 'm5' as string | null, last: '' };
-  for (let i = 0; i < 30 && st.active; i++) {
-    await step(page, 10);
-    st = await state<{ active: string | null; last: string }>(page, '({active: window.__meridian.missions.active?.def.id ?? null, last: String(window.__meridian.missions.lastResult)})');
-  }
-  expect(st.active).toBe(null);
-  expect(st.last).toContain('m5:failed:The Coastline crew');
-  clean(p);
-});
-
 // ---------- Bug-bash C ----------
 test('saving while swimming at sea loads you at the safehouse, not in the water', async ({ page }) => {
   const p = watch(page);

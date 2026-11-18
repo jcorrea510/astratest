@@ -5,7 +5,7 @@
  * follow the master/SFX volume. Everything is rate-limited and silently does nothing where speech or audio is
  * unavailable (headless browsers, tests, before the first user gesture).
  */
-export type VoiceLine = 'hey' | 'watch' | 'what' | 'help' | 'dontShoot' | 'whoa' | 'gang' | 'cop' | 'scream' | 'oof' | 'panic';
+export type VoiceLine = 'hey' | 'watch' | 'what' | 'help' | 'dontShoot' | 'whoa' | 'gang' | 'cop' | 'myCar' | 'scream' | 'oof' | 'panic';
 export interface Speaker { pos: { x: number; y: number; z: number }; sex: 'm' | 'f'; voiceSeed: number }
 /** What the audio engine lends to voices (see Audio.voiceBus). */
 export interface VoiceBus { ctx: BaseAudioContext; out: AudioNode; volume: number }
@@ -18,6 +18,7 @@ export const LINES: Record<Exclude<VoiceLine, 'scream' | 'oof' | 'panic'>, strin
   dontShoot: ['Don\'t shoot!', 'Whoa, whoa, put that down!', 'Please, don\'t!', 'Okay, okay! Easy!', 'I don\'t want any trouble!'],
   whoa: ['Whoa!', 'Jeez!', 'Slow down, maniac!', 'Learn to drive!'],
   gang: ['You want some?', 'Wrong street, pal!', 'Back off!', 'You lost?'],
+  myCar: ['Hey, that\'s my car!', 'My car! Get out of my car!', 'Somebody stop him, that\'s my car!', 'Not my car, man!'],
   cop: ['Freeze!', 'Police! Stop right there!', 'Hands where I can see them!', 'Get on the ground!'],
 };
 

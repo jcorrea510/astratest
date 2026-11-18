@@ -1,7 +1,7 @@
 /** In-game HUD. update() runs every frame and only touches the DOM when a value changes. */
 import type { CityMap } from '../world/citymap';
 import type { HudState, WeaponIcon } from './contracts';
-import { FLARE_SVG, WRENCH_SVG, weaponSvg } from './icons';
+import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
 import { formatMoney, formatTimer } from './geometry';
 import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
@@ -56,6 +56,9 @@ export class Hud {
   private locEl: HTMLDivElement;
   private locPop: Popup;
   private locVehicle: TextSlot;
+  private vehMake: TextSlot;
+  private vehEl: HTMLDivElement;
+  private vehPop: Popup;
   private district: TextSlot;
   private street: TextSlot;
   private locLast = { district: '', street: '', vehicle: '' as string | null, at: 0 };
@@ -123,8 +126,8 @@ export class Hud {
     this.heatEl = h('div', 'ma-heat');
     this.heatEl.setAttribute('aria-label', 'Heat level');
     for (let i = 0; i < 5; i++) {
-      const f = h('span', 'ma-flare');
-      f.innerHTML = FLARE_SVG;
+      const f = h('span', 'ma-flare ma-star');
+      f.innerHTML = STAR_SVG;
       this.heatEl.appendChild(f);
       this.flares.push(f);
     }
@@ -176,10 +179,18 @@ export class Hud {
     this.speedoEl.append(sp, sbar, body);
     br.appendChild(this.speedoEl);
 
+    // Vehicle name popup (entering a car): make small, model big
+    this.vehEl = h('div', 'ma-vehpop');
+    const vm = h('div', 'ma-vehpop-make'), vn = h('div', 'ma-vehpop-model');
+    this.vehMake = new TextSlot(vm); this.locVehicle = new TextSlot(vn);
+    this.vehEl.append(vm, vn);
+    this.vehPop = new Popup(this.vehEl);
+    br.appendChild(this.vehEl);
+    // Area popup (district change): district big, street under it
     this.locEl = h('div', 'ma-loc');
-    const lv = h('div', 'ma-loc-vehicle'), ld = h('div', 'ma-loc-district'), ls = h('div', 'ma-loc-street');
-    this.locVehicle = new TextSlot(lv); this.district = new TextSlot(ld); this.street = new TextSlot(ls);
-    this.locEl.append(lv, ld, ls);
+    const ld = h('div', 'ma-loc-district'), ls = h('div', 'ma-loc-street');
+    this.district = new TextSlot(ld); this.street = new TextSlot(ls);
+    this.locEl.append(ld, ls);
     this.locPop = new Popup(this.locEl);
     br.appendChild(this.locEl);
 
@@ -337,12 +348,14 @@ export class Hud {
     if (districtChanged || streetChanged || vehicleChanged) {
       this.district.set(s.district);
       this.street.set(s.streetName);
-      this.locVehicle.set(vname ?? '');
-      setClass(this.locEl, 'has-vehicle', !!vname);
-      const show = !this.started ? false : districtChanged || (vehicleChanged && !!vname) || (streetChanged && now - L.at > 9000);
+      if (vehicleChanged) {
+        const [make, model] = splitVehicleName(vname ?? '');
+        this.vehMake.set(make); this.locVehicle.set(model);
+        if (vname && this.started) this.vehPop.show(3800); else this.vehPop.hide();
+      }
+      const show = !this.started ? false : districtChanged || (streetChanged && now - L.at > 9000);
       L.district = s.district; L.street = s.streetName; L.vehicle = vname;
-      if (show) { L.at = now; this.locPop.show(4200); }
-      else if (vehicleChanged && !vname) this.locPop.hide();
+      if (show) { L.at = now; this.locPop.show(4500); }
     }
     this.started = true;
 
@@ -417,6 +430,12 @@ export class Hud {
     setClass(this.fpsEl, 'is-visible', showF);
     if (showF) this.fps.set(`${Math.round(s.fps ?? 0)} FPS`);
   }
+}
+
+/** "Vantor Zephyra" -> ["Vantor", "Zephyra"]; single words have no make. */
+export function splitVehicleName(name: string): [string, string] {
+  const t = name.trim(), i = t.indexOf(' ');
+  return i > 0 ? [t.slice(0, i), t.slice(i + 1)] : ['', t];
 }
 
 /** Toasts, help box, subtitles: shown even when the HUD is hidden. */

@@ -1,5 +1,5 @@
 /** Canvas painting of Port Meridian for the minimap and the full map, plus blip glyphs. */
-import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, STREETS, type CityMap, type District } from '../world/citymap';
+import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS } from '../world/citymap';
 import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 
@@ -27,7 +27,7 @@ export class CityPainter {
   readonly majorRoads: Path2D;
   readonly coastline: Path2D;
   readonly districtLabels: { name: string; x: number; z: number }[] = [];
-  readonly bounds = { minX: AVENUES[0] - 60, maxX: HARBOR_X + 60, minZ: STREETS[0] - 60, maxZ: COAST_Z + 70 };
+  readonly bounds = { minX: AVENUES[0] - 60, maxX: AIRFIELD.x1 + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
 
   constructor(city: CityMap) {
     const big = 4000;
@@ -36,7 +36,7 @@ export class CityPainter {
     const water = new Path2D();
     water.rect(-big, COAST_Z, big * 2, big);
     water.rect(HARBOR_X, -60, big, big);
-    water.rect(HARBOR_X + 40, -big, big, big);
+    water.rect(CHANNEL.x0, -700, CHANNEL.x1 - CHANNEL.x0, 700 - 60); // CITY: the Cannery Channel (land east of it)
     const beach = new Path2D();
     beach.rect(AVENUES[0] - 30, STREETS[STREETS.length - 1] + 9, HARBOR_X - AVENUES[0] + 30, COAST_Z - STREETS[STREETS.length - 1] - 9);
     const quay = new Path2D();
@@ -44,11 +44,16 @@ export class CityPainter {
     this.base.push({ color: '#1d4436', path: land });
     this.base.push({ color: mixColor('#d9b380', BASE, 0.45), path: beach });
     this.base.push({ color: mixColor('#7a7268', BASE, 0.45), path: quay });
+    const tarmac = new Path2D(); // CITY: airfield runway/apron and Fort Calder
+    tarmac.rect(AIRFIELD.runwayX - 22, AIRFIELD.z0 + 20, 45, AIRFIELD.z1 - AIRFIELD.z0 - 30); tarmac.rect(AIRFIELD.apronX - 40, AIRFIELD.z0 + 80, 80, AIRFIELD.z1 - AIRFIELD.z0 - 100);
+    this.base.push({ color: mixColor('#8a8a86', BASE, 0.4), path: tarmac });
+    const fort = new Path2D(); fort.rect(ARMY_BASE.x0, ARMY_BASE.z0, ARMY_BASE.x1 - ARMY_BASE.x0, ARMY_BASE.z1 - ARMY_BASE.z0);
+    this.base.push({ color: mixColor('#5b6b45', BASE, 0.35), path: fort });
     this.base.push({ color: '#0b2630', path: water });
 
     this.coastline = new Path2D();
     this.coastline.moveTo(-big, COAST_Z); this.coastline.lineTo(HARBOR_X, COAST_Z);
-    this.coastline.lineTo(HARBOR_X, -60); this.coastline.lineTo(HARBOR_X + 40, -60); this.coastline.lineTo(HARBOR_X + 40, -big);
+    this.coastline.lineTo(HARBOR_X, -700); this.coastline.moveTo(CHANNEL.x1, -700); this.coastline.lineTo(CHANNEL.x1, -60); this.coastline.lineTo(big, -60);
 
     const blockPaths = new Map<string, Path2D>();
     const lotPaths = new Map<string, Path2D>();
@@ -88,7 +93,16 @@ export class CityPainter {
       const major = i.halfX > 6 || i.halfZ > 6;
       (major ? this.majorRoads : this.roads).rect(i.x - i.halfX, i.z - i.halfZ, i.halfX * 2, i.halfZ * 2);
     }
+    // CITY: freeway, ramps, Vista Drive and Airfield Road as polygon strips
+    for (const p of city.paths) {
+      const tgt = p.kind === 'freeway' ? this.majorRoads : this.roads;
+      for (let i = 1; i < p.pts.length; i++) {
+        const a = p.pts[i - 1], b = p.pts[i]; const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; const nx = -(b.z - a.z) / l * p.half, nz = (b.x - a.x) / l * p.half;
+        tgt.moveTo(a.x + nx, a.z + nz); tgt.lineTo(b.x + nx, b.z + nz); tgt.lineTo(b.x - nx, b.z - nz); tgt.lineTo(a.x - nx, a.z - nz); tgt.closePath();
+      }
+    }
     for (const [d, s] of dsum) this.districtLabels.push({ name: DISTRICT_INFO[d].name, x: s.x / s.n, z: s.z / s.n });
+    this.districtLabels.push({ name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
   }
 
   /** Paints in world coordinates; the caller sets the transform. */

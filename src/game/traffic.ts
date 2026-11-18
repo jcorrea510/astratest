@@ -17,7 +17,9 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** lane picked at the end of the current one, and the routing target it was picked for */
   nextChoice?: number; nextKey?: string;
   /** steering around a stopped, undriven obstacle: which vehicle, which side, time spent */
-  avoid?: { v: Vehicle; side: number; t: number } | null; blockedT?: number }
+  avoid?: { v: Vehicle; side: number; t: number } | null; blockedT?: number;
+  /** riders besides the driver (seat 1..) */
+  passengers?: Npc[] }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
@@ -44,13 +46,19 @@ export class Traffic {
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
     const car: AiCar = { v, driver, lane, s, mode, target: null, stuckT: 0, honkT: 0, reverseT: 0, persistent: false, ram: false, arriveDist: 8 };
+    // some civilians drive with a friend in the front passenger seat
+    if (role === 'civilian' && mode === 'cruise' && v.tpl.seats.length > 1 && v.doorIndex('right', 0) >= 0 && Math.random() < 0.2) {
+      const pax = this.pop.spawn('civilian', sp.x, sp.z, 0.5);
+      this.seat(pax, v, 1); car.passengers = [pax];
+    }
     this.cars.push(car);
     return car;
   }
-  seat(n: Npc, v: Vehicle) {
+  seat(n: Npc, v: Vehicle, seat = 0) {
     n.brain = 'passenger'; n.char.inVehicle = v; n.char.setCollision(false);
-    v.driver = n.char; v.visual.add(n.char.human.root);
-    n.char.human.root.position.copy(v.seatOffset()); n.char.human.root.rotation.set(0, 0, 0);
+    if (seat === 0) v.driver = n.char;
+    v.visual.add(n.char.human.root);
+    n.char.human.root.position.copy(v.seatLocal(seat)); n.char.human.root.rotation.set(0, 0, 0);
     n.char.human.setState('drive');
     if (n.model) n.model.visible = false;
   }
@@ -68,7 +76,38 @@ export class Traffic {
     n.brain = n.role === 'civilian' ? 'flee' : 'combat'; n.stateT = 0; n.fleeFrom.copy(v.position);
     return n;
   }
+  /** A passenger gets out on their own side and runs. */
+  ejectPassenger(n: Npc, v: Vehicle) {
+    const side = n.char.human.root.position.x >= 0 ? 1 : -1;
+    const p = v.doorPoint(side as 1 | -1);
+    this.pop.adopt(n);
+    n.char.inVehicle = null;
+    n.char.place(p.x, Math.max(0.2, v.position.y), p.z, v.yaw);
+    n.char.setCollision(true); n.char.human.setState('loco');
+    n.brain = 'flee'; n.stateT = 0; n.fleeFrom.copy(v.position);
+  }
   carOf(v: Vehicle) { return this.cars.find(c => c.v === v) ?? null; }
+  /**
+   * Takes a car out of AI control without moving anyone (scripted carjacks animate the occupants themselves).
+   * Returns the driver and passengers that were in it.
+   */
+  release(v: Vehicle): { driver: Npc | null; passengers: Npc[] } {
+    const car = this.carOf(v);
+    if (car) this.cars.splice(this.cars.indexOf(car), 1);
+    const inside = this.pop.npcs.filter(n => n.char.inVehicle === v && n.alive);
+    const driver = inside.find(n => n.char === v.driver) ?? null;
+    v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true;
+    return { driver, passengers: inside.filter(n => n !== driver) };
+  }
+  /** Someone (the player) walks up to a car: a startled civilian driver may floor it. Returns true if they drive off. */
+  startle(v: Vehicle, chance = 0.35): boolean {
+    const car = this.carOf(v);
+    if (!car || car.persistent || car.driver.role !== 'civilian' || car.mode !== 'cruise' || Math.random() >= chance) return false;
+    car.mode = 'flee'; car.maxSpeed = undefined; car.honkT = -3;
+    this.audio.play('horn', { pos: v.position, volume: 0.7 });
+    this.audio.play('tireScreech', { pos: v.position, volume: 0.6 });
+    return true;
+  }
   panic(v: Vehicle) { const c = this.carOf(v); if (c && c.mode === 'cruise') c.mode = 'flee'; }
   private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - 5.2; }
 
@@ -80,6 +119,7 @@ export class Traffic {
         // driver gone (carjacked, killed, destroyed car)
         const idx = this.cars.indexOf(car); if (idx >= 0) this.cars.splice(idx, 1);
         if (car.driver.alive && car.driver.char.inVehicle === v) this.eject(null, v, 1);
+        for (const p of car.passengers ?? []) if (p.alive && p.char.inVehicle === v) this.ejectPassenger(p, v);
         v.input.throttle = 0; v.input.handbrake = car.driver.alive || v.destroyed; // COMBAT: a driver shot dead in the seat lets the car coast
         continue;
       }
@@ -203,12 +243,12 @@ export class Traffic {
     // Despawn
     for (const car of [...this.cars]) {
       if (car.persistent) continue;
-      if (car.v.position.distanceTo(focus) > 210) { this.cars.splice(this.cars.indexOf(car), 1); this.pop.remove(car.driver); this.vehicles.remove(car.v); }
+      if (car.v.position.distanceTo(focus) > 210) { this.cars.splice(this.cars.indexOf(car), 1); this.pop.remove(car.driver); for (const p of car.passengers ?? []) if (p.char.inVehicle === car.v) this.pop.remove(p); this.vehicles.remove(car.v); }
     }
     for (const v of [...this.vehicles.list]) {
       if (v.persistent || v.driver || this.cars.some(c => c.v === v)) continue;
       if (v.parked) continue;
-      if (v.position.distanceTo(focus) > 230 || (v.destroyed && v.burnTime < 0 && v.position.distanceTo(focus) > 60)) { const occupant = this.pop.npcs.find(n => n.char.inVehicle === v); if (occupant) this.pop.remove(occupant); this.vehicles.remove(v); }
+      if (v.position.distanceTo(focus) > 230 || (v.destroyed && v.burnTime < 0 && v.position.distanceTo(focus) > 60)) { for (const o of this.pop.npcs.filter(n => n.char.inVehicle === v)) this.pop.remove(o); this.vehicles.remove(v); }
     }
     // Spawn
     this.spawnT -= dt;
@@ -247,7 +287,7 @@ export class Traffic {
           const x = ix0 + 4 + (i % 5) * ((ix1 - ix0 - 8) / 4.5), z = r.chance(0.5) ? iz0 + 5 : iz1 - 5;
           if (this.vehicles.list.some(o => Math.hypot(o.position.x - x, o.position.z - z) < 5)) continue;
           const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, z < cz ? 0 : Math.PI, r.int(0, 11), CURB_HEIGHT + 0.25);
-          v.parked = true; list.push(v);
+          v.parked = true; v.doorsLocked = r.chance(0.7); v.ignition = false; list.push(v);
         }
         this.parkedBlocks.set(b.id, list);
       } else if (d > 190 && have) {

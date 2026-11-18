@@ -69,7 +69,14 @@ export class Vehicle {
   paint = new THREE.Color();
   parked = false;
   lastDriverTime = 0;
+  /** mission lock: nobody may get in */
   locked = false;
+  /** doors locked: a thief has to smash the driver's window first (parked cars) */
+  doorsLocked = false;
+  /** engine can be started (false = needs hotwiring after a break-in) */
+  ignition = true;
+  /** the player has driven it (stays unlocked and started) */
+  playerUsed = false;
   flashT = 0;
   persistent = false;
   lastDamagedBy: unknown = null;
@@ -172,6 +179,14 @@ export class Vehicle {
   }
   /** Where a person stands (on the ground) to open door i: outside, by the handle, clear of the swing. */
   doorWorldPos(i: number, out = new THREE.Vector3()) { this.group.updateMatrixWorld(); return this.doorLocal(i, out).applyMatrix4(this.group.matrixWorld); }
+  /** Door geometry in the body frame for scripted entry: side sign (+1 left), outer skin x, rear/front edge z, belt line y, ground y. */
+  doorFrame(i: number): { sg: 1 | -1; outX: number; z0: number; z1: number; belt: number; ground: number } {
+    const d = this.tpl.doors[i];
+    if (!d) return { sg: 1, outX: this.tpl.shape.W / 2, z0: -0.5, z1: 0.5, belt: GROUND + 1, ground: GROUND };
+    return { sg: d.side === 'left' ? 1 : -1, outX: d.outX, z0: d.z0, z1: d.z1, belt: d.beltY, ground: GROUND };
+  }
+  /** Side-window pane of door i (-1 if none). */
+  paneOfDoor(i: number) { return this.panes.find(p => p.door === i)?.id ?? -1; }
   /** Hip point of a seat in the world. */
   seatWorldPos(seat: number, out = new THREE.Vector3()) {
     const s = this.tpl.seats[Math.min(seat, this.tpl.seats.length - 1)];

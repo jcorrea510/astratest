@@ -9,7 +9,10 @@ export interface SaveData {
   missions: string[]; collectibles: number[]; jumps: number[];
   pos: { x: number; z: number; yaw: number }; hour: number;
   stats: { kills: number; distance: number; crashes: number };
+  /** Sandbox tool toggles (the game is sandbox-only; `missions` is kept for old saves and a possible story return). */
+  tools?: SandboxTools;
 }
+export interface SandboxTools { god: boolean; ammo: boolean; never: boolean; clock: boolean }
 export function serialize(d: SaveData): string { return JSON.stringify(d); }
 export function parseSave(raw: string | null): SaveData | null {
   if (!raw) return null;
@@ -24,6 +27,7 @@ export function parseSave(raw: string | null): SaveData | null {
       jumps: Array.isArray(d.jumps) ? d.jumps.filter(x => typeof x === 'number') : [],
       pos: { x: d.pos.x, z: d.pos.z, yaw: d.pos.yaw ?? 0 }, hour: clamp(d.hour ?? 17.5, 0, 24),
       stats: { kills: d.stats?.kills ?? 0, distance: d.stats?.distance ?? 0, crashes: d.stats?.crashes ?? 0 },
+      ...(d.tools && typeof d.tools === 'object' ? { tools: { god: !!d.tools.god, ammo: !!d.tools.ammo, never: !!d.tools.never, clock: d.tools.clock !== false } } : {}),
     };
   } catch { return null; }
 }

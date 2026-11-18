@@ -189,7 +189,7 @@ if (fKind < 0.5) {
   float cellSeed = fH(cell + vec2(fSeed, fSeed * 0.31));
   float inGrid = step(0.0, gp.y) * step(cell.y, vFacade3.w - 0.5);
   vec3 frameC = mix(vec3(0.93, 0.92, 0.88), vec3(0.16, 0.16, 0.17), step(0.5, fract(fSeed * 0.173)));
-  float far = smoothstep(0.06, 0.22, fPix);
+  float far = smoothstep(0.12, 0.34, fPix);
   if (fKind > 0.5 && fKind < 1.5) {
     // glass curtain wall: mullions, spandrels, offices behind
     float mw = 0.045;
@@ -206,11 +206,11 @@ if (fKind < 0.5) {
     float g = glassM * (1.0 - spandrel);
     float glassAvg = 0.72;
     float litAvg = vFacade3.z * 0.8;
-    vec3 avgEm = vec3(0.92, 0.95, 1.0) * mix(0.22 * 0.35, litAvg * 1.2, fNight) * glassAvg;
+    vec3 avgEm = vec3(0.92, 0.95, 1.0) * mix(0.22 * 0.35, litAvg * 0.7, fNight) * glassAvg;
     col = mix(mull, tint * 0.25, glassM);
     fEmis = mix(inter * g * 0.9, avgEm * 0.5, far);
     fGlass = mix(g, 0.75, far) + spandrel * glassM * 0.6;
-    rough = mix(0.35, 0.04, max(fGlass, glassM)); metal = mix(0.6, 0.85, glassM);
+    rough = mix(0.35, 0.04, max(fGlass, glassM)); metal = mix(0.6, 0.85, glassM) * mix(1.0, 0.6, far * fNight);
     col = mix(col, tint * 0.22, far);
     h += (1.0 - glassM) * 0.012;
   } else if (fKind < 2.5 || fKind > 7.5) {
@@ -253,7 +253,7 @@ if (fKind < 0.5) {
     // far: average the grid
     float frac = (ww * wh) / (fCs.x * fCs.y) * inGrid;
     vec3 farCol = mix(diffuseColor.rgb * 0.9, vec3(0.06), frac * 0.75);
-    vec3 farEm = vec3(1.0, 0.8, 0.55) * frac * mix(0.05, vFacade3.z * 0.75, fNight);
+    vec3 farEm = vec3(1.0, 0.8, 0.55) * frac * mix(0.05, vFacade3.z * 0.5, fNight);
     col = mix(col, farCol, far); fEmis = mix(fEmis, farEm, far); fGlass = mix(fGlass, frac * 0.6, far);
   } else if (fKind < 3.5) {
     // solid wall: nothing more
@@ -276,7 +276,7 @@ if (fKind < 0.5) {
     vec3 frameCol = mix(vec3(0.12, 0.12, 0.13), vec3(0.55, 0.4, 0.25), step(0.6, fract(fSeed * 0.71)));
     col = mix(col, frameCol, win);
     col = mix(col, vec3(0.02), win * glassM);
-    fEmis = inter * win * glassM * (1.4 + fNight * 0.8) * (1.0 - grille);
+    fEmis = inter * win * glassM * mix(1.3, 0.45, fNight) * (1.0 - grille);
     col = mix(col, vec3(0.42, 0.43, 0.44) * (0.75 + 0.25 * step(0.5, fract(lp.y / 0.09))), grille);
     fGlass = win * glassM * (1.0 - grille);
     rough = mix(rough, 0.05, fGlass); metal = mix(metal, 0.5, win * (1.0 - glassM));

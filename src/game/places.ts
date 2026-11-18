@@ -13,15 +13,32 @@ export const PLACES = {
 } satisfies Record<string, Place>;
 export type PlaceId = keyof typeof PLACES;
 
-/** Street kiosks that can be held up (yaw = direction the counter faces; cash = a full till). */
-export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number }
+/**
+ * Walk-in stores that can be held up. (x,z) = centre of the shop's footprint, yaw = direction the shop front faces
+ * (front = (sin yaw, cos yaw)). Each one is a real interior (counter, register, shelves, fridges) entered through
+ * a sliding door; cash = a full till. `standalone` shops have no building above (the gas station).
+ */
+export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn';
+export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number; kind: StoreKind; standalone?: boolean }
+export const STORE_W = 10.4, STORE_D = 9.8, STORE_H = 4.4;
 export const STORES: Store[] = [
-  { x: -232, z: 130, yaw: -Math.PI / 2, name: 'Lucky Gull 24/7', color: '#d1495b', cash: 320 },
-  { x: 67, z: -118, yaw: -Math.PI / 2, name: 'Sundial Deli', color: '#2f8f8a', cash: 600 },
-  { x: 100, z: -318, yaw: 0, name: 'Juniper Snack Hut', color: '#6a994e', cash: 220 },
-  { x: -120, z: 414, yaw: Math.PI, name: 'Promenade Pops', color: '#ef8354', cash: 260 },
-  { x: 486, z: 60, yaw: -Math.PI / 2, name: 'Dockside Bait & Tackle', color: '#3d5a80', cash: 420 },
+  { x: -210.5, z: 17.5, yaw: Math.PI, name: 'Lucky Gull 24/7', color: '#d1495b', cash: 320, kind: 'convenience' },
+  { x: -122.8, z: -113.9, yaw: 0, name: 'Harbor Liquor', color: '#29335c', cash: 600, kind: 'liquor' },
+  { x: -206, z: 128, yaw: -Math.PI / 2, name: 'Fuel Stop', color: '#0f7b4f', cash: 380, kind: 'gas', standalone: true },
+  { x: 131.5, z: 286.1, yaw: 0, name: 'Hot Plate Diner', color: '#8c1c22', cash: 450, kind: 'diner' },
+  { x: -379, z: -213.9, yaw: 0, name: 'Goldleaf Pawn & Jewelry', color: '#141414', cash: 900, kind: 'pawn' },
 ];
+/** Gas station forecourt (canopy + pumps) next to the Fuel Stop shop. */
+export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas station' };
+/** True when a building lot centred at (x,z) is taken by a store (it then only gets the floors above). */
+export function storeAt(x: number, z: number): Store | undefined { return STORES.find(s => Math.hypot(s.x - x, s.z - z) < 1); }
+
+/** Metro Police precinct building (replaces the street lots it covers; rooftop helipad). Front faces north onto 5th St. */
+export const POLICE_STATION = { x: 22.8, z: 113.9, w: 31.5, d: 10, yaw: Math.PI, name: 'Metro Police Precinct 4' };
+
+/** Helicopter landing pads (y = deck height). Filled in for rooftop pads by the city build; ground pads are fixed. */
+export interface HelipadSpot { x: number; y: number; z: number; name: string }
+export const HELIPADS: HelipadSpot[] = [];
 
 /** Hidden postcards (collectibles): sidewalks, park, pier, beach, docks. */
 export const POSTCARDS: Place[] = [

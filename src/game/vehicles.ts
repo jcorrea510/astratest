@@ -103,7 +103,7 @@ export class VehicleManager {
         } else if (v.burnTime < 0 && !v.flooded && Math.random() < 0.15 && dist < 150) { const p = this.hoodPoint(v); this.particles.smoke(p.x, p.y + 0.5, p.z, 0.9, 1.2); }
       }
       // Engine sound for nearby driven vehicles
-      const hasEngine = !v.destroyed && (v.driver || v === playerVehicle) && dist < 70;
+      const hasEngine = !v.destroyed && v.ignition && (v.driver || v === playerVehicle) && dist < 70; // CAR-ENTRY: silent until hotwired
       let ev = this.engines.get(v.id);
       if (hasEngine) {
         if (!ev) { ev = this.audio.engine(); this.engines.set(v.id, ev); }

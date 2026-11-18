@@ -45,7 +45,14 @@ export interface GameUI {
   toast(text: string, kind?: 'info' | 'money' | 'heat' | 'mission' | 'warning'): void; // stacked short notifications
   missionCard(title: string, subtitle: string, kind: 'start' | 'passed' | 'failed'): void; // big centred title card ~3 s
   subtitle(text: string | null, speaker?: string): void; // dialogue line at bottom centre (no voice acting)
-  showDeath(kind: 'down' | 'busted', detail: string): void; // full-screen moment: "OUT COLD" / "CUFFED", ~3.5 s, auto-hides
+  /**
+   * WASTED / ARRESTED sequence. Grey grade builds, then the title card, then a fade to black; the game respawns when
+   * advanceDeath() reports `respawn`. With `arrestAnimationDone`, the card waits until that hook calls back (police
+   * handcuff animation); without it the sequence starts at once.
+   */
+  showDeath(kind: 'down' | 'busted', detail: string, opts?: DeathOpts): void;
+  /** Ticks the death sequence with real seconds; returns the grey-grade amount 0..1 and a one-shot respawn signal. */
+  advanceDeath?(dt: number): { grade: number; respawn: boolean };
   // Weapon / item wheel
   openWheel(slots: WheelSlot[], selectedId: string): void;
   updateWheel(dirX: number, dirY: number): void; // accumulate pointer/stick direction; highlights a slot
@@ -75,12 +82,14 @@ export interface SandboxAction {
   kind: 'button' | 'toggle' | 'slider' | 'select';
   value?: number | string | boolean; min?: number; max?: number; step?: number; options?: { value: string; label: string }[];
 }
+export interface DeathOpts { arrestAnimationDone?: (done: () => void) => void }
 export interface UICallbacks {
   onStart(continueGame: boolean): void; // title: New game / Continue
-  onSandbox(): void; // title: Sandbox (free play: everything unlocked, tools panel)
+  onSandbox?(): void; // unused: the game is sandbox-only (the title's Play starts it)
   onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel
   onResume(): void;
   onQuitToTitle(): void;
+  onSaveGame?(): boolean; // pause menu: save now (returns false when the game can't be saved right now)
   onSettingsChanged(s: Settings): void; // apply + persist (game calls saveSettings)
   onQualityChanged(q: QualityName): void;
   onSetWaypoint(x: number, z: number): void; // clicking the full map

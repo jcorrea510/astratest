@@ -4,7 +4,7 @@
  */
 import { Rng } from '../core/rng';
 
-export type District = 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown';
+export type District = 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield';
 export const DISTRICT_INFO: Record<District, { name: string; color: string; pedDensity: number; trafficDensity: number }> = {
   brickline: { name: 'Brickline', color: '#b8674d', pedDensity: 1, trafficDensity: 0.8 },
   heights: { name: 'Meridian Heights', color: '#4f7f8f', pedDensity: 1.2, trafficDensity: 1.2 },
@@ -13,6 +13,8 @@ export const DISTRICT_INFO: Record<District, { name: string; color: string; pedD
   cannery: { name: 'Cannery Docks', color: '#7a7268', pedDensity: 0.3, trafficDensity: 0.7 },
   strand: { name: 'Saltwater Strand', color: '#e0b48a', pedDensity: 1, trafficDensity: 0.9 },
   midtown: { name: 'Midtown', color: '#9a7f6a', pedDensity: 0.9, trafficDensity: 1 },
+  vista: { name: 'Vista Hills', color: '#6f8a4f', pedDensity: 0.1, trafficDensity: 0.4 },
+  airfield: { name: 'Meridian Airfield', color: '#8a8a86', pedDensity: 0.05, trafficDensity: 0.3 },
 };
 
 export const LANE_WIDTH = 3.6;
@@ -44,11 +46,20 @@ export interface Lot { id: number; blockId: number; x: number; z: number; w: num
 export interface Lane {
   id: number; points: V2[]; length: number; cum: number[]; next: number[]; connector: boolean;
   intersection: number; axis: 'x' | 'z'; speed: number; lane: number; lanes: number; roadId: number;
+  /** surface height per point (absent = street level); freeway, ramps and hill roads carry it */
+  ys?: number[];
+}
+export interface P3 { x: number; y: number; z: number }
+/** A free-form road outside the grid (freeway, ramps, hill road, airfield road): centreline with heights. */
+export interface PathRoad {
+  id: number; name: string; kind: 'freeway' | 'ramp' | 'hill' | 'service'; pts: P3[]; half: number; lanes: 1 | 2;
+  elevated: boolean; from: number; to: number;
 }
 export interface PedNode { id: number; x: number; z: number; blockId: number; edges: { to: number; crossing: null | { intersection: number; axis: 'x' | 'z' } }[] }
 
 export interface CityMap {
   roads: Road[]; intersections: Intersection[]; blocks: Block[]; lots: Lot[]; lanes: Lane[]; pedNodes: PedNode[];
+  paths: PathRoad[];
   intersectionAt: (ix: number, iz: number) => Intersection | undefined;
 }
 
@@ -88,7 +99,7 @@ function polyLength(points: V2[]): { length: number; cum: number[] } {
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z));
   return { length: cum[cum.length - 1], cum };
 }
-export function samplePath(lane: { points: V2[]; cum: number[]; length: number }, s: number, out: { x: number; z: number; dx: number; dz: number }) {
+export function samplePath(lane: { points: V2[]; cum: number[]; length: number; ys?: number[] }, s: number, out: { x: number; z: number; dx: number; dz: number; y?: number }) {
   const pts = lane.points, cum = lane.cum;
   if (s <= 0) s = 0; if (s >= lane.length) s = lane.length - 1e-6;
   let i = 1;
@@ -98,6 +109,7 @@ export function samplePath(lane: { points: V2[]; cum: number[]; length: number }
   const t = (s - cum[i - 1]) / seg;
   out.x = a.x + (b.x - a.x) * t; out.z = a.z + (b.z - a.z) * t;
   out.dx = (b.x - a.x) / seg; out.dz = (b.z - a.z) / seg;
+  if (lane.ys) out.y = lane.ys[i - 1] + (lane.ys[i] - lane.ys[i - 1]) * t; else if (out.y !== undefined) out.y = 0;
   return out;
 }
 
@@ -220,6 +232,7 @@ export function generateCity(seed = 1977): CityMap {
       }
     }
   }
+  const paths = buildExpansion(intersections, interGrid, lanes, push);
   // connectors
   for (const inter of intersections) {
     const ins = laneEnds.get(`${inter.id}:in`) ?? [];
@@ -239,9 +252,9 @@ export function generateCity(seed = 1977): CityMap {
         // turn direction: cross product (a x b).y ; right turn when b = right of a
         const cross = adx * bdz - adz * bdx; // >0 -> b is to the right of a (x east, z south)
         if (relaxed) { if (b.lane !== (cross > 0 ? b.lanes - 1 : 0) && !straight) continue; }
-        else if (straight) { if (b.lane !== Math.min(a.lane, b.lanes - 1)) continue; }
-        else if (cross > 0) { if (a.lane !== a.lanes - 1 || b.lane !== b.lanes - 1) continue; }
-        else { if (a.lane !== 0 || b.lane !== 0) continue; }
+        else if (straight) { if (b.lane !== Math.min(a.lane, b.lanes - 1) && !(inter.ix < 0 && a.lanes < b.lanes)) continue; }
+        else if (cross > 0) { if (a.lane !== a.lanes - 1 || (b.lane !== b.lanes - 1 && !(inter.ix < 0))) continue; }
+        else { if (a.lane !== 0 || (b.lane !== 0 && !(inter.ix < 0))) continue; }
         const pts: V2[] = [];
         if (straight) pts.push(ae, bs);
         else {
@@ -256,12 +269,14 @@ export function generateCity(seed = 1977): CityMap {
         }
         const { length, cum } = polyLength(pts);
         const c: Lane = { id: lanes.length, points: pts, length, cum, next: [lo], connector: true, intersection: inter.id, axis: a.axis, speed: straight ? a.speed : 7.5, lane: 0, lanes: 1, roadId: -1 };
+        if (a.ys || b.ys) { const y0 = a.ys ? a.ys[a.ys.length - 1] : 0, y1 = b.ys ? b.ys[0] : 0; c.ys = pts.map((_, k) => y0 + (y1 - y0) * (k / Math.max(1, pts.length - 1))); }
         lanes.push(c);
         a.next.push(c.id);
       }
     }
   }
 
+  deadEndLoops(paths, intersections, lanes, laneEnds);
   // Pedestrian graph: 4 corner nodes per block, edges along sidewalks and crosswalks
   const cornerId = new Map<string, number>();
   const inset = 2.2;
@@ -287,7 +302,7 @@ export function generateCity(seed = 1977): CityMap {
     link(`${i},${j},se`, `${i},${j + 1},ne`, interGrid[i + 1][j + 1], 'x');
   }
 
-  return { roads, intersections, blocks, lots, lanes, pedNodes, intersectionAt: (ix, iz) => interGrid[ix]?.[iz] };
+  return { roads, intersections, blocks, lots, lanes, pedNodes, paths, intersectionAt: (ix, iz) => interGrid[ix]?.[iz] };
 }
 
 function nearestCoord(arr: number[], v: number): number {
@@ -299,13 +314,23 @@ function nearestCoord(arr: number[], v: number): number {
 export type Surface = 'road' | 'sidewalk' | 'lot' | 'park' | 'beach' | 'water' | 'quay' | 'offmap';
 /** Classifies a point on the ground plane. */
 export function surfaceAt(city: CityMap, x: number, z: number): Surface {
-  if (z > COAST_Z || x > HARBOR_X + 40) return 'water';
-  if (x > HARBOR_X && z > -60) return 'water';
-  if (x < AVENUES[0] - 30 || z < STREETS[0] - 30) return 'offmap';
+  if (z < STREETS[0] - 9 || x > CHANNEL.x0) {
+    for (const p of city.paths) { const h = pathHeightAt(p, x, z); if (h.d < p.half) return 'road'; }
+    for (const i of city.intersections) {
+      if (i.ix >= 0) continue;
+      const dead = city.paths.filter(p => p.from === i.id || p.to === i.id).length === 1;
+      if (Math.hypot(x - i.x, z - i.z) < (dead ? CUL_DE_SAC_R : Math.max(i.halfX, i.halfZ) * 1.42)) return 'road';
+    }
+  }
+  if (z > COAST_Z) return 'water';
+  if (x > HARBOR_X && z > -60 && x < SEA_EDGE_X + 40) return 'water';
+  if (x > CHANNEL.x0 && x < CHANNEL.x1 && z <= -60) return 'water';
+  if (x < AVENUES[0] - 30 || z < STREETS[0] - 30 || x > SEA_EDGE_X + 40) return 'offmap';
   if (x > AVENUES[AVENUES.length - 1] + 9 && x <= HARBOR_X) return 'quay';
   if (z > STREETS[STREETS.length - 1] + 9) return 'beach';
   for (let i = 0; i < AVENUES.length; i++) if (Math.abs(x - AVENUES[i]) < halfWidth(lanesForAvenue(i)) && z > STREETS[0] - 9 && z < STREETS[STREETS.length - 1] + 9) return 'road';
   for (let j = 0; j < STREETS.length; j++) if (Math.abs(z - STREETS[j]) < halfWidth(lanesForStreet(j)) && x > AVENUES[0] - 9 && x < AVENUES[AVENUES.length - 1] + 9) return 'road';
+  if (x > CHANNEL.x1) return 'offmap';
   const b = blockAt(city, x, z);
   if (!b) return 'sidewalk';
   if (x < b.x0 + SIDEWALK || x > b.x1 - SIDEWALK || z < b.z0 + SIDEWALK || z > b.z1 - SIDEWALK) return 'sidewalk';
@@ -318,6 +343,8 @@ export function blockAt(city: CityMap, x: number, z: number): Block | undefined 
 export function districtAt(city: CityMap, x: number, z: number): District {
   const b = blockAt(city, x, z);
   if (b) return b.district;
+  if (x > CHANNEL.x1 && z < -62) return 'airfield';
+  if (z < STREETS[0] - 20) return 'vista';
   if (z > STREETS[STREETS.length - 1]) return 'strand';
   if (x > AVENUES[AVENUES.length - 1]) return 'cannery';
   let bi = 0, bj = 0;
@@ -383,4 +410,132 @@ export function routeField(city: CityMap, x: number, z: number): Float32Array {
   if (c.fields.size > 48) c.fields.clear();
   c.fields.set(key, D);
   return D;
+}
+
+// ---------------- Expansion: freeway, ramps, bridge, hill road, airfield road ----------------
+export const FREEWAY_Z = -480;
+export const DECK_Y = 7;
+/** Radius of the paved turning circle at dead-end junctions. */
+export const CUL_DE_SAC_R = 22;
+export const CHANNEL = { x0: 492, x1: 560, z1: -62 };
+export const LOOKOUT = { x: -40, z: -860 };
+export const AIRFIELD = { x0: 775, x1: 985, z0: -760, z1: -130, runwayX: 930, apronX: 840, gateZ: -230 };
+export const ARMY_BASE = { x0: 600, x1: 730, z0: -400, z1: -150, gateZ: -260, name: 'Fort Calder' };
+
+function catmull(ctrl: P3[], step: number): P3[] {
+  const out: P3[] = [];
+  for (let i = 0; i < ctrl.length - 1; i++) {
+    const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+    const n = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.z - p1.z) / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) => 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push({ x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y), z: f(p0.z, p1.z, p2.z, p3.z) });
+    }
+  }
+  out.push({ ...ctrl[ctrl.length - 1] });
+  return out;
+}
+/** Height of a path centreline at the closest point to (x,z); returns distance too. */
+export function pathHeightAt(path: PathRoad, x: number, z: number): { y: number; d: number; t: number } {
+  let best = { y: 0, d: Infinity, t: 0 };
+  const p = path.pts;
+  for (let i = 1; i < p.length; i++) {
+    const a = p[i - 1], b = p[i], vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / l2));
+    const d = Math.hypot(x - a.x - vx * t, z - a.z - vz * t);
+    if (d < best.d) best = { y: a.y + (b.y - a.y) * t, d, t: (i - 1 + t) / (p.length - 1) };
+  }
+  return best;
+}
+
+function buildExpansion(intersections: Intersection[], interGrid: Intersection[][], lanes: Lane[], push: (key: string, id: number) => void): PathRoad[] {
+  const paths: PathRoad[] = [];
+  const junction = (x: number, z: number, half: number): Intersection => {
+    const j: Intersection = { id: intersections.length, ix: -1, iz: -1, x, z, halfX: half, halfZ: half, offset: 0, signalized: false };
+    intersections.push(j); return j;
+  };
+  const fwHalf = halfWidth(2), rampHalf = halfWidth(1);
+  const JW = junction(-450, FREEWAY_Z, fwHalf), JT = junction(250, FREEWAY_Z, fwHalf), JA = junction(760, FREEWAY_Z, rampHalf);
+  const JL = junction(LOOKOUT.x, LOOKOUT.z, rampHalf), JS = junction(760, -170, rampHalf);
+  const g00 = interGrid[0][0], g40 = interGrid[4][0], g70 = interGrid[7][0];
+  /** Adds a path between two intersections; ctrl excludes the ends, which are derived from the junction edges. */
+  const add = (name: string, kind: PathRoad['kind'], from: Intersection, fromDir: [number, number], to: Intersection, toDir: [number, number], ctrl: P3[], lanesN: 1 | 2, y0: number, y1: number, elevated: boolean, step = 6) => {
+    const half = halfWidth(lanesN);
+    const fe = { x: from.x + fromDir[0] * from.halfX, y: y0, z: from.z + fromDir[1] * from.halfZ };
+    const te = { x: to.x + toDir[0] * to.halfX, y: y1, z: to.z + toDir[1] * to.halfZ };
+    const lead = { x: fe.x + fromDir[0] * 4, y: y0, z: fe.z + fromDir[1] * 4 }, tail = { x: te.x + toDir[0] * 4, y: y1, z: te.z + toDir[1] * 4 };
+    const pts = catmull([fe, lead, ...ctrl, tail, te], step);
+    const path: PathRoad = { id: paths.length, name, kind, pts, half, lanes: lanesN, elevated, from: from.id, to: to.id };
+    paths.push(path);
+    // lanes in both directions, offset to the right of travel
+    const speed = kind === 'freeway' ? 24 : kind === 'hill' ? 12 : 15;
+    for (const dir of [1, -1]) {
+      const seq = dir > 0 ? pts : [...pts].reverse();
+      const endI = dir > 0 ? to : from, startI = dir > 0 ? from : to;
+      for (let k = 0; k < lanesN; k++) {
+        const off = (k + 0.5) * LANE_WIDTH + 0.2;
+        const lp: V2[] = [], ys: number[] = [];
+        for (let i = 0; i < seq.length; i++) {
+          const a = seq[Math.max(0, i - 1)], b = seq[Math.min(seq.length - 1, i + 1)];
+          const tx = b.x - a.x, tz = b.z - a.z, tl = Math.hypot(tx, tz) || 1;
+          lp.push({ x: seq[i].x + (-tz / tl) * off, z: seq[i].z + (tx / tl) * off }); ys.push(seq[i].y);
+        }
+        // exact axis-aligned first/last segments for the junction connector logic
+        const sd = dir > 0 ? fromDir : toDir, ed = dir > 0 ? toDir : fromDir;
+        const s0 = seq[0], e0 = seq[seq.length - 1];
+        const right = (dx: number, dz: number) => ({ x: -dz, z: dx });
+        const r0 = right(sd[0], sd[1]); lp[0] = { x: s0.x + r0.x * off, z: s0.z + r0.z * off };
+        lp.splice(1, 0, { x: lp[0].x + sd[0] * 3, z: lp[0].z + sd[1] * 3 }); ys.splice(1, 0, ys[0]);
+        const r1 = right(-ed[0], -ed[1]); const last = { x: e0.x + r1.x * off, z: e0.z + r1.z * off };
+        lp[lp.length - 1] = last;
+        lp.splice(lp.length - 1, 0, { x: last.x + ed[0] * 3, z: last.z + ed[1] * 3 }); ys.splice(ys.length - 1, 0, ys[ys.length - 1]);
+        const { length, cum } = polyLength(lp);
+        const axis: 'x' | 'z' = ed[0] !== 0 ? 'x' : 'z';
+        const lane: Lane = { id: lanes.length, points: lp, length, cum, next: [], connector: false, intersection: endI.id, axis, speed, lane: k, lanes: lanesN, roadId: -1, ys };
+        lanes.push(lane);
+        push(`${endI.id}:in`, lane.id); push(`${startI.id}:out`, lane.id);
+      }
+    }
+    return path;
+  };
+  // Ridge Ave ramp: grid (0,0) north edge up to the freeway's west end
+  add('Ridge Ave Ramp', 'ramp', g00, [0, -1], JW, [0, 1], [{ x: -450, y: 3.5, z: -442 }], 1, 0, DECK_Y, true);
+  // Harbor Freeway: west end -> Tidewell junction -> bridge over the channel -> down to the airfield junction
+  add('Harbor Freeway', 'freeway', JW, [1, 0], JT, [-1, 0], [{ x: -100, y: DECK_Y, z: FREEWAY_Z }], 2, DECK_Y, DECK_Y, true, 10);
+  add('Harbor Freeway', 'freeway', JT, [1, 0], JA, [-1, 0], [{ x: 450, y: DECK_Y, z: FREEWAY_Z }, { x: 600, y: DECK_Y, z: FREEWAY_Z }, { x: 690, y: 1.5, z: FREEWAY_Z }], 2, DECK_Y, 0, true, 10);
+  // Tidewell Ave ramp down to grid (7,0)
+  add('Tidewell Ramp', 'ramp', g70, [0, -1], JT, [0, 1], [{ x: 250, y: 3.5, z: -442 }], 1, 0, DECK_Y, true);
+  // Vista Drive: Meridian Blvd north under the freeway (overpass) winding up to the lookout
+  add('Vista Dr', 'hill', g40, [0, -1], JL, [0, 1], [
+    { x: -50, y: 0, z: -470 }, { x: -50, y: 0.5, z: -525 }, { x: -15, y: 5, z: -585 }, { x: -85, y: 13, z: -650 }, { x: -20, y: 22, z: -715 },
+    { x: -95, y: 31, z: -780 }, { x: -40, y: 37, z: -830 },
+  ], 1, 0, 40, false, 5);
+  // Airfield Road: from the freeway's east end south past Fort Calder's gate to the hangars
+  add('Airfield Rd', 'service', JA, [0, 1], JS, [0, -1], [{ x: 760, y: 0, z: -330 }], 1, 0, 0, false, 10);
+  return paths;
+}
+
+/** Cul-de-sac loops at dead-end junctions (one path only) so traffic can turn around. */
+function deadEndLoops(paths: PathRoad[], intersections: Intersection[], lanes: Lane[], laneEnds: Map<string, number[]>) {
+  for (const inter of intersections) {
+    if (inter.ix >= 0) continue;
+    const touching = paths.filter(p => p.from === inter.id || p.to === inter.id);
+    if (touching.length !== 1) continue;
+    const ins = laneEnds.get(`${inter.id}:in`) ?? [], outs = laneEnds.get(`${inter.id}:out`) ?? [];
+    for (const li of ins) {
+      const a = lanes[li]; const b = lanes[outs[0]]; if (!b) continue;
+      const ae = a.points[a.points.length - 1], ap = a.points[a.points.length - 2], bs = b.points[0];
+      const dx = Math.sign(ae.x - ap.x), dz = Math.sign(ae.z - ap.z);
+      const cx = (ae.x + bs.x) / 2 + dx * 8, cz = (ae.z + bs.z) / 2 + dz * 8, R = 9;
+      const pts: V2[] = [ae];
+      const a0 = Math.atan2(ae.z - cz, ae.x - cx);
+      for (let k = 1; k < 16; k++) { const ang = a0 - (k / 16) * Math.PI * 2 * 0.92; pts.push({ x: cx + Math.cos(ang) * R, z: cz + Math.sin(ang) * R }); }
+      pts.push(bs);
+      const { length, cum } = polyLength(pts);
+      const y = a.ys ? a.ys[a.ys.length - 1] : 0;
+      const c: Lane = { id: lanes.length, points: pts, length, cum, next: [b.id], connector: true, intersection: inter.id, axis: a.axis, speed: 6, lane: 0, lanes: 1, roadId: -1, ys: pts.map(() => y) };
+      lanes.push(c); a.next.push(c.id);
+    }
+  }
 }

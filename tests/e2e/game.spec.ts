@@ -3,17 +3,43 @@ import { watch, boot, step, tap, state, clean, quietStreets } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
-test('title screen, new game through the menu, loading and HUD', async ({ page }) => {
+test('title: live city flyover, press any key, menu, credits, Play starts the sandbox with no story', async ({ page }) => {
   const p = watch(page);
   await page.goto('./');
-  await expect(page.getByText('New game')).toBeVisible();
+  await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
+  // the running game renders the city behind the title (no painted backdrop) and the camera follows the scripted flyover
+  expect(await page.evaluate(() => document.querySelector('.ma-title')!.classList.contains('is-live'))).toBe(true);
+  const cam0 = await page.evaluate(() => (window as any).__game.renderer.camera.position.toArray());
+  await page.waitForTimeout(1500);
+  const cam1 = await page.evaluate(() => (window as any).__game.renderer.camera.position.toArray());
+  expect(cam1).not.toEqual(cam0);
+  expect(await page.evaluate(() => (window as any).__game.player.human.root.visible)).toBe(false);
   await page.screenshot({ path: 'test-results/shots/title.png' });
-  await page.getByText('New game').click();
-  await page.waitForFunction(() => !!(window as any).__meridian, null, { timeout: 180_000 });
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+  // no save: no Continue, no story entries
+  await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+  await expect(page.getByText('New game')).toHaveCount(0);
+  // keyboard navigation: down to Credits, open, back out with Esc
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.ma-title-menu .ma-menu-item:focus')).toHaveText('Credits');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Open assets (CC0)')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Open assets (CC0)')).toBeHidden();
+  await page.getByRole('button', { name: 'Play' }).click();
+  await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
   await step(page, 1, { render: true });
   expect(await state<boolean>(page, '!window.__meridian.ui.isMenuOpen()')).toBe(true);
-  expect(await state<number>(page, 'window.__game.money')).toBe(250);
+  expect(await state<number>(page, 'window.__game.money')).toBe(2500);
+  expect(await state<boolean>(page, 'window.__game.player.human.root.visible && !window.__game.ghost')).toBe(true);
+  expect(await state<boolean>(page, 'window.__game.pcombat.inv.weapons.pistol.owned')).toBe(true);
+  expect(await state<unknown>(page, 'window.__meridian.missions')).toBeUndefined();
+  // map / minimap: shops, garage, safehouse and the rest, but no mission markers
+  const kinds = await state<string[]>(page, '[...new Set(window.__meridian.activities.blips().map(b => b.kind))]');
+  expect(kinds).toContain('safehouse');
+  expect(kinds).not.toContain('mission');
   await page.screenshot({ path: 'test-results/shots/hud.png' });
   clean(p);
 });
@@ -95,164 +121,67 @@ test('shoot, punch, inventory wheel, heat gain and loss', async ({ page }) => {
   clean(p);
 });
 
-test('down and respawn, then arrest', async ({ page }) => {
+test('WASTED: slow motion, grey, card, hospital bill, respawn at the clinic; ARRESTED waits for the arrest animation hook, then the police station', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game; g.player.damage(500, null, g.time); g.playerDown('down'); });
-  await step(page, 1, { render: true });
-  await page.screenshot({ path: 'test-results/shots/down.png' });
-  await step(page, 4.5);
+  await page.evaluate(() => { const g = (window as any).__game; g.money = 1000; g.player.damage(500, null, g.time); g.playerDown('down'); });
+  await step(page, 0.5);
+  expect(await state<number>(page, 'window.__game.targetTimeScale')).toBeLessThan(0.5);
+  await step(page, 1.2, { render: true });
+  await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
+  await expect(page.locator('.ma-death.is-card')).toBeVisible();
+  expect(await state<number>(page, 'window.__game.renderer.grade.uniforms.uSat.value')).toBeLessThan(0.3);
+  expect(await state<number>(page, 'window.__game.money')).toBe(900);
+  await page.screenshot({ path: 'test-results/shots/wasted.png' });
+  await step(page, 5);
   expect(await state<boolean>(page, 'window.__game.player.alive')).toBe(true);
   expect(await state<number>(page, 'window.__game.deathT')).toBe(-1);
   expect(await state<number>(page, 'window.__game.player.health')).toBe(100);
-  await page.evaluate(() => { const g = (window as any).__game; g.playerDown('busted'); });
+  expect(await state<number>(page, 'window.__game.renderer.grade.uniforms.uSat.value')).toBeGreaterThan(1);
+  expect(await state<number>(page, 'window.__game.timeScale')).toBe(1);
+  // arrest with a handcuff-animation hook: nothing is shown until the hook calls back
+  await page.evaluate(() => { const g = (window as any).__game; g.events.arrestAnimationDone = (done: () => void) => { (window as any).__cuffed = done; }; g.playerDown('busted'); });
+  await step(page, 3);
+  expect(await state<number>(page, 'window.__game.deathT')).toBeGreaterThan(2);
+  await expect(page.locator('.ma-death.is-card')).toHaveCount(0);
+  await page.evaluate(() => (window as any).__cuffed());
+  await step(page, 1.5, { render: true });
+  await expect(page.locator('.ma-death-word')).toHaveText('Arrested');
+  await page.screenshot({ path: 'test-results/shots/arrested.png' });
   await step(page, 5);
   expect(await state<number>(page, 'window.__game.deathT')).toBe(-1);
   expect(await state<number>(page, 'Math.round(window.__game.player.pos.x)')).toBe(40);
   clean(p);
 });
 
-/** Helper: puts the player in a fresh car at (x,z) facing yaw. */
-const PUT_IN_CAR = (x: number, z: number, yaw: number) => `(() => { const g = window.__game; if (g.playerVehicle) g.exitVehicle(true); for (const o of [...g.vehicles.list]) if (Math.hypot(o.position.x - ${x}, o.position.z - ${z}) < 7 && !o.persistent) { const c = g.traffic.carOf(o); if (c) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); } g.vehicles.remove(o); } const v = g.vehicles.spawn('coupe', ${x}, ${z}, ${yaw}); v.persistent = true; g.seatPlayer(v); return true; })()`;
-const TELEPORT_CAR = (x: number, z: number, yaw: number) => `(() => { const g = window.__game; if (!g.playerVehicle) throw new Error('not in a vehicle (player at ' + g.player.pos.x.toFixed(1) + ',' + g.player.pos.z.toFixed(1) + ' dead=' + g.deathT + ')'); g.playerVehicle.phys.teleport(${x}, 0.7, ${z}, ${yaw}); g.player.pos.set(${x}, 0.5, ${z}); return true; })()`;
-
-test('every mission can be completed', async ({ page }) => {
-  test.setTimeout(900_000);
+test('sandbox save from the pause menu, reload and continue (position, cash, guns, tools, time); settings persist', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  const status = () => state<{ active: string | null; done: string[]; last: string; obj: string | null }>(page, '({active: window.__meridian.missions.active?.def.id ?? null, done: [...window.__meridian.missions.completed], last: window.__meridian.missions.lastResult, obj: window.__meridian.missions.objective})');
-
-  // M1: walk into Juno's marker to start, take a car, reach the package and deliver it
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-262, 0.25, -106.6, 0); });
-  await step(page, 1);
-  expect((await status()).active).toBe('m1');
-  await page.evaluate(PUT_IN_CAR(-262, -96, Math.PI / 2)); await step(page, 1);
-  await page.evaluate(TELEPORT_CAR(470, 120, 0)); await step(page, 1);
-  await page.evaluate(TELEPORT_CAR(-200, 102, Math.PI / 2)); await step(page, 2);
-  expect((await status()).done).toContain('m1');
-
-  // M2: follow the courier van to its destination, keeping a sensible distance
-  await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-262, 0.25, -106.6, 0); });
-  await step(page, 5);
-  expect((await status()).active).toBe('m2');
-  await page.evaluate(PUT_IN_CAR(-282, -98, Math.PI / 2));
-  for (let i = 0; i < 240; i++) {
-    const st = await status(); if (st.done.includes('m2') || !st.active) break;
-    // tail the courier along the exact road it drove, about 3 seconds behind
-    await page.evaluate(() => {
-      const g = (window as any).__game; const w = window as any; w.__trail = w.__trail ?? [];
-      const car = g.traffic.cars.find((c: any) => c.v.locked); if (!car || !g.playerVehicle) return;
-      const v = car.v; w.__trail.push({ x: v.position.x, y: v.position.y, z: v.position.z, yaw: v.yaw });
-      const back = w.__trail[Math.max(0, w.__trail.length - 6)];
-      if (Math.hypot(back.x - v.position.x, back.z - v.position.z) < 22) return; // waiting at a light: hold position
-      g.playerVehicle.phys.teleport(back.x, back.y + 0.3, back.z, back.yaw); g.player.pos.set(back.x, back.y, back.z);
-    });
-    await step(page, 1);
-  }
-  expect((await status()).done, JSON.stringify(await status())).toContain('m2');
-
-  // M3: shootout at the docks, grab the case, lose the heat
-  await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-200, 0.25, 306.6, 0); });
-  await step(page, 5);
-  expect((await status()).active).toBe('m3');
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(398, 0.3, 100, 0); });
-  await step(page, 1);
-  // fight: aim at each enemy and fire with the pistol (real hitscan), topping up health so the test exercises the mission flow
-  for (let i = 0; i < 600; i++) {
-    const left = await page.evaluate(() => {
-      const g = (window as any).__game; g.player.health = 100;
-      const foes = g.pop.npcs.filter((n: any) => n.role === 'gang' && n.alive && n.persistent);
-      if (!foes.length) return 0;
-      const t = foes[0];
-      // stand somewhere with a clear line of fire to the target
-      const V = t.pos.constructor;
-      let best = null;
-      for (let k = 0; k < 16 && !best; k++) {
-        const a = k * Math.PI / 8, r = 3 + (k % 3);
-        const p = new V(t.pos.x + Math.cos(a) * r, t.pos.y, t.pos.z + Math.sin(a) * r);
-        if (g.pop.runner.hasLOS(new V(p.x, p.y + 1.4, p.z), new V(t.pos.x, t.pos.y + 1.2, t.pos.z)) && g.pop.runner.hasLOS(new V(p.x, p.y + 1.4, p.z), new V(p.x - Math.cos(a) * 2.5, p.y + 1.8, p.z - Math.sin(a) * 2.5))) best = p;
-      }
-      if (!best) { t.char.damage(30, g.player, g.time); g.frame(1 / 30, false); return foes.length; } // fully enclosed: fall back to a direct hit
-      g.player.place(best.x, best.y + 0.05, best.z, 0);
-      const dx = t.pos.x - best.x, dz = t.pos.z - best.z;
-      g.cam.yaw = Math.atan2(dx, dz) + Math.PI; g.cam.pitch = -0.1;
-      g.pcombat.inv.select('pistol'); g.input.press('Mouse2'); g.input.tap('Mouse0');
-      for (let k = 0; k < 8; k++) g.frame(1 / 30, false);
-      if (g.pcombat.inv.state.clip === 0 && g.pcombat.inv.state.reserve === 0) g.pcombat.give('pistol', 48);
-      return foes.length;
-    });
-    if (!left) break;
-  }
-  await page.evaluate(() => (window as any).__game.input.release('Mouse2'));
-  await step(page, 1);
-  expect((await status()).obj, JSON.stringify(await status())).toBe('Grab the case');
-  await page.evaluate(() => { const g = (window as any).__game; const b = (window as any).__meridian.missions.blips()[0]; g.player.place(b.x, 0.3, b.z, 0); });
-  await step(page, 1);
-  expect(await state<number>(page, 'window.__game.police.heat'), JSON.stringify(await status())).toBeGreaterThanOrEqual(2);
-  for (let i = 0; i < 40; i++) {
-    if ((await status()).done.includes('m3')) break;
-    await page.evaluate(() => { const g = (window as any).__game; g.player.health = 100; if (g.deathT < 0) g.player.place(-430 + Math.random() * 20, 0.3, -380, 0); });
-    await step(page, 3);
-  }
-  expect((await status()).done, JSON.stringify(await status())).toContain('m3');
-
-  // M4: steal the guarded car, lose 3+ heat, deliver it intact
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-200, 0.25, 306.6, 0); });
-  await step(page, 5);
-  expect((await status()).active).toBe('m4');
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(100, 0.3, -146, 0); });
-  await step(page, 2);
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x - 100, a.position.z + 150) - Math.hypot(b.position.x - 100, b.position.z + 150))[0]; g.player.health = 100; g.seatPlayer(v); });
-  await step(page, 1);
-  expect(await state<number>(page, 'window.__game.police.heat')).toBeGreaterThanOrEqual(3);
-  for (let i = 0; i < 40 && (await state<number>(page, 'window.__game.police.heat')) > 0; i++) {
-    await page.evaluate(TELEPORT_CAR(-440, -300 - Math.random() * 60, 0));
-    await page.evaluate(() => { const g = (window as any).__game; g.player.health = 100; g.playerVehicle.health = g.playerVehicle.spec.health; });
-    await step(page, 3);
-  }
-  await page.evaluate(TELEPORT_CAR(-200, 102, Math.PI / 2));
-  await step(page, 2);
-  expect((await status()).done, JSON.stringify(await status())).toContain('m4');
-
-  // M5: the race. Drive through each checkpoint ahead of the rivals.
-  await page.evaluate(() => { const g = (window as any).__game; if (g.playerVehicle) g.exitVehicle(true); g.player.place(-410, 0.3, 412, 0); });
-  await step(page, 5);
-  expect((await status()).active).toBe('m5');
-  await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.list.filter((x: any) => x.kind === 'coupe' && x.persistent).sort((a: any, b: any) => Math.hypot(a.position.x + 443.5, a.position.z - 406.7) - Math.hypot(b.position.x + 443.5, b.position.z - 406.7))[0]; g.seatPlayer(v); });
-  await page.evaluate(TELEPORT_CAR(-436, 403.5, Math.PI / 2)); await step(page, 1);
-  await step(page, 4); // countdown
-  for (let i = 0; i < 30; i++) {
-    const st = await status(); if (!st.active) break;
-    await page.evaluate(() => {
-      const g = (window as any).__game; const m = (window as any).__meridian.missions;
-      const b = m.blips().find((x: any) => x.kind === 'checkpoint'); if (!b) return;
-      g.playerVehicle.phys.teleport(b.x, 0.8, b.z, 0); g.player.pos.set(b.x, 0.5, b.z);
-    });
-    await step(page, 0.5);
-  }
-  expect((await status()).done, JSON.stringify(await status())).toContain('m5');
-  await step(page, 1, { render: true });
-  await page.screenshot({ path: 'test-results/shots/missions-done.png' });
-  expect(await state<number>(page, 'window.__game.money')).toBeGreaterThan(8000);
-  clean(p);
-});
-
-test('save, reload and continue; settings persist', async ({ page }) => {
-  const p = watch(page);
-  await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game; g.money = 4321; g.pcombat.give('smg', 60); (window as any).__meridian.missions.completed.add('m1'); (window as any).__meridian.save(); });
-  // change a setting through the pause menu
+  await page.evaluate(() => { const g = (window as any).__game, M = (window as any).__meridian; g.money = 4321; g.hour = 21.5; g.pcombat.give('smg', 60); g.player.place(-200, 0.3, 150, 0); M.sandbox.act('god', true); M.activities.found.add(2); });
+  await step(page, 0.3);
+  // pause opens on the map; the Quit tab has Save game
   await page.evaluate(() => (window as any).__meridian.pause());
-  await expect(page.getByText('Settings').first()).toBeVisible();
+  await expect(page.locator('.ma-ptab.is-selected')).toHaveText('Map');
+  await page.locator('.ma-ptab', { hasText: 'Quit' }).click();
+  await page.getByRole('button', { name: 'Save game' }).click();
+  await expect(page.getByText('Game saved')).toBeVisible();
+  const cash = await state<number>(page, 'window.__game.money'); // 4321, plus $100 if a postcard was on that corner
+  expect(cash).toBeGreaterThanOrEqual(4321);
   await page.evaluate(() => { const m = (window as any).__meridian; m.settings.sensitivity = 1.7; m.settings.quality = 'low'; localStorage.setItem('meridian-afterglow.settings.v1', JSON.stringify(m.settings)); });
   await page.goto('./');
-  await expect(page.getByText('Continue')).toBeVisible();
-  await page.getByText('Continue').click();
-  await page.waitForFunction(() => !!(window as any).__meridian, null, { timeout: 180_000 });
+  await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('button', { name: 'Continue' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
-  expect(await state<number>(page, 'window.__game.money')).toBe(4321);
+  expect(await state<number>(page, 'window.__meridian.read().money')).toBe(cash);
+  expect(await state<number>(page, 'window.__game.money')).toBeGreaterThanOrEqual(cash);
   expect(await state<boolean>(page, 'window.__game.pcombat.inv.weapons.smg.owned')).toBe(true);
-  expect(await state<boolean>(page, 'window.__meridian.missions.completed.has("m1")')).toBe(true);
+  expect(await state<number>(page, 'Math.round(window.__game.hour * 2) / 2')).toBe(21.5);
+  expect(await state<number>(page, 'Math.hypot(window.__game.player.pos.x + 200, window.__game.player.pos.z - 150)')).toBeLessThan(4);
+  expect(await state<boolean>(page, 'window.__meridian.sandbox.god')).toBe(true);
+  expect(await state<boolean>(page, 'window.__meridian.activities.found.has(2)')).toBe(true);
   expect(await state<number>(page, 'window.__meridian.settings.sensitivity')).toBeCloseTo(1.7);
   expect(await state<string>(page, 'window.__game.renderer.qualityName')).toBe('low');
   clean(p);

@@ -147,7 +147,7 @@ export class SettingsPanel {
     } else if (this.tab === 'audio') {
       const pct = (v: number) => `${Math.round(v * 100)}%`;
       this.body.appendChild(this.slider('Master volume', 'Everything you hear.', 0, 1, 0.05, s.master, pct, v => this.update(x => { x.master = v; })));
-      this.body.appendChild(this.slider('Music & radio', 'Station music and mission score.', 0, 1, 0.05, s.music, pct, v => this.update(x => { x.music = v; })));
+      this.body.appendChild(this.slider('Music & radio', 'Station music and score.', 0, 1, 0.05, s.music, pct, v => this.update(x => { x.music = v; })));
       this.body.appendChild(this.slider('Effects', 'Engines, weapons, city ambience and menus.', 0, 1, 0.05, s.sfx, pct, v => this.update(x => { x.sfx = v; })));
     } else {
       this.renderKeys(s);

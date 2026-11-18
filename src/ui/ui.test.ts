@@ -96,3 +96,36 @@ describe('formatting', () => {
     expect(formatTimer(-3)).toBe('0:00');
   });
 });
+
+import { DEATH_TIMING, deathGrade } from './screens';
+import { splitVehicleName } from './hud';
+import { ATTRACT_SHOTS, shotCamera } from './attract';
+
+describe('WASTED / ARRESTED pacing', () => {
+  it('greys out over the first second, card before black, black before the respawn', () => {
+    expect(deathGrade(0)).toBe(0);
+    expect(deathGrade(0.65)).toBeGreaterThan(0.3);
+    expect(deathGrade(2)).toBe(1);
+    expect(DEATH_TIMING.card).toBeLessThan(DEATH_TIMING.black);
+    expect(DEATH_TIMING.black).toBeLessThan(DEATH_TIMING.respawn);
+  });
+});
+
+describe('vehicle name popup', () => {
+  it('splits make and model', () => {
+    expect(splitVehicleName('Vantor Zephyra')).toEqual(['Vantor', 'Zephyra']);
+    expect(splitVehicleName('Gorman Mule 6x6')).toEqual(['Gorman', 'Mule 6x6']);
+    expect(splitVehicleName('Taxi')).toEqual(['', 'Taxi']);
+  });
+});
+
+describe('title flyover', () => {
+  it('every shot moves the camera from its start to its end pose', () => {
+    for (const s of ATTRACT_SHOTS) {
+      expect(shotCamera(s, 0).pos).toEqual(s.from.pos);
+      const end = shotCamera(s, s.duration).pos;
+      end.forEach((v, i) => expect(v).toBeCloseTo(s.to.pos[i]));
+      expect(shotCamera(s, s.duration / 2).pos).not.toEqual(s.from.pos);
+    }
+  });
+});

@@ -57,6 +57,8 @@ export interface StreetBuildingSpec {
   /** exposed faces: front, right, back, left */
   exposed: [boolean, boolean, boolean, boolean];
   roofItems: number; awning: boolean; brand: number; balconies: boolean; trimColor: THREE.Color;
+  /** ground floor left open for a walk-in store built elsewhere */
+  hollow?: boolean;
 }
 
 /** Mid-block street building (walk-up, mid-rise, beach block). */
@@ -81,13 +83,14 @@ export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
     const ex = s.exposed[i];
     const g = i === 0 ? groundSpec : ex ? (i === 2 ? solid : groundResi) : solid;
     const u = i === 0 ? upper : i === 2 ? (ex ? back : solid) : ex ? upper : solid;
-    fb.wall(a.x, a.z, b.x, b.z, s.base, s.base + s.groundH, s.color, g);
+    if (!s.hollow) fb.wall(a.x, a.z, b.x, b.z, s.base, s.base + s.groundH, s.color, g);
     fb.wall(a.x, a.z, b.x, b.z, s.base + s.groundH, top, s.color, u);
   }
   // roof inside the parapet
   fb.flat(s.cx, s.cz, s.w, s.d, H, s.yaw, C('#5f5c58'), { ...ROOF, seed: s.seed % 997 });
   innerWalls(fb, s.cx, s.cz, s.w - 0.5, s.d - 0.5, H, top, s.yaw, s.color, solid);
-  ctx.physics.addStaticBox(s.cx, top / 2, s.cz, hw, top / 2, hd, s.yaw);
+  if (s.hollow) ctx.physics.addStaticBox(s.cx, (top + s.base + s.groundH) / 2, s.cz, hw, (top - s.base - s.groundH) / 2, hd, s.yaw);
+  else ctx.physics.addStaticBox(s.cx, top / 2, s.cz, hw, top / 2, hd, s.yaw);
 
   const tc = s.trimColor;
   const pt = (lx: number, y: number, lz: number, sx: number, syy: number, sz: number, col: THREE.Color, t: TrimParams, pitch = 0) => { const p = L(lx, lz); tb.box(p.x, y, p.z, sx, syy, sz, s.yaw, col, t, pitch); };
@@ -125,7 +128,7 @@ export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
     }
   }
   // ground floor: shop sign, awning, door
-  if (s.ground === 'shop') {
+  if (s.hollow) { /* the store builds its own front */ } else if (s.ground === 'shop') {
     const sw = Math.min(s.w - 1.2, 8.5);
     const p = L(0, hd + 0.1);
     ctx.signs.push({ x: p.x, y: s.base + s.groundH - 0.42, z: p.z, yaw: s.yaw, w: sw, h: sw * 0.25 > 0.75 ? 0.75 : sw * 0.25, idx: s.brand });

@@ -1,5 +1,14 @@
-/** Static screen artwork and builders: title art, loading, mobile gate, death moment, mission card. */
+/** Static screen artwork and builders: title art, loading, mobile gate, death moment, mission card, credits. */
 import { h } from './dom';
+
+/** Loading-screen stills: render shots of the city (src/ui/art/*.jpg, captured from the game). */
+const STILL_URLS: string[] = Object.values(import.meta.glob('./art/*.jpg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>);
+export function loadingStills(): string[] { return STILL_URLS.slice(); }
+
+/** WASTED / ARRESTED pacing in real seconds after the sequence starts (after the arrest animation, if any). */
+export const DEATH_TIMING = { card: 1.1, black: 4.7, respawn: 5.35, maxWait: 12 };
+/** Grey grade 0..1 building over the first second and a bit. */
+export function deathGrade(t: number): number { const k = Math.max(0, Math.min(1, t / 1.3)); return k * k * (3 - 2 * k); }
 
 function lcg(seed: number) {
   let s = seed >>> 0;
@@ -121,12 +130,18 @@ export function logo(cls = ''): HTMLElement {
   return w;
 }
 
-/** Loading tips, rotated while the loading screen is up. Keys are filled in by the UI from live bindings. */
-export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement; tipBox: HTMLDivElement } {
+/** Loading screen: full-bleed city stills (slow push-in, cross-faded), logo, rotating tip, spinner and progress. */
+export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct: HTMLDivElement; label: HTMLDivElement; tip: HTMLDivElement; tipBox: HTMLDivElement; stills: HTMLDivElement[] } {
   const el = h('div', 'ma-layer ma-loading');
   el.setAttribute('role', 'progressbar');
   el.setAttribute('aria-valuemin', '0'); el.setAttribute('aria-valuemax', '100');
   el.innerHTML = titleArtSvg('maL');
+  const stills: HTMLDivElement[] = [];
+  for (const url of STILL_URLS) {
+    const st = h('div', 'ma-still');
+    st.style.backgroundImage = `url("${url}")`;
+    el.appendChild(st); stills.push(st);
+  }
   el.appendChild(h('div', 'ma-loading-shade'));
   el.appendChild(logo('ma-logo-loading'));
   const tipBox = h('div', 'ma-loading-tipbox');
@@ -136,6 +151,7 @@ export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct:
   el.appendChild(tipBox);
   const foot = h('div', 'ma-loading-foot');
   const row = h('div', 'ma-loading-row');
+  row.appendChild(h('div', 'ma-spinner'));
   const label = h('div', 'ma-loading-label', 'Loading');
   const pct = h('div', 'ma-loading-pct', '0%');
   row.append(label, pct);
@@ -145,7 +161,7 @@ export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct:
   bar.appendChild(fill);
   foot.appendChild(bar);
   el.appendChild(foot);
-  return { el, fill, pct, label, tip, tipBox };
+  return { el, fill, pct, label, tip, tipBox, stills };
 }
 
 export function buildMobileGate(): HTMLDivElement {
@@ -172,6 +188,7 @@ export function buildMobileGate(): HTMLDivElement {
   return el;
 }
 
+/** WASTED / ARRESTED: grey vignette, a hard-edged band with the word, the bill underneath, then a cut to black. */
 export function buildDeath(): { el: HTMLDivElement; word: HTMLDivElement; detail: HTMLDivElement } {
   const el = h('div', 'ma-death');
   el.setAttribute('role', 'alert');
@@ -182,7 +199,36 @@ export function buildDeath(): { el: HTMLDivElement; word: HTMLDivElement; detail
   const detail = h('div', 'ma-death-detail');
   band.append(word, detail);
   el.appendChild(band);
+  el.appendChild(h('div', 'ma-death-black'));
   return { el, word, detail };
+}
+
+/** Credits screen (from the title). */
+export function buildCredits(): { el: HTMLDivElement; scroller: HTMLDivElement; back: HTMLButtonElement } {
+  const el = h('div', 'ma-layer ma-modal-layer ma-credits');
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Credits');
+  const panel = h('div', 'ma-panel ma-credits-panel');
+  panel.appendChild(h('div', 'ma-panel-title', 'Credits'));
+  const scroller = h('div', 'ma-credits-body');
+  const sec = (head: string, rows: [string, string][]) => {
+    const g = h('div', 'ma-credits-sec');
+    g.appendChild(h('div', 'ma-credits-head', head));
+    for (const [a, b] of rows) { const r = h('div', 'ma-credits-row'); r.append(h('span', 'ma-credits-role', a), h('span', 'ma-credits-name', b)); g.appendChild(r); }
+    scroller.appendChild(g);
+  };
+  sec('Meridian Afterglow', [['Design, code, art, audio', 'The Meridian Afterglow team'], ['City, story and brands', 'Original, fictional'], ['Built with', 'three.js, Rapier, Vite, TypeScript']]);
+  sec('Open assets (CC0)', [['City props', 'Kay Lousberg, KayKit City Builder Bits'], ['People and animation', 'Quaternius, Universal Base Characters and Animation Library'], ['Engine and tyre audio', 'Kenney, Starter Kit Racing']]);
+  sec('Type', [['Barlow and Barlow Condensed', 'Jeremy Tribby, SIL Open Font License']]);
+  sec('Thanks', [['Playtesting', 'Everyone who drove into the sea on purpose']]);
+  panel.appendChild(scroller);
+  const row = h('div', 'ma-foot-actions');
+  const back = h('button', 'ma-btn ma-btn-ghost', 'Back');
+  back.type = 'button'; back.dataset.nav = '';
+  row.appendChild(back);
+  panel.appendChild(row);
+  el.appendChild(panel);
+  return { el, scroller, back };
 }
 
 export function buildCard(): { el: HTMLDivElement; title: HTMLDivElement; name: HTMLDivElement; sub: HTMLDivElement; reward: HTMLDivElement } {

@@ -61,6 +61,9 @@ export function weaponSvg(icon: WeaponIcon, cls = 'ma-icon'): string {
 }
 
 /** Heat emblem: an original rooftop beacon (dome light on a bar with three rays). Deliberately not a star. */
+/** Wanted level star: a classic five-point star with a heavy outline (drawn here, original). */
+export const STAR_SVG = '<svg class="ma-star-svg" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path class="ma-star-fill" d="M12 1.6l3.05 6.6 7.2.8-5.37 4.9 1.5 7.1L12 17.4 5.62 21l1.5-7.1L1.75 9l7.2-.8z"/></svg>';
 export const FLARE_SVG = '<svg class="ma-flare-svg" viewBox="-2 -2 28 28" aria-hidden="true">' +
   '<path class="ma-flare-ray" d="M12 1.2V4.4M3.6 4.6L5.9 6.9M20.4 4.6L18.1 6.9"/>' +
   '<path class="ma-flare-fill" d="M5.6 15.6V13.2A6.4 6.4 0 0 1 18.4 13.2V15.6ZM3.2 17.4H20.8V21.6H3.2Z"/></svg>';
@@ -79,7 +82,8 @@ export function guessIcon(text: string): WeaponIcon | null {
   return null;
 }
 
-export const BLIP_KINDS: MinimapBlip['kind'][] = ['mission', 'target', 'checkpoint', 'waypoint', 'safehouse', 'shop', 'arms', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
+/** Map legend (sandbox: no mission, target or checkpoint markers). */
+export const BLIP_KINDS: MinimapBlip['kind'][] = ['waypoint', 'safehouse', 'shop', 'arms', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
 export const BLIP_LABELS: Record<MinimapBlip['kind'], string> = {
   mission: 'Job', target: 'Target', checkpoint: 'Checkpoint', waypoint: 'Waypoint', safehouse: 'Safehouse', shop: 'Store',
   arms: 'Arms dealer', garage: 'Garage', vehicle: 'Vehicle', collectible: 'Postcard', enemy: 'Hostile', police: 'Patrol',

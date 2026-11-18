@@ -12,7 +12,7 @@ await p.goto(`http://127.0.0.1:${port}/astratest/?autostart=1`);
 await p.waitForFunction(() => !!window.__meridian, null, { timeout: 240000 });
 console.log('boot ms', Date.now() - t0);
 await p.evaluate(() => { window.__game.stop(); const ui = document.querySelector('#ui, .hud, #hud'); });
-await p.addStyleTag({ content: '#app > *:not(canvas) { visibility: hidden !important; }' }).catch(() => {});
+await p.addStyleTag({ content: '.ma-root { visibility: hidden !important; }' }).catch(() => {});
 for (const s of shots) {
   const r = await p.evaluate((s) => {
     const g = window.__game; g.hour = s.hour; g.clockRunning = false;

@@ -13,7 +13,7 @@ import '@fontsource/barlow/latin-700.css';
 import './ui.css';
 import { DEFAULT_SETTINGS, keyLabel, type Action, type Settings } from '../core/settings';
 import type { CityMap } from '../world/citymap';
-import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot, SandboxAction } from './contracts';
+import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot, SandboxAction, DeathOpts } from './contracts';
 import { button, h, renderKeyText, setClass } from './dom';
 import { Hud, Notices } from './hud';
 import { CityPainter } from './mapdraw';
@@ -23,20 +23,28 @@ import { Shop } from './shop';
 import { SettingsPanel } from './settingsPanel';
 import { ControlsPanel } from './controlsPanel';
 import { SandboxPanel } from './sandbox';
-import { buildCard, buildDeath, buildLoading, buildMobileGate, logo, titleArtSvg } from './screens';
-import { FLARE_SVG } from './icons';
+import { buildCard, buildCredits, buildDeath, buildLoading, buildMobileGate, logo, titleArtSvg, DEATH_TIMING, deathGrade } from './screens';
 import { formatMoney } from './geometry';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
-type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'sandbox';
+type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'sandbox' | 'credits';
 interface Layer { id: LayerId; el: HTMLElement; back: () => void; action?: (a: NavAction) => boolean; openedAt: number; prevFocus: Element | null }
-type PauseTab = 'map' | 'brief' | 'stats' | 'settings' | 'controls' | 'game';
+type PauseTab = 'map' | 'sandbox' | 'settings' | 'controls' | 'quit';
 const PAUSE_TABS: { id: PauseTab; label: string }[] = [
-  { id: 'map', label: 'Map' }, { id: 'brief', label: 'Brief' }, { id: 'stats', label: 'Stats' },
-  { id: 'settings', label: 'Settings' }, { id: 'controls', label: 'Controls' }, { id: 'game', label: 'Game' },
+  { id: 'map', label: 'Map' }, { id: 'sandbox', label: 'Sandbox' },
+  { id: 'settings', label: 'Settings' }, { id: 'controls', label: 'Controls' }, { id: 'quit', label: 'Quit' },
 ];
 /** Pause tabs that open their own layer docked under the pause header. */
-const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', settings: 'settings', controls: 'controls' };
+const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', sandbox: 'sandbox', settings: 'settings', controls: 'controls' };
+const DOCKABLE = new Set<LayerId>(['map', 'sandbox', 'settings', 'controls']);
+export const GAME_VERSION = 'v0.3.0';
+const TITLE_ITEMS: Record<string, string> = {
+  play: 'Start fresh in Port Meridian: a pistol, a little cash and a whole city. Sandbox tools are in the pause menu.',
+  continue: 'Pick up where you left off: your cash, guns, spot in the city and the time of day.',
+  settings: 'Graphics, audio, camera and controls.',
+  controls: 'Every key and gamepad button.',
+  credits: 'Who made this, and the open assets and fonts it uses.',
+};
 
 interface Session { time: number; earned: number; spent: number; passed: number; topSpeed: number; distance: number; maxHeat: number; postcards: string | null; lastMoney: number | null; lastT: number }
 const freshSession = (): Session => ({ time: 0, earned: 0, spent: 0, passed: 0, topSpeed: 0, distance: 0, maxHeat: 0, postcards: null, lastMoney: null, lastT: 0 });
@@ -74,6 +82,12 @@ export class UI implements GameUI {
   private sandboxClose: () => void = () => {};
   private titleEl: HTMLDivElement;
   private titleMenu: HTMLDivElement;
+  private titleDesc!: HTMLDivElement;
+  private titleShotName!: HTMLDivElement;
+  private titleShotCap!: HTMLDivElement;
+  private titleDipEl!: HTMLDivElement;
+  private titlePressed = false;
+  private credits = buildCredits();
   private confirmEl: HTMLDivElement;
   private confirmText: HTMLDivElement;
   private confirmYes: HTMLButtonElement;
@@ -81,21 +95,22 @@ export class UI implements GameUI {
   private pauseEl: HTMLDivElement;
   private pauseTabs = new Map<PauseTab, HTMLButtonElement>();
   private pausePanes = new Map<PauseTab, HTMLDivElement>();
-  private pauseTab: PauseTab = 'brief';
-  private pauseInline: PauseTab = 'brief';
+  private pauseTab: PauseTab = 'map';
+  private pauseInline: PauseTab = 'quit';
   private pauseClock!: HTMLDivElement;
   private pauseMoney!: HTMLDivElement;
-  private pauseMode!: HTMLDivElement;
-  private sandboxItem!: HTMLButtonElement;
-  private mode: 'story' | 'sandbox' = 'story';
+  private pausePlace!: HTMLDivElement;
+  private saveItem!: HTMLButtonElement;
   private loading = buildLoading();
   private loadingOpen = false;
   private loadingHideTimer = 0;
   private tipTimer = 0;
   private tipIndex = -1;
+  private stillIndex = Math.floor(Math.random() * 8) - 1;
   private mobileEl: HTMLDivElement | null = null;
   private death = buildDeath();
-  private deathTimer = 0;
+  private deathSeq: { kind: 'down' | 'busted'; t: number; waiting: boolean; waitT: number; respawned: boolean } | null = null;
+  private deathFadeTimer = 0;
   private card = buildCard();
   private cardTimer = 0;
   private layers: Layer[] = [];
@@ -152,6 +167,8 @@ export class UI implements GameUI {
     const t = this.buildTitle();
     this.titleEl = t.el; this.titleMenu = t.menu;
     this.root.appendChild(this.titleEl);
+    this.root.appendChild(this.credits.el);
+    this.credits.back.addEventListener('click', () => { this.sound('back'); this.popLayer('credits'); });
     this.root.appendChild(this.loading.el);
 
     window.addEventListener('keydown', this.onKeyDown, true);
@@ -207,25 +224,43 @@ export class UI implements GameUI {
     const el = h('div', 'ma-layer ma-title');
     el.innerHTML = titleArtSvg();
     el.appendChild(h('div', 'ma-title-shade'));
+    el.appendChild(h('div', 'ma-title-bars'));
     const content = h('div', 'ma-title-content');
     content.appendChild(logo('ma-logo-title'));
     const menu = h('div', 'ma-menu ma-title-menu');
     content.appendChild(menu);
+    this.titleDesc = h('div', 'ma-title-desc');
+    content.appendChild(this.titleDesc);
     el.appendChild(content);
+    const press = h('div', 'ma-title-press');
+    press.appendChild(h('span', 'ma-title-press-text', 'Press any key'));
+    el.appendChild(press);
+    const shot = h('div', 'ma-title-shot');
+    this.titleShotName = h('div', 'ma-title-shot-name');
+    this.titleShotCap = h('div', 'ma-title-shot-cap');
+    shot.append(this.titleShotName, this.titleShotCap);
+    el.appendChild(shot);
     const foot = h('div', 'ma-title-foot');
-    foot.appendChild(h('span', 'ma-legal', 'An original game. Every place, person and brand in Port Meridian is fictional.'));
-    foot.appendChild(footHints([['↑↓', 'Select'], ['Enter', 'Confirm']]));
+    const legal = h('span', 'ma-legal');
+    legal.append(h('b', '', GAME_VERSION), document.createTextNode('  ·  An original game. Every place, person and brand in Port Meridian is fictional.'));
+    foot.appendChild(legal);
+    foot.appendChild(footHints([['↑↓', 'Select'], ['Enter', 'Confirm'], ['Esc', 'Back']]));
     el.appendChild(foot);
+    this.titleDipEl = h('div', 'ma-title-dip');
+    el.appendChild(this.titleDipEl);
+    el.addEventListener('pointerdown', () => { if (!this.titlePressed && this.top()?.id === 'title') this.revealTitleMenu(); });
     return { el, menu };
   }
 
-  private menuItem(label: string, onClick: () => void, disabled = false) {
+  private menuItem(label: string, onClick: () => void, disabled = false, key = '') {
     const b = h('button', 'ma-menu-item');
     b.type = 'button';
     b.dataset.nav = '';
+    if (key) b.dataset.item = key;
     b.disabled = disabled;
     b.appendChild(h('span', 'ma-mi-label', label));
     b.addEventListener('click', () => { if (!b.disabled) onClick(); });
+    if (key && TITLE_ITEMS[key]) b.addEventListener('focus', () => { this.titleDesc.textContent = TITLE_ITEMS[key]; });
     return b;
   }
 
@@ -238,17 +273,51 @@ export class UI implements GameUI {
     this.hud?.robbery(null);
     this.session = freshSession();
     this.titleMenu.textContent = '';
-    const start = (cont: boolean) => { this.sound('click'); this.closeAllLayers(); this.callbacks.onStart(cont); };
-    const newGame = this.menuItem('New game', () => {
-      if (this.hasSave) this.confirm('Start a new game? Your current save will be replaced the next time the game autosaves.', 'Start new game', () => start(false));
+    const start = (cont: boolean) => { this.sound('click'); this.closeAllLayers(); this.titleEl.classList.add('is-starting'); this.callbacks.onStart(cont); };
+    const play = this.menuItem('Play', () => {
+      if (this.hasSave) this.confirm('Start a new game? Your saved game will be replaced the next time you save.', 'Start new game', () => start(false));
       else start(false);
-    });
-    const cont = this.menuItem('Continue', () => start(true), !hasSave);
-    const sandbox = this.menuItem('Sandbox', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onSandbox(); });
-    const settings = this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); });
-    const controls = this.menuItem('Controls', () => { this.sound('click'); this.openControls(); });
-    this.titleMenu.append(newGame, cont, sandbox, settings, controls);
-    this.pushLayer({ id: 'title', el: this.titleEl, back: () => {} }, hasSave ? cont : newGame);
+    }, false, 'play');
+    const items = [play];
+    let cont: HTMLButtonElement | null = null;
+    if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue'); items.unshift(cont); }
+    items.push(
+      this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'),
+      this.menuItem('Controls', () => { this.sound('click'); this.openControls(); }, false, 'controls'),
+      this.menuItem('Credits', () => { this.sound('click'); this.openCredits(); }, false, 'credits'),
+    );
+    this.titleMenu.append(...items);
+    this.titleEl.classList.remove('is-starting');
+    setClass(this.titleEl, 'is-pressed', this.titlePressed);
+    this.pushLayer({ id: 'title', el: this.titleEl, back: () => {} }, this.titlePressed ? (cont ?? play) : undefined);
+    if (!this.titlePressed) { (document.activeElement as HTMLElement | null)?.blur?.(); this.titleEl.tabIndex = -1; this.titleEl.focus({ preventScroll: true }); }
+  }
+  /** "Press any key" -> the logo settles and the menu slides in. */
+  private revealTitleMenu() {
+    if (this.titlePressed) return;
+    this.titlePressed = true;
+    this.titleEl.classList.add('is-pressed');
+    this.sound('click');
+    const first = this.titleMenu.querySelector<HTMLElement>('[data-nav]');
+    if (first) first.focus({ preventScroll: true });
+  }
+  /** Title backdrop: the running game renders the city behind the menu (the painted skyline is the fallback). */
+  setBackdropLive(live: boolean): void { setClass(this.titleEl, 'is-live', live); }
+  /** Flyover shot changed: caption bottom-right. */
+  titleShot(name: string, caption: string): void {
+    this.titleShotName.textContent = name;
+    this.titleShotCap.textContent = caption;
+    const p = this.titleShotName.parentElement!;
+    p.classList.remove('is-in'); void p.offsetWidth; p.classList.add('is-in');
+    this.titleDipEl.classList.remove('is-dip');
+  }
+  /** Dip to black ahead of a cut between flyover shots. */
+  titleDip(): void { this.titleDipEl.classList.add('is-dip'); }
+  hideTitle(): void { if (this.layers.some(l => l.id === 'title')) this.popLayer('title', false); this.titleEl.classList.remove('is-starting'); }
+
+  private openCredits() {
+    this.pushLayer({ id: 'credits', el: this.credits.el, back: () => { this.sound('back'); this.popLayer('credits'); },
+      action: a => { if (a === 'up' || a === 'down') { this.credits.scroller.scrollBy({ top: a === 'up' ? -90 : 90 }); return true; } return false; } }, this.credits.back);
   }
 
   // ---------------------------------------------------------------- confirm
@@ -286,7 +355,7 @@ export class UI implements GameUI {
       this.loading.el.classList.add('is-open');
       this.nextTip();
       window.clearInterval(this.tipTimer);
-      this.tipTimer = window.setInterval(() => this.nextTip(), 6000);
+      this.tipTimer = window.setInterval(() => this.nextTip(), 5500);
     }
     this.loading.fill.style.transform = `scaleX(${f.toFixed(4)})`;
     const pct = `${Math.round(f * 100)}%`;
@@ -311,6 +380,8 @@ export class UI implements GameUI {
     let i = Math.floor(Math.random() * tips.length);
     if (i === this.tipIndex) i = (i + 1) % tips.length;
     this.tipIndex = i;
+    const st = this.loading.stills;
+    if (st.length) { this.stillIndex = (this.stillIndex + 1) % st.length; st.forEach((e, k) => setClass(e, 'is-on', k === this.stillIndex)); }
     const box = this.loading.tipBox;
     box.classList.remove('is-in'); void box.offsetWidth;
     renderKeyText(this.loading.tip, tips[i]);
@@ -329,6 +400,9 @@ export class UI implements GameUI {
       `[${this.keyFor('crouch')}] dodge-rolls out of trouble on foot.`,
       'The Glow Garage on 5th St resprays your ride and cools off the police.',
       'Sunset postcards are hidden all over Port Meridian. Each one pays out.',
+      'The pause menu has the sandbox tools: spawn any car, set the clock or the wanted level, or teleport across the city.',
+      'Aim at a store clerk to start a hold-up. The till empties faster the closer you stand. The alarm brings the police.',
+      `Hit [${this.keyFor('pause')}] and pick Save game, or rest at the Lantern Ave safehouse, to keep your cash, guns and spot in the city.`,
     ];
   }
 
@@ -348,16 +422,16 @@ export class UI implements GameUI {
     const el = h('div', 'ma-layer ma-pause');
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Paused');
+    el.appendChild(h('div', 'ma-pause-backdrop'));
     const head = h('div', 'ma-pause-head');
     const brand = h('div', 'ma-pause-brand');
     brand.appendChild(logo('ma-logo-pause'));
-    this.pauseMode = h('div', 'ma-pause-mode', 'Sandbox');
-    brand.appendChild(this.pauseMode);
     head.appendChild(brand);
     const meta = h('div', 'ma-pause-meta');
+    this.pausePlace = h('div', 'ma-pause-place');
     this.pauseClock = h('div', 'ma-pause-clock');
     this.pauseMoney = h('div', 'ma-pause-money');
-    meta.append(this.pauseClock, this.pauseMoney);
+    meta.append(this.pausePlace, this.pauseClock, this.pauseMoney);
     head.appendChild(meta);
     el.appendChild(head);
 
@@ -376,44 +450,42 @@ export class UI implements GameUI {
     el.appendChild(tabs);
 
     const body = h('div', 'ma-pause-body');
-    for (const id of ['brief', 'stats', 'game'] as PauseTab[]) {
-      const pane = h('div', `ma-pane ma-pane-${id}`);
-      pane.setAttribute('role', 'tabpanel');
-      body.appendChild(pane);
-      this.pausePanes.set(id, pane);
-    }
-    const game = this.pausePanes.get('game')!;
+    const pane = h('div', 'ma-pane ma-pane-quit');
+    pane.setAttribute('role', 'tabpanel');
+    body.appendChild(pane);
+    this.pausePanes.set('quit', pane);
     const menu = h('div', 'ma-menu ma-pause-menu');
     menu.appendChild(this.menuItem('Resume', () => { this.sound('click'); this.resume(); }));
-    this.sandboxItem = this.menuItem('Sandbox tools', () => { this.sound('click'); this.callbacks.onOpenSandbox(); });
-    menu.appendChild(this.sandboxItem);
+    this.saveItem = this.menuItem('Save game', () => {
+      const ok = this.callbacks.onSaveGame?.() ?? false;
+      this.sound(ok ? 'click' : 'back');
+      this.toast(ok ? 'Game saved' : 'Can\'t save right now', ok ? 'info' : 'warning');
+      this.refreshPause('quit');
+    });
+    menu.appendChild(this.saveItem);
     menu.appendChild(this.menuItem('Save & quit to title', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onQuitToTitle(); }));
-    game.appendChild(menu);
+    pane.appendChild(menu);
+    pane.appendChild(h('div', 'ma-quit-stats'));
     el.appendChild(body);
     el.appendChild(footHints([['Q / E', 'Tabs'], ['↑↓←→', 'Select'], ['Enter', 'Open'], ['Esc', 'Resume']], 'ma-foot-hints ma-pause-foot'));
-    this.applyMode();
     return el;
   }
 
-  private applyMode() {
-    const sb = this.mode === 'sandbox';
-    setClass(this.sandboxItem, 'is-hidden', !sb);
-    setClass(this.pauseMode, 'is-hidden', !sb);
-  }
-
-  setMode(mode: 'story' | 'sandbox'): void { this.mode = mode === 'sandbox' ? 'sandbox' : 'story'; this.applyMode(); }
+  /** The game is sandbox-only; kept for the GameUI contract. */
+  setMode(_mode: 'story' | 'sandbox'): void { /* sandbox only */ }
 
   setPaused(paused: boolean): void {
     if (paused) {
       if (this.layers.some(l => l.id === 'pause' || l.id === 'title')) return;
       this.wheel.hide();
       this.root.classList.remove('is-wheel');
-      this.pauseTab = 'brief'; this.pauseInline = 'brief';
-      this.showPaneFor('brief');
+      this.pauseTab = 'quit'; this.pauseInline = 'quit';
+      this.showPaneFor('quit');
       this.pushLayer({
         id: 'pause', el: this.pauseEl, back: () => { this.sound('back'); this.resume(); },
         action: a => { if (a === 'tabPrev' || a === 'tabNext') { this.sound('click'); this.selectPauseTab(this.neighbourTab(this.pauseTab, a === 'tabPrev' ? -1 : 1)); return true; } return false; },
-      }, this.pauseTabs.get('brief'));
+      }, this.pauseTabs.get('map'));
+      this.selectPauseTab('map'); // like the genre: pausing opens on the map
     } else {
       const i = this.layers.findIndex(l => l.id === 'pause');
       if (i < 0) return;
@@ -433,8 +505,8 @@ export class UI implements GameUI {
     setClass(this.pauseEl, 'is-docked', docked);
     if (!docked) {
       for (const [id, p] of this.pausePanes) setClass(p, 'is-active', id === tab);
-      this.refreshPause(tab);
     }
+    this.refreshPause(tab);
   }
 
   private selectPauseTab(tab: PauseTab) {
@@ -442,12 +514,14 @@ export class UI implements GameUI {
     // Close whatever docked view sits above the pause menu.
     while (this.top() && this.top()!.id !== 'pause') {
       const t = this.top()!;
-      if (t.id === 'map' || t.id === 'settings' || t.id === 'controls') this.popLayer(t.id, false, true); else break;
+      if (t.id === 'sandbox') { this.sandbox.hide(); const cb = this.sandboxClose; this.sandboxClose = () => {}; this.popLayer('sandbox', false, true); cb(); }
+      else if (DOCKABLE.has(t.id)) this.popLayer(t.id, false, true); else break;
     }
     if (this.top()?.id !== 'pause') return;
     this.pauseTab = tab;
     this.showPaneFor(tab);
     if (tab === 'map') this.openMapLayer(this.lastMinimap ?? this.defaultMapState());
+    else if (tab === 'sandbox') this.callbacks.onOpenSandbox();
     else if (tab === 'settings') this.openSettings();
     else if (tab === 'controls') this.openControls();
     else {
@@ -468,55 +542,12 @@ export class UI implements GameUI {
     const s = this.lastHud;
     if (this.pauseClock.textContent !== (s?.clock ?? '')) this.pauseClock.textContent = s?.clock ?? '';
     this.pauseMoney.textContent = s ? formatMoney(s.money) : '';
-    if (tab === 'brief') this.renderBrief(s);
-    else if (tab === 'stats') this.renderStats(s);
+    this.pausePlace.textContent = s ? s.district : '';
+    if (tab === 'quit') this.renderStats();
   }
 
-  private renderBrief(s: HudState | null) {
-    const pane = this.pausePanes.get('brief')!;
-    pane.textContent = '';
-    const main = h('div', 'ma-brief-main');
-    main.appendChild(h('div', 'ma-label', s?.objective ? 'Current objective' : 'Free roam'));
-    main.appendChild(h('div', 'ma-brief-objective', s?.objective ?? 'No job on. The city is yours: find a marker on the map, cause trouble, or just drive.'));
-    if (s) {
-      const loc = h('div', 'ma-brief-loc');
-      loc.appendChild(h('div', 'ma-brief-district', s.district));
-      loc.appendChild(h('div', 'ma-brief-street', s.streetName));
-      main.appendChild(loc);
-    }
-    pane.appendChild(main);
-    if (!s) return;
-    const side = h('div', 'ma-brief-side');
-    const card = (label: string, value: string | HTMLElement, cls = '') => {
-      const c = h('div', `ma-stat ${cls}`);
-      c.appendChild(h('div', 'ma-label', label));
-      if (typeof value === 'string') c.appendChild(h('div', 'ma-stat-value', value)); else c.appendChild(value);
-      side.appendChild(c);
-    };
-    card('Wallet', formatMoney(s.money), 'is-money');
-    const vit = h('div', 'ma-brief-vitals');
-    const bar = (cls: string, frac: number, text: string) => {
-      const row = h('div', `ma-brief-bar ${cls}`);
-      const tr = h('div', 'ma-brief-track');
-      const f = h('div', 'ma-brief-fill');
-      f.style.transform = `scaleX(${Math.max(0, Math.min(1, frac)).toFixed(3)})`;
-      tr.appendChild(f);
-      row.append(h('span', 'ma-brief-bar-label', text), tr);
-      vit.appendChild(row);
-    };
-    bar('is-health', s.maxHealth > 0 ? s.health / s.maxHealth : 0, `Health ${Math.round(s.health)}`);
-    bar('is-armor', s.armor / 100, `Armor ${Math.round(s.armor)}`);
-    card('Condition', vit);
-    const heat = h('div', 'ma-brief-heat');
-    const n = Math.max(0, Math.min(5, Math.ceil(s.heat - 0.05)));
-    for (let i = 0; i < 5; i++) { const f = h('span', `ma-flare${i < n ? ' is-on' : ''}`); f.innerHTML = FLARE_SVG; heat.appendChild(f); }
-    card(n > 0 ? (s.heatFlash ? 'Police searching' : 'Police on you') : 'Police', n > 0 ? heat : 'Not wanted', n > 0 ? 'is-wanted' : '');
-    if (s.vehicleName && s.vehicleSpeedKmh !== null) card('Vehicle', s.vehicleName);
-    pane.appendChild(side);
-  }
-
-  private renderStats(s: HudState | null) {
-    const pane = this.pausePanes.get('stats')!;
+  private renderStats() {
+    const pane = this.pausePanes.get('quit')!.querySelector<HTMLElement>('.ma-quit-stats')!;
     pane.textContent = '';
     const S = this.session;
     pane.appendChild(h('div', 'ma-label ma-stats-head', 'This session'));
@@ -529,14 +560,12 @@ export class UI implements GameUI {
     };
     const mins = Math.floor(S.time / 60);
     tile('Time on the streets', mins >= 60 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m ${String(Math.floor(S.time % 60)).padStart(2, '0')}s`);
-    tile('Missions passed', String(S.passed));
     tile('Money earned', formatMoney(S.earned));
     tile('Money spent', formatMoney(S.spent));
     tile('Distance driven', S.distance >= 1000 ? `${(S.distance / 1000).toFixed(1)} km` : `${Math.round(S.distance)} m`);
     tile('Top speed', `${Math.round(S.topSpeed)} km/h`);
-    tile('Highest heat', S.maxHeat > 0 ? `${S.maxHeat} / 5` : 'Clean');
+    tile('Highest wanted level', S.maxHeat > 0 ? `${S.maxHeat} / 5` : 'Clean');
     if (S.postcards) tile('Postcards found', S.postcards);
-    if (s) tile('Wallet', formatMoney(s.money));
     pane.appendChild(grid);
   }
 
@@ -643,23 +672,48 @@ export class UI implements GameUI {
 
   subtitle(text: string | null, speaker?: string): void { this.notices.subtitle(text, speaker); }
 
-  showDeath(kind: 'down' | 'busted', detail: string): void {
+  showDeath(kind: 'down' | 'busted', detail: string, opts: DeathOpts = {}): void {
     const d = this.death;
-    d.word.textContent = kind === 'down' ? 'Out cold' : 'Cuffed';
+    d.word.textContent = kind === 'down' ? 'Wasted' : 'Arrested';
     d.detail.textContent = '';
     const m = /^(.*?)\s+([+−-]\$[\d,]+)\s*$/.exec(detail);
     if (m) { d.detail.appendChild(h('span', '', m[1])); d.detail.appendChild(h('span', 'ma-death-fee', m[2].replace('-', '−'))); }
     else d.detail.textContent = detail;
-    d.el.classList.remove('is-down', 'is-busted', 'is-visible');
+    window.clearTimeout(this.deathFadeTimer);
+    d.el.classList.remove('is-down', 'is-busted', 'is-visible', 'is-card', 'is-black', 'is-out');
     void d.el.offsetWidth;
     d.el.classList.add(kind === 'down' ? 'is-down' : 'is-busted', 'is-visible');
     this.root.classList.add('is-dead');
-    window.clearTimeout(this.deathTimer);
-    this.deathTimer = window.setTimeout(() => this.hideDeath(), 3500);
+    const seq = { kind, t: 0, waiting: !!opts.arrestAnimationDone, waitT: 0, respawned: false };
+    this.deathSeq = seq;
+    if (opts.arrestAnimationDone) {
+      try { opts.arrestAnimationDone(() => { if (this.deathSeq === seq) seq.waiting = false; }); } catch { seq.waiting = false; }
+    }
+  }
+  /** Paces the WASTED / ARRESTED sequence (call every frame with real seconds). */
+  advanceDeath(dt: number): { grade: number; respawn: boolean } {
+    const q = this.deathSeq;
+    if (!q) return { grade: 0, respawn: false };
+    const step = Number.isFinite(dt) ? Math.max(0, Math.min(0.25, dt)) : 0;
+    if (q.waiting) { q.waitT += step; if (q.waitT > DEATH_TIMING.maxWait) q.waiting = false; return { grade: 0, respawn: false }; }
+    q.t += step;
+    const el = this.death.el;
+    if (q.t >= DEATH_TIMING.card && !el.classList.contains('is-card')) { el.classList.add('is-card'); this.sound('back'); }
+    if (q.t >= DEATH_TIMING.black) el.classList.add('is-black');
+    if (q.t >= DEATH_TIMING.respawn && !q.respawned) {
+      q.respawned = true;
+      this.deathSeq = null;
+      // respawned: hold black a beat, then fade back in on the new spot
+      el.classList.remove('is-card');
+      this.deathFadeTimer = window.setTimeout(() => { el.classList.add('is-out'); this.deathFadeTimer = window.setTimeout(() => this.hideDeath(), 700); }, 120);
+      return { grade: 1, respawn: true };
+    }
+    return { grade: deathGrade(q.t), respawn: false };
   }
   private hideDeath() {
-    window.clearTimeout(this.deathTimer);
-    this.death.el.classList.remove('is-visible');
+    window.clearTimeout(this.deathFadeTimer);
+    this.deathSeq = null;
+    this.death.el.classList.remove('is-visible', 'is-card', 'is-black', 'is-out');
     this.root.classList.remove('is-dead');
   }
 
@@ -774,7 +828,7 @@ export class UI implements GameUI {
       if (top && pf && top.el.contains(pf) && typeof pf.focus === 'function') pf.focus({ preventScroll: true });
       else if (top) this.navItems(top.el)[0]?.focus({ preventScroll: true });
     }
-    if (!quiet && top?.id === 'pause' && (id === 'map' || id === 'settings' || id === 'controls')) this.pauseRevealed();
+    if (!quiet && top?.id === 'pause' && DOCKABLE.has(id)) this.pauseRevealed();
     if (!this.layers.length) (document.activeElement as HTMLElement | null)?.blur?.();
   }
   private popTop() { const t = this.top(); if (t) this.popLayer(t.id, true, true); }
@@ -807,6 +861,10 @@ export class UI implements GameUI {
     const layer = this.top();
     if (!layer) return;
     e.stopPropagation(); // menus own the keyboard while open
+    if (layer.id === 'title' && !this.titlePressed) {
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key) || e.repeat) return;
+      e.preventDefault(); this.revealTitleMenu(); return;
+    }
     const act = this.keyAction(e, layer);
     if (!act) return;
     e.preventDefault();
@@ -837,11 +895,16 @@ export class UI implements GameUI {
   private nav(act: NavAction) {
     const layer = this.top();
     if (!layer) return;
+    if (layer.id === 'title' && !this.titlePressed) { this.revealTitleMenu(); return; } // gamepad: any button
     if (layer.action?.(act)) return;
     const active = document.activeElement as HTMLElement | null;
     const inLayer = !!active && layer.el.contains(active) && active.matches('[data-nav]');
     switch (act) {
-      case 'back': layer.back(); return;
+      case 'back': {
+        const under = this.layers[this.layers.length - 2];
+        if (DOCKABLE.has(layer.id) && under?.id === 'pause') { if (layer.id === 'sandbox') { this.sandbox.hide(); const cb = this.sandboxClose; this.sandboxClose = () => {}; this.popLayer('sandbox', false, true); cb(); } under.back(); return; }
+        layer.back(); return;
+      }
       case 'select':
         if (inLayer && active && !(active instanceof HTMLInputElement)) active.click();
         else if (!inLayer) { const f = this.navItems(layer.el)[0]; if (f) this.focusItem(f); }

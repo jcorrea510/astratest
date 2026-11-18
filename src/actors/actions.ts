@@ -80,14 +80,22 @@ export const ACTIONS: Record<string, ActionDef> = {
   cuffing: { clip: 'Interact', layer: 'upper', rate: 0.8, fade: 0.15, poses: [[0, {}], [0.4, sym({ chest: [14, 0, 0], armL: [-45, 0, -5], foreL: [-40, 0, 0] })], [1, {}]] },
   kneel: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25 },
   // --- vehicles
-  open_door: { clip: 'Interact', layer: 'upper', rate: 1.1, fade: 0.1, events: [[0.45, 'open']] },
-  enter_car: { clip: 'Sitting_Enter', layer: 'full', rate: 1.6, fade: 0.12, poses: [[0, {}], [0.5, { chest: [25, 0, 0], head: [20, 0, 0] }], [1, {}]] },
-  exit_car: { clip: 'Sitting_Exit', layer: 'full', rate: 1.6, fade: 0.12 },
-  pull_out: { clip: 'Punch_Cross', layer: 'upper', rate: 0.6, fade: 0.1, events: [[0.5, 'grab']], poses: [[0, {}], [0.45, sym({ armL: [-70, 0, -10], foreL: [-20, 0, 0], chest: [12, 0, 0] })], [1, sym({ armL: [-20, 0, 0], foreL: [-80, 0, 0], chest: [-12, 0, 0] })]] },
-  pulled_out: { clip: 'Hit_Chest', layer: 'full', rate: 0.8, fade: 0.06, poses: [[0, sym({ armL: [-50, 0, 40], foreL: [-30, 0, 0] })], [0.5, sym({ spine: [-20, 0, 0], armL: [-80, 0, 50], foreL: [-40, 0, 0], head: [-15, 0, 0] })], [1, {}]] },
+  // driver side: left hand on the handle, pull the door round to the left (the player steps back on the legs layer)
+  open_door: { layer: 'upper', dur: 1.05, fade: 0.12, events: [[0.42, 'open']], poses: [[0, {}], [0.3, { chest: [10, 8, 0], armL: [-30, 0, 6], foreL: [-28, 0, 0], head: [6, 0, 0] }], [0.45, { chest: [12, 10, 0], armL: [-34, 0, 4], foreL: [-22, 0, 0], head: [8, 0, 0] }], [0.78, { chest: [-2, 24, 0], spine: [0, 8, 0], armL: [-26, 0, 22], foreL: [-30, 0, 0] }], [1, {}]] },
+  // passenger side: the mirror image with the right hand
+  open_door_r: { layer: 'upper', dur: 1.05, fade: 0.12, events: [[0.42, 'open']], poses: [[0, {}], [0.3, { chest: [10, -8, 0], armR: [-30, 0, -6], foreR: [-28, 0, 0], head: [6, 0, 0] }], [0.45, { chest: [12, -10, 0], armR: [-34, 0, -4], foreR: [-22, 0, 0], head: [8, 0, 0] }], [0.78, { chest: [-2, -24, 0], spine: [0, -8, 0], armR: [-26, 0, -22], foreR: [-30, 0, 0] }], [1, {}]] },
+  // sit down with the head ducked under the roof line
+  enter_car: { clip: 'Sitting_Enter', layer: 'full', rate: 1.45, fade: 0.12, poses: [[0, {}], [0.35, { chest: [22, 0, 0], neck: [10, 0, 0], head: [18, 0, 0] }], [0.8, { chest: [18, 0, 0], head: [12, 0, 0] }], [1, {}]] },
+  exit_car: { clip: 'Sitting_Exit', layer: 'full', rate: 1.45, fade: 0.1, poses: [[0, { chest: [18, 0, 0], head: [14, 0, 0] }], [0.45, { chest: [24, 0, 0], head: [16, 0, 0] }], [1, {}]] },
+  // reach in with both hands, grab the collar, haul back
+  pull_out: { layer: 'upper', dur: 1.4, fade: 0.1, events: [[0.42, 'grab']], poses: [[0, {}], [0.32, { chest: [22, 0, 0], spine: [8, 0, 0], ...sym({ armL: [-46, 0, -14], foreL: [-18, 0, 0] }) }], [0.45, { chest: [24, 0, 0], spine: [8, 0, 0], ...sym({ armL: [-44, 0, -16], foreL: [-30, 0, 0] }) }], [0.7, { chest: [-12, 0, 0], spine: [-6, 0, 0], ...sym({ armL: [-14, 0, -8], foreL: [-95, 0, 0] }) }], [1, {}]] },
+  // dragged out backwards, arms flailing, then dumped (the knockdown follows)
+  pulled_out: { clip: 'Hit_Chest', layer: 'full', rate: 0.75, fade: 0.06, poses: [[0, sym({ armL: [-50, 0, 40], foreL: [-30, 0, 0] })], [0.5, { spine: [-20, 0, 0], head: [-15, 0, 0], ...sym({ armL: [-80, 0, 50], foreL: [-40, 0, 0] }) }], [1, sym({ armL: [-40, 0, 30], foreL: [-20, 0, 0] })]] },
   thrown_out: { clip: 'Death01', layer: 'full', rate: 1.6, fade: 0.05, hold: true },
-  smash_window: { clip: 'Punch_Cross', layer: 'upper', rate: 0.9, fade: 0.08, events: [[0.45, 'smash']], poses: [[0, {}], [0.3, { armR: [0, 0, -40], foreR: [-120, 0, 0], chest: [0, -25, 0] }], [0.5, { armR: [-70, 0, -60], foreR: [-130, 0, 0], chest: [10, 20, 0] }], [1, {}]] },
-  hotwire: { clip: 'Driving_Loop', layer: 'full', loop: true, hold: true, fade: 0.2, poses: [[0, sym({ chest: [30, 0, 0], head: [25, 0, 0], armL: [-25, 0, -20], foreL: [-70, 0, 0] })], [0.5, sym({ chest: [32, 4, 0], head: [28, 0, 0], armL: [-30, 0, -25], foreL: [-60, 0, 0] })], [1, sym({ chest: [30, 0, 0], head: [25, 0, 0], armL: [-25, 0, -20], foreL: [-70, 0, 0] })]] },
+  // wind up and drive the fist through the side window
+  smash_window: { layer: 'upper', dur: 1.05, fade: 0.08, events: [[0.42, 'smash']], poses: [[0, {}], [0.3, { chest: [0, -36, 0], spine: [0, -10, 0], armR: [35, 0, -35], foreR: [-125, 0, 0], armL: [-30, 0, 10], foreL: [-60, 0, 0] }], [0.44, { chest: [14, 22, 0], spine: [6, 8, 0], armR: [-38, 0, -8], foreR: [-6, 0, 0], armL: [-10, 0, 10], foreL: [-50, 0, 0] }], [0.62, { chest: [8, 10, 0], armR: [-28, 0, -10], foreR: [-40, 0, 0] }], [1, {}]] },
+  // hunched under the dash, hands twisting the wires
+  hotwire: { clip: 'Driving_Loop', layer: 'full', loop: true, hold: true, dur: 0.6, fade: 0.25, poses: [[0, { spine: [10, 0, 0], chest: [28, -6, 0], neck: [10, 0, 0], head: [22, 0, 0], ...sym({ armL: [-30, 0, -18], foreL: [-75, 0, 0], handL: [0, 0, 20] }) }], [0.5, { spine: [10, 0, 0], chest: [30, -4, 0], neck: [10, 0, 0], head: [24, 0, 0], ...sym({ armL: [-34, 0, -22], foreL: [-62, 0, 0], handL: [0, 0, -15] }) }], [1, { spine: [10, 0, 0], chest: [28, -6, 0], neck: [10, 0, 0], head: [22, 0, 0], ...sym({ armL: [-30, 0, -18], foreL: [-75, 0, 0], handL: [0, 0, 20] }) }]] },
   // --- misc
   pick_up: { clip: 'PickUp_Table', layer: 'full', fade: 0.12 },
   push: { clip: 'Push_Loop', layer: 'full', loop: true, hold: true, fade: 0.2 },

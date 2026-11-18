@@ -75,3 +75,28 @@ describe('lane routing', () => {
     }
   });
 });
+
+describe('city expansion', () => {
+  const city = generateCity();
+  it('every lane continues somewhere (freeway, ramps, hill road and cul-de-sacs included)', () => {
+    for (const l of city.lanes) expect(l.next.length, `lane ${l.id}`).toBeGreaterThan(0);
+  });
+  it('the freeway is elevated and reachable from the grid', () => {
+    const fw = city.paths.find(p => p.kind === 'freeway')!;
+    expect(fw.elevated).toBe(true);
+    expect(Math.max(...fw.pts.map(p => p.y))).toBeGreaterThan(5);
+    // walk the lane graph from a grid lane: the freeway lanes must be reachable
+    const fwLanes = new Set(city.lanes.filter(l => l.ys && Math.max(...l.ys) > 5 && !l.connector).map(l => l.id));
+    const seen = new Set<number>(); const q = [city.lanes.find(l => !l.connector && !l.ys)!.id];
+    while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...city.lanes[id].next); }
+    expect([...fwLanes].some(id => seen.has(id))).toBe(true);
+    // every expansion lane (freeway, ramps, hill and airfield roads) is reachable from the grid
+    for (const l of city.lanes) if (l.ys) expect(seen.has(l.id), `lane ${l.id}`).toBe(true);
+  });
+  it('samplePath reports heights on elevated lanes', () => {
+    const l = city.lanes.find(x => x.ys && Math.max(...x.ys) > 5 && !x.connector)!;
+    const out = { x: 0, z: 0, dx: 0, dz: 0, y: 0 };
+    samplePath(l, l.length / 2, out);
+    expect(out.y).toBeGreaterThan(1);
+  });
+});

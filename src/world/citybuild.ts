@@ -1,7 +1,10 @@
 /** Builds Port Meridian's meshes and static colliders from the pure city layout. */
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
-import { RAMPS } from '../game/places';
+import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
+import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
+import { buildExpansion, expansionPads, helipadPad } from './expansion';
+import { CHANNEL, pathHeightAt } from './citymap';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
@@ -79,8 +82,10 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   // ---------- Ground: grass land, asphalt, water ----------
   const grassMat = surfaceMat(grassSurface(), 1, {}, 0.3, 'grass');
   const land = new GeoBuilder();
-  slab(land, -1400, -1400, maxX + 2, maxZ + 8, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
-  slab(land, maxX, -1400, 1400, -70, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
+  slab(land, -1400, NORTH_EDGE, maxX + 2, maxZ + 8, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
+  slab(land, maxX, NORTH_EDGE, CHANNEL.x0, -62, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
+  slab(land, CHANNEL.x1, NORTH_EDGE, 1400, -62, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
+  slab(land, -1400, -1400, -1104, NORTH_EDGE, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
   const landMesh = new THREE.Mesh(land.build(), grassMat); landMesh.receiveShadow = true; root.add(landMesh);
   // Ground as 200 m tiles: one huge box loses contact precision for the character controller.
   // Only land gets ground: the sea and harbor are open water down to a seabed (swim, sink).
@@ -90,8 +95,12 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       physics.addStaticBox((gx + ex) / 2, top - 0.5, (gz + ez) / 2, (ex - gx) / 2, 0.5, (ez - gz) / 2);
     }
   };
-  tileRect(-1500, -1500, maxX + 2, maxZ + 7, -0.05); // city and the land around it
-  tileRect(maxX + 2, -1500, 1500, -62, -0.05); // north-east of the docks
+  tileRect(-1500, NORTH_EDGE, maxX + 2, maxZ + 7, -0.05); // city and the land around it (the hills to the north are terrain)
+  tileRect(maxX + 2, NORTH_EDGE, CHANNEL.x0, -62, -0.05); // north of the docks
+  tileRect(CHANNEL.x1, NORTH_EDGE, 1500, -62, -0.05); // east of the Cannery Channel
+  tileRect(CHANNEL.x0, -1500, CHANNEL.x1, -62, SEABED_Y); // channel bed
+  // outer limits beyond the terrain
+  physics.addStaticBox(-1090, 20, -850, 2, 60, 460); physics.addStaticBox(1090, 20, -700, 2, 60, 640); physics.addStaticBox(0, 20, -1290, 1100, 60, 2);
   tileRect(-1500, maxZ + 7, 1500, SEA_EDGE_Z, SEABED_Y); // seabed south of the coast
   tileRect(maxX + 2, -62, SEA_EDGE_X, maxZ + 7, SEABED_Y); // harbor floor
   physics.addStaticBox(0, -2, SEA_EDGE_Z, 1500, 8, 1);
@@ -116,7 +125,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         float w2 = cos(dot(vW.xz, vec2(0.29, -0.13)) - uTime * 1.3) + cos(dot(vW.xz, vec2(0.08, 0.31)) + uTime * 0.7) + 0.35 * cos(dot(vW.xz, vec2(0.52, 0.47)) - uTime * 2.1) + 0.25 * cos(dot(vW.xz, vec2(-1.1, 1.4)) - uTime * 2.9);
         normal = normalize(normal + (viewMatrix * vec4(w1 * 0.03, 0.0, w2 * 0.03, 0.0)).xyz * fadeW);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z);
+        float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z) * step(${(COAST_Z - 20).toFixed(1)}, vW.z) * step(vW.x, ${(HARBOR_X - 2).toFixed(1)});
         float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(${(HARBOR_X - 1).toFixed(1)}, vW.x) * step(-60.0, vW.z) * step(vW.z, ${(COAST_Z - 30).toFixed(1)});
         float foamBand = max(shoreS, shoreE);
         float foam = foamBand * step(0.5, 0.5 + 0.5 * sin(vW.x * 1.7 + sin(vW.x * 0.21) * 4.0 + uTime * 1.6 + foamBand * 7.0)) * step(0.35, 0.5 + 0.5 * sin(vW.x * 0.37 + vW.z * 0.9 - uTime * 0.8));
@@ -195,13 +204,15 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     for (let i = 0; i < cp.count; i++) { const y = cp.getY(i); if (y > height * 0.55) cc.setXYZ(i, 0.5, 0.47, 0.36); }
     hillParts.push(col);
   };
-  mkHill(0, minZ - 120, 1700, 220, Math.PI, 70, 1);
-  mkHill(minX - 120, 0, 1500, 220, -Math.PI / 2, 60, 2);
-  mkHill(maxX + 200, -280, 700, 400, Math.PI, 45, 3);
+  mkHill(minX - 120, 170, 1150, 220, -Math.PI / 2, 60, 2);
   const hills = new THREE.Mesh(mergeColored(hillParts), hillMat); hills.receiveShadow = true; root.add(hills);
-  physics.addStaticBox(minX - 6, 6, 0, 1, 12, 900);
-  physics.addStaticBox(0, 6, minZ - 6, 900, 12, 1);
-  physics.addStaticBox(maxX + 60, 6, -66, 60, 12, 1);
+  physics.addStaticBox(minX - 6, 6, 200, 1, 12, 610);
+  // north terrain: hills, road beds, channel, house pads
+  const terrainH = makeTerrainHeight(city, expansionPads(city));
+  const terrainMat = surfaceMat(grassSurface(), 1, { vertexColors: true }, 0.3, 'terrain');
+  buildTerrain(root, physics, terrainH, terrainMat);
+  // channel quay walls south of the freeway
+  { const tb0 = new TrimBuilder(); for (const x of [CHANNEL.x0, CHANNEL.x1]) for (let z = -62; z > NORTH_EDGE - 4; z -= 40) tb0.box(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, z - 20, 0.8, 7, 40, 0, C('#7d7870'), T_STONE); const qm = new THREE.Mesh(tb0.build(), trimMaterial()); qm.receiveShadow = true; root.add(qm); for (const x of [CHANNEL.x0, CHANNEL.x1]) physics.addStaticBox(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, (-62 + NORTH_EDGE) / 2, 0.4, 3.5, (NORTH_EDGE + 62) / -2); }
   physics.addStaticBox(HARBOR_X + 1, 0.6, (-62 + maxZ + 7) / 2, 1, 0.8, (maxZ + 69) / 2);
 
   // ---------- Road markings (worn paint) ----------
@@ -252,9 +263,12 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const ctx: BuildCtx = { fac, trim, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
   const towerLots = merged.filter(l => l.kind === 'tower').sort((a, b) => b.height - a.height);
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
+  const PS = POLICE_STATION;
+  const policeLot = (l: Lot) => Math.abs(l.x - PS.x) < PS.w / 2 && Math.abs(l.z - PS.z) < 3;
   for (const lot of merged) {
     const b = city.blocks[lot.blockId];
     const r = new Rng(lot.seed);
+    if (policeLot(lot)) continue;
     if (lot.kind === 'tower') {
       const rank = towerLots.indexOf(lot);
       tower(ctx, { cx: lot.x, cz: lot.z, w: lot.w, d: lot.d, base: CURB_HEIGHT, height: lot.height * 1.45, seed: lot.seed, helipad: rank >= 0 && rank < 3 ? padNames[rank] : null });
@@ -272,7 +286,12 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const exposed: [boolean, boolean, boolean, boolean] = [true, faceOut(hw + 1.2, 0), faceOut(0, -hd - 1.2), faceOut(-hw - 1.2, 0)];
     const brick = b.district === 'brickline' || (lot.kind === 'brownstone' && b.district === 'midtown');
     const beach = b.district === 'strand';
-    const common = { cx: lot.x, cz: lot.z, yaw: lot.rot, w: lot.w - 0.06, d: lot.d, base: CURB_HEIGHT, seed: lot.seed, exposed, brand: r.int(0, BRANDS.length - 1) };
+    const store = storeAt(lot.x, lot.z);
+    const common = { cx: lot.x, cz: lot.z, yaw: lot.rot, w: lot.w - 0.06, d: lot.d, base: CURB_HEIGHT, seed: lot.seed, exposed, brand: r.int(0, BRANDS.length - 1), hollow: !!store };
+    if (store) {
+      streetBuilding(ctx, { ...common, floors: r.int(2, 3), floorH: 3.25, groundH: STORE_H, mat: 0, color: C(r.pick(BRICK_COLORS)), ground: 'blank', winW: 1.15, winH: 1.85, sill: 0.8, cellW: 2.6, cornice: 'heavy', fireEscape: r.chance(0.4), lit: 0.42, roofItems: r.int(1, 3), awning: false, balconies: false, trimColor: C('#d9d2c3') });
+      continue;
+    }
     if (beach) {
       const floors = r.int(2, 4);
       streetBuilding(ctx, { ...common, floors, floorH: 3.2, groundH: 4.0, mat: 1, color: C(r.pick(PASTEL_COLORS)), ground: r.chance(0.6) ? 'shop' : 'lobby', winW: 1.6, winH: 1.6, sill: 0.9, cellW: 2.8, cornice: 'bands', fireEscape: false, lit: 0.4, roofItems: r.int(1, 3), awning: r.chance(0.6), balconies: r.chance(0.5), trimColor: C('#f4efe6') });
@@ -326,6 +345,34 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     tb.sphere(x + 55, 35.4, cz, 0.25, C('#ff3020'), T_GLOW(3));
   }
 
+  // ---------- Metro Police precinct ----------
+  {
+    const exposedPS: [boolean, boolean, boolean, boolean] = [true, true, true, true];
+    streetBuilding(ctx, { cx: PS.x, cz: PS.z, yaw: PS.yaw, w: PS.w, d: PS.d, base: CURB_HEIGHT, seed: 4242, exposed: exposedPS, brand: 11, floors: 3, floorH: 3.6, groundH: 4.6, mat: 3, color: C('#c9c1ae'), ground: 'lobby', winW: 1.6, winH: 2.0, sill: 0.9, cellW: 3.0, cornice: 'simple', fireEscape: false, lit: 0.8, roofItems: 0, awning: false, balconies: false, trimColor: C('#e2ddd0') });
+    const H = CURB_HEIGHT + 4.6 + 3 * 3.6;
+    const tb = trim.at(PS.x, PS.z);
+    // rooftop helipad on a steel deck over the parapet
+    tb.box(PS.x + 6, H + 1.05, PS.z, 10.4, 0.25, 9.6, 0, C('#55595c'), T_METAL);
+    for (const dx of [-4.5, 4.5]) for (const dz of [-4, 4]) tb.box(PS.x + 6 + dx, H + 0.5, PS.z + dz, 0.25, 1, 0.25, 0, C('#55595c'), T_METAL);
+    physics.addStaticBox(PS.x + 6, H + 1.05, PS.z, 5.2, 0.13, 4.8);
+    helipadPad(tb, physics, PS.x + 6, H + 1.18, PS.z, 'Metro Police roof helipad', helipads, 4.7);
+    // entrance: blue lamps, flag pole, badge sign
+    const fz = PS.z - PS.d / 2;
+    for (const dx of [-2.2, 2.2]) { tb.cyl(PS.x + dx, CURB_HEIGHT, fz - 0.6, 0.06, 0.06, 2.4, 6, C('#222'), T_METAL); tb.box(PS.x + dx, CURB_HEIGHT + 2.6, fz - 0.6, 0.35, 0.45, 0.35, 0, C('#3a7bff'), T_GLOW(3)); }
+    tb.cyl(PS.x - 12, CURB_HEIGHT, fz - 2.6, 0.08, 0.05, 11, 8, C('#ddd'), T_METAL); tb.box(PS.x - 11, CURB_HEIGHT + 10, fz - 2.6, 2.2, 1.3, 0.03, 0, C('#2a4a6b'), T_PAINT);
+    physics.addStaticCylinder(PS.x - 12, 5, fz - 2.6, 5, 0.1);
+    const c = document.createElement('canvas'); c.width = 512; c.height = 96; const g = c.getContext('2d')!;
+    g.fillStyle = '#16233a'; g.fillRect(0, 0, 512, 96); g.fillStyle = '#e8eef8'; g.font = '800 46px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('METRO POLICE  ·  PRECINCT 4', 256, 50, 480);
+    const st = new THREE.CanvasTexture(c); st.colorSpace = THREE.SRGBColorSpace;
+    const sm = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.25), new THREE.MeshStandardMaterial({ map: st, emissiveMap: st, emissive: new THREE.Color(0.6, 0.6, 0.6), roughness: 0.5 }));
+    sm.position.set(PS.x, CURB_HEIGHT + 4.0, fz - 0.12); sm.rotation.y = Math.PI; root.add(sm);
+  }
+  // ---------- Freeway, bridge, Vista Drive, airfield, Fort Calder ----------
+  const propsX = new ChunkInstancer(300);
+  propsX.register('streetlight', streetLightGeo(), trimMaterial());
+  const exp = buildExpansion(root, physics, city, ctx, propsX, asphaltMat, markMat, terrainH);
+  chunkMeshes.push(...propsX.build(root).map(m => { m.userData.small = true; return m; }));
+
   // ---------- Signs and billboards ----------
   const signTex = signAtlas();
   const signMat = new THREE.MeshStandardMaterial({ map: signTex, emissiveMap: signTex, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 0.25, roughness: 0.5 });
@@ -361,7 +408,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   for (const b of billboards) addBillboard(b);
 
   // ---------- Street furniture ----------
-  const sig = signalGeo(1);
+
   props.register('streetlight', streetLightGeo(), tmat);
   props.register('hydrant', hydrantGeo(), tmat);
   props.register('bench', benchGeo(), tmat);
@@ -384,6 +431,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // Kerbside furniture along each block edge: street lights, trees, hydrants, meters, benches, bins, bus stops...
   const lampHeads: THREE.Vector3[] = [];
+  const nearPath = (x: number, z: number, m: number) => city.paths.some(p => pathHeightAt(p, x, z).d < p.half + m);
   const kerb = (b: Block) => {
     const r = new Rng(b.id * 97 + 3);
     const edges = [
@@ -513,6 +561,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       for (let i = 0; i < (b.kind === 'plaza' ? 14 : 5); i++) {
         const x = r.range(ix0 + 4, ix1 - 4), z = r.range(iz0 + 4, iz1 - 4);
         if (merged.some(l => l.blockId === b.id && Math.abs(l.x - x) < l.w / 2 + 3 && Math.abs(l.z - z) < l.d / 2 + 3)) continue;
+        if (x < GAS_STATION.x + 25 && x > GAS_STATION.x - 20 && z > GAS_STATION.z - 40 && z < GAS_STATION.z + 16) continue;
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), 1.1, r);
         trim.at(x, z).box(x, CURB_HEIGHT + 0.25, z, 2.6, 0.5, 2.6, 0, C('#a8a296'), T_STONE);
       }
@@ -527,10 +576,20 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       }
     }
   }
+  // woods on the northern hills (clear of roads, the freeway corridor, the channel, the airfield plain and pads)
+  { const hr = new Rng(404); let placed = 0;
+    for (let k = 0; k < 2600 && placed < 520; k++) {
+      const x = hr.range(-1000, 1000), z = hr.range(-1150, -505);
+      if (x > CHANNEL.x0 - 40 && (z > -790 || x < CHANNEL.x1 + 20)) continue;
+      if (nearPath(x, z, 10) || Math.hypot(x - (-40), z - (-868)) < 45) continue;
+      const y = terrainH(x, z); if (y < 1) continue;
+      const k2 = hr.int(0, 3), sc = hr.range(1.0, 1.6), yaw = hr.range(0, 6.28);
+      props.add(`tree${k2}`, x, y - 0.2, z, yaw, sc); props.add(`leaf${k2}`, x, y - 0.2, z, yaw, sc); placed++;
+    } }
   // beach palms (kept clear of the landing strip in front of each beach ramp)
   { const pr = new Rng(91); for (let x = minX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, false); } }
   // billboards on poles along the edge of the city
-  { const br = new Rng(5); for (let k = 0; k < 6; k++) { const x = -380 + k * 150 + br.range(-20, 20); addBillboard({ x, y: 0, z: minZ - 14, yaw: 0, idx: k % 8, w: 12 }); } }
+  { const br = new Rng(5); for (let k = 0; k < 6; k++) { const x = -380 + k * 150 + br.range(-20, 20); if (nearPath(x, minZ - 14, 14)) continue; addBillboard({ x, y: 0, z: minZ - 14, yaw: 0, idx: k % 8, w: 12 }); } }
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {
@@ -539,20 +598,44 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const edgeX = minX - 5.2, edgeZ = minZ - 5.2;
     for (let z = edgeZ; z < maxZ + 7; z += 3) trim.at(edgeX, z).box(edgeX, 0.45, z, 0.16, 0.9, 0.16, 0, postC, T_METAL);
     for (let z = edgeZ; z < maxZ + 7; z += 60) trim.at(edgeX, z).box(edgeX + 0.1, 0.7, Math.min(z + 30, maxZ + 7 - 30), 0.08, 0.3, 60, 0, railC, T_METAL);
-    for (let x = edgeX; x < maxX + 2; x += 3) trim.at(x, edgeZ).box(x, 0.45, edgeZ, 0.16, 0.9, 0.16, 0, postC, T_METAL);
-    for (let x = edgeX; x < maxX + 2; x += 60) trim.at(x, edgeZ).box(Math.min(x + 30, maxX + 2 - 30), 0.7, edgeZ + 0.1, 60, 0.3, 0.08, 0, railC, T_METAL);
+    for (let x = edgeX; x < maxX + 2; x += 3) if (!nearPath(x, edgeZ, 2)) trim.at(x, edgeZ).box(x, 0.45, edgeZ, 0.16, 0.9, 0.16, 0, postC, T_METAL);
+    for (let x = edgeX; x < maxX + 2; x += 6) if (!nearPath(x, edgeZ, 4) && !nearPath(x + 6, edgeZ, 4)) trim.at(x, edgeZ).box(x + 3, 0.7, edgeZ + 0.1, 6, 0.3, 0.08, 0, railC, T_METAL);
     void tb;
     const tr = new Rng(77);
     for (let z = edgeZ + 4; z < maxZ; z += tr.range(5, 9)) { const k = tr.int(0, 3), x = edgeX - tr.range(6, 22), s = tr.range(1.1, 1.7); props.add(`tree${k}`, x, 0, z, tr.range(0, 6.28), s); props.add(`leaf${k}`, x, 0, z, tr.range(0, 6.28), s); }
-    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); props.add(`tree${k}`, x, 0, z, 0, s); props.add(`leaf${k}`, x, 0, z, 0, s); }
+    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; props.add(`tree${k}`, x, 0, z, 0, s); props.add(`leaf${k}`, x, 0, z, 0, s); }
   }
+
+  // ---------- Gas station forecourt ----------
+  {
+    const G = GAS_STATION; const tb = trim.at(G.x, G.z);
+    const conc = C('#a9a69f');
+    tb.box(G.x, CURB_HEIGHT + 0.01, G.z, G.w + 6, 0.03, G.d + 6, 0, conc, T_STONE);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const x = G.x + dx * (G.w / 2 - 1.5), z = G.z + dz * (G.d / 2 - 2); tb.box(x, CURB_HEIGHT + 2.6, z, 0.5, 5.2, 0.5, 0, C('#e8e6e0'), T_PAINT); physics.addStaticBox(x, 2.6, z, 0.25, 2.6, 0.25); }
+    tb.box(G.x, CURB_HEIGHT + 5.6, G.z, G.w, 0.8, G.d, 0, C('#f2f0ea'), T_PAINT);
+    tb.box(G.x, CURB_HEIGHT + 5.6, G.z, G.w + 0.08, 0.5, G.d + 0.08, 0, C('#0f7b4f'), T_PAINT);
+    for (let i = 0; i < 6; i++) tb.box(G.x + (i % 2 ? 3 : -3), CURB_HEIGHT + 5.17, G.z - 7 + Math.floor(i / 2) * 7, 1.6, 0.05, 1.6, 0, C('#fffbf0'), T_GLOW(2.5));
+    for (const dz of [-6, 0, 6]) {
+      const z = G.z + dz;
+      tb.box(G.x, CURB_HEIGHT + 0.12, z, 1.4, 0.24, 5.2, 0, C('#d9d6cf'), T_STONE);
+      for (const sz of [-1.3, 1.3]) { tb.box(G.x, CURB_HEIGHT + 1.15, z + sz, 0.8, 1.8, 0.5, 0, C('#e9e7e1'), T_PAINT); tb.box(G.x, CURB_HEIGHT + 1.75, z + sz, 0.82, 0.4, 0.52, 0, C('#0f7b4f'), T_PAINT); tb.box(G.x + 0.42, CURB_HEIGHT + 1.35, z + sz, 0.02, 0.3, 0.3, 0, C('#9fe6c0'), T_GLOW(0.8)); }
+      physics.addStaticBox(G.x, 1.0, z, 0.7, 1.0, 2.6);
+    }
+    // price sign on a pylon by the avenue
+    tb.box(G.x - G.w / 2 - 2, CURB_HEIGHT + 3.5, G.z + G.d / 2 + 1, 0.4, 7, 0.4, 0, C('#3a3a3a'), T_METAL);
+    tb.box(G.x - G.w / 2 - 2, CURB_HEIGHT + 6.2, G.z + G.d / 2 + 1, 0.3, 2.2, 2.6, 0, C('#0f7b4f'), T_PAINT);
+    tb.box(G.x - G.w / 2 - 2.17, CURB_HEIGHT + 6.0, G.z + G.d / 2 + 1, 0.02, 1.4, 2.2, 0, C('#ffe9a8'), T_NIGHTGLOW(2));
+    physics.addStaticCylinder(G.x - G.w / 2 - 2, 3.5, G.z + G.d / 2 + 1, 3.5, 0.3);
+  }
+  HELIPADS.length = 0; HELIPADS.push(...helipads, ...exp.helipads);
+  lampHeads.push(...exp.lampHeads);
 
   // ---------- Pier and Ferris wheel landmark ----------
   const ferris = buildPier(root, physics, trim, maxZ + 7);
 
   // ---------- Emit meshes ----------
   const bmat = buildingMaterial();
-  chunkMeshes.push(...fac.meshes(bmat, root, { name: 'facade' }));
+  chunkMeshes.push(...fac.meshes(bmat, root, { name: 'facade' }).map(m => { m.userData.farScale = 1.9; return m; }));
   chunkMeshes.push(...trim.meshes(tmat, root, { name: 'trim', small: true }));
   if (bg.length) { const bm = new THREE.Mesh(mergeGeoms(bg), bbMat); root.add(bm); }
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
@@ -576,11 +659,11 @@ function mergeLots(city: CityMap): Lot[] {
   while (i < lots.length) {
     const a = lots[i]; const r = new Rng(a.seed + 1);
     const b = city.blocks[a.blockId];
-    const want = a.kind === 'midrise' ? r.int(1, 3) : a.kind === 'brownstone' && b.district !== 'hillside' && r.chance(0.25) ? 2 : 1;
+    const want = storeAt(a.x, a.z) ? 1 : a.kind === 'midrise' ? r.int(1, 3) : a.kind === 'brownstone' && b.district !== 'hillside' && r.chance(0.25) ? 2 : 1;
     let j = i + 1;
     while (j < lots.length && j - i < want) {
       const n = lots[j], p = lots[j - 1];
-      if (n.blockId !== a.blockId || n.rot !== a.rot || n.kind !== a.kind || Math.abs(Math.hypot(n.x - p.x, n.z - p.z) - p.w) > 0.2) break;
+      if (storeAt(n.x, n.z) || n.blockId !== a.blockId || n.rot !== a.rot || n.kind !== a.kind || Math.abs(Math.hypot(n.x - p.x, n.z - p.z) - p.w) > 0.2) break;
       j++;
     }
     const run = lots.slice(i, j);
