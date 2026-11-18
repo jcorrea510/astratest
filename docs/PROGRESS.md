@@ -19,7 +19,8 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running: W2c city agent a6bd1913e4509c77d (08:00), W2d UI agent a19838b1ed2230462 (08:20), W2a car-entry agent ac08b21a2f1ec6198 (08:35). Next: W2b police after W2a. (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
+- Running (Sonnet, started 17:45 UTC; owner asked: Sonnet subagents, Opus only if Sonnet is stuck): city ac5a8b91d77e153bf,
+  UI ad32e45677216228b, car-entry a2197cc9bbf998846. Next: W2b police (Sonnet) after car-entry. Rules: docs/AGENT_RULES.md, map: CLAUDE.md.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
