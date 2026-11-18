@@ -6,7 +6,7 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 
 ## Overnight plan (BRIEF2) — status
 - [ ] W0 setup: brief saved, hourly task, story mode removed (sandbox-only game).
-- [ ] W1a Vehicles: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
+- [x] W1a Vehicles (done: 20 procedural skinned models, doors/glass/seat API in Vehicle, see report in git log) —: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
       convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
 - [ ] W1b People: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
       curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
@@ -19,8 +19,8 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running: W1a vehicles agent a8d1c0f8913e5446f, W1b people agent aad3c429bd7a6894f,
-  W2c city agent a6bd1913e4509c77d (started 08:00 UTC) (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
+- Running: W1b people agent aad3c429bd7a6894f,
+  W2c city agent a6bd1913e4509c77d (08:00), W2d UI agent a19838b1ed2230462 (08:20) (resume with SendMessage if they stopped on a usage limit). Rules: docs/AGENT_RULES.md.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
