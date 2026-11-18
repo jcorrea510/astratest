@@ -5,22 +5,21 @@ Resume rule: read docs/BRIEF2.md (current overnight brief) and this file; contin
 Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hour") fires into this session; delete it when all done.
 
 ## Overnight plan (BRIEF2) — status
-- [ ] W0 setup: brief saved, hourly task, story mode removed (sandbox-only game).
+- [x] W0 setup —: brief saved, hourly task, story mode removed (sandbox-only game).
 - [x] W1a Vehicles (done: 20 procedural skinned models, doors/glass/seat API in Vehicle, see report in git log) —: procedural realistic 2000s cars (10+ original models: compact, sedan, luxury land-yacht, muscle, sports,
       convertible, pickup, SUV, race car, taxi, cop cruiser, FBI SUV, SWAT van, army truck, tank), opening doors, easier steering.
 - [x] W1b People (done db1c060: UBC bodies, looks, locomotion, curbs, melee, voices, human.playAction API) —: realistic humans (genders, skin tones, heights, hairstyles, clothes), new walk/run/jump (no stuck jump pose,
       curbs step up), wind-up punch that needs range, NPC voices (hey/screams).
 - [x] W1c Shooting (done 35bbd40: dot reticle, aim fix, hit zones, 18 guns, gun audio, glass) —: dot reticle, bullets go to the aim point, hit zones (head kill, 1-2 body), many more guns with detailed
       models and distinct real-sounding gunshots, shoot through car glass and kill occupants.
-- [ ] W2a Car entry: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
+- [x] W2a Car entry (done) —: walk to door, open, get in; carjack pulls driver out the driver side with animation; parked cars:
       smash window + hotwire. Helicopters (helipad to steal, flyable).
 - [ ] W2b Police: foot cops that act, escalation by stars (cruisers, SWAT, FBI SUVs, army + tank, helicopter), handcuff
       arrest animation, WASTED / ARRESTED cards.
-- [ ] W2c City: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
+- [x] W2c City (done dbe7425; aerial 516 draw calls > budget, trim later) —: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
-- [ ] W2d Main menu/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running (Sonnet, started 17:45 UTC; owner asked: Sonnet subagents, Opus only if Sonnet is stuck): city ac5a8b91d77e153bf,
-  UI ad32e45677216228b, car-entry a2197cc9bbf998846. Next: W2b police (Sonnet) after car-entry. Rules: docs/AGENT_RULES.md, map: CLAUDE.md.
+- [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
+- Running (Sonnet): W2b police agent a2564bdc0eaa77d64 (18:50 UTC). Then W3: full e2e on build, bug-bash x2 (Sonnet), perf trim, merge to main.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
