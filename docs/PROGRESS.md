@@ -19,7 +19,8 @@ Auto-resume: hourly scheduled task trig_016PqqKSxtjK4pY12UGrxzTE (":14 every hou
 - [x] W2c City (done dbe7425; aerial 516 draw calls > budget, trim later) —: realistic look (PBR-ish procedural textures, detailed buildings, less blocky), expansion (elevation,
       highway/overpass, alleys, more districts), walk-in robbable stores.
 - [x] W2d Main menu (done 2bbd743) —/UI: real-game title screen (3D city backdrop, game-style menu), HUD polish.
-- Running (Sonnet): W3 QA agent a5c3824e375393e90 (19:40 UTC): full gate on build, perf trim, bug-bash until 2 clean passes, soak. Then lead merges to main.
+- W3 QA done: gate green (149 unit, 44 e2e on build), 2 clean bug-bash passes, perf aerial ~360 calls. Merged to main c848023 (CI deploy pending).
+- Running (Sonnet): memory agent a0e17df79c6eeb4d4 (20:55 UTC): soak heap 967->1311 MB; target baseline <450 MB, growth <40 MB.
 - [ ] W3 Bug-bash x2 clean, tests, soak, deploy, final report.
 
 ## Done
