@@ -27,8 +27,9 @@ test('city: street + aerial views, draw calls, shop glass breaks', async ({ page
     const o = new THREE(p.x + Math.sin(p.yaw) * 6, p.y, p.z + Math.cos(p.yaw) * 6), d = new THREE(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const before = wg.isGlassBroken(p.id);
     for (let i = 0; i < 3; i++) m.combat.trace(o, d, 20, null, {}); // cracks, then shatters on the third hit
-    return { before, after: wg.isGlassBroken(p.id), n: wg.panes.length };
+    const t4 = m.combat.trace(o, d, 20, null, {}); // through the shattered pane: stops at the shallow interior backdrop, not at the glass line
+    return { before, after: wg.isGlassBroken(p.id), n: wg.panes.length, depth: t4.t - 6 };
   });
   console.log('glass', JSON.stringify(r));
-  expect(r.before).toBe(false); expect(r.after).toBe(true); expect(r.n).toBeGreaterThan(50);
+  expect(r.before).toBe(false); expect(r.after).toBe(true); expect(r.n).toBeGreaterThan(50); expect(r.depth).toBeGreaterThan(1.0);
 });

@@ -172,6 +172,7 @@ export class Game {
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
+    for (const r of this.buses.routes) for (const st of r.stops) this.crowd.clearSlotsNear(st.x, st.z, 14); // no parking at bus stops
     this.crowd.wire(this.traffic, this.pop, () => ({ traffic: this.trafficCap ?? this.renderer.quality.traffic, peds: this.pop.maxCivilians })); // far crowd hands over to real cars/people (no vanishing)
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
     this.police.clock = () => this.time;

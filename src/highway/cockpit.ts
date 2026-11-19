@@ -89,6 +89,9 @@ export class Cockpit {
     const wc = new THREE.Vector3(S.x, E.y - WHEEL_DIST * Math.sin(WHEEL_DOWN), E.z + WHEEL_DIST * Math.cos(WHEEL_DOWN));
     // rear edge (brow) of the dash top: just ahead of the wheel's top rim, never closer than 7 cm to the windshield base
     const zBrow = Math.min(wc.z + 0.12, B.z - 0.1);
+    // brow height: seen 13 degrees under the eye's horizon whatever the car, so the cluster always shows through the top of the
+    // wheel; on tall cabins (SUVs, trucks) the dash rises from the windshield base to a raised brow
+    const yBrow = Math.max(belt, E.y - (zBrow - E.z) * Math.tan(13 * D2R)), lift = yBrow - belt;
     this.dims = { eye: E, wheelZ: wc.z, dashY: belt - 0.09, belt, pitch: COCKPIT_PITCH, fov: COCKPIT_FOV };
 
     const pebble = pebbleBump(), skin = dashSkin(), bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
@@ -118,27 +121,28 @@ export class Cockpit {
     const zf = (x: number) => { const k = Math.min(1, Math.abs(x) / B.x); return Math.max(zBrow + 0.09, fr.baseCz - (fr.baseCz - bz) * Math.pow(k, 2.2)); };
     const rows: THREE.Vector3[][] = [];
     for (let i = 0; i <= 44; i++) {
-      const x = -xD + (2 * xD * i) / 44, f = zf(x), crown = 0.012 * (1 - Math.pow(Math.abs(x) / xD, 4));
+      const x = -xD + (2 * xD * i) / 44, f = zf(x), crown = 0.012 * (1 - Math.pow(Math.abs(x) / xD, 4)), lt = lift * (1 - Math.pow(Math.abs(x) / xD, 5)), yr = belt + lt; // a raised dash rolls down to the doors
       rows.push([
-        V(x, belt - 0.035, f + 0.03), V(x, belt - 0.004, f), V(x, belt + 0.006 + crown * 0.5, f - 0.04),
-        V(x, belt + 0.01 + crown, f + (zBrow - f) * 0.55), V(x, belt + 0.006 + crown * 0.6, zBrow + 0.035),
-        V(x, belt - 0.012, zBrow + 0.008), V(x, belt - 0.04, zBrow), V(x, belt - 0.075, zBrow + 0.012),
-        V(x, belt - 0.16, zBrow + 0.035), V(x, belt - 0.3, zBrow + 0.08), V(x, belt - 0.46, zBrow + 0.15),
+        V(x, belt - 0.035, f + 0.03), V(x, belt - 0.004, f), V(x, belt + 0.006 + crown * 0.5 + lt * 0.15, f - 0.04),
+        V(x, belt + 0.01 + crown + lt * 0.7, f + (zBrow - f) * 0.55), V(x, yr + 0.006 + crown * 0.6, zBrow + 0.035),
+        V(x, yr - 0.012, zBrow + 0.008), V(x, yr - 0.04, zBrow), V(x, yr - 0.075, zBrow + 0.012),
+        V(x, yr - 0.16, zBrow + 0.035), V(x, yr - 0.3, zBrow + 0.08), V(x, Math.min(yr - 0.46, belt - 0.5), zBrow + 0.15),
       ]);
     }
     put(mats.dash, loft(rows, 1.6, 1.6));
     // cluster binnacle: a small hood over the gauges and a dark surround they sit in
-    const clW = 0.3, clH = 0.107, clZ = zBrow - 0.012, clY = belt - 0.075;
+    const clW = 0.3, clH = 0.107, clZ = zBrow - 0.012, clY = yBrow - 0.075;
     const clTilt = Math.atan2(E.y - clY, clZ - E.z) * 0.8;
-    add(mats.dash, rb(clW + 0.07, 0.03, 0.075, 0.014), S.x, belt - 0.004, zBrow - 0.022, -0.06);
+    add(mats.plastic, rb(clW + 0.05, 0.016, 0.045, 0.007), S.x, yBrow - 0.012, zBrow - 0.014, -0.06);
     add(mats.gloss, rb(clW + 0.03, clH + 0.03, 0.03, 0.012), S.x, clY, clZ + 0.018, clTilt);
     // centre air vents and outboard vents, set into the fascia
     for (const vx of [0.075, -0.075, B.x - 0.11, -(B.x - 0.11)]) {
-      add(mats.gloss, rb(0.11, 0.032, 0.02, 0.008), vx, belt - 0.048, zBrow + 0.002);
-      for (let s = 0; s < 3; s++) add(mats.plastic, rb(0.105, 0.0025, 0.004, 0.001), vx, belt - 0.058 + s * 0.01, zBrow - 0.009);
+      const yv = belt + lift * (1 - Math.pow(Math.abs(vx) / xD, 5)) - 0.048;
+      add(mats.gloss, rb(0.11, 0.032, 0.02, 0.008), vx, yv, zBrow + 0.002);
+      for (let s = 0; s < 3; s++) add(mats.plastic, rb(0.105, 0.0025, 0.004, 0.001), vx, yv - 0.01 + s * 0.01, zBrow - 0.009);
     }
     // centre stack under the screen, climate keys, console between the seats
-    add(mats.plastic, rb(0.27, 0.26, 0.16, 0.04), 0, belt - 0.33, zBrow + 0.1);
+    add(mats.plastic, rb(0.27, 0.26 + lift, 0.16, 0.04), 0, yBrow - 0.33 - lift / 2, zBrow + 0.1);
     add(mats.plastic, rb(0.3, 0.3, 1.0, 0.07), 0, S.y - 0.06, S.z + 0.05);
     add(mats.gloss, rb(0.24, 0.02, 0.5, 0.008), 0, S.y + 0.1, S.z + 0.22);
     add(mats.leather, rb(0.25, 0.06, 0.36, 0.03), 0, S.y + 0.12, S.z - 0.34);
@@ -168,7 +172,7 @@ export class Cockpit {
       const z0 = bz, z1 = E.z - 0.95, len = z0 - z1, zc = (z0 + z1) / 2;
       const sillW = Math.max(0.1, W / 2 + 0.02 - (B.x + 0.02));   // reaches the outer door skin so no body paint shows past it
       add(mats.plastic, rb(sillW, 0.05, len, 0.02), sx * (B.x + 0.02 + sillW / 2), belt + 0.002, zc);   // sill top sits ~2.5 cm over the beltline, hiding the fender
-      add(mats.dash, rb(0.06, 0.46, len, 0.02), sx * (B.x + 0.06), belt - 0.26, zc);
+      add(mats.dash, rb(0.06, 0.5, len, 0.02), sx * (B.x + 0.06), belt - 0.255, zc);
       add(mats.leather, rb(0.09, 0.06, 0.42, 0.03), sx * (B.x - 0.0), belt - 0.22, E.z + 0.05);
       add(mats.gloss, rb(0.03, 0.022, 0.18, 0.01), sx * (B.x + 0.02), belt - 0.13, E.z + 0.32);
       add(mats.gloss, rb(0.05, 0.025, 0.14, 0.01), sx * (B.x - 0.005), belt - 0.185, E.z + 0.12);
@@ -182,7 +186,7 @@ export class Cockpit {
     }
     // windshield header, headliner and folded sun visors (a hardtop only)
     const hx = T.x + 0.1;
-    add(mats.fabric, rb(hx * 2, 0.06, 0.12, 0.03), 0, T.y + 0.02, T.z - 0.035);
+    add(mats.fabric, fr.open ? rb(hx * 2, 0.035, 0.07, 0.015) : rb(hx * 2, 0.06, 0.12, 0.03), 0, T.y + (fr.open ? 0.012 : 0.02), T.z - (fr.open ? 0.02 : 0.035));
     if (!fr.open) {
       const zh0 = T.z - 0.05, zh1 = Math.min(E.z - 0.8, (tp.shape.gh?.zR2 ?? E.z - 1.1) + 0.04);
       add(mats.fabric, rb(hx * 2 + 0.1, 0.02, zh0 - zh1, 0.01), 0, fr.roofIn, (zh0 + zh1) / 2);
@@ -214,13 +218,22 @@ export class Cockpit {
     add(mats.plastic, rb(0.04, 0.012, 0.055, 0.005), R.x, yMount, R.z + 0.012, -glassTilt);
     add(mats.gloss, rb(mW, mH, 0.034, mH * 0.33), R.x, R.y, R.z, 0, rYaw);
     // tinted shade band across the top of the windshield with the black frit patch behind the mirror mount
-    const xw = T.x + 0.07, yb = T.y - 0.13, bandGeo = new THREE.BufferGeometry();
-    bandGeo.setAttribute('position', new THREE.Float32BufferAttribute([xw, T.y, glassZ(T.y), -xw, T.y, glassZ(T.y), xw, yb, glassZ(yb), -xw, yb, glassZ(yb)].map((v, i) => i % 3 === 2 ? v - 0.004 : v), 3));
-    bandGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2)); bandGeo.setIndex([0, 2, 1, 1, 2, 3]);
+    // its lower edge sits 17 degrees above the eye's horizon (a thin strip at the top of the view on every car)
+    let yb = T.y - 0.03;
+    for (let y = T.y - 0.03; y > belt + 0.05; y -= 0.005) { yb = y; if ((y - E.y) / Math.max(0.05, glassZ(y) - E.z) < Math.tan(17 * D2R)) break; }
+    const xw = T.x + 0.07, bandGeo = new THREE.BufferGeometry(), bp: number[] = [], buv: number[] = [], bix: number[] = [];
+    const pillarAt = (y: number) => { const t = Math.min(1, Math.max(0, (y - belt) / (T.y + 0.012 - belt))); return { x: B.x + 0.02 + (T.x + 0.072 - B.x - 0.02) * t, z: bz + (T.z + 0.008 - bz) * t }; };
+    for (let r = 0; r < 2; r++) {
+      const y = r ? yb : T.y, pe = pillarAt(y), zc = glassZ(y);
+      for (let c = 0; c <= 8; c++) { const u = c / 8, xx = pe.x * (1 - 2 * u), k = (xx / pe.x) ** 2; bp.push(xx, y, zc + (pe.z - zc) * k - 0.004); buv.push(u, 1 - r); }
+    }
+    for (let c = 0; c < 8; c++) bix.push(c, 9 + c, c + 1, c + 1, 9 + c, 10 + c);
+    bandGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bandGeo.setAttribute('uv', new THREE.Float32BufferAttribute(buv, 2)); bandGeo.setIndex(bix);
+    void xw;
     const [bc, bg] = canvas(512, 64), grad = bg.createLinearGradient(0, 0, 0, 64);
     grad.addColorStop(0, 'rgba(6,8,10,0.97)'); grad.addColorStop(0.3, 'rgba(10,14,20,0.8)'); grad.addColorStop(1, 'rgba(14,20,28,0)');
     bg.fillStyle = grad; bg.fillRect(0, 0, 512, 64);
-    const fu = ((xw - R.x) / (2 * xw)) * 512, fw = (0.1 / (2 * xw)) * 512, fy = Math.min(60, ((T.y - yMount) / (T.y - yb)) * 64 + 6);
+    const xt = (pillarAt(T.y).x + pillarAt(yb).x) / 2, fu = ((xt - R.x) / (2 * xt)) * 512, fw = (0.1 / (2 * xt)) * 512, fy = Math.min(60, ((T.y - yMount) / (T.y - yb)) * 64 + 6);
     bg.fillStyle = 'rgba(5,6,8,0.98)'; bg.beginPath(); bg.moveTo(fu - fw * 0.5, 0); bg.lineTo(fu + fw * 0.5, 0); bg.lineTo(fu + fw * 0.4, fy); bg.lineTo(fu - fw * 0.4, fy); bg.closePath(); bg.fill();
     for (let yy = 2; yy < fy + 10; yy += 3) for (let xx = -fw * 0.75; xx <= fw * 0.75; xx += 3) { const r = Math.abs(xx) / (fw * 0.75); if (r > 0.6 || yy > fy) { bg.globalAlpha = 0.85; bg.beginPath(); bg.arc(fu + xx, yy, 1.1 * (1 - r * 0.6), 0, 7); bg.fill(); } }
     bg.globalAlpha = 1;
@@ -292,7 +305,7 @@ export class Cockpit {
     const [sc, sg] = canvas(640, 360); this.screenCtx = sg; const scr = tex(sc, true, 0, 8); this.screenTex = scr; this.disposables.push(scr);
     this.paintScreen();
     const scrMat = new THREE.MeshBasicMaterial({ map: scr, toneMapped: false, color: 0xa8b0b8 }); this.disposables.push(scrMat);
-    const sP = V(0, belt - 0.105, zBrow - 0.012), sYaw = Math.atan2(E.x - sP.x, E.z - sP.z) - Math.PI, sTilt = Math.atan2(E.y - sP.y, sP.z - E.z) * 0.6;
+    const sP = V(0, yBrow - 0.105, zBrow - 0.012), sYaw = Math.atan2(E.x - sP.x, E.z - sP.z) - Math.PI, sTilt = Math.atan2(E.y - sP.y, sP.z - E.z) * 0.6;
     const scrGeo = new THREE.PlaneGeometry(0.24, 0.135); this.disposables.push(scrGeo);
     const screen = new THREE.Mesh(scrGeo, scrMat); screen.frustumCulled = false;
     screen.position.copy(sP); screen.rotation.set(0, Math.PI + sYaw * 0.3, 0, 'YXZ'); screen.rotateX(-sTilt);

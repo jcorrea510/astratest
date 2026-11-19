@@ -206,6 +206,8 @@ export class Crowd {
       }
     }
   }
+  /** No parking here (bus stops): the curbside slots within r metres stay empty. */
+  clearSlotsNear(x: number, z: number, r: number) { for (const s of this.slots) if ((s.x - x) ** 2 + (s.z - z) ** 2 < r * r) s.taken = true; }
   /** Ghost + real counts within r metres of a point (for tests and HUD debugging). */
   countNear(x: number, z: number, r: number) {
     let cars = 0, peds = 0, parked = 0; const r2 = r * r;

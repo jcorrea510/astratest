@@ -469,13 +469,13 @@ export class CarEntry {
     }
     // the player's position follows the animated root (camera, audio, HUD)
     if (this.job && h.root.parent === v.visual) {
-      v.visual.updateMatrixWorld();
+      v.group.updateMatrixWorld(true); // parents too: headless frames never render, so the group's world matrix can be stale
       h.root.getWorldPosition(_w);
       c.pos.copy(_w);
       c.body.setNextKinematicTranslation({ x: _w.x, y: _w.y + 0.87, z: _w.z });
       c.yaw = v.yaw + h.root.rotation.y;
       h.update(dt);
-    } else if (this.job || !this.game.playerVehicle) {
+    } else if (this.job || (!this.game.playerVehicle && !this.game.playerHeli)) { // seated in a helicopter the root stays in the cabin (local coords)
       c.updateVisual(dt);
     } else h.update(dt);
     return true;
@@ -554,7 +554,7 @@ export class CarEntry {
   /** Puts the player back in the world at the door's stand point. */
   private releasePlayer(v: Enterable, door: number, gentle: boolean) {
     const c = this.player, h = c.human;
-    v.visual.updateMatrixWorld();
+    v.group.updateMatrixWorld(true);
     const p = h.root.getWorldPosition(new THREE.Vector3());
     if (!gentle && door >= 0) { const f = v.doorFrame(door); v.group.localToWorld(p.set(f.sg * (f.outX + 0.7), f.ground, 0)); }
     const yaw = v.yaw + h.root.rotation.y;

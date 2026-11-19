@@ -24,12 +24,14 @@ test('store window cracks, then shatters; mesh removed and a trace reaches the i
     g.combat.trace(o, d, 30, null, {});
     res.broken3 = pane.broken; res.meshGone = !pane.mesh.parent; res.visible = pane.mesh.visible;
     const t4 = g.combat.trace(o, d, 30, null, {});
+    res.colliderOn = pane.collider ? pane.collider.isEnabled() : null;
     res.afterT = t4.t; res.afterKind = t4.kind; res.paneDist = 5;
     return res;
   });
   expect(r.firstKind).toBe('static'); expect(r.firstT).toBeLessThan(5.6); expect(r.hits1).toBe(1); expect(r.broken1).toBe(false);
   expect(r.broken2).toBe(false); expect(r.hits2).toBe(2);
   expect(r.broken3).toBe(true); expect(r.meshGone).toBe(true);
+  expect(r.colliderOn).toBe(false); // the window frame no longer blocks the player either
   expect(r.afterT).toBeGreaterThan(r.paneDist + 1.5); // the round now travels past the pane plane into the shop
   clean(p);
 });

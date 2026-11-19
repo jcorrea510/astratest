@@ -8,9 +8,13 @@ import * as THREE from 'three';
 export interface Pane {
   id: number; x: number; y: number; z: number; /** facing yaw (normal = sin,cos) */ yaw: number; w: number; h: number;
   /** bullets taken; cracked after 1, shattered at HITS_TO_BREAK */ hits: number; broken: boolean; inst: number; mesh: THREE.Mesh | null;
+  /** frame collider behind the pane (walk-in stores): switched off when the pane shatters */
+  collider?: { setEnabled(on: boolean): void } | null;
 }
 const CELL = 16;
 export const HITS_TO_BREAK = 3;
+/** how far behind a shattered street pane the visible (and bullet-stopping) interior backdrop sits */
+export const BACKDROP_DEPTH = 1.5;
 let crackTex: THREE.Texture | null = null;
 function crackTexture(): THREE.Texture {
   if (crackTex) return crackTex;
@@ -36,6 +40,7 @@ export class WorldGlass {
   private grid = new Map<string, number[]>();
   private intact: THREE.InstancedMesh | null = null;
   private cracked: THREE.InstancedMesh | null = null;
+  private backdrop: THREE.InstancedMesh | null = null;
   private n = 0; private cap = 0;
   private dummy = new THREE.Object3D();
   /** fired once per shattered pane (FX / audio in the game layer) */
@@ -71,7 +76,11 @@ export class WorldGlass {
       d.scale.setScalar(0); d.updateMatrix(); this.cracked.setMatrixAt(p.inst, d.matrix);
     }
     this.intact.count = this.cap;
-    root.add(this.intact, this.cracked);
+    // a shallow dark 'interior' behind each shattered street pane, so the hole isn't a flat wall at the glass line
+    this.backdrop = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: '#2b2622' }), Math.max(1, this.cap));
+    this.backdrop.frustumCulled = false; this.backdrop.count = this.cap;
+    d.scale.setScalar(0); d.updateMatrix(); for (const p of this.panes) if (p.inst >= 0) this.backdrop.setMatrixAt(p.inst, d.matrix);
+    root.add(this.intact, this.cracked, this.backdrop);
     return root;
   }
   /** Id of the intact pane at a world point (within `tol` m of the pane plane), else null. */
@@ -90,6 +99,7 @@ export class WorldGlass {
     }
     return null;
   }
+  isOverlayPane(id: number | string): boolean { const p = this.panes[id as number]; return !!p && p.inst >= 0; }
   isGlassBroken(id: number | string): boolean { const p = this.panes[id as number]; return !p || p.broken; }
   /** A bullet strikes the pane: first hits leave cracks, the HITS_TO_BREAK-th shatters it. Returns true when it shattered. */
   hitGlass(id: number | string): boolean {
@@ -112,12 +122,14 @@ export class WorldGlass {
   breakGlass(id: number | string): boolean {
     const p = this.panes[id as number]; if (!p || p.broken) return false;
     p.broken = true; p.hits = HITS_TO_BREAK;
+    p.collider?.setEnabled(false);
     if (p.inst >= 0 && this.intact && this.cracked) {
       const d = this.dummy;
       d.position.set(p.x, p.y, p.z); d.rotation.set(0, p.yaw, 0);
       d.scale.setScalar(0); d.updateMatrix();
       this.intact.setMatrixAt(p.inst, d.matrix); this.intact.instanceMatrix.needsUpdate = true;
       this.cracked.setMatrixAt(p.inst, d.matrix); this.cracked.instanceMatrix.needsUpdate = true;
+      if (this.backdrop) { d.position.set(p.x - Math.sin(p.yaw) * BACKDROP_DEPTH, p.y, p.z - Math.cos(p.yaw) * BACKDROP_DEPTH); d.scale.set(p.w, p.h, 1); d.updateMatrix(); this.backdrop.setMatrixAt(p.inst, d.matrix); this.backdrop.instanceMatrix.needsUpdate = true; }
     } else if (p.mesh) {
       p.mesh.visible = false; p.mesh.removeFromParent();
     }
@@ -125,7 +137,7 @@ export class WorldGlass {
     return true;
   }
   /** Clears everything (new city build). */
-  reset() { this.panes = []; this.grid.clear(); this.n = 0; this.intact = null; this.cracked = null; }
+  reset() { this.panes = []; this.grid.clear(); this.n = 0; this.intact = null; this.cracked = null; this.backdrop = null; }
 }
 
 /** One registry for the whole world (street shopfronts and walk-in stores register here). */

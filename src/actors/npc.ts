@@ -1,4 +1,5 @@
 /** NPC brains: civilians wander and react, gang members and police fight intelligently. */
+import { holdOnHuman } from '../combat/gunRig';
 import * as THREE from 'three';
 import { Character } from './character';
 import type { HumanTemplate, Look } from './human';
@@ -317,8 +318,15 @@ export class NpcBrainRunner {
     const c = n.char;
     n.model.visible = c.alive && !c.inVehicle && !n.far;
     if (!n.model.visible) return;
-    c.human.rightHand.getWorldPosition(n.model.position);
     const tgt = n.target ?? this.env.player;
+    const near = n.pos.distanceToSquared(this.env.player.pos) < 45 * 45; // only close people pay for the shoulder / two-hand IK
+    if (near) {
+      const fighting = n.brain === 'combat' && !!tgt;
+      if (fighting) tvA.set(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z);
+      c.human.trigger = fighting && n.cooldown > 0 ? 1 : 0;
+      if (holdOnHuman(c.human, n.model, c.yaw, fighting ? tvA : null, fighting ? 1 : 0)) return;
+    }
+    c.human.rightHand.getWorldPosition(n.model.position);
     if (n.brain === 'combat' && tgt) { n.model.lookAt(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z); }
     else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)); }
     n.model.updateMatrixWorld(true);

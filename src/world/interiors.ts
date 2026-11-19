@@ -93,8 +93,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   for (const [x0, x1] of [[-hw, doorX - doorW / 2], [doorX + doorW / 2, hw]]) { box((x0 + x1) / 2, 0.25, fz, x1 - x0, 0.5, 0.12, C('#2a2a2a'), T_METAL); }
   box(0, 3.35, fz, W, 0.3, 0.14, C('#2a2a2a'), T_METAL);
   for (const mx of [-hw + 0.05, -1.6, doorX - doorW / 2 - 0.05, doorX + doorW / 2 + 0.05, hw - 0.05]) box(mx, 1.75, fz, 0.1, 3.4, 0.14, C('#2a2a2a'), T_METAL);
-  col((-hw + doorX - doorW / 2) / 2, 1.7, fz, (doorX - doorW / 2 + hw) / 2, 1.7, 0.08);
-  col((doorX + doorW / 2 + hw) / 2, 1.7, fz, (hw - doorX - doorW / 2) / 2, 1.7, 0.08);
+  const frontCols = [col((-hw + doorX - doorW / 2) / 2, 1.7, fz, (doorX - doorW / 2 + hw) / 2, 1.7, 0.08), col((doorX + doorW / 2 + hw) / 2, 1.7, fz, (hw - doorX - doorW / 2) / 2, 1.7, 0.08)];
   // awning + sign band
   box(0, 3.75, hd + 0.75, W, 0.05, 1.5, accent, T_FABRIC, 0.3);
   box(0, 3.5, hd + 1.48, W, 0.28, 0.03, accent, T_FABRIC);
@@ -227,6 +226,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
       const wp = new THREE.Vector3(); m.getWorldPosition(wp); const par = (m.geometry as THREE.PlaneGeometry).parameters as { width: number; height: number };
       const id = worldGlass.add(wp.x, wp.y, wp.z, def.yaw, par.width, par.height, m);
       m.userData.paneId = id;
+      const fc = frontCols[paneMeshes.indexOf(m)]; if (fc) worldGlass.panes[id].collider = fc; // the window's frame collider goes with the glass
     }
   }
   // roll-down shutter over the whole front, hidden until the store closes

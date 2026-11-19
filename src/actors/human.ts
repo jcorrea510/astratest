@@ -50,7 +50,7 @@ const _chain: THREE.Object3D[] = [];
 /** One animated person. */
 /** wrist-to-palm-centre distance along the hand bone (m, before bone scale) */
 const GRIP_PALM = 0.062;
-const _gt = new THREE.Vector3();
+const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
 export class Human {
@@ -370,6 +370,27 @@ export class Human {
     hand.parent.getWorldQuaternion(_iq1).invert();
     _iq2.copy(_iq1).multiply(quat);
     hand.quaternion.slerp(_iq2, w); hand.updateMatrixWorld(true);
+    this.curlFingers(side, w);
+  }
+  /** 0..1: the firing hand's trigger finger curls in only while shooting (otherwise it lies along the frame). */
+  trigger = 0;
+  private curlSets: Record<'L' | 'R', { bone: THREE.Object3D; rest: THREE.Quaternion; amt: number; trig: boolean }[] | null> = { L: null, R: null };
+  /** Static grip curl on the finger bones (absolute from the rest pose, so it never accumulates). */
+  private curlFingers(side: 'L' | 'R', w: number) {
+    let set = this.curlSets[side];
+    if (!set) {
+      set = []; const AMT: Record<string, number> = { '1': 0.85, '2': 1.05, '3': 0.8 };
+      for (const f of this.fingers) {
+        const m = /^DEF-f_(index|middle|ring|pinky)0([123])([LR])$/.exec(f.bone.name);
+        if (m && m[3] === side) set.push({ bone: f.bone, rest: f.rest, amt: AMT[m[2]], trig: m[1] === 'index' });
+      }
+      this.curlSets[side] = set;
+    }
+    const sign = side === 'R' ? 1 : -1;
+    for (const f of set) {
+      const a = f.trig && side === 'R' ? 0.1 + 0.6 * this.trigger : f.amt;
+      _gq.setFromAxisAngle(_gz, sign * a * w); f.bone.quaternion.copy(f.rest).multiply(_gq);
+    }
   }
   /** Two-bone IK: bends the forearm to the target distance, then swings the whole arm onto it. */
   private solveArm(side: 'L' | 'R', target: THREE.Vector3, w: number) {

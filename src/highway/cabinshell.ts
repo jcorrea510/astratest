@@ -56,7 +56,7 @@ export function frameFromGlass(glass: THREE.BufferGeometry | null | undefined, f
       if (top >= 0) out.top = { x: P.getX(top), y: P.getY(top), z: P.getZ(top) };
       out.baseCz = Number.isFinite(cz) ? Math.max(cz, bz) : fb.zA;
       out.roofIn = Math.min(fb.roofY - 0.035, out.top.y + 0.07);
-      out.zCut = Math.min(out.top.z, fb.zR1) - 0.04;
+      out.zCut = fb.open ? out.top.z - 0.6 : Math.min(out.top.z, fb.zR1) - 0.04; // an open car keeps nothing above the belt: the cockpit draws the windshield frame
     }
   }
   return out;
@@ -81,12 +81,19 @@ export function stripFrontGreenhouse(g: THREE.BufferGeometry, belt: number, zCut
   const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind'), col = g.getAttribute('color');
   if (g.index || !pos) return g;
   const keep: number[] = [];
+  // door-mirror housings: everything above the belt within reach of the mirror glass (kind MIRROR) outboard of the greenhouse
+  let mz0 = Infinity, mz1 = -Infinity, gx = 0;
+  if (kind) for (let i = 0; i < pos.count; i++) if (Math.round(kind.getX(i)) === K.MIRROR) { mz0 = Math.min(mz0, pos.getZ(i)); mz1 = Math.max(mz1, pos.getZ(i)); }
+  for (let i = 0; i < pos.count; i++) if (pos.getY(i) > belt + 0.03 && pos.getZ(i) > zCut && pos.getZ(i) < zCut + 0.4 && !(kind && Math.round(kind.getX(i)) === K.MIRROR)) gx = Math.max(gx, Math.abs(pos.getX(i)));
+  const inGreenhouse = (ax: number) => !gx || ax < gx + 0.03;
   for (let i = 0; i < pos.count; i += 3) {
     const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
     const ymax = Math.max(pos.getY(i), pos.getY(i + 1), pos.getY(i + 2)), zmax = Math.max(pos.getZ(i), pos.getZ(i + 1), pos.getZ(i + 2));
     if (kind && Math.round(kind.getX(i)) === K.MIRROR) continue;
     if (col && cz > zCut && cy > belt - 0.08 && col.getX(i) < 0.012 && col.getY(i) < 0.012 && col.getZ(i) < 0.012) continue; // black windshield trim at the cowl
-    if ((cz > zCut || zmax > zCut + 0.1) && (cy > belt + 0.012 || (ymax > belt + 0.05 && cy > belt - 0.02))) continue; // (long window-frame rails reach forward from behind the cut)
+    const ax = Math.abs((pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3);
+    if (cz > mz0 - 0.12 && cz < mz1 + 0.12 && cy > belt + 0.01 && ax > 0.5) continue;
+    if (inGreenhouse(ax) && (cz > zCut || zmax > zCut + 0.1) && (cy > belt + 0.012 || (ymax > belt + 0.05 && cy > belt - 0.02))) continue; // (long window-frame rails reach forward from behind the cut)
     keep.push(i);
   }
   const c = new THREE.BufferGeometry();

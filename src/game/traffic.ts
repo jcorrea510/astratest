@@ -83,7 +83,6 @@ export class Traffic {
     v.phys.body.setLinvel({ x: sp.dx * lane.speed * 0.6, y: 0, z: sp.dz * lane.speed * 0.6 }, true);
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
-    if (role === 'civilian' && kind !== 'bus') v.phys.enginePower = 1.7; // city drivers pull away briskly (stock engines are realistic-slow)
     const car: AiCar = { v, driver, lane, s, mode, target: null, stuckT: 0, honkT: 0, reverseT: 0, persistent: false, ram: false, arriveDist: 8 };
     // some civilians drive with a friend in the front passenger seat
     if (role === 'civilian' && mode === 'cruise' && v.tpl.seats.length > 1 && v.doorIndex('right', 0) >= 0 && Math.random() < 0.2) {

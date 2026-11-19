@@ -424,6 +424,7 @@ export class PlayerCombat {
     animateParts(parts, def, inv.reloading ? rp : -1, k, this.cycleKind ? 1 - this.cycleT / cycleDur(def) : -1, inv.state.clip === 0 && !inv.reloading);
     if (this.cycleT <= 0) this.cycleKind = null;
     m.updateMatrixWorld(true);
+    if (final) c.human.trigger = k > 0.3 ? 1 : 0;
     if (final && hold) { // hands onto the gun as it ended up (recoil, reload tilt and pump included)
       const an = weaponAnchors(m), H = this.holdOut, w = this.holdW, h = c.human;
       _a1.copy(an.grip).add(_a2.set(-0.017, 0, 0)); H.rPalm.copy(_a1).applyMatrix4(m.matrixWorld);
