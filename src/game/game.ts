@@ -33,6 +33,8 @@ import { CarEntry, type Enterable } from './carEntry';
 import { COP_LOOK } from './dispatch';
 import { getTemplate } from '../vehicles/models/build';
 import { HeliManager } from '../vehicles/helicopterManager';
+import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
+import { armyLayout } from '../world/armybase';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -112,6 +114,7 @@ export class Game {
   carEntry!: CarEntry;
   helis!: HeliManager;
   playerHeli: Helicopter | null = null;
+  armyAir!: ArmyAir; heliArms!: HeliArms;
   private lampLights: THREE.PointLight[] = [];
   private lampBulbs!: THREE.InstancedMesh;
   private lampPools!: THREE.InstancedMesh;
@@ -213,12 +216,40 @@ export class Game {
     };
     this.vehicles.onExplode = (v, at) => this.explosion(at, v.lastDamagedBy === this.player ? this.player : null);
     this.helis.onExplode = (h, at) => this.explosion(at, h.lastDamagedBy === this.player ? this.player : null);
+    // R5-A: Fort Calder gunships (hostile AI) and the player's chin gun / missiles; parked army vehicles in the motor pool
+    this.armyAir = new ArmyAir({
+      combat: this.combat, physics: this.physics, remove: h => this.helis.remove(h),
+      spawn: (x, y, z, yaw) => this.helis.spawn('army', x, y, z, yaw),
+      takeBaseHeli: () => this.helis.pads.find(p => /Fort Calder/.test(p.def.name) && p.heli && !p.heli.destroyed && !p.heli.driver && !p.heli.aiOwned && !p.heli.playerUsed)?.heli ?? null,
+    });
+    this.heliArms = new HeliArms(this.combat, this.physics);
+    for (const m of armyLayout().motorPool) { const v = this.vehicles.spawn(m.kind, m.x, m.z, m.yaw, -1, 0.3); v.persistent = true; }
     this.helis.onCrash = (h, imp) => { if (h === this.playerHeli) { this.cam.addShake(Math.min(0.9, imp / 14)); this.stats.crashes++; } };
   }
   private onNpcKilled(n: Npc, by: Character | null) {
     if (n.dropMoney > 0 || (n.role !== 'civilian' && Math.random() < 0.8) || Math.random() < 0.3) this.spawnPickup('cash', n.dropMoney || Math.floor(10 + Math.random() * 40), n.pos);
     if (n.weapon !== 'fists' && Math.random() < 0.6) this.spawnPickup('ammo', Math.ceil(WEAPONS[n.weapon].ammoPack / 2), n.pos.clone().add(new THREE.Vector3(0.6, 0, 0.4)), n.weapon);
     this.events.onNpcKilled(n, by);
+  }
+  /** Fort Calder: player weapons in an army gunship, trespass warning, and the hostile gunships (armyAir.ts). */
+  private trespassWarned = false;
+  private updateArmyAir(dt: number, ph: Helicopter | null, pv: Vehicle | null, blocked: boolean) {
+    if (ph?.armed && !blocked && !this.paused) {
+      const cam = this.renderer.camera, dir = cam.getWorldDirection(new THREE.Vector3());
+      const missile = this.input.held('aim') || this.input.held('reload');
+      this.heliArms.update(dt, ph, { fire: this.input.held('fire'), missile }, cam.position, dir, this.player);
+    }
+    const on = inArmyBase(this.player.pos.x, this.player.pos.z, 4) && this.player.alive && this.deathT < 0;
+    this.armyAir.trespassT = on ? this.armyAir.trespassT + dt : Math.max(0, this.armyAir.trespassT - dt * 0.4);
+    if (on && !this.trespassWarned) { this.trespassWarned = true; this.events.onToast('Fort Calder: restricted. Turn around.', 'warning'); }
+    if (!on && this.armyAir.trespassT === 0) this.trespassWarned = false;
+    const heat = this.police.heat;
+    this.armyAir.wantedHeavy = heat >= 5;
+    const v = (pv ?? ph) as { position: THREE.Vector3; phys: { body: { linvel(): { x: number; y: number; z: number } } }; damage: never } | null;
+    const lv = v ? v.phys.body.linvel() : null;
+    this.armyAir.update(dt, this.player.alive && armyAirWanted(heat, this.armyAir.trespassT, !!ph?.armed), {
+      pos: v ? v.position : this.player.pos, vel: lv ? new THREE.Vector3(lv.x, lv.y, lv.z) : this.player.vel, vehicle: v as never, onFoot: !v,
+    });
   }
   explosion(at: THREE.Vector3, by: Character | null, R = 8) {
     this.pop.danger(at, 60, by);
@@ -379,6 +410,7 @@ export class Game {
       else if (['police', 'fbi', 'swat', 'army', 'tank'].includes((v as Vehicle).kind)) this.police.alarm('copCarTheft', this.player.pos);
     }
     if (v instanceof Helicopter) {
+      if (v.armed) this.events.onToast('Gunship: Fire = chin gun  ·  Aim (right mouse) or R = missiles', 'info');
       this.playerHeli = v; v.engineOn = true; v.parked = false;
       this.audio.play('engineStart', { pos: v.position, pitch: 0.7 });
       this.events.onVehicleEntered(v as unknown as Vehicle);
@@ -578,6 +610,7 @@ export class Game {
     this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
+    this.updateArmyAir(dt, ph, pv, blocked);
     this.updatePickups(dt);
     this.particles.update(dt, this.renderer.renderer.domElement.height);
     if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > this.respawnDelay) this.respawn(); }
@@ -686,7 +719,7 @@ export class Game {
     return {
       health: this.player.health, maxHealth: this.player.maxHealth, armor: this.player.armor, money: this.money,
       heat: this.police.heat, heatMax: 5, heatFlash: this.police.heat > 0 && !this.police.state.seen,
-      weaponName: def.name, weaponIcon: def.icon, reloading: inv.reloading,
+      weaponName: this.playerHeli?.armed ? `Chin gun  ·  Missiles ${this.heliArms.missiles}` : def.name, weaponIcon: def.icon, reloading: inv.reloading,
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
       clock: fmtClock12(this.hour),

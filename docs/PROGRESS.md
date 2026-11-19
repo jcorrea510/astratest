@@ -11,7 +11,8 @@ Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Ow
 - [ ] R5-W World: visible traffic lights, no posts in crosswalks/cross streets, pier road shoulder, East River volume, bridge top glitch, roof flicker from air, Precinct 4 looks like a precinct.
 - [ ] R5-A Army: base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
 - [ ] R5-M Map: 3D-looking map (extruded buildings, shading) for full map + minimap.
-- [ ] R5-Z Gate + publish.
+- [ ] R5-G Gaps (fix, don't report): highway cockpit polish (thick A-pillar, small wheel, check all 12 cars, live infotainment clock/map, real mirror views); city buses + bus stops; peds sit on benches; bridge walkways with peds; Eastbank signals; run soak.
+- [ ] R5-Z Gate + publish (soak included).
 
 ## Round 4 (hyper-realism night, 02:40-12:00 UTC)
 - [x] R4-A Driving (no steering retune done: owner still says hard to turn — retune keyboard steering in R4-R): car jitter fwd/back, curbs, easier turns+drift, stolen cop car siren J/K/L + lights key, windshield shatter, bridge camera stutter.

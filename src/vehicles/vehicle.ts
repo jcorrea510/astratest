@@ -24,7 +24,7 @@ import { GROUND } from './shapes';
 export const HIP_ABOVE_ROOT = 0.55;
 /** Swing angle of a fully open door (rad). */
 const DOOR_MAX = 1.15;
-const LOD_FAR = 36;
+const LOD_FAR = 28;
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }

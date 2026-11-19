@@ -55,6 +55,12 @@ export function solveHold(i: HoldInput, o: HoldOut): HoldOut {
     _g.copy(i.shR).addScaledVector(i.dir, reach).addScaledVector(_in, 0.06 + 0.06 * i.raise).addScaledVector(UP, -0.12 * (1 - i.raise));
     o.pos.copy(_g).sub(_a.copy(a.grip).applyQuaternion(q));
   }
+  // a long fore-end can be out of the left arm's reach: slide the whole gun back towards the shooter (at most 14 cm)
+  if (a.butt && a.support) {
+    _a.copy(a.support).applyQuaternion(q).add(o.pos);
+    const over = _a.distanceTo(i.shL) - i.armLen * 0.96;
+    if (over > 0) o.pos.addScaledVector(i.dir, -Math.min(0.14, over));
+  }
   // right palm on the right-hand side of the grip
   o.rPalm.copy(a.grip).add(_a.set(-0.017, 0, 0)).applyQuaternion(q).add(o.pos);
   handQuat('R', _a.set(0, -0.5, 0.87), _n.set(1, 0, 0), q, o.rQuat);

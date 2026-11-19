@@ -20,7 +20,7 @@ export const FALLBACK_HELIPADS: Helipad[] = [
 ];
 export function helipadList(): Helipad[] {
   const ext = (places as Record<string, unknown>).HELIPADS as Helipad[] | undefined;
-  return Array.isArray(ext) && ext.length ? ext.map((p, i) => ({ ...p, variant: p.variant ?? (['civilian', 'news', 'police'] as const)[i % 3], yaw: p.yaw ?? 0 })) : FALLBACK_HELIPADS;
+  return Array.isArray(ext) && ext.length ? ext.map((p, i) => ({ ...p, variant: p.variant ?? (/Fort Calder/.test(p.name) ? 'army' : (['civilian', 'news', 'police'] as const)[i % 3]), yaw: p.yaw ?? (/Fort Calder/.test(p.name) ? Math.PI : 0) })) : FALLBACK_HELIPADS;
 }
 /** A resolved pad: where it actually is (rooftops are found by ray casts) and its elevator stops. */
 export interface PadState { def: Helipad; pos: THREE.Vector3; heli: Helicopter | null; respawnT: number; lift: { bottom: THREE.Vector3; top: THREE.Vector3 } | null; mesh: THREE.Object3D }
@@ -68,7 +68,7 @@ export class HeliManager {
       const pos = def.roof ? this.findRoof(def.x, def.z) : this.groundAt(def.x, def.z, def.y);
       if (!pos) continue;
       const mesh = new THREE.Mesh(new THREE.CircleGeometry(6, 40).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: padTexture(), roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-      mesh.position.set(pos.x, pos.y + 0.03, pos.z); mesh.receiveShadow = true; this.scene.add(mesh);
+      mesh.position.set(pos.x, pos.y + 0.03, pos.z); mesh.receiveShadow = true; mesh.visible = !/Fort Calder/.test(def.name); this.scene.add(mesh); // base pads carry their own painted markings
       const st: PadState = { def, pos, heli: null, respawnT: 0, lift: def.roof ? this.findLift(pos) : null, mesh };
       if (st.lift) for (const p of [st.lift.bottom, st.lift.top]) this.scene.add(this.liftMarker(p));
       this.pads.push(st);
@@ -164,7 +164,7 @@ export class HeliManager {
         if ((h.agl < 0.6 && h.burnTime > 0.6) || h.burnTime > 7) { h.burnTime = -1; this.explode(h); }
       }
       // tidy wrecks and choppers left far away
-      if (h !== playerHeli && !h.driver && h.position.distanceTo(focus) > 380 && !this.pads.some(s => s.heli === h)) this.remove(h);
+      if (h !== playerHeli && !h.driver && !h.aiOwned && h.position.distanceTo(focus) > 380 && !this.pads.some(s => s.heli === h)) this.remove(h);
     }
     // parked choppers come back to their pads once you are away
     for (const s of this.pads) {

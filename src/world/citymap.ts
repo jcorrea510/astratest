@@ -562,7 +562,10 @@ export const CUL_DE_SAC_R = 22;
 export const CHANNEL = { x0: 492, x1: 560, z1: -62 };
 export const LOOKOUT = { x: -40, z: -860 };
 export const AIRFIELD = { x0: 775, x1: 985, z0: -760, z1: -130, runwayX: 930, apronX: 840, gateZ: -230 };
-export const ARMY_BASE = { x0: 600, x1: 730, z0: -400, z1: -150, gateZ: -260, name: 'Fort Calder' };
+/** Fort Calder: far north-east of the city on the flat plain, off the north end of Fort Calder Rd (gate on the east side). */
+export const ARMY_BASE = { x0: 595, x1: 735, z0: -740, z1: -560, gateZ: -650, name: 'Fort Calder' };
+/** Where Fort Calder Rd ends outside the gate. */
+export const ARMY_ROAD_END = { x: 760, z: -650 };
 
 function catmull(ctrl: P3[], step: number): P3[] {
   const out: P3[] = [];
@@ -599,7 +602,7 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
   };
   const fwHalf = halfWidth(2), rampHalf = halfWidth(1);
   const JW = junction(-450, FREEWAY_Z, fwHalf), JT = junction(250, FREEWAY_Z, fwHalf), JA = junction(760, FREEWAY_Z, rampHalf);
-  const JL = junction(LOOKOUT.x, LOOKOUT.z, rampHalf), JS = junction(760, -170, rampHalf);
+  const JL = junction(LOOKOUT.x, LOOKOUT.z, rampHalf), JS = junction(760, -170, rampHalf), JB = junction(ARMY_ROAD_END.x, ARMY_ROAD_END.z, rampHalf);
   const g00 = interGrid[0][0], g40 = interGrid[4][0], g70 = interGrid[7][0];
   /** Adds a path between two intersections; ctrl excludes the ends, which are derived from the junction edges. */
   const add = (name: string, kind: PathRoad['kind'], from: Intersection, fromDir: [number, number], to: Intersection, toDir: [number, number], ctrl: P3[], lanesN: 1 | 2, y0: number, y1: number, elevated: boolean, step = 6) => {
@@ -655,6 +658,8 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
   ], 1, 0, 40, false, 5);
   // Airfield Road: from the freeway's east end south past Fort Calder's gate to the hangars
   add('Airfield Rd', 'service', JA, [0, 1], JS, [0, -1], [{ x: 760, y: 0, z: -330 }], 1, 0, 0, false, 10);
+  // Fort Calder Rd (north spur): from the airfield junction up to the army base gate
+  add('Fort Calder Access Rd', 'service', JA, [0, -1], JB, [0, 1], [{ x: 760, y: 0, z: -560 }], 1, 0, 0, false, 10);
   // Old Town + Seacliff: curving streets, a roundabout and a winding coast road west of the grid
   buildWestRoads({ junction, add, grid: (i, j) => interGrid[i][j] });
   // Harbor Drive: the waterfront highway along the quay (two lanes each way, ramps into the avenue ends)

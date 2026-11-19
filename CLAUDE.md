@@ -10,6 +10,7 @@ Current brief: docs/BRIEF5.md (earlier: BRIEF4, BRIEF3, BRIEF2). Target: hyper-r
 - Keep MDs tight (this file < 80 lines; PROGRESS short, newest first; old detail gets deleted, git has history).
 - Never open big/generated files (list below). Split giant scripts into modules so agents read only what they need.
 - No questions to the owner; finish end to end; publish when done (gh-pages via CI, or manual dist push if CI is slow).
+- Known problems/gaps you find (agent reports included) get fixed in the same round, not reported to the owner as leftovers.
 
 ## Commands
 `npx tsc --noEmit` · `npx eslint <files>` · `npx vitest run` · e2e: start `npx vite --port 5199 --strictPort &`, then

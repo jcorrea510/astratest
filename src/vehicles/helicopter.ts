@@ -14,11 +14,10 @@
 import * as THREE from 'three';
 import { RAPIER, type Physics, groups, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER } from '../core/physics';
 import type { Character } from '../actors/character';
-import { buildHeliModel, heliName, HELI_DOOR, HELI_GROUND, HELI_SEATS, MAST, ROTOR_R, type HeliModel, type HeliVariant } from './helicopterModel';
+import { buildHeliModel, heliName, heliDoorAngle, ARMY_MOUNTS, HELI_DOOR, HELI_GROUND, HELI_SEATS, MAST, ROTOR_R, type HeliModel, type HeliVariant } from './helicopterModel';
 import { HIP_ABOVE_ROOT } from './vehicle';
 
 export interface HeliInput { lift: number; pitch: number; yaw: number }
-const DOOR_MAX = 1.2;
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _v = new THREE.Vector3();
 let HELI_ID = 10000;
 
@@ -34,6 +33,10 @@ export class Helicopter {
   driver: Character | null = null;
   input: HeliInput = { lift: 0, pitch: 0, yaw: 0 };
   health = 1400; maxHealth = 1400;
+  /** AI-flown (army / police air unit): never tidied away while far from the player */
+  aiOwned = false;
+  /** world-space aim of the chin turret (army variant) */
+  gunAim = { yaw: 0, pitch: 0 };
   destroyed = false; burnTime = 0; flashT = 0;
   locked = false; doorsLocked = false; ignition = true; playerUsed = false; persistent = true; parked = true;
   lastDamagedBy: unknown = null;
@@ -55,6 +58,7 @@ export class Helicopter {
 
   constructor(physics: Physics, public variant: HeliVariant, x: number, y: number, z: number, yaw: number, paintIndex = -1) {
     this.hdg = yaw;
+    if (variant === 'army') { this.maxHealth = this.health = 2600; }
     this.model = buildHeliModel(variant, paintIndex);
     this.name = heliName(variant);
     this.visual.add(this.model.root);
@@ -73,7 +77,12 @@ export class Helicopter {
     this.syncTransform();
   }
 
+  get armed() { return this.variant === 'army'; }
   get position() { return this.group.position; }
+  /** A hardpoint (model space) in world space. */
+  mountWorld(local: THREE.Vector3, out = new THREE.Vector3()) { this.group.updateMatrixWorld(); return out.copy(local).applyMatrix4(this.group.matrixWorld); }
+  /** Where the chin gun muzzle is, in world space. */
+  gunMuzzle(out = new THREE.Vector3()) { return this.mountWorld(ARMY_MOUNTS.gun, out); }
   get yaw() { return this.hdg; }
   /** forward ground speed (m/s) */
   get speed() { const v = this.phys.body.linvel(); return v.x * Math.sin(this.hdg) + v.z * Math.cos(this.hdg); }
@@ -139,7 +148,7 @@ export class Helicopter {
     let vx = lv.x, vy = lv.y, vz = lv.z;
     const fx = Math.sin(this.hdg), fz = Math.cos(this.hdg);
     if (flying) {
-      const thrust = this.pitch * 62; // ~18 m/s² at full pitch
+      const thrust = this.pitch * (this.armed ? 78 : 62); // ~18 m/s² at full pitch (the gunship is stronger)
       vx += fx * thrust * dt; vz += fz * thrust * dt;
       const drag = Math.abs(inp.pitch) > 0.05 ? 0.42 : 0.9;
       vx -= vx * drag * dt; vz -= vz * drag * dt;
@@ -210,8 +219,13 @@ export class Helicopter {
       const acc = (d.open - d.amount) * 60 - d.vel * 10;
       d.vel += acc * dt; d.amount += d.vel * dt;
       if (d.amount < 0) { d.amount = 0; d.vel = 0; }
-      const sg = d.side === 'left' ? 1 : -1;
-      m.doors[i].rotation.y = sg * d.amount * DOOR_MAX;
+      m.doors[i].rotation.y = heliDoorAngle(d.side, d.amount); // outward on both sides
+    }
+    // chin turret follows the aim (within its arc)
+    if (m.turret) {
+      const rel = Math.atan2(Math.sin(this.gunAim.yaw - this.hdg), Math.cos(this.gunAim.yaw - this.hdg));
+      m.turret.rotation.y = Math.max(-1.9, Math.min(1.9, rel));
+      m.turret.children[0].rotation.x = -Math.max(-0.2, Math.min(1.0, this.gunAim.pitch + this.pitch));
     }
     // lights: beacon pulse, police strobes
     const beat = Math.sin(time * 6) > 0.6 && this.rotor > 0.1 ? 1 : 0.15;

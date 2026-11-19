@@ -11,6 +11,7 @@ import { Chunked, FacadeBuilder, TrimBuilder, SOLID, ROOF, type WallSpec, T_META
 import { type BuildCtx, type Helipad, house, warehouse } from './buildings';
 import type { ChunkInstancer } from './geometry';
 import { LAMP } from './props';
+import { buildArmyBase } from './armybase';
 import type { Pad } from './terrain';
 
 const C = (h: string) => new THREE.Color(h);
@@ -111,7 +112,7 @@ export function buildExpansion(
       const tx = (b.x - a.x) / (segLen || 1), tz = (b.z - a.z) / (segLen || 1), nx = -tz, nz = tx;
       if (p.elevated && Math.max(a.y, b.y) > 0.25) {
         const top = Math.min(a.y, b.y);
-        if (top > 2.4) tb.beam(a.x, a.y - 0.65, a.z, b.x, b.y - 0.65, b.z, p.half * 2 + 1.2, 1.3, conc, T_STONE);
+        if (top > 2.4) tb.beam(a.x, a.y - 0.69, a.z, b.x, b.y - 0.69, b.z, p.half * 2 + 1.2, 1.3, conc, T_STONE); // top 4 cm under the road surface (no z-fighting)
         else tb.beam(a.x, (a.y - 0.2) / 2 - 0.1, a.z, b.x, (b.y - 0.2) / 2 - 0.1, b.z, p.half * 2 + 1.2, Math.max(0.3, (a.y + b.y) / 2 + 0.1), concDark, T_STONE);
         orientedBox(physics, a, b, p.half + 0.6, 0.6, -0.3);
         for (const sg of [-1, 1]) {
@@ -168,7 +169,7 @@ export function buildExpansion(
     }
   }
   const roadMesh = new THREE.Mesh(ribbonGeo(road), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
-  (roadMesh.material as THREE.MeshStandardMaterial).polygonOffset = true;
+  { const am = roadMesh.material as THREE.MeshStandardMaterial; am.polygonOffset = true; am.polygonOffsetFactor = -1; am.polygonOffsetUnits = -1; }
   const marks = new THREE.Mesh(ribbonGeo(mk), markMat); marks.receiveShadow = true; root.add(marks);
 
   // ---------- Cannery Channel arch bridge (steel ribs and hangers over the freeway deck) ----------
@@ -255,39 +256,8 @@ export function buildExpansion(
     for (let k = 0; k < 3; k++) helipadPad(tb(A.apronX, -320 - k * 40), physics, A.apronX - 15, 0, -320 - k * 40, `Airfield helipad ${k + 1}`, helipads);
     perimeterFence(trim, physics, A.x0, A.z0, A.x1, A.z1, [{ side: 'w', at: A.gateZ, w: 16 }]);
   }
-  // ---------- Fort Calder (army compound) ----------
-  {
-    const B = ARMY_BASE;
-    perimeterFence(trim, physics, B.x0, B.z0, B.x1, B.z1, [{ side: 'e', at: B.gateZ, w: 10 }], true);
-    const t = (x: number, z: number) => trim.at(x, z);
-    // gate booth + barrier
-    const gx = B.x1, gz = B.gateZ;
-    ctx.fac.at(gx, gz).box(gx - 4, gz + 9, 3.4, 3.4, 0, 3, 0, C('#c9c3b4'), [{ kind: 2, seed: 12, cellW: 1.7, cellH: 3, winW: 1.2, winH: 1.2, sill: 1, mat: 2, originV: 0, baseY: 0, lit: 0.9, floors: 1 } as WallSpec], { ...ROOF, seed: 2 });
-    physics.addStaticBox(gx - 4, 1.5, gz + 9, 1.7, 1.5, 1.7);
-    t(gx, gz).box(gx + 0.5, 1.0, gz, 0.3, 0.3, 9, 0, C('#e8e2d2'), T_PAINT); for (let k = 0; k < 4; k++) t(gx, gz).box(gx + 0.5, 1.0, gz - 3.4 + k * 2.2, 0.32, 0.32, 1.0, 0, C('#c0392b'), T_PAINT);
-    t(gx, gz).box(gx + 0.5, 0.5, gz + 4.6, 0.4, 1.0, 0.4, 0, C('#555'), T_METAL);
-    // barracks, motor pool shed, HQ
-    const bar: WallSpec = { kind: 2, seed: 31, cellW: 3.2, cellH: 3.4, winW: 1.4, winH: 1.3, sill: 1.0, mat: 2, originV: 0.3, baseY: 0, lit: 0.6, floors: 2 };
-    for (let k = 0; k < 3; k++) {
-      const x = B.x0 + 30, z = B.z0 + 40 + k * 55, fb = ctx.fac.at(x, z);
-      fb.box(x, z, 18, 40, 0, 7.4, 0, C(['#b8b29e', '#a9a58f', '#bdb7a2'][k]), [{ ...bar, seed: 31 + k }], { ...ROOF, seed: 9 + k }, C('#5b5e55'));
-      physics.addStaticBox(x, 3.7, z, 9, 3.7, 20);
-    }
-    warehouse(ctx, { cx: B.x0 + 85, cz: B.z0 + 50, w: 36, d: 24, base: 0, h: 8, seed: 911, yaw: Math.PI / 2, color: C('#6b7158') });
-    { const x = B.x0 + 85, z = B.z1 - 50, fb = ctx.fac.at(x, z); fb.box(x, z, 26, 16, 0, 10.6, Math.PI / 2, C('#c2bba6'), [{ ...bar, seed: 55, floors: 3 }], { ...ROOF, seed: 13 }, C('#5b5e55')); physics.addStaticBox(x, 5.3, z, 8, 5.3, 13); }
-    // flag pole, parade ground, watchtowers, helipads, sandbags, floodlights
-    t(B.x0 + 60, B.gateZ).cyl(B.x0 + 60, 0, B.gateZ, 0.1, 0.06, 14, 8, C('#ddd'), T_METAL); t(B.x0 + 60, B.gateZ).box(B.x0 + 61.2, 13, B.gateZ, 2.4, 1.4, 0.03, 0, C('#2a4a6b'), T_PAINT);
-    for (const [x, z] of [[B.x0 + 4, B.z0 + 4], [B.x1 - 4, B.z0 + 4], [B.x0 + 4, B.z1 - 4], [B.x1 - 4, B.z1 - 4]]) {
-      const tb = t(x, z);
-      for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) tb.box(x + dx * 1.4, 4, z + dz * 1.4, 0.25, 8, 0.25, 0, C('#5a5040'), T_ROUGH);
-      tb.box(x, 8.1, z, 3.6, 0.2, 3.6, 0, C('#5a5040'), T_ROUGH); tb.box(x, 9, z, 3.4, 1.6, 3.4, 0, C('#6b6b5a'), T_PAINT); tb.box(x, 10.4, z, 4, 0.2, 4, 0, C('#4a4a40'), T_METAL);
-      tb.box(x, 9.4, z, 3.45, 0.6, 3.45, 0, C('#202426'), T_GLASS); tb.box(x, 10.6, z + 1.8, 0.5, 0.3, 0.4, 0, C('#fff6d8'), T_NIGHTGLOW(6));
-      physics.addStaticBox(x, 4, z, 1.6, 4, 1.6);
-    }
-    for (let k = 0; k < 2; k++) helipadPad(t(B.x1 - 40, B.z0 + 50 + k * 45), physics, B.x1 - 40, 0, B.z0 + 50 + k * 45, `Fort Calder helipad ${k + 1}`, helipads);
-    for (let k = 0; k < 10; k++) t(gx - 8, gz).box(gx - 8, 0.4, gz - 14 + (k % 2) * 28 + Math.floor(k / 2) * 0.01, 3.6, 0.8, 1.1, 0, C('#8c7a55'), [0.95, 0, 2, 0]);
-    void T_IRON;
-  }
+  // ---------- Fort Calder (army base): see armybase.ts ----------
+  buildArmyBase(ctx, trim, physics, helipads);
   return { lampHeads, helipads };
 }
 
@@ -305,7 +275,7 @@ export function helipadPad(tb: TrimBuilder, physics: Physics, x: number, y: numb
 }
 
 /** Chain-link fence with concrete posts (and razor wire on top for the army compound), with gaps for gates. */
-function perimeterFence(trim: Chunked<TrimBuilder>, physics: Physics, x0: number, z0: number, x1: number, z1: number, gates: { side: 'n' | 's' | 'e' | 'w'; at: number; w: number }[], razor = false) {
+export function perimeterFence(trim: Chunked<TrimBuilder>, physics: Physics, x0: number, z0: number, x1: number, z1: number, gates: { side: 'n' | 's' | 'e' | 'w'; at: number; w: number }[], razor = false) {
   const sides: { side: 'n' | 's' | 'e' | 'w'; ax: number; az: number; bx: number; bz: number }[] = [
     { side: 'n', ax: x0, az: z0, bx: x1, bz: z0 }, { side: 's', ax: x0, az: z1, bx: x1, bz: z1 }, { side: 'w', ax: x0, az: z0, bx: x0, bz: z1 }, { side: 'e', ax: x1, az: z0, bx: x1, bz: z1 },
   ];

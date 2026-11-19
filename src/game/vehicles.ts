@@ -101,7 +101,7 @@ export class VehicleManager {
       }
       const dist = v.position.distanceTo(listener);
       v.group.visible = dist < 260 || v === playerVehicle;
-      v.bodyMesh.castShadow = dist < 60;
+      v.bodyMesh.castShadow = dist < 44;
       v.updateLod(v === playerVehicle ? 0 : dist);
       // Skid marks + tyre smoke
       const c = v.phys.ctrl;

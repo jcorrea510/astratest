@@ -61,3 +61,16 @@ test('far-crowd pedestrians hand over to a real pedestrian instead of vanishing'
   if (!r.skipped) expect(r.spawned).toBeGreaterThanOrEqual(1);
   clean(p);
 });
+
+test('P and the HUD gear button open the pause menu (Esc is not the only way); P closes it again', async ({ page }) => {
+  test.setTimeout(400_000);
+  const p = watch(page);
+  await boot(page);
+  await page.evaluate(() => { const g = (window as any).__game; g.start?.(); });
+  expect(await page.locator('.ma-gear').count()).toBe(1);
+  await page.locator('.ma-gear').dispatchEvent('click');
+  await expect.poll(() => page.evaluate(() => (window as any).__game.paused)).toBe(true);
+  await page.keyboard.press('KeyP');
+  await expect.poll(() => page.evaluate(() => (window as any).__game.paused)).toBe(false);
+  clean(p);
+});

@@ -8,13 +8,22 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-export type HeliVariant = 'civilian' | 'news' | 'police';
+export type HeliVariant = 'civilian' | 'news' | 'police' | 'army';
 export const HELI_GROUND = -1.05;
 export const ROTOR_R = 5.1;
 export const MAST = new THREE.Vector3(0, 1.38, 0.35);
 export const TAIL_ROTOR = new THREE.Vector3(0.3, 0.72, -5.55);
 /** Doors: left/right front cabin doors, hinged at the front edge. */
 export const HELI_DOOR = { outX: 0.8, z0: 0.12, z1: 1.38, belt: -0.05 };
+/** Door swing: rotation.y of a front-hinged door pivot. Doors open OUTWARD (away from the hull centre) on both sides. */
+export const HELI_DOOR_MAX = 1.2;
+export function heliDoorAngle(side: 'left' | 'right', amount: number) { return -(side === 'left' ? 1 : -1) * amount * HELI_DOOR_MAX; }
+/** Attack helicopter hardpoints (model space): chin gun muzzle, rocket pod tubes, missile rails. */
+export const ARMY_MOUNTS = {
+  gun: new THREE.Vector3(0, -0.72, 2.75),
+  rockets: [new THREE.Vector3(1.55, 0.0, 1.7), new THREE.Vector3(-1.55, 0.0, 1.7)],
+  missiles: [new THREE.Vector3(2.35, 0.08, 1.2), new THREE.Vector3(-2.35, 0.08, 1.2)],
+};
 export const HELI_SEATS = [{ x: 0.36, y: -0.2, z: 0.95 }, { x: -0.36, y: -0.2, z: 0.95 }, { x: 0.36, y: -0.15, z: -0.25 }, { x: -0.36, y: -0.15, z: -0.25 }];
 
 export interface HeliModel {
@@ -26,12 +35,15 @@ export interface HeliModel {
   beacon: THREE.Mesh; strobes: THREE.Mesh[];
   materials: THREE.Material[];
   paint: THREE.MeshPhysicalMaterial;
+  /** army variant: the chin turret (yaw pivot; its first child pitches the barrels) */
+  turret?: THREE.Object3D;
 }
 
 const LIVERY: Record<HeliVariant, { base: string[]; stripe: string; belly: string; name: string }> = {
   civilian: { base: ['#b31b24', '#f2f0ea', '#1d3c6e', '#e3a21a', '#2b2d31'], stripe: '#f2f0ea', belly: '#2a2c30', name: 'Corsair H4 Kestrel' },
   news: { base: ['#f4f3ef'], stripe: '#1f5fbf', belly: '#c8262c', name: 'SkyEye 6 News' },
   police: { base: ['#121418'], stripe: '#f4f3ef', belly: '#121418', name: 'PMPD Air Unit' },
+  army: { base: ['#4b5233', '#454c31'], stripe: '#2f3622', belly: '#383d29', name: 'Gorman AH-7 Ravager' },
 };
 export const heliName = (v: HeliVariant) => LIVERY[v].name;
 
@@ -152,8 +164,38 @@ export function buildHeliModel(variant: HeliVariant, paintIndex = -1): HeliModel
     darkParts.push(new THREE.CylinderGeometry(0.17, 0.2, 0.42, 14).rotateX(Math.PI / 2).translate(-0.55, -0.68, 1.55));
     darkParts.push(new THREE.SphereGeometry(0.19, 14, 10).translate(0.5, -0.78, 1.85));
   }
+  const armyParts: THREE.BufferGeometry[] = []; // olive hardware: stub wings, rocket pods, missile rails, rear canopy hump, exhausts
+  if (variant === 'army') {
+    armyParts.push(new THREE.BoxGeometry(4.9, 0.09, 0.85).translate(0, 0.05, 0.55)); // stub wing
+    for (const sx of [1, -1]) {
+      const pod = new THREE.CylinderGeometry(0.2, 0.2, 1.7, 14).rotateX(Math.PI / 2).translate(sx * 1.55, -0.12, 0.85); armyParts.push(pod);
+      armyParts.push(new THREE.ConeGeometry(0.2, 0.3, 14).rotateX(Math.PI / 2).translate(sx * 1.55, -0.12, 1.85)); // nose cone
+      armyParts.push(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6).rotateX(Math.PI / 2).translate(sx * 2.3, 0.0, 0.75)); // rail
+      for (const dy of [0, 0.17]) armyParts.push(new THREE.CylinderGeometry(0.06, 0.06, 1.3, 8).rotateX(Math.PI / 2).translate(sx * 2.35, 0.1 - dy, 0.95)); // missiles
+      armyParts.push(new THREE.ConeGeometry(0.06, 0.2, 8).rotateX(Math.PI / 2).translate(sx * 2.35, 0.1, 1.7));
+      armyParts.push(new THREE.ConeGeometry(0.06, 0.2, 8).rotateX(Math.PI / 2).translate(sx * 2.35, -0.07, 1.7));
+      armyParts.push(new THREE.BoxGeometry(0.34, 0.5, 0.5).translate(sx * 0.7, 0.62, -0.5)); // engine cowl
+      armyParts.push(new THREE.CylinderGeometry(0.14, 0.12, 0.5, 10).rotateX(Math.PI / 2 + 0.2).translate(sx * 0.62, 0.72, -1.4)); // IR-suppressed exhaust
+      armyParts.push(new THREE.BoxGeometry(0.05, 0.5, 0.5).translate(sx * 0.86, -0.1, 0.8)); // door armour plate
+    }
+    armyParts.push(new THREE.SphereGeometry(0.28, 12, 10).scale(1, 0.8, 1.5).translate(0, -0.72, 2.3)); // chin sensor ball
+    armyParts.push(new THREE.BoxGeometry(0.5, 0.34, 0.8).translate(0, 0.55, -0.15)); // rear canopy spine
+  }
   const darkGeo = mergeGeometries(darkParts.map(g => { const ng = g.index ? g.toNonIndexed() : g; ng.deleteAttribute('uv'); return ng; }))!; darkParts.forEach(g => g.dispose());
   const darkMesh = new THREE.Mesh(darkGeo, dark); darkMesh.castShadow = true; root.add(darkMesh);
+  const extra: THREE.Material[] = [];
+  let turret: THREE.Object3D | undefined;
+  if (variant === 'army') {
+    const armGeo = mergeGeometries(armyParts.map(g => { const ng = g.index ? g.toNonIndexed() : g; ng.deleteAttribute('uv'); return ng; }))!; armyParts.forEach(g => g.dispose());
+    const armMat = new THREE.MeshStandardMaterial({ color: '#4a5133', roughness: 0.55, metalness: 0.25 }); extra.push(armMat);
+    const armMesh = new THREE.Mesh(armGeo, armMat); armMesh.castShadow = true; root.add(armMesh);
+    // chin turret: yaw pivot, pitching barrel group, three-barrel cannon
+    turret = new THREE.Group(); turret.position.set(0, -0.66, 2.35);
+    const barrels = new THREE.Group(); turret.add(barrels);
+    barrels.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.34), dark));
+    for (const a of [0, 2.094, 4.188]) { const br = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.65, 6).rotateX(Math.PI / 2), metal); br.position.set(Math.cos(a) * 0.05, Math.sin(a) * 0.05 - 0.03, 0.45); barrels.add(br); }
+    root.add(turret);
+  }
 
   const metalParts: THREE.BufferGeometry[] = [];
   for (const sx of [1, -1]) {
@@ -212,6 +254,6 @@ export function buildHeliModel(variant: HeliVariant, paintIndex = -1): HeliModel
   const strobes: THREE.Mesh[] = [];
   if (variant === 'police') for (const sx of [1, -1]) { const s = new THREE.Mesh(bulb, new THREE.MeshBasicMaterial({ color: sx > 0 ? '#ff2020' : '#2050ff', toneMapped: false })); s.position.set(sx * 0.35, -0.6, -0.9); root.add(s); strobes.push(s); }
 
-  const materials: THREE.Material[] = [paint, glass, dark, metal, bladeMat, discMat, lightRed, lightGreen, lightWhite, beacon.material as THREE.Material, ...strobes.map(s => s.material as THREE.Material)];
-  return { root, doors, mainRotor, tailRotor, blades, tailBlades, disc, tailDisc, beacon, strobes, materials, paint };
+  const materials: THREE.Material[] = [paint, glass, dark, metal, bladeMat, discMat, lightRed, lightGreen, lightWhite, beacon.material as THREE.Material, ...strobes.map(s => s.material as THREE.Material), ...extra];
+  return { root, doors, mainRotor, tailRotor, blades, tailBlades, disc, tailDisc, beacon, strobes, materials, paint, turret };
 }
