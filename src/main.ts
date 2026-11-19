@@ -68,6 +68,7 @@ ui.init({
     onHighway: () => { void openHighway(); },
     onOpenSandbox: () => { if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
+    onPauseRequest: () => { if (game && started && !game.paused && !ui.isMenuOpen()) pause(); },
     onQuitToTitle: () => quitToTitle(),
     onSaveGame: () => saveGame(),
     onSettingsChanged: s => applySettings(s),

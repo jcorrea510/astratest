@@ -6,10 +6,12 @@
  */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, pedestrianMayCross, districtAt, DISTRICT_INFO } from '../world/citymap';
+import { samplePath, signalState, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
+import type { Traffic } from './traffic';
+import type { Population } from './population';
 import type { Vehicle } from '../vehicles/vehicle';
-import { PARKED_MIX } from '../vehicles/specs';
+import { PARKED_MIX, VEHICLES } from '../vehicles/specs';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
@@ -126,11 +128,15 @@ interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
   bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number }
 interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
-interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null }
+interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
+/** Paint of a parked car: the same for the far instanced copy and the real car, so the swap is invisible. */
+const parkedPaint = (s: { kind: number; paint: number }) => { const p = VEHICLES[PARKED_MIX[s.kind % PARKED_MIX.length]].paints; return p[s.paint % p.length]; };
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0, y: 0 as number | undefined };
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
 
+/** Cheap crowd members are only removed this close to the player (behind the camera lens); real ones take over from PROMOTE_R. */
+const NEAR_KILL = 9, PROMOTE_R = 60;
 export class Crowd {
   readonly cars: GCar[] = []; readonly peds: GPed[] = [];
   caps: CrowdCaps = { farCars: 0, farPeds: 0, parked: 0 };
@@ -141,6 +147,29 @@ export class Crowd {
   private rng = new Rng(4242); private nextId = 1; private t = 0; private slowT = 0; private parkT = 0; private slowIdx = 0;
   private carLaneIdx: number[] = [];
   prewarming = false;
+  /**
+   * Hand-over hooks (wired by the game): a far-crowd car/pedestrian that comes within PROMOTE_R of the player is replaced
+   * in place by a real, fully simulated one (return true) instead of vanishing. When the hook declines (real caps full)
+   * the cheap one keeps walking/driving until it is almost beside the camera, so nobody blinks out at mid range.
+   */
+  promoteCar: ((lane: Lane, s: number, bus: boolean) => boolean) | null = null;
+  promotePed: ((x: number, z: number, from: number, to: number, yaw: number) => boolean) | null = null;
+  /** Connects the hand-over hooks to the real traffic / pedestrian systems; `caps` returns the current real-population caps. */
+  wire(traffic: Traffic, pop: Population, caps: () => { traffic: number; peds: number }) {
+    this.promoteCar = (lane, s, bus) => {
+      if (bus || traffic.cars.length >= caps().traffic) return false;
+      samplePath(lane, s, sp);
+      for (const o of this.vehicles.list) if (Math.abs(o.position.x - sp.x) < 8 && Math.abs(o.position.z - sp.z) < 8) return false; // never spawn inside a real car
+      traffic.spawnOnLane(traffic.pickKind(), lane, s);
+      return true;
+    };
+    this.promotePed = (x, z, from, to, yaw) => {
+      if (pop.npcs.filter(n => n.role === 'civilian' && !n.persistent).length >= caps().peds) return false;
+      const n = pop.spawn('civilian', x, z, 0.2);
+      n.node = from; n.nextNode = to; n.char.yaw = yaw;
+      return true;
+    };
+  }
   constructor(scene: THREE.Scene, private city: CityMap, private vehicles: VehicleManager, private time: () => number) {
     this.carMesh = makeInstanced(carGeometry(), 400, false); this.parkMesh = makeInstanced(carGeometry(), 1200, false);
     this.pedMesh = makeInstanced(pedGeometry(), 900, true);
@@ -163,7 +192,11 @@ export class Crowd {
             if (!r.chance(0.42)) continue;
             const off = side * (road.half - 0.45), along = s + r.range(-0.5, 0.5);
             const x = road.axis === 'x' ? along : road.coord + off, z = road.axis === 'x' ? road.coord + off : along;
-            const yaw = road.axis === 'x' ? (r.chance(0.5) ? Math.PI / 2 : -Math.PI / 2) : (r.chance(0.5) ? 0 : Math.PI);
+            r.chance(0.5); // (keeps the seeded colours / kinds below unchanged)
+            // nose with the traffic on this side of the street: heading of the nearest driving lane (right-hand traffic)
+            const nl = nearestLane(this.city, x, z);
+            if (nl) samplePath(nl.lane, nl.s, sp);
+            const yaw = nl ? Math.atan2(sp.dx, sp.dz) : (road.axis === 'x' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI));
             this.slots.push({ x, z, yaw, paint: r.int(0, CAR_PAINT.length - 1), kind: r.int(0, PARKED_MIX.length - 1), taken: false, real: null });
           }
         }
@@ -199,7 +232,7 @@ export class Crowd {
       const s = 6 + Math.random() * (lane.length - 12);
       samplePath(lane, s, sp);
       const d = Math.hypot(sp.x - focus.x, sp.z - focus.z);
-      if (d < (this.prewarming ? 40 : 55) || d > 230) continue;
+      if (d < (this.prewarming ? 40 : 70) || d > 230) continue;
       if (Math.random() > DISTRICT_INFO[districtAt(this.city, sp.x, sp.z)].trafficDensity) continue;
       if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 13))) continue;
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
@@ -215,7 +248,8 @@ export class Crowd {
     const checkReal = this.slowT <= 0; if (checkReal) this.slowT = 0.4;
     for (let i = cars.length - 1; i >= 0; i--) {
       const c = cars[i], d = Math.hypot(c.x - focus.x, c.z - focus.z);
-      let kill = d < 38 || d > 250 || i >= cap;
+      let kill = d < NEAR_KILL || d > 250 || i >= cap;
+      if (!kill && d < PROMOTE_R && !this.prewarming && this.promoteCar?.(c.lane, c.s, c.bus)) kill = true;
       if (!kill && checkReal && d < 140) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 6 && Math.abs(o.position.z - c.z) < 6) { kill = true; break; }
       if (kill) cars.splice(i, 1);
     }
@@ -312,7 +346,7 @@ export class Crowd {
       const to = nodes[e.to], t = Math.random();
       const x = nd.x + (to.x - nd.x) * t, z = nd.z + (to.z - nd.z) * t;
       const d = Math.hypot(x - focus.x, z - focus.z);
-      if (d < (this.prewarming ? 30 : 42) || d > 210) continue;
+      if (d < (this.prewarming ? 30 : 66) || d > 210) continue;
       const dist = districtAt(this.city, x, z);
       if (Math.random() > Math.min(1, DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour))) continue;
       const rnd = (n: number) => Math.floor(Math.random() * n);
@@ -330,7 +364,9 @@ export class Crowd {
     const peds = this.peds, cap = Math.min(this.caps.farPeds, 900), nodes = this.city.pedNodes;
     for (let i = peds.length - 1; i >= 0; i--) {
       const p = peds[i], d = Math.hypot(p.x - focus.x, p.z - focus.z);
-      if (d < 36 || d > 235 || i >= cap) { p.dead = true; peds.splice(i, 1); }
+      let gone = d < NEAR_KILL || d > 235 || i >= cap;
+      if (!gone && d < PROMOTE_R && !this.prewarming && this.promotePed?.(p.x, p.z, p.from, p.to, p.yaw)) gone = true;
+      if (gone) { p.dead = true; peds.splice(i, 1); }
     }
     let spawns = this.prewarming ? 120 : 10;
     while (peds.length < cap && spawns-- > 0) if (!this.spawnPed(focus)) break;
@@ -385,11 +421,11 @@ export class Crowd {
         const v = s.real;
         const gone = !this.vehicles.list.includes(v) || !v.parked || !!v.driver;
         if (gone) { s.taken = true; s.real = null; }
-        else if (d > 65) { this.vehicles.remove(v); s.real = null; }
+        else if (d > 110) { s.hp = v.health / v.spec.health; if (s.hp > 0.98) s.hp = undefined; this.vehicles.remove(v); s.real = null; }
         else continue; // the real car stands here
       }
       if (s.taken || d > 230) continue;
-      if (d < 40 && !this.prewarming) { this.promote(s); continue; }
+      if (d < 55 && !this.prewarming) { this.promote(s); continue; }
       vis.push(s);
     }
     vis.sort((a, b) => (a.x - focus.x) ** 2 + (a.z - focus.z) ** 2 - ((b.x - focus.x) ** 2 + (b.z - focus.z) ** 2));
@@ -398,13 +434,15 @@ export class Crowd {
     const mesh = this.parkMesh.mesh, geo = this.parkMesh.geo, tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;
     for (let i = 0; i < vis.length; i++) {
       const s = vis[i]; q.setFromAxisAngle(up, s.yaw); pos.set(s.x, 0.05, s.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
-      hex(CAR_PAINT[s.paint], col); tint.setXYZ(i, col.r, col.g, col.b);
+      col.set(parkedPaint(s)).convertSRGBToLinear(); tint.setXYZ(i, col.r, col.g, col.b);
     }
     mesh.count = vis.length; mesh.instanceMatrix.needsUpdate = true; tint.needsUpdate = true;
   }
   private promote(s: Slot) {
     if (this.vehicles.list.some(o => Math.abs(o.position.x - s.x) < 3 && Math.abs(o.position.z - s.z) < 3)) { s.taken = true; return; }
-    const v = this.vehicles.spawn(PARKED_MIX[s.kind % PARKED_MIX.length], s.x, s.z, s.yaw, -1, 0.25);
+    const v = this.vehicles.spawn(PARKED_MIX[s.kind % PARKED_MIX.length], s.x, s.z, s.yaw, s.paint, 0.25);
+    v.settleParked(0); // settled at rest height and asleep: tall trucks neither drop nor tip
+    if (s.hp !== undefined) v.health = Math.max(1, v.spec.health * s.hp);
     v.parked = true; v.doorsLocked = s.paint % 3 !== 0; v.ignition = false; s.real = v;
   }
 }

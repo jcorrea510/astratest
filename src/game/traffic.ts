@@ -13,6 +13,8 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
+import { curbShift, yieldsToSiren, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
 export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number;
@@ -27,7 +29,18 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** curbside stop: where (arc position on a lane), why; seconds left standing; lane the plan was last rolled for */
   stopPlan?: { s: number; lane: number; kind: 'drop' | 'pick' | 'deliver'; npc?: Npc } | null; stopT?: number; planLane?: number; scanT?: number; lastHonk?: number;
   /** ambient police cruiser on patrol (no heat) */
-  patrol?: boolean }
+  patrol?: boolean;
+  /** lateral offset (m, + = left) the car holds inside its lane: clears kerbside parked cars, tucks right for sirens / crashes */
+  shift?: number;
+  /** seconds a siren vehicle is still pushing us to the kerb; seconds left standing after an accident ahead */
+  yieldT?: number; crashT?: number;
+  /** seconds spent stopped with nothing legitimate to wait for (signal, pedestrian, curb stop) */
+  jamT?: number; ghostT?: number;
+  /** seconds panicking and boxed in (the driver bails out on foot) and health last seen (shot at) */
+  boxedT?: number; hp?: number;
+  /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
+  legitWait?: boolean; blockedBy?: Vehicle | null }
+interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
@@ -40,7 +53,20 @@ export class Traffic {
   private parkedBlocks = new Map<number, Vehicle[]>();
   private frustum = new THREE.Frustum(); private m4 = new THREE.Matrix4();
   private rng = new Rng(7);
-  constructor(private city: CityMap, private vehicles: VehicleManager, private pop: Population, private audio: GameAudio, private time: () => number) { }
+  private crashes: CrashSite[] = [];
+  private violationCbs: ((v: Violation) => void)[] = [];
+  private monitor = new ViolationMonitor(v => { for (const cb of this.violationCbs) cb(v); }, (x, z) => new THREE.Vector3(x, 0, z));
+  private monT = 0; private lastProbe: LaneProbe | null = null;
+  /** consecutive-frame bookkeeping for tests / diagnostics */
+  stats = { jamBreaks: 0, jamDespawns: 0, honks: 0, yields: 0 };
+  /**
+   * Subscribe to traffic violations committed by the player while driving: {kind: 'red_light'|'speeding'|'wrong_way'|'collision'|'reckless', pos}.
+   * Returns an unsubscribe function. Events are rate limited per kind, so the police can report each one directly.
+   */
+  onPlayerTrafficViolation(cb: (v: Violation) => void): () => void { this.violationCbs.push(cb); return () => { const i = this.violationCbs.indexOf(cb); if (i >= 0) this.violationCbs.splice(i, 1); }; }
+  constructor(private city: CityMap, private vehicles: VehicleManager, private pop: Population, private audio: GameAudio, private time: () => number) {
+    vehicles.crashListeners.push(e => { this.crashes.push({ pos: e.point.clone(), t: this.time(), v: e.vehicle }); if (this.crashes.length > 6) this.crashes.shift(); });
+  }
 
   pickKind(): VehicleKind {
     const total = TRAFFIC_MIX.reduce((a, b) => a + b.weight, 0); let r = Math.random() * total;
@@ -118,11 +144,26 @@ export class Traffic {
     this.audio.play('tireScreech', { pos: v.position, volume: 0.6 });
     return true;
   }
-  panic(v: Vehicle) { const c = this.carOf(v); if (c && c.mode === 'cruise') c.mode = 'flee'; }
+  panic(v: Vehicle) { const c = this.carOf(v); if (c && c.mode === 'cruise') { c.mode = 'flee'; c.maxSpeed = undefined; c.stopPlan = null; c.stopT = 0; } }
+  /** Somebody opens fire: drivers close by floor it (or bail out on foot if they are boxed in, see fixedUpdate). */
+  gunfire(origin: THREE.Vector3, shooter?: THREE.Vector3, radius = 24) {
+    for (const c of this.cars) {
+      if (c.persistent || c.mode !== 'cruise' || c.driver.role !== 'civilian' || c.v.destroyed) continue;
+      if (c.v.position.distanceTo(origin) > radius && !(shooter && c.v.position.distanceTo(shooter) < radius * 0.6)) continue;
+      this.panic(c.v);
+      if (this.time() - (c.lastHonk ?? -99) > 3) { c.lastHonk = this.time(); this.audio.play('horn', { pos: c.v.position, volume: 0.6 }); this.stats.honks++; }
+    }
+  }
+  private honk(car: AiCar, t: number, vol = 0.65, gap = 4) { if (t - (car.lastHonk ?? -99) < gap) return; car.lastHonk = t; this.stats.honks++; this.audio.play('horn', { pos: car.v.position, volume: vol, pitch: 0.9 + this.rng.next() * 0.25 }); }
   private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - 5.2; }
 
   fixedUpdate(dt: number, player: Character, playerVehicle: Vehicle | null) {
     const t = this.time();
+    this.monitorPlayer(dt, t, playerVehicle);
+    while (this.crashes.length && t - this.crashes[0].t > 20) this.crashes.shift();
+    const sirens: Vehicle[] = [];
+    if (playerVehicle?.sirenOn) sirens.push(playerVehicle);
+    for (const c of this.cars) if (c.v.sirenOn && !c.persistent) sirens.push(c.v);
     for (const car of [...this.cars]) {
       const v = car.v;
       if (v.destroyed || !car.driver.alive || v.driver !== car.driver.char) {
@@ -139,6 +180,50 @@ export class Traffic {
       // progress along the lane
       if (car.mode !== 'pursuit' && car.mode !== 'goto' || !car.target || pos.distanceTo(car.target) > 40) this.advanceLane(car, pos, car.target);
       let targetSpeed = car.maxSpeed ?? car.lane.speed * (car.mode === 'flee' ? 1.6 : car.mode === 'pursuit' ? 1.8 : 1);
+      let legit = false;
+      const civ = car.mode === 'cruise' && !car.persistent && car.driver.role === 'civilian';
+      // shot at: a driver whose car just took damage from the player floors it
+      if (car.hp !== undefined && v.health < car.hp - 0.5 && civ && v.lastDamagedBy === player) this.panic(v);
+      car.hp = v.health;
+      // sirens (a police car, or a stolen one the player is driving): pull over to the kerb and let it by
+      car.yieldT = (car.yieldT ?? 0) - dt; car.crashT = (car.crashT ?? 0) - dt;
+      let crashD = Infinity, crashLat = 0;
+      if (civ && !car.lane.connector) {
+        for (const sv of sirens) {
+          if (sv === v) continue;
+          const sf = sv.phys.forward();
+          if (yieldsToSiren(pos.x, pos.z, f.x, f.z, sv.position.x, sv.position.z, sf.x, sf.z, sv.speed)) { if (car.yieldT <= 0) this.stats.yields++; car.yieldT = 2.5; break; }
+        }
+        // an accident ahead: slow down, tuck to the kerb and stop short of it
+        for (const cs of this.crashes) {
+          if (t - cs.t > 9 || cs.v === v) continue;
+          const dx = cs.pos.x - pos.x, dz = cs.pos.z - pos.z, ahead = dx * f.x + dz * f.z;
+          if (ahead < -3 || ahead > 42) continue;
+          const lat = dx * f.z - dz * f.x;
+          if (ahead < crashD) { crashD = ahead; crashLat = lat; }
+          car.crashT = Math.max(car.crashT, 2.5);
+        }
+      }
+      if (this.crashes.some(c => c.v === v && t - c.t < 5)) { v.hazard = true; legit = true; targetSpeed = 0; } else if (v.hazard && !car.stopT) v.hazard = false;
+      if (car.yieldT > 0) { legit = true; targetSpeed = Math.min(targetSpeed, car.yieldT > 2.2 ? 4 : 0); }
+      if (car.crashT > 0 && crashD < Infinity) { legit = true; targetSpeed = Math.min(targetSpeed, crashD < 16 && Math.abs(crashLat) < 3.4 ? Math.max(0, (crashD - 9) * 0.5) : 5); }
+      // lateral offset inside the lane: clear kerbside parked cars, tuck right for sirens / crashes
+      {
+        let want = 0;
+        if (car.mode === 'cruise' && !car.lane.connector) {
+          const ohw0 = v.phys.layout.half[0];
+          for (const o of this.vehicles.list) {
+            if (o === v || Math.abs(o.speed) > 0.6 || o.driver || o.position.y > 3) continue;
+            const dx = o.position.x - pos.x, dz = o.position.z - pos.z, ahead = dx * f.x + dz * f.z;
+            if (ahead < -2 || ahead > 26 || (o !== playerVehicle && this.carOf(o))) continue;
+            const lat = dx * f.z - dz * f.x;
+            if (lat > -0.4 || lat < -3.4) continue;
+            want = Math.max(want, curbShift(lat, ohw0, o.phys.layout.half[0]));
+          }
+          if (want <= 0 && (car.yieldT > 0 || car.crashT > 0)) want = car.lane.lane === car.lane.lanes - 1 ? -1.3 : -0.8;
+        }
+        car.shift = (car.shift ?? 0) + (want - (car.shift ?? 0)) * Math.min(1, dt * 2.5);
+      }
       const aim = new THREE.Vector3();
       const look = THREE.MathUtils.clamp(Math.abs(speed) * 0.55 + 4, 5, 16);
       if ((car.mode === 'pursuit' || car.mode === 'goto') && car.target && pos.distanceTo(car.target) < 40) {
@@ -152,7 +237,7 @@ export class Traffic {
         if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[nextChoice]; if (s > lane.length && lane.next.length) { s -= lane.length; lane = this.city.lanes[this.chooseNext(lane, car.target, true)]; } }
         samplePath(lane, Math.min(s, lane.length), sp); aim.set(sp.x, 0, sp.z);
         // pull out around a stopped obstacle
-        if (car.avoid) { const l = Math.hypot(sp.dx, sp.dz) || 1; aim.x += car.avoid.side * (sp.dz / l) * 3.4; aim.z += car.avoid.side * (-sp.dx / l) * 3.4; }
+        { const l = Math.hypot(sp.dx, sp.dz) || 1, off = (car.avoid ? car.avoid.side * 3.4 : 0) + (car.shift ?? 0); aim.x += off * (sp.dz / l); aim.z += off * (-sp.dx / l); }
       }
       // Slow for corners: angle between heading and the aim point
       { const ax = aim.x - pos.x, az = aim.z - pos.z, al = Math.hypot(ax, az) || 1; const cosA = (ax * f.x + az * f.z) / al; const ang = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); if (ang > 0.25) targetSpeed = Math.min(targetSpeed, Math.max(6, targetSpeed * (1.15 - ang * 1.1))); }
@@ -166,15 +251,15 @@ export class Traffic {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, car.lane.axis, t);
         const dStop = this.distToStop(car);
-        if (st !== 'green' && dStop > -1 && !(st === 'yellow' && dStop < speed * 0.45)) targetSpeed = Math.min(targetSpeed, Math.max(0, dStop) * 0.9);
+        if (st !== 'green' && dStop > -1 && !(st === 'yellow' && dStop < speed * 0.45)) { targetSpeed = Math.min(targetSpeed, Math.max(0, dStop) * 0.9); legit = true; }
       }
-      if (car.mode === 'cruise' && !car.persistent) targetSpeed = this.curbStops(car, dt, targetSpeed, f, t);
+      if (car.mode === 'cruise' && !car.persistent) { targetSpeed = this.curbStops(car, dt, targetSpeed, f, t); if ((car.stopT ?? 0) > 0 || car.stopPlan) legit = true; }
       // Following distance / obstacles ahead
       let blockDist = Infinity, blocker: 'car' | 'person' | null = null, blockerV: Vehicle | null = null, blockerLat = 0;
-      const check = (ox: number, oz: number, radius: number, kind: 'car' | 'person', ov: Vehicle | null = null) => {
+      const check = (ox: number, oz: number, radius: number, kind: 'car' | 'person', ov: Vehicle | null = null, latOff = 0) => {
         const dx = ox - pos.x, dz = oz - pos.z;
         const ahead = dx * f.x + dz * f.z; if (ahead < 1 || ahead > Math.max(26, speed * 1.8)) return;
-        const latS = dx * f.z - dz * f.x, lat = Math.abs(latS); if (lat > radius) return;
+        const latS = dx * f.z - dz * f.x, lat = Math.abs(latS - latOff); if (lat > radius) return;
         if (ahead < blockDist) { blockDist = ahead; blocker = kind; blockerV = ov; blockerLat = latS; }
       };
       if (car.avoid) {
@@ -183,7 +268,14 @@ export class Traffic {
         car.avoid.t += dt;
         if (dx * f.x + dz * f.z < -4 || car.avoid.t > 14 || !this.vehicles.list.includes(o)) car.avoid = null;
       }
-      for (const o of this.vehicles.list) if (o !== v && o !== car.avoid?.v) check(o.position.x, o.position.z, 2.3, 'car', o);
+      const ghost = (car.ghostT ?? 0) > 0; if (ghost) car.ghostT = (car.ghostT ?? 0) - dt;
+      for (const o of this.vehicles.list) {
+        if (o === v || o === car.avoid?.v) continue;
+        if (ghost && o !== playerVehicle && this.carOf(o)) continue; // deadlock breaker: drive through (the bodies just nudge each other)
+        // a stopped car nobody drives (kerbside parked, wrecked): judged by its real width and by where we are steering
+        if (!o.driver && Math.abs(o.speed) < 0.6 && o !== playerVehicle) check(o.position.x, o.position.z, v.phys.layout.half[0] + o.phys.layout.half[0] + 0.2, 'car', o, car.shift ?? 0);
+        else check(o.position.x, o.position.z, 2.3, 'car', o);
+      }
       if (!player.inVehicle && player.alive) check(player.pos.x, player.pos.z, 1.9, 'person');
       for (const n of this.pop.npcs) if (n.alive && !n.char.inVehicle && !n.far) check(n.pos.x, n.pos.z, 1.7, 'person');
       if (blockDist < Infinity && !(car.mode === 'pursuit' && car.ram)) {
@@ -192,6 +284,19 @@ export class Traffic {
         // A stopped car nobody in traffic is driving (parked, abandoned, wrecked, or the player waiting) never moves on its own:
         // after a few seconds, pull out and pass it.
         const bv = blockerV as Vehicle | null;
+        const boc = bv ? this.carOf(bv) : null;
+        car.blockedBy = bv;
+        if (blocker === 'person') legit = true;
+        else if (bv) {
+          if (bv === playerVehicle) {
+            legit = true;
+            // cut off / blocked by the player: lean on the horn
+            if (car.mode === 'cruise' && blockDist < 14 && speed > 5 && speed - bv.speed > 4) this.honk(car, t, 0.8, 3.5);
+            else if (car.mode === 'cruise' && blockDist < 10 && Math.abs(speed) < 1.5) { car.honkT += dt; if (car.honkT > 2) { car.honkT = -1.5; this.honk(car, t, 0.7, 1); } }
+          } else if (boc && (boc.legitWait || Math.abs(bv.speed) > 0.8)) legit = true;
+          // two cars nose to nose (or a cycle in the intersection): the one in the box goes through
+          if (boc && boc.blockedBy === v && car.mode === 'cruise' && (car.lane.connector || car.lane.length - car.s < 10 || v.id < bv.id) && (car.jamT ?? 0) > (car.lane.connector ? 1.5 : 4) && (car.ghostT ?? 0) <= 0) { car.ghostT = 6; this.stats.jamBreaks++; }
+        }
         if (bv && Math.abs(bv.speed) < 0.6 && !this.carOf(bv) && Math.abs(speed) < 1 && car.mode !== 'pursuit') {
           car.blockedT = (car.blockedT ?? 0) + dt;
           if (car.blockedT > 3 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
@@ -200,6 +305,14 @@ export class Traffic {
         if (blocker === 'person' && speed > 3 && blockDist < 15 && t - (car.lastHonk ?? -99) > 5) { car.lastHonk = t; this.audio.play('horn', { pos, volume: 0.55 }); }
         if (blocker === 'person' && blockDist < 9 && Math.abs(speed) < 2) { car.honkT += dt; if (car.honkT > 1.6) { car.honkT = -2.5; this.audio.play('horn', { pos, volume: 0.6 }); } }
       }
+      if (blockDist === Infinity) car.blockedBy = null;
+      car.legitWait = legit;
+      // gridlock watchdog: stopped with nothing legitimate to wait for
+      if (car.mode === 'cruise' && !car.persistent && Math.abs(speed) < 0.8 && targetSpeed < 0.3 && !legit) car.jamT = (car.jamT ?? 0) + dt;
+      else if (Math.abs(speed) > 2 || legit) car.jamT = 0;
+      if ((car.jamT ?? 0) > 12 && car.reverseT <= 0 && (car.jamT ?? 0) % 9 < dt) { car.reverseT = 1.4; car.lcCool = 0; this.stats.jamBreaks++; }
+      // panicking and boxed in: bail out and run
+      if (car.mode === 'flee' && !car.persistent && blockDist < 7 && Math.abs(speed) < 1.5) { car.boxedT = (car.boxedT ?? 0) + dt; if (car.boxedT > 2) { for (const p of car.passengers ?? []) if (p.alive && p.char.inVehicle === v) this.ejectPassenger(p, v); this.eject(car, v, 1); continue; } } else car.boxedT = 0;
       this.laneChange(car, dt, pos, f, speed, blockDist, blocker, blockerV);
       // Pure-pursuit steering
       const pp = v.phys.body.translation();
@@ -215,8 +328,32 @@ export class Traffic {
       else { const err = targetSpeed - speed; throttle = THREE.MathUtils.clamp(err * 0.35, -1, 1); if (targetSpeed < 0.3 && Math.abs(speed) < 0.5) throttle = 0; }
       v.input.throttle = throttle; v.input.steer = steer; v.input.handbrake = targetSpeed < 0.3 && Math.abs(speed) < 0.5;
       v.siren = car.mode === 'pursuit' || (car.driver.role === 'police' && car.mode === 'goto');
-      void playerVehicle;
     }
+  }
+  /** Samples the player's driving at 8 Hz and reports violations (see onPlayerTrafficViolation). */
+  private hitLatch = false; private monAcc = 0;
+  private monitorPlayer(dt: number, t: number, pv: Vehicle | null) {
+    if (!pv || pv.destroyed) { this.monAcc = 0; this.hitLatch = false; return; }
+    if (pv.phys.impact > 2.5 && this.vehicles.list.some(o => o !== pv && o.position.distanceTo(pv.position) < 5)) this.hitLatch = true;
+    this.monAcc += dt;
+    if (this.monAcc < 0.125) return;
+    const adt = this.monAcc; this.monAcc = 0;
+    const p = pv.position, f = pv.phys.forward();
+    let best: Lane | null = null, bd = Infinity, bs = 0;
+    for (const l of this.nearLanes) {
+      for (let i = 1; i < l.points.length; i++) {
+        const a = l.points[i - 1], b = l.points[i], vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+        const u = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.z - a.z) * vz) / l2));
+        const d = Math.hypot(p.x - (a.x + vx * u), p.z - (a.z + vz * u));
+        if (d < bd) { bd = d; best = l; bs = l.cum[i - 1] + Math.sqrt(l2) * u; }
+      }
+    }
+    let probe: LaneProbe | null = null;
+    if (best) { samplePath(best, bs, sp); probe = { id: best.id, limit: best.speed, dist: bd, dx: sp.dx, dz: sp.dz, toStop: best.length - bs - 5.2, signal: signalState(this.city.intersections[best.intersection], best.axis, t) }; }
+    this.lastProbe = probe;
+    let near = 0; for (const c of this.cars) if (c.v !== pv && c.v.position.distanceToSquared(p) < 625) near++;
+    this.monitor.update(adt, { x: p.x, z: p.z, fx: pv.speed < 0 ? -f.x : f.x, fz: pv.speed < 0 ? -f.z : f.z, speed: Math.abs(pv.speed), beta: Math.abs(pv.phys.beta), nearCars: near, hitCar: this.hitLatch }, probe);
+    this.hitLatch = false;
   }
   /** Taxis hail-and-drop, delivery vans double-park with hazards. Returns the (possibly reduced) target speed. */
   private curbStops(car: AiCar, dt: number, ts: number, f: { x: number; z: number }, t: number): number {
@@ -358,15 +495,20 @@ export class Traffic {
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, maxCars: number) {
     this.maxCars = Math.max(2, Math.round(maxCars * carActivity(this.hour)));
-    // Despawn
+    this.m4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.m4);
+    // Despawn only far away AND out of view (never pop a car out while it can be seen), or a gridlocked car nobody is looking at
+    const seen = (p: THREE.Vector3, d: number) => d < 230 && this.frustum.containsPoint(p);
     for (const car of [...this.cars]) {
       if (car.persistent) continue;
-      if (car.v.position.distanceTo(focus) > 150) { this.cars.splice(this.cars.indexOf(car), 1); this.pop.remove(car.driver); for (const p of car.passengers ?? []) if (p.char.inVehicle === car.v) this.pop.remove(p); this.vehicles.remove(car.v); }
+      const dd = car.v.position.distanceTo(focus), jam = (car.jamT ?? 0) > 20 && dd > 30 && !seen(car.v.position, dd) || (car.jamT ?? 0) > 60 && dd > 70;
+      if (jam) this.stats.jamDespawns++;
+      if (jam || dd > 150 && !seen(car.v.position, dd)) { this.cars.splice(this.cars.indexOf(car), 1); this.pop.remove(car.driver); for (const p of car.passengers ?? []) if (p.char.inVehicle === car.v) this.pop.remove(p); this.vehicles.remove(car.v); }
     }
     for (const v of [...this.vehicles.list]) {
       if (v.persistent || v.driver || this.cars.some(c => c.v === v)) continue;
       if (v.parked) continue;
-      if (v.position.distanceTo(focus) > 170 || (v.destroyed && v.burnTime < 0 && v.position.distanceTo(focus) > 60)) { for (const o of this.pop.npcs.filter(n => n.char.inVehicle === v)) this.pop.remove(o); this.vehicles.remove(v); }
+      const dv = v.position.distanceTo(focus), vis = seen(v.position, dv);
+      if ((dv > 170 && !vis) || dv > 260 || (v.destroyed && v.burnTime < 0 && dv > 60 && !vis)) { for (const o of this.pop.npcs.filter(n => n.char.inVehicle === v)) this.pop.remove(o); this.vehicles.remove(v); }
     }
     // Spawn (candidate lanes near the player, refreshed twice a second)
     this.laneT -= dt;
@@ -378,7 +520,6 @@ export class Traffic {
     const ambient = this.cars.filter(c => c.mode === 'cruise' && !c.persistent).length;
     if (this.spawnT <= 0 && ambient < this.maxCars) {
       this.spawnT = this.prewarming ? 0 : 0.18;
-      this.m4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.m4);
       for (let tries = 0; tries < 12; tries++) {
         if (!this.nearLanes.length) break;
         const lane = this.nearLanes[Math.floor(Math.random() * this.nearLanes.length)];
@@ -415,10 +556,11 @@ export class Traffic {
           const x = ix0 + 4 + (i % 5) * ((ix1 - ix0 - 8) / 4.5), z = r.chance(0.5) ? iz0 + 5 : iz1 - 5;
           if (this.vehicles.list.some(o => Math.hypot(o.position.x - x, o.position.z - z) < 5)) continue;
           const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, z < cz ? 0 : Math.PI, r.int(0, 11), CURB_HEIGHT + 0.25);
+          v.settleParked(CURB_HEIGHT); // settled and asleep: no drop, trucks stay upright
           v.parked = true; v.doorsLocked = r.chance(0.7); v.ignition = false; list.push(v);
         }
         this.parkedBlocks.set(b.id, list);
-      } else if (d > 190 && have) {
+      } else if (d > 190 && have && !have.some(v => this.frustum.containsPoint(v.position))) {
         for (const v of have) if (this.vehicles.list.includes(v) && v.parked && !v.driver) this.vehicles.remove(v);
         this.parkedBlocks.delete(b.id);
       }

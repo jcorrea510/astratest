@@ -89,6 +89,7 @@ export interface UICallbacks {
   onHighway?(): void; // title: the endless highway mode
   onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel
   onResume(): void;
+  onPauseRequest?(): void; // HUD gear button / P key: open the pause + settings menu (Esc also exits fullscreen)
   onQuitToTitle(): void;
   onSaveGame?(): boolean; // pause menu: save now (returns false when the game can't be saved right now)
   onSettingsChanged(s: Settings): void; // apply + persist (game calls saveSettings)

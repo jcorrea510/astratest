@@ -292,6 +292,12 @@ export class Vehicle {
     this.group.quaternion.set(r.x, r.y, r.z, r.w).slerp(this._q.set(q.x, q.y, q.z, q.w), a);
   }
   private _q = new THREE.Quaternion();
+  /** Parked spawn: sits settled on the ground at its rest height and sleeps until touched (no drop, tall trucks don't tip). */
+  settleParked(groundY: number) {
+    const p = this.phys.body.translation();
+    this.phys.settleAt(p.x, groundY, p.z, this.yaw);
+    this.syncTransform();
+  }
   /** 0 = detailed, 1 = far (lighter body, no interior). */
   setLod(l: number) {
     if (l === this.lod || this.ownGeo) return;

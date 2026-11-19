@@ -26,7 +26,7 @@ test('city: street + aerial views, draw calls, shop glass breaks', async ({ page
     const p = wg.panes.find((q: any) => q.inst >= 0);
     const o = new THREE(p.x + Math.sin(p.yaw) * 6, p.y, p.z + Math.cos(p.yaw) * 6), d = new THREE(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const before = wg.isGlassBroken(p.id);
-    m.combat.trace(o, d, 20, null, {});
+    for (let i = 0; i < 3; i++) m.combat.trace(o, d, 20, null, {}); // cracks, then shatters on the third hit
     return { before, after: wg.isGlassBroken(p.id), n: wg.panes.length };
   });
   console.log('glass', JSON.stringify(r));

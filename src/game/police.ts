@@ -6,13 +6,14 @@ import type { Character } from '../actors/character';
 import type { Npc } from '../actors/npc';
 import type { CityMap } from '../world/citymap';
 import type { GameAudio, LoopVoice } from '../ui/contracts';
+import { signalState, nearestLane } from '../world/citymap';
 import { Dispatch, COP_LOOK, wantedUnits, wantsHelicopter, type UnitKind, type DispatchHooks } from './dispatch';
 
-export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft';
+export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft' | 'traffic';
 /** min = star level this crime guarantees once reported; further stars come from sustained fighting (see HeatState.tick). */
 const CRIME: Record<Crime, { min: number }> = {
   robbery: { min: 1 }, assault: { min: 1 }, shooting: { min: 1 }, kill: { min: 2 }, copAttack: { min: 2 }, copKill: { min: 2 },
-  carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 },
+  carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 }, traffic: { min: 1 },
 };
 export { COP_LOOK };
 export type { UnitKind };
@@ -22,6 +23,23 @@ export const ESCALATE = { star3: { combat: 15, copKills: 2 }, star4: { combat: 1
 /** A witness needs this long to dial 911 (civilians), officers radio it in faster. Dispatch then needs HOLD more before a car rolls. */
 export const CALL_DELAY = { civ: [3, 6] as const, cop: 1 };
 export const DISPATCH_HOLD = 14;
+export type ViolationKind = 'red_light' | 'speeding' | 'wrong_way' | 'collision' | 'reckless';
+const COP_KINDS = ['police', 'fbi', 'swat', 'army', 'tank'];
+/** Speeding counts when the player is more than 15 mph (6.7 m/s) over the lane's limit. Pure, unit tested. */
+export const isSpeeding = (speed: number, limit: number) => Math.abs(speed) > limit + 6.7;
+/** A vehicle moving from (px,pz) to (x,z) enters the box of a signalised junction while its light is red. Pure, unit tested. */
+export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz: number, x: number, z: number, time: number): boolean {
+  const dx = x - px, dz = z - pz;
+  if (Math.hypot(dx, dz) < 0.001) return false;
+  for (const it of city.intersections) {
+    if (!it.signalized || Math.abs(x - it.x) > it.halfX + 6 || Math.abs(z - it.z) > it.halfZ + 6) continue;
+    const inNow = Math.abs(x - it.x) < it.halfX && Math.abs(z - it.z) < it.halfZ, inBefore = Math.abs(px - it.x) < it.halfX && Math.abs(pz - it.z) < it.halfZ;
+    if (!inNow || inBefore) continue;
+    const axis: 'x' | 'z' = Math.abs(dz) > Math.abs(dx) ? 'z' : 'x';
+    if (signalState(it, axis, time) === 'red') return true;
+  }
+  return false;
+}
 
 /** Pure heat bookkeeping (unit tested). */
 export class HeatState {
@@ -86,13 +104,30 @@ export class Police {
     }
     for (const c of this.yielded) if (!this.traffic.cars.includes(c)) this.yielded.delete(c);
   }
+  /** clock for traffic signals (Game sets it to the world time Traffic uses) */
+  clock: () => number = () => (this.traffic as unknown as { time?: () => number }).time?.() ?? 0;
+  /** the player's current stolen police vehicle (cops that see the player in it pursue, whatever the heat) */
+  stolenCop: object | null = null; private pendingStolen = false;
+  private heliSeeT = 0; private violT = 0; private vPrev = new THREE.Vector3(); private vPrevOk = false; private limitT = 0; private limit = 14;
+  private bails: { car: AiCar; t: number }[] = [];
+  private violCool = 0; private strictSeen = false; private eyeC = new THREE.Vector3(); private speedT = 0; private violKind: ViolationKind | null = null; private playerFast = false;
+  private extDetector = false;
+  private extDetected: { kind: ViolationKind; pos: THREE.Vector3 } | null = null;
+  /** Anything that detects the player breaking a traffic law reports it here (traffic.ts hook or the built-in detector). */
+  violation(kind: ViolationKind, pos: THREE.Vector3) { this.extDetected = { kind, pos: pos.clone() }; }
+  /** Subscribe to an external violation emitter (traffic.onPlayerTrafficViolation); switches the built-in detector off. */
+  useViolationSource(sub: (cb: (e: { kind: ViolationKind; pos: THREE.Vector3 }) => void) => void) { this.extDetector = true; sub(e => this.violation(e.kind, e.pos)); }
   private arrived = new Set<AiCar>();
   private progress = new Map<AiCar, { best: number; t: number }>();
   private siren: LoopVoice | null = null;
   /** seconds of rapid unit dispatch left (stolen helicopter) */
   rushT = 0;
   onHeatChange: ((heat: number, lost: boolean) => void) | null = null;
-  constructor(private city: CityMap, private pop: Population, private traffic: Traffic, private audio: GameAudio, private scene: THREE.Scene) { this.dispatch = new Dispatch(city, pop, traffic, scene); }
+  constructor(private city: CityMap, private pop: Population, private traffic: Traffic, private audio: GameAudio, private scene: THREE.Scene) {
+    this.dispatch = new Dispatch(city, pop, traffic, scene);
+    const sub = (traffic as unknown as { onPlayerTrafficViolation?: (cb: (e: { kind: ViolationKind; pos: THREE.Vector3 }) => void) => void }).onPlayerTrafficViolation;
+    if (typeof sub === 'function') this.useViolationSource(cb => sub.call(traffic, cb));
+  }
   setHooks(h: DispatchHooks) { this.dispatch.hooks = h; }
   /** Cops use lethal force at 3+ stars, or at 2 once the player has been violent. */
   get lethal() { return this.state.heat >= 3 || (this.state.heat === 2 && this.violentT > 0); }
@@ -122,6 +157,7 @@ export class Police {
     return best;
   }
   report(crime: Crime, at: THREE.Vector3) {
+    if (crime === 'copCarTheft') this.pendingStolen = true;
     // Officers on scene react to violence at once, but the heat only rises once somebody has seen it and called it in.
     if (Police.VIOLENT.includes(crime)) this.violentT = 30;
     if (crime === 'shooting') { // one witness scan per half second: shots are reported every trigger pull
@@ -173,6 +209,7 @@ export class Police {
   }
   /** A crime reported by an alarm or a phone call: no witness check. */
   alarm(crime: Crime, at: THREE.Vector3) {
+    if (crime === 'copCarTheft') this.pendingStolen = true;
     this.call911(crime, at);
     if (crime === 'heliTheft' || crime === 'policeHeliTheft') { this.rushT = 40; this.spawnT = 0; this.violentT = 30; }
   }
@@ -182,32 +219,131 @@ export class Police {
     this.pending.length = 0; this.holdT = 0;
   }
   private standDown() {
-    this.arrived.clear();
+    this.arrived.clear(); this.bails.length = 0;
     this.progress.clear();
     for (const u of this.units) { u.mode = 'cruise'; u.target = null; u.v.siren = false; u.persistent = false; u.v.persistent = false; u.ram = false; }
     this.units.length = 0; this.dispatch.standDown();
     for (const n of this.foot) { n.brain = 'wander'; n.node = -1; n.target = null; n.persistent = false; }
     this.foot.length = 0;
   }
+  private adopt(car: AiCar, target: THREE.Vector3) {
+    if (this.units.includes(car) || this.dispatch.kindOf(car) !== 'police' && this.dispatch.kinds.has(car)) return;
+    this.units.push(car); this.dispatch.kinds.set(car, 'police');
+    car.patrol = false; car.persistent = true; car.v.persistent = true; car.v.siren = true; car.mode = 'pursuit'; car.target = target.clone();
+  }
+  /** Built-in traffic-law detector (red light, speeding); an external source (useViolationSource) replaces it. */
+  private detectViolation(dt: number, pv: { position: THREE.Vector3; speed: number; kind?: string } | null) {
+    if (this.extDetected) { this.violKind = this.extDetected.kind; this.violT = 2; this.extDetected = null; }
+    if (!pv || pv.kind === 'helicopter' || (pv as { siren?: boolean }).siren && COP_KINDS.includes(pv.kind ?? '')) { this.vPrevOk = false; this.speedT = 0; return; }
+    if (!this.extDetector) {
+      const p = pv.position;
+      this.limitT -= dt;
+      if (this.limitT <= 0) { this.limitT = 0.5; const nl = nearestLane(this.city, p.x, p.z, true); this.limit = nl && nl.dist < 7 && !nl.lane.connector ? nl.lane.speed : 99; }
+      this.speedT = isSpeeding(pv.speed, this.limit) ? this.speedT + dt : 0;
+      if (this.speedT > 1) { this.violKind = 'speeding'; this.violT = 2; }
+      if (this.vPrevOk && Math.abs(pv.speed) > 3 && ranRedLight(this.city, this.vPrev.x, this.vPrev.z, p.x, p.z, this.clock())) { this.violKind = 'red_light'; this.violT = 2; }
+      this.vPrev.copy(p); this.vPrevOk = true;
+    }
+  }
+  private trackStolen(pv: { kind?: string; stolenPolice?: boolean } | null) {
+    const cop = !!pv && COP_KINDS.includes(pv.kind ?? '');
+    if (cop && this.pendingStolen) { pv!.stolenPolice = true; this.pendingStolen = false; }
+    this.stolenCop = cop && pv!.stolenPolice ? pv : null;
+  }
+  /** Runs on every sight scan: stolen police car spotted, traffic violation witnessed, ambient patrol cars that see the player join in. */
+  private onScan(strict: boolean, watchers: AiCar[], pv: { speed: number } | null, pp: THREE.Vector3) {
+    const st = this.state;
+    this.playerFast = !!pv && Math.abs(pv.speed) > 8;
+    if (strict && this.stolenCop && st.heat < 2) { // a cop recognises the stolen cruiser: at least 2 stars, again and again until the player is out of sight
+      st.heat = 2; st.lastSeen.copy(pp); st.unseenT = 0; this.violentT = Math.max(this.violentT, 0);
+      if (this.units.length === 0) this.holdT = Math.min(this.holdT || 4, 4);
+      this.audio.play('heatUp'); this.onHeatChange?.(2, false);
+    }
+    if (strict && this.violT > 0 && this.violCool <= 0) {
+      this.violT = 0; this.violCool = 12;
+      if (st.heat === 0) { // witnessed: one star and a pull-over attempt with lights and siren
+        if (st.add('traffic')) { this.audio.play('heatUp'); this.onHeatChange?.(1, false); }
+        st.lastSeen.copy(pp); st.unseenT = 0; this.holdT = this.units.length ? 0 : 5;
+      }
+    }
+    if (st.heat > 0) for (const c of watchers) if (c.driver.alive && c.mode !== 'park') this.adopt(c, pp);
+  }
+  /** The player shot at a police car (or an officer inside it): the crew reacts at once. */
+  onVehicleShot(v: unknown) {
+    const car = this.traffic.carOf(v as never);
+    if (!car || car.driver.role !== 'police' || !car.driver.alive || this.bails.some(b => b.car === car)) return;
+    const pp = this.lastPlayerPos;
+    this.violentT = 30;
+    this.adopt(car, pp);
+    if (this.state.heat < 2) { this.state.add('copAttack'); this.state.lastSeen.copy(pp); this.state.unseenT = 0; this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); if (this.units.length <= 1) this.holdT = Math.min(this.holdT || 3, 3); }
+    if (this.playerFast) return; // the player is driving off: the crew chases instead
+    if (this.dispatch.kindOf(car) !== 'police') return;
+    car.maxSpeed = 0.4; // brake now
+    this.bails.push({ car, t: 0.7 });
+  }
+  /** Called when the player's bullet hit an officer; a seated officer counts as a shot at the car. */
+  copHit(n: Npc) { const v = n.char.inVehicle; if (v) this.onVehicleShot(v); }
+  private updateBails(dt: number) {
+    for (let i = this.bails.length - 1; i >= 0; i--) {
+      const b = this.bails[i]; b.t -= dt; if (b.t > 0) continue;
+      this.bails.splice(i, 1);
+      const car = b.car; car.maxSpeed = undefined;
+      if (!this.traffic.cars.includes(car)) continue;
+      const v = car.v, pp = this.lastPlayerPos;
+      const side: 1 | -1 = v.doorPoint(1).distanceTo(pp) >= v.doorPoint(-1).distanceTo(pp) ? 1 : -1; // exit on the far side: the car is the cover
+      v.setDoor(v.doorIndex(side === 1 ? 'left' : 'right'), 1);
+      for (const cop of this.dispatch.bail(car, side)) {
+        this.dispatch.arm(cop, 'police', Math.max(2, this.state.heat), true); this.foot.push(cop);
+        cop.char.human.playAction('exit_car', { rate: 2 });
+        cop.coverPoint = cop.goal = v.doorPoint(side).clone(); cop.crouching = true;
+      }
+    }
+  }
   update(dt: number, player: Character, playerInVehicle: boolean, camera: THREE.Camera) {
     const st = this.state;
-    // Line of sight from any officer (on foot or driving); re-evaluated 4x per second, the result is held in between
-    this.seeT -= dt;
+    // Line of sight from any officer (on foot or driving), any helicopter with eyes on the player; re-evaluated 4x per second, held in between
+    this.seeT -= dt; this.violCool = Math.max(0, this.violCool - dt); this.violT = Math.max(0, this.violT - dt); this.heliSeeT = Math.max(0, this.heliSeeT - dt);
     const pp = player.pos;
+    const pvAny = player.inVehicle as { position: THREE.Vector3; speed: number; kind?: string; stolenPolice?: boolean } | null;
+    this.detectViolation(dt, pvAny);
+    this.trackStolen(pvAny);
     if (this.seeT <= 0) {
       this.seeT = 0.25;
-      let seen = false;
+      let seen = false, strict = false;
+      this.eyeB.set(pp.x, pp.y + 1.2, pp.z);
+      const watchers: AiCar[] = [];
       for (const n of this.pop.npcs) {
         if (!n.alive || n.role !== 'police') continue;
         // an officer riding in a car is where the car is (their own position is not updated while seated)
         const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
-        const d = (car ? car.position : n.pos).distanceTo(pp);
-        if (car ? d < 55 : d < 65 && n.losT > 0) { seen = true; break; }
-        if (car && d < 90) { this.eyeA.copy(car.position); this.eyeA.y += 1.4; this.eyeB.set(pp.x, pp.y + 1.2, pp.z); if (this.pop.runner.hasLOS(this.eyeA, this.eyeB)) { seen = true; break; } }
+        const at = car ? car.position : n.pos, d = at.distanceTo(pp);
+        if (d > 90) continue;
+        let sees = false;
+        if (car ? d < 55 : d < 65 && n.losT > 0) sees = true;
+        let ls = false;
+        if (d < 8) ls = true;
+        else if (d < (car ? 90 : 65)) { this.eyeA.set(at.x, at.y + (car ? 1.4 : 1.6), at.z); ls = this.pop.runner.hasLOS(this.eyeA, this.eyeB); }
+        if (ls) { sees = true; strict = true; if (car) { const ac = this.traffic.carOf(car as never); if (ac && !watchers.includes(ac)) watchers.push(ac); } }
+        if (sees) seen = true;
       }
+      // a police helicopter keeps the player in its spotlight until something solid is between them
+      const hl = this.dispatch.heli;
+      if (hl && !hl.destroyed) {
+        const hp = hl.position, hd = Math.hypot(hp.x - pp.x, hp.z - pp.z);
+        if (hd < 200) {
+          this.eyeA.set(hp.x, hp.y - 2.5, hp.z);
+          const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
+          if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
+          if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = 2.5; strict = true; }
+        }
+      }
+      if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
+      this.strictSeen = strict;
+      this.onScan(strict, watchers, pvAny, pp);
     }
     const seen = this.seenNow;
+    this.updateBails(dt);
     this.tickCalls(dt); this.yieldTraffic(dt, player.inVehicle as never);
     const lost = st.tick(dt, seen, pp, this.violentT > 0);
     if (st.raised) { this.audio.play('heatUp'); this.onHeatChange?.(st.heat, false); }

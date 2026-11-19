@@ -121,7 +121,7 @@ class Kit {
 // ---------------------------------------------------------------- families
 interface PistolOpt { slide: number; front: number; h: number; w: number; grip: number; mat?: Mat; frame?: Mat; comp?: boolean; ext?: number; auto?: boolean }
 /** Semi-auto pistol: slide with serrations, frame with dust-cover rail, trigger guard, angled grip, flush magazine. */
-function pistol(k: Kit, o: PistolOpt) {
+function pistol(k: Kit, o: PistolOpt): Built {
   const top = 0.04 + o.h, back = -o.slide * 0.32, fr = back + o.slide, by = 0.04 + o.h * 0.55;
   const fm = o.frame ?? 'polymer', sm = o.mat ?? 'steel';
   k.in('slide', () => {
@@ -147,7 +147,7 @@ function pistol(k: Kit, o: PistolOpt) {
   // magazine baseplate (moves with the magazine)
   k.in('mag', () => { const b = gp(1, 0); k.box(0, b[1] - 0.004, b[0] - 0.002, o.w * 1.1, 0.008, 0.036, sm === 'chrome' ? 'chrome' : 'steel', ang); k.box(0, b[1] + 0.03, b[0] + 0.006, o.w * 0.7, 0.06, 0.026, 'steel', ang); });
   if (o.auto) k.box(-o.w / 2 - 0.003, 0.03, back + 0.02, 0.004, 0.008, 0.012, 'steel'); // selector
-  return { muzzle: new THREE.Vector3(0, by, fr + 0.004 + (o.ext ?? 0) + (o.comp ? 0.037 : 0)), eject: new THREE.Vector3(0.02, top - 0.01, back + o.slide * 0.62) };
+  return { muzzle: new THREE.Vector3(0, by, fr + 0.004 + (o.ext ?? 0) + (o.comp ? 0.037 : 0)), eject: new THREE.Vector3(0.02, top - 0.01, back + o.slide * 0.62), grip: new THREE.Vector3(0, 0.004 - Math.cos(ang) * 0.5 * g, -0.012 - Math.sin(ang) * 0.5 * g) };
 }
 
 interface LongOpt {
@@ -157,7 +157,7 @@ interface LongOpt {
   optic?: 'irons' | 'dot' | 'scope' | 'none'; scopeLen?: number; furniture?: Mat; muzzle?: 'brake' | 'flash' | 'can' | 'none'; carry?: boolean; bipod?: boolean;
 }
 /** Long gun: receiver, pistol grip, handguard, barrel + muzzle device, stock, magazine and optic. */
-function longGun(k: Kit, o: LongOpt) {
+function longGun(k: Kit, o: LongOpt): Built {
   const [r0, r1] = o.recv, h = o.recvH, w = o.w ?? 0.034, by = 0.06, f = o.furniture ?? 'polymer';
   const top = by + h * 0.45;
   // upper / lower receiver
@@ -236,11 +236,15 @@ function longGun(k: Kit, o: LongOpt) {
     }
   });
   if (o.bipod) { for (const s of [-1, 1]) { const g = new THREE.CylinderGeometry(0.005, 0.005, 0.2, 6); g.rotateX(-0.25); g.rotateZ(s * 0.1); g.translate(s * 0.01, by - 0.11, g1 - 0.03); k.parts.push({ geo: g, mat: 'steel', group: 'body' }); } }
-  return { muzzle: new THREE.Vector3(0, by, mz + 0.003), eject: new THREE.Vector3(w / 2 + 0.01, by + 0.005, r0 + (r1 - r0) * 0.6) };
+  // hold anchors: butt = back of the stock (shoulder pocket), support = palm centre of the fore hand (under the handguard)
+  const butt = o.stock === 'folded' || o.stock === 'none' ? undefined : new THREE.Vector3(0, by - 0.03, r0 - sl - 0.005);
+  const support = new THREE.Vector3(0, o.guard ? by - gr * 0.95 : by - h * 0.55 - 0.01, o.guard ? (g0 + g1) / 2 : r1 + 0.03);
+  return { muzzle: new THREE.Vector3(0, by, mz + 0.003), eject: new THREE.Vector3(w / 2 + 0.01, by + 0.005, r0 + (r1 - r0) * 0.6), butt, support, grip: new THREE.Vector3(0, -0.048, -0.008) };
 }
 
 interface ModelInfo { group: THREE.Group; muzzle: THREE.Vector3; eject: THREE.Vector3 }
-const BUILDERS: Partial<Record<WeaponId, (k: Kit) => { muzzle: THREE.Vector3; eject: THREE.Vector3 }>> = {
+type Built = { muzzle: THREE.Vector3; eject: THREE.Vector3; butt?: THREE.Vector3; support?: THREE.Vector3; grip?: THREE.Vector3 };
+const BUILDERS: Partial<Record<WeaponId, (k: Kit) => Built>> = {
   knife: k => {
     k.prof([[0.0, 0.014], [0.105, 0.016], [0.112, 0.01], [0.105, -0.004], [0.04, -0.012], [0.0, -0.01]], 0.017, 'polymer', 0.004);
     k.prof([[0.105, 0.012], [0.235, 0.008], [0.245, 0.0], [0.2, -0.012], [0.105, -0.012]], 0.004, 'chrome', 0.0012);
@@ -285,13 +289,14 @@ const BUILDERS: Partial<Record<WeaponId, (k: Kit) => { muzzle: THREE.Vector3; ej
     k.prof([[0.024, 0.012], [0.07, 0.012], [0.07, -0.012], [0.03, -0.016], [0.03, -0.01], [0.064, -0.007], [0.064, 0.006], [0.024, 0.006]], 0.008, 'steel', 0.0015);
     k.prof([[-0.044, by + 0.024], [-0.075, by + 0.008], [-0.062, -0.095], [-0.022, -0.1], [-0.008, -0.03], [0.002, 0.016], [-0.046, 0.018]], 0.04, 'wood', 0.008); // sawed-off pistol-grip stock
     k.prof([[-0.04, by + 0.03], [-0.03, by + 0.04], [-0.012, by + 0.03], [-0.02, by + 0.022]], 0.01, 'steel', 0.002); // hammers
-    return { muzzle: new THREE.Vector3(0, by, 0.345), eject: new THREE.Vector3(0.02, by + 0.02, 0.05) };
+    return { muzzle: new THREE.Vector3(0, by, 0.345), eject: new THREE.Vector3(0.02, by + 0.02, 0.05), support: new THREE.Vector3(0, by - 0.035, 0.17), grip: new THREE.Vector3(0, -0.04, -0.03) };
   },
   shotgun: k => {
     const r = longGun(k, { recv: [-0.08, 0.13], recvH: 0.062, w: 0.036, barrel: 0.66, br: 0.011, stock: 'wood', stockLen: 0.32, stockMat: 'wood', mag: 'none', optic: 'none', muzzle: 'none', furniture: 'polymer' });
     k.cyl(0.0105, 0.13, 0.6, 0.06 - 0.024, 'steel', 12); k.cyl(0.012, 0.59, 0.62, 0.06 - 0.024, 'steel', 12);
     k.box(0, 0.06 + 0.014, 0.645, 0.006, 0.01, 0.006, 'brass');
     k.in('pump', () => { k.prof([[0.22, 0.06 - 0.008], [0.42, 0.06 - 0.008], [0.42, 0.06 - 0.045], [0.22, 0.06 - 0.045]], 0.048, 'wood', 0.008); for (let i = 0; i < 6; i++) k.box(0, 0.06 - 0.046, 0.25 + i * 0.028, 0.044, 0.003, 0.008, 'polymer'); });
+    r.support = new THREE.Vector3(0, 0.0, 0.32); // palm round the pump slide
     return r;
   },
   autoShotgun: k => longGun(k, { recv: [-0.09, 0.2], recvH: 0.075, w: 0.04, barrel: 0.55, br: 0.011, guard: 0.18, guardR: 0.026, stock: 'fixed', stockLen: 0.26, mag: 'drum', magZ: 0.12, optic: 'dot', muzzle: 'brake', carry: false }),
@@ -314,7 +319,7 @@ const BUILDERS: Partial<Record<WeaponId, (k: Kit) => { muzzle: THREE.Vector3; ej
     k.prof([[0.02, 0.012], [0.03, 0.005], [-0.005, -0.1], [-0.042, -0.098], [-0.03, -0.06], [-0.022, 0.012]], 0.03, 'polymer', 0.005);
     k.cyl(0.015, -0.32, -0.06, by, 'steel', 10); k.box(0, by - 0.02, -0.32, 0.04, 0.11, 0.016, 'polymer');
     k.redDot(0.03, by + 0.036);
-    return { muzzle: new THREE.Vector3(0, by, 0.53), eject: new THREE.Vector3(0.03, by, 0.2) };
+    return { muzzle: new THREE.Vector3(0, by, 0.53), eject: new THREE.Vector3(0.03, by, 0.2), butt: new THREE.Vector3(0, by, -0.33), support: new THREE.Vector3(0, by - 0.065, 0.405) };
   },
   rpg: k => {
     const by = 0.1;
@@ -325,7 +330,7 @@ const BUILDERS: Partial<Record<WeaponId, (k: Kit) => { muzzle: THREE.Vector3; ej
     k.prof([[0.2, 0.06], [0.23, 0.06], [0.215, -0.07], [0.185, -0.068]], 0.03, 'polymer', 0.005);
     k.box(-0.055, by + 0.03, 0.05, 0.03, 0.05, 0.1, 'steel'); k.box(-0.055, by + 0.055, 0.0, 0.03, 0.02, 0.025, 'lens');
     k.box(0, by + 0.06, -0.15, 0.03, 0.02, 0.2, 'wood');
-    return { muzzle: new THREE.Vector3(0, by, 0.4), eject: new THREE.Vector3() };
+    return { muzzle: new THREE.Vector3(0, by, 0.4), eject: new THREE.Vector3(), butt: new THREE.Vector3(0, by, -0.3), support: new THREE.Vector3(0, -0.02, 0.207) };
   },
   grenade: k => {
     k.latheY([[0, -0.045], [0.022, -0.042], [0.031, -0.025], [0.033, 0.0], [0.029, 0.025], [0.016, 0.04], [0.013, 0.05], [0, 0.05]], 'olive', 14, 0, 0.0);
@@ -342,13 +347,14 @@ const BUILDERS: Partial<Record<WeaponId, (k: Kit) => { muzzle: THREE.Vector3; ej
   },
 };
 
-const CACHE = new Map<WeaponId, { proto: THREE.Group; muzzle: THREE.Vector3; eject: THREE.Vector3 }>();
+type Cached = { proto: THREE.Group; muzzle: THREE.Vector3; eject: THREE.Vector3; butt: THREE.Vector3 | null; support: THREE.Vector3 | null; grip: THREE.Vector3 };
+const CACHE = new Map<WeaponId, Cached>();
 function proto(id: WeaponId) {
   let c = CACHE.get(id);
   if (!c) {
     const b = BUILDERS[id];
-    if (!b) { c = { proto: new THREE.Group(), muzzle: new THREE.Vector3(), eject: new THREE.Vector3() }; }
-    else { const k = new Kit(); const r = b(k); c = { proto: k.build(id), muzzle: r.muzzle, eject: r.eject }; }
+    if (!b) { c = { proto: new THREE.Group(), muzzle: new THREE.Vector3(), eject: new THREE.Vector3(), butt: null, support: null, grip: new THREE.Vector3(0, -0.045, 0) }; }
+    else { const k = new Kit(); const r = b(k); c = { proto: k.build(id), muzzle: r.muzzle, eject: r.eject, butt: r.butt ?? null, support: r.support ?? null, grip: r.grip ?? new THREE.Vector3(0, -0.045, 0) }; }
     CACHE.set(id, c);
   }
   return c;
@@ -359,6 +365,7 @@ export function weaponMesh(id: WeaponId): THREE.Group {
   const c = proto(id);
   const g = c.proto.clone(true);
   g.userData.muzzle = c.muzzle.clone(); g.userData.eject = c.eject.clone(); g.userData.weapon = id;
+  g.userData.anchors = { grip: c.grip.clone(), butt: c.butt?.clone() ?? null, support: c.support?.clone() ?? null } satisfies WeaponAnchors;
   g.traverse(o => { o.userData.rest = o.position.clone(); o.userData.restRot = o.rotation.clone(); });
   return g;
 }
@@ -373,5 +380,10 @@ export function weaponParts(g: THREE.Group): WeaponParts {
 /** Muzzle point of a placed model instance in world space. */
 export function muzzleWorld(g: THREE.Object3D, out: THREE.Vector3): THREE.Vector3 {
   return out.copy((g.userData.muzzle as THREE.Vector3) ?? new THREE.Vector3(0, 0.06, 0.3)).applyMatrix4(g.matrixWorld);
+}
+/** Where hands and shoulder meet a model (gun space): grip = firing-hand palm centre, butt = stock end, support = fore-hand palm centre. */
+export interface WeaponAnchors { grip: THREE.Vector3; butt: THREE.Vector3 | null; support: THREE.Vector3 | null }
+export function weaponAnchors(g: THREE.Object3D): WeaponAnchors {
+  return (g.userData.anchors as WeaponAnchors | undefined) ?? { grip: new THREE.Vector3(0, -0.045, 0), butt: null, support: null };
 }
 export type { ModelInfo };

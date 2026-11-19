@@ -254,3 +254,22 @@ describe('Broadway', () => {
     for (const l of city.lots) if (l.blockId >= 0 && city.blocks[l.blockId].diag) expect(Math.abs(((l.x + 250) - (l.z + 200)) * Math.SQRT1_2) > 8 || l.x > 0, `lot ${l.id}`).toBe(true);
   });
 });
+
+describe('traffic signal posts', () => {
+  it('stand on a sidewalk corner, never inside a roadway or crosswalk band', async () => {
+    const { signalPosts } = await import('./signals');
+    const posts = signalPosts(city);
+    expect(posts.length).toBeGreaterThan(100);
+    for (const p of posts) {
+      for (const [ox, oz] of [[0, 0], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4]]) {
+        expect(surfaceAt(city, p.x + ox, p.z + oz), `post at ${p.x.toFixed(1)},${p.z.toFixed(1)} inter ${p.inter}`).not.toBe('road');
+      }
+      const inter = city.intersections[p.inter];
+      // outside the cross street's crosswalk band and the avenue's kerb
+      const alongHalf = p.axis === 'z' ? inter.halfZ : inter.halfX, acrossHalf = p.axis === 'z' ? inter.halfX : inter.halfZ;
+      const along = p.axis === 'z' ? Math.abs(p.z - inter.z) : Math.abs(p.x - inter.x);
+      const across = p.axis === 'z' ? Math.abs(p.x - inter.x) : Math.abs(p.z - inter.z);
+      expect(along).toBeGreaterThan(alongHalf + 1); expect(across).toBeGreaterThan(acrossHalf + 0.5);
+    }
+  });
+});

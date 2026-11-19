@@ -76,6 +76,7 @@ export class UI implements GameUI {
   private hud: Hud | null = null;
   private fullmap: FullMap | null = null;
   private hudLayer: HTMLDivElement;
+  private gearBtn: HTMLButtonElement | null = null;
   private bottomStack: HTMLDivElement;
   private notices = new Notices();
   private wheel: Wheel;
@@ -209,6 +210,10 @@ export class UI implements GameUI {
     if (this.hud) { this.hud.el.remove(); this.hud.objectiveEl.remove(); }
     this.hud = new Hud(opts.city, painter);
     this.hudLayer.appendChild(this.hud.el);
+    this.gearBtn?.remove();
+    this.gearBtn = button('ma-gear', '\u2699', { onClick: () => { this.sound('click'); this.callbacks.onPauseRequest?.(); } });
+    this.gearBtn.title = `Settings / pause (${this.keyFor('pause')})`; this.gearBtn.setAttribute('aria-label', 'Open settings');
+    this.hudLayer.appendChild(this.gearBtn);
     this.bottomStack.appendChild(this.hud.objectiveEl);
     if (this.fullmap) this.fullmap.el.remove();
     this.fullmap = new FullMap(opts.city, painter, (x, z) => this.callbacks.onSetWaypoint(x, z), () => this.popLayer('map'), k => this.sound(k));

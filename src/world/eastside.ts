@@ -10,6 +10,8 @@ import { distToPath } from './westside';
 
 /** Eastbank Green (no lots inside). */
 export const EAST_PARK = { x0: 790, x1: 900, z0: 272, z1: 378, name: 'Eastbank Green' };
+/** Riverside park on the esplanade (no lots inside). */
+export const EAST_RIVERPARK = { x0: 698, x1: 736, z0: 300, z1: 372, name: 'Brookhaven Landing' };
 /** Piers into the river (z of each; they start at the bank and run west). */
 export const EAST_PIERS = [-10, 170, 250, 550, 700, 850];
 
@@ -20,9 +22,10 @@ export function genEastLots(paths: PathRoad[], startId: number, rng: Rng, sidewa
   const streets = roads.filter(p => p.kind === 'street');
   const out: Lot[] = [];
   const placed: { x: number; z: number; r: number }[] = [];
-  const X0 = 722, X1 = EAST_SHORE.x1 - 8, Z0 = EAST_SHORE.z0 + 26, Z1 = EAST_SHORE.z1 - 14;
+  const X0 = 700, X1 = EAST_SHORE.x1 - 8, Z0 = EAST_SHORE.z0 + 26, Z1 = EAST_SHORE.z1 - 14;
   const ok = (x: number, z: number, rad: number, own: PathRoad | null, depth = 0) => {
     if (x < X0 || x > X1 || z < Z0 || z > Z1) return false;
+    if (x > EAST_RIVERPARK.x0 - rad && x < EAST_RIVERPARK.x1 + rad && z > EAST_RIVERPARK.z0 - rad && z < EAST_RIVERPARK.z1 + rad) return false;
     if (x > EAST_PARK.x0 - rad && x < EAST_PARK.x1 + rad && z > EAST_PARK.z0 - rad && z < EAST_PARK.z1 + rad) return false;
     for (const pp of roads) { const dd = distToPath(pp, x, z); if (dd < pp.half + sidewalk + (pp === own ? depth * 0.5 * 0.85 : rad * 1.1) + 0.5) return false; }
     for (const o of placed) if (Math.hypot(x - o.x, z - o.z) < o.r + rad) return false;
@@ -38,6 +41,17 @@ export function genEastLots(paths: PathRoad[], startId: number, rng: Rng, sidewa
     if (t < 0.6) return { kind: 'brownstone', w: rng.range(8.5, 12), d: rng.range(10, 13), height: rng.range(9, 16) };
     return { kind: 'midrise', w: rng.range(13, 19), d: rng.range(11, 15), height: rng.range(13, 22) };
   };
+  // waterfront row: lofts, warehouses and midrises standing behind the esplanade, fronts to the river
+  for (let z = Z0 + 4; z < Z1 - 12;) {
+    const ind = industrial(710, z);
+    const spec = ind || rng.chance(0.5) ? { kind: 'warehouse' as LotKind, w: rng.range(20, 30), d: rng.range(15, 21), height: rng.range(8.5, 13) } : { kind: 'midrise' as LotKind, w: rng.range(16, 24), d: rng.range(13, 17), height: rng.range(16, 30) };
+    const x = 699.5 + spec.d / 2, zc = z + spec.w / 2;
+    const rad = Math.hypot(spec.w, spec.d) / 2 * 0.92;
+    z += spec.w + rng.range(2, 5);
+    if (EAST_PIERS.some(pz => Math.abs(pz - zc) < spec.w / 2 + 8)) continue;
+    if (!ok(x, zc, rad, null) || !ok(x, zc - spec.w * 0.4, 2, null) || !ok(x, zc + spec.w * 0.4, 2, null)) continue;
+    make(x, zc, -Math.PI / 2, spec.w, spec.d, spec.kind, spec.height, false);
+  }
   // frontage rows along the streets
   for (const pp of streets) {
     let acc = 0;

@@ -37,7 +37,7 @@ export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas
 export function storeAt(x: number, z: number): Store | undefined { return STORES.find(s => Math.hypot(s.x - x, s.z - z) < 1); }
 
 /** Metro Police precinct building (replaces the street lots it covers; rooftop helipad). Front faces north onto 5th St. */
-export const POLICE_STATION = { x: 22.8, z: 113.9, w: 31.5, d: 10, yaw: Math.PI, name: 'Metro Police Precinct 4' };
+export const POLICE_STATION = { x: 20, z: 136, w: 32, d: 18, yaw: Math.PI, name: 'Metro Police Precinct 4' };
 
 /** Helicopter landing pads (y = deck height). Filled in for rooftop pads by the city build; ground pads are fixed. */
 export interface HelipadSpot { x: number; y: number; z: number; name: string }

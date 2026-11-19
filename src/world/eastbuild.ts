@@ -6,9 +6,9 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import { type CityMap, EAST_BRIDGE_TOWERS, EAST_BRIDGE_ZS, EAST_DECK_Y, EAST_RIVER, EAST_SHORE, HARBOR_X, pathHeightAt, SIDEWALK } from './citymap';
-import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH } from './builders';
+import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH, T_PAINT } from './builders';
 import { Rng } from '../core/rng';
-import { EAST_PARK, EAST_PIERS } from './eastside';
+import { EAST_PARK, EAST_PIERS, EAST_RIVERPARK } from './eastside';
 
 const C = (h: string) => new THREE.Color(h);
 export interface EastCtx {
@@ -73,8 +73,56 @@ export function buildEast(o: EastCtx) {
     for (let z = EAST_SHORE.z0 + 30; z < EAST_SHORE.z1 - 20; z += 26) if (!nearRoad(EAST_SHORE.x0 + 7, z, 6) && !EAST_PIERS.some(pz => Math.abs(pz - z) < 9)) o.addTree(EAST_SHORE.x0 + 7, -0.05, z, r.range(0, 6.28), r.range(0.9, 1.3), r);
   }
 
+  waterfront(o, nearRoad);
+
   // ---- suspension bridges
   for (const bz of EAST_BRIDGE_ZS) suspension(o, bz);
+}
+
+/** River esplanade life: lamps, benches and plane trees along the whole bank, pier sheds and stacked containers, and a riverside park. */
+function waterfront(o: EastCtx, nearRoad: (x: number, z: number, m: number) => boolean) {
+  const { physics, trim } = o;
+  const r = new Rng(5521), X = EAST_SHORE.x0;
+  const lamp = C('#2b2e31'), warm = C('#fff1d6');
+  const pierAt = (z: number, m: number) => EAST_PIERS.some(pz => Math.abs(pz - z) < m);
+  const bridgeAt = (z: number) => EAST_BRIDGE_ZS.some(bz => Math.abs(bz - z) < 14);
+  for (let z = EAST_SHORE.z0 + 16; z < EAST_SHORE.z1 - 12; z += 18) {
+    if (nearRoad(X + 4, z, 2) || pierAt(z, 9) || bridgeAt(z)) continue;
+    const t = trim.at(X, z);
+    t.cyl(X + 5.4, 0.0, z, 0.07, 0.05, 4.2, 8, lamp, T_METAL); t.beam(X + 5.4, 4.1, z, X + 4.4, 4.3, z, 0.05, 0.05, lamp, T_METAL); t.box(X + 4.3, 4.3, z, 0.7, 0.12, 0.3, 0, C('#202325'), T_METAL); t.box(X + 4.3, 4.23, z, 0.5, 0.03, 0.2, 0, warm, [0.4, 0, 3, 5]);
+    if (Math.round(z / 18) % 2 === 0) { t.box(X + 3.2, 0.45, z + 4, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); t.box(X + 3.0, 0.7, z + 4, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); t.box(X + 3.2, 0.2, z + 4, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
+    else if (!nearRoad(X + 8, z + 9, 6)) o.addTree(X + 8, -0.05, z + 9, r.range(0, 6.28), r.range(1.0, 1.4), r);
+  }
+  // pier sheds and container stacks (every other pier)
+  const boxCols = ['#b23a2e', '#2f5d8a', '#c98a2b', '#3f7a4a', '#7a7d80'].map(c => C(c));
+  EAST_PIERS.forEach((z, k) => {
+    if (z < EAST_SHORE.z0 + 20) return;
+    const x0 = X + 2, len = 38;
+    const t = trim.at(x0 - len / 2, z);
+    if (k % 2 === 1) {
+      const sx = x0 - 14, sz = 20, sw = 7;
+      t.box(sx, 3.2, z, sz, 6.2, sw, 0, C('#8d8b84'), T_ROUGH); t.box(sx, 6.5, z, sz + 0.6, 0.35, sw + 0.8, 0, C('#5d6a70'), T_METAL);
+      t.box(sx + sz / 2 + 0.03, 2.0, z, 0.06, 3.4, 4.2, 0, C('#4a4f52'), T_METAL);
+      physics.addStaticBox(sx, 3.2, z, sz / 2, 3.2, sw / 2);
+    } else {
+      for (let c = 0; c < 6; c++) { const cx = x0 - 8 - (c % 3) * 6.4, cz = z + (c < 3 ? -2.4 : 2.4); t.box(cx, 1.3 + (c === 1 ? 2.6 : 0), cz, 6.0, 2.5, 2.4, 0, boxCols[(c + k) % 5], T_METAL); }
+      physics.addStaticBox(x0 - 14.4, 1.3, z, 9.6, 1.3, 4.8);
+      t.box(x0 - 14.4, 3.9, z - 2.4, 6.0, 2.5, 2.4, 0, boxCols[(k + 2) % 5], T_METAL);
+    }
+  });
+  // Brookhaven Landing: lawn, curving paths, trees, benches, a gazebo and a lawn-edge walk
+  const P = EAST_RIVERPARK, cx = (P.x0 + P.x1) / 2, cz = (P.z0 + P.z1) / 2, w = P.x1 - P.x0, d = P.z1 - P.z0, t = trim.at(cx, cz);
+  const lawn = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), o.grassMat); lawn.position.set(cx, 0.035, cz); lawn.receiveShadow = true; o.root.add(lawn);
+  t.box(cx, 0.045, cz, 4, 0.04, d - 4, 0, C('#cfc6b2'), T_STONE); t.box(cx, 0.047, cz, w - 4, 0.04, 4, 0, C('#cfc6b2'), T_STONE);
+  for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2; t.box(cx + Math.cos(a) * 7, 0.045, cz + Math.sin(a) * 7, 4.5, 0.04, 1.8, -a + Math.PI / 2, C('#cfc6b2'), T_STONE); }
+  for (let i = 0; i < 26; i++) { const x = r.range(P.x0 + 3, P.x1 - 3), z = r.range(P.z0 + 3, P.z1 - 3); if (Math.abs(x - cx) < 5 || Math.abs(z - cz) < 5) continue; o.addTree(x, -0.05, z, r.range(0, 6.28), r.range(1.0, 1.7), r); }
+  for (const [bx, bz] of [[-6, 6], [6, 6], [-6, -6], [6, -6]]) { t.box(cx + bx, 0.45, cz + bz, 1.8, 0.1, 0.55, 0, C('#6b4a32'), T_ROUGH); t.box(cx + bx, 0.2, cz + bz, 1.6, 0.4, 0.4, 0, C('#8f8a80'), T_STONE); }
+  // gazebo at the crossing
+  t.cyl(cx, 0.05, cz, 3.8, 3.8, 0.35, 10, C('#c9c2b3'), T_STONE);
+  for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; t.cyl(cx + Math.cos(a) * 3.3, 0.4, cz + Math.sin(a) * 3.3, 0.1, 0.1, 3.3, 6, C('#f0ece2'), T_PAINT); }
+  t.cyl(cx, 3.7, cz, 4.3, 0.3, 1.6, 10, C('#2f6a5a'), T_PAINT);
+  physics.addStaticCylinder(cx, 0.4, cz, 0.4, 3.8);
+  for (const sx of [-1, 1]) for (let z = P.z0 + 6; z < P.z1; z += 16) { t.cyl(cx + sx * (w / 2 - 2), 0, z, 0.07, 0.05, 4.2, 8, lamp, T_METAL); t.sphere(cx + sx * (w / 2 - 2), 4.3, z, 0.22, warm, [0.4, 0, 3, 5]); }
 }
 
 function suspension(o: EastCtx, bz: number) {

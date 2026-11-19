@@ -53,3 +53,21 @@ describe('vehicle handling', () => {
     });
   }
 });
+
+describe('parked cars spawn settled', () => {
+  beforeAll(async () => { await initPhysics(); });
+  for (const kind of ['pickup', 'van', 'suv', 'minivan', 'sedan', 'truck'] as VehicleKind[]) {
+    if (!VEHICLES[kind]) continue;
+    it(`${kind}: no drop, stays upright, falls asleep`, () => {
+      const p = world();
+      const layout = layoutFor(kind);
+      const car = new VehiclePhysics(p, VEHICLES[kind], layout, 0, 1.5, 0, 0);
+      car.settleAt(0, 0, 0, 0.7);
+      const y0 = car.position.y;
+      run(car, p, 6, { throttle: 0, steer: 0, handbrake: false });
+      expect(Math.abs(car.position.y - y0)).toBeLessThan(0.1);
+      expect(car.upVec().y).toBeGreaterThan(0.995);
+      expect(car.body.isSleeping()).toBe(true);
+    });
+  }
+});

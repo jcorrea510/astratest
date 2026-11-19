@@ -224,10 +224,10 @@ export class Population {
       const every = d > 90 ? 0.2 : d > 60 ? 0.1 : d > 32 ? 0.05 : 0;
       if (n.animAcc >= every || !c.alive) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
-      h.mesh.castShadow = d < 40;
-      const inView = d < 6 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 2.4));
+      h.mesh.castShadow = d < 32;
+      const inView = d < 14 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
       h.mesh.visible = inView;
-      h.setDetail(d < 70 && inView); for (const e of h.extras) e.castShadow = d < 30;
+      h.setDetail(d < 48 && inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }
     // Despawn
     for (const n of [...this.npcs]) {

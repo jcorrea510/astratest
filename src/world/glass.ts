@@ -7,9 +7,10 @@ import * as THREE from 'three';
 
 export interface Pane {
   id: number; x: number; y: number; z: number; /** facing yaw (normal = sin,cos) */ yaw: number; w: number; h: number;
-  broken: boolean; inst: number; mesh: THREE.Mesh | null;
+  /** bullets taken; cracked after 1, shattered at HITS_TO_BREAK */ hits: number; broken: boolean; inst: number; mesh: THREE.Mesh | null;
 }
 const CELL = 16;
+export const HITS_TO_BREAK = 3;
 let crackTex: THREE.Texture | null = null;
 function crackTexture(): THREE.Texture {
   if (crackTex) return crackTex;
@@ -46,7 +47,7 @@ export class WorldGlass {
   }
   /** Registers a pane with no visual of its own (the caller owns the mesh, or it is drawn by the instanced overlay). */
   add(x: number, y: number, z: number, yaw: number, w: number, h: number, mesh: THREE.Mesh | null = null): number {
-    const p: Pane = { id: this.panes.length, x, y, z, yaw, w, h, broken: false, inst: -1, mesh };
+    const p: Pane = { id: this.panes.length, x, y, z, yaw, w, h, hits: 0, broken: false, inst: -1, mesh };
     this.panes.push(p); this.index(p); return p.id;
   }
   /** Street-shopfront pane drawn by the shared overlay (call finishOverlay once after all are added). */
@@ -74,12 +75,12 @@ export class WorldGlass {
     return root;
   }
   /** Id of the intact pane at a world point (within `tol` m of the pane plane), else null. */
-  glassAt(pt: THREE.Vector3, tol = 0.3): number | string | null {
+  glassAt(pt: THREE.Vector3, tol = 0.3, includeBroken = false): number | string | null {
     const cx = Math.floor(pt.x / CELL), cz = Math.floor(pt.z / CELL);
     for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) {
       const l = this.grid.get(`${i},${j}`); if (!l) continue;
       for (const id of l) {
-        const p = this.panes[id]; if (p.broken) continue;
+        const p = this.panes[id]; if (p.broken && !includeBroken) continue;
         const nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
         const dx = pt.x - p.x, dz = pt.z - p.z, dy = pt.y - p.y;
         if (Math.abs(dx * nx + dz * nz) > tol) continue;
@@ -90,18 +91,35 @@ export class WorldGlass {
     return null;
   }
   isGlassBroken(id: number | string): boolean { const p = this.panes[id as number]; return !p || p.broken; }
+  /** A bullet strikes the pane: first hits leave cracks, the HITS_TO_BREAK-th shatters it. Returns true when it shattered. */
+  hitGlass(id: number | string): boolean {
+    const p = this.panes[id as number]; if (!p || p.broken) return false;
+    p.hits++;
+    if (p.hits >= HITS_TO_BREAK) return this.breakGlass(id);
+    if (p.hits === 1) this.showCracks(p);
+    return false;
+  }
+  private showCracks(p: Pane) {
+    if (p.inst >= 0 && this.intact && this.cracked) {
+      const d = this.dummy; d.position.set(p.x, p.y, p.z); d.rotation.set(0, p.yaw, 0);
+      d.scale.set(p.w, p.h, 1); d.updateMatrix(); this.cracked.setMatrixAt(p.inst, d.matrix); this.cracked.instanceMatrix.needsUpdate = true;
+    } else if (p.mesh) {
+      const cm = new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, depthWrite: false });
+      p.mesh.userData.glassMat = p.mesh.material; p.mesh.material = cm;
+    }
+  }
+  /** Fully shatters: render pane + cracks vanish, bullets pass afterwards (Combat.trace skips broken panes). */
   breakGlass(id: number | string): boolean {
     const p = this.panes[id as number]; if (!p || p.broken) return false;
-    p.broken = true;
+    p.broken = true; p.hits = HITS_TO_BREAK;
     if (p.inst >= 0 && this.intact && this.cracked) {
       const d = this.dummy;
       d.position.set(p.x, p.y, p.z); d.rotation.set(0, p.yaw, 0);
-      d.scale.setScalar(0); d.updateMatrix(); this.intact.setMatrixAt(p.inst, d.matrix); this.intact.instanceMatrix.needsUpdate = true;
-      d.scale.set(p.w, p.h, 1); d.updateMatrix(); this.cracked.setMatrixAt(p.inst, d.matrix); this.cracked.instanceMatrix.needsUpdate = true;
+      d.scale.setScalar(0); d.updateMatrix();
+      this.intact.setMatrixAt(p.inst, d.matrix); this.intact.instanceMatrix.needsUpdate = true;
+      this.cracked.setMatrixAt(p.inst, d.matrix); this.cracked.instanceMatrix.needsUpdate = true;
     } else if (p.mesh) {
-      const m = p.mesh.material as THREE.MeshStandardMaterial;
-      const cm = new THREE.MeshBasicMaterial({ map: crackTexture(), transparent: true, depthWrite: false });
-      p.mesh.material = cm; void m;
+      p.mesh.visible = false; p.mesh.removeFromParent();
     }
     this.onBreak?.(p);
     return true;

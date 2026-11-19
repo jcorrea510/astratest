@@ -164,7 +164,9 @@ export class Game {
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
+    this.crowd.wire(this.traffic, this.pop, () => ({ traffic: this.trafficCap ?? this.renderer.quality.traffic, peds: this.pop.maxCivilians })); // far crowd hands over to real cars/people (no vanishing)
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
+    this.police.clock = () => this.time;
     this.police.setHooks({
       combat: this.combat, cam: this.cam, night: () => this.renderer.skyState.night,
       dragOut: (v, side, puller) => this.carEntry.dragOut(v, side, puller),
@@ -187,12 +189,13 @@ export class Game {
   private wireEvents() {
     this.combat.onShot = e => {
       this.pop.danger(e.origin, e.weapon.id === 'shotgun' ? 45 : 35, e.shooter);
+      if (e.shooter === this.player) this.traffic.gunfire(e.origin, this.player.pos); // drivers nearby floor it
       if (e.shooter === this.player) this.police.report('shooting', this.player.pos);
     };
     this.combat.onHit = (target, _dmg, from, _head, killed) => {
       const npc = this.pop.npcs.find(n => n.char === target);
       if (from === this.player && npc) {
-        if (npc.role === 'police') this.police.report(killed ? 'copKill' : 'copAttack', this.player.pos);
+        if (npc.role === 'police') { this.police.report(killed ? 'copKill' : 'copAttack', this.player.pos); this.police.copHit(npc); }
         else this.police.report(killed ? 'kill' : 'assault', this.player.pos);
         if (npc.role === 'gang' && npc.alive) { npc.hostile = true; npc.brain = 'combat'; npc.target = this.player; npc.seenTime = this.time; npc.lastSeen.copy(this.player.pos); }
         if (npc.role === 'civilian' && npc.alive) { npc.brain = 'flee'; npc.fleeFrom.copy(this.player.pos); npc.stateT = 0; }
@@ -201,7 +204,7 @@ export class Game {
       if (target === this.player && killed) this.playerDown('down');
       if (target === this.player) this.cam.addShake(0.15);
     };
-    this.combat.onVehicleHit = (v, from) => { if (from === this.player) this.traffic.panic(v); };
+    this.combat.onVehicleHit = (v, from) => { if (from === this.player) { this.police.onVehicleShot(v); this.traffic.panic(v); } };
     this.combat.helis = () => this.helis.list;
     this.combat.onExplosion = (at, by, R) => this.explosion(at, by, R); // COMBAT: grenades / rockets damage people like car explosions
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
@@ -642,7 +645,7 @@ export class Game {
     this.signalTimer -= 1;
     if (this.signalTimer > 0) return; this.signalTimer = 8;
     const lamps = this.visuals.signalLamps;
-    const cols = { red: new THREE.Color(4, 0.25, 0.2), yellow: new THREE.Color(4, 2.4, 0.3), green: new THREE.Color(0.4, 4, 1.6) };
+    const cols = { red: new THREE.Color(9, 0.5, 0.4), yellow: new THREE.Color(9, 5.2, 0.5), green: new THREE.Color(0.8, 9, 3.6) };
     const off = new THREE.Color(0.06, 0.06, 0.06);
     for (const h of this.visuals.signalHeads) {
       const st = signalState(this.city.intersections[h.inter], h.axis, this.time);
@@ -654,6 +657,8 @@ export class Game {
   }
   private cullChunks() {
     const cp = this.renderer.camera.position; const max = this.renderer.quality.drawDistance + 60;
+    // far from the ground (flying over roofs) a 15 cm near plane leaves ~1 cm depth steps, so coplanar roof layers flicker: push it out
+    { const cam = this.renderer.camera, nn = Math.min(2, 0.15 + Math.max(0, cp.y - 15) * 0.012); if (Math.abs(cam.near - nn) > 0.05 || (nn === 0.15 && cam.near !== 0.15)) { cam.near = nn; cam.updateProjectionMatrix(); } }
     const shadowR = this.renderer.quality.shadowRange * 1.3 + 10;
     for (const m of this.visuals.chunkMeshes) {
       const mesh = m as THREE.Mesh;

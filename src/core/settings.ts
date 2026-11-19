@@ -9,7 +9,7 @@ export interface QualityPreset {
 export const QUALITY: Record<QualityName, QualityPreset> = {
   low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 16, pointLights: 0, particles: 300, farCars: 60, farPeds: 140, parked: 250 },
   medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 26, pointLights: 4, particles: 700, farCars: 130, farPeds: 340, parked: 600 },
-  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 120, traffic: 38, pointLights: 8, particles: 1200, farCars: 200, farPeds: 520, parked: 1000 },
+  high: { pixelRatio: 1.25, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 38, pointLights: 8, particles: 1200, farCars: 200, farPeds: 520, parked: 1000 },
 };
 
 export type Action =
@@ -27,7 +27,7 @@ export const DEFAULT_BINDINGS: Record<Action, string[]> = {
   forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC', 'AltLeft'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
   reload: ['KeyR'], wheel: ['Tab', 'KeyQ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
-  pause: ['Escape', 'KeyP'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'],
+  pause: ['KeyP', 'Escape'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'],
   sirenWail: ['KeyJ'], sirenYelp: ['KeyK'], sirenPhaser: ['KeyL'], lightBar: ['KeyU'],
 };
 export interface Settings {
@@ -54,6 +54,9 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     merged.fov = clampNum(merged.fov, 50, 80, 62); merged.cameraShake = clampNum(merged.cameraShake, 0, 1, 1);
     if (merged.look !== 'natural' && merged.look !== 'stylised') merged.look = 'natural';
     if (merged.driving !== 'arcade' && merged.driving !== 'realistic') merged.driving = 'arcade';
+    delete (merged as unknown as Record<string, unknown>).pedDensity; delete (merged as unknown as Record<string, unknown>).trafficDensity; delete (merged as unknown as Record<string, unknown>).pedestrians; delete (merged as unknown as Record<string, unknown>).traffic;
+    // density now follows the graphics preset only (old saves may carry per-slider values; they are simply ignored)
+    if (!merged.bindings.pause.includes('KeyP') && !Object.entries(merged.bindings).some(([k, v]) => k !== 'pause' && v.includes('KeyP'))) merged.bindings.pause = [...merged.bindings.pause, 'KeyP']; // Esc also leaves fullscreen: P is always a way in
     for (const k of Object.keys(DEFAULT_BINDINGS) as Action[]) if (!Array.isArray(merged.bindings[k])) merged.bindings[k] = [...DEFAULT_BINDINGS[k]];
     return merged;
   } catch { return base; }

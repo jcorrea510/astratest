@@ -48,6 +48,9 @@ const _e = new THREE.Euler(), _r = new THREE.Quaternion(), _p = new THREE.Quater
 const _chain: THREE.Object3D[] = [];
 
 /** One animated person. */
+/** wrist-to-palm-centre distance along the hand bone (m, before bone scale) */
+const GRIP_PALM = 0.062;
+const _gt = new THREE.Vector3();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
 export class Human {
@@ -350,6 +353,23 @@ export class Human {
       if (this.reach.L) this.solveArm('L', this.reach.L, this.reach.w);
       if (this.reach.R) this.solveArm('R', this.reach.R, this.reach.w);
     }
+  }
+  /**
+   * Weapon hold: after update(), puts each hand's palm centre on a world target with a world orientation (two-bone IK
+   * on the arm, then the hand bone is turned to `quat`). Hand-local axes: y = fingers, rim (+z) = thumb side.
+   * w blends from the animated pose (0) to the full hold (1). Call every frame; the mixer resets the bones next frame.
+   */
+  gripSolve(side: 'L' | 'R', palm: THREE.Vector3, quat: THREE.Quaternion, w: number) {
+    const hand = side === 'L' ? this.leftHand : this.rightHand;
+    if (w <= 0.001 || !hand.parent) return;
+    this.root.updateMatrixWorld(true);
+    const sc = hand.getWorldScale(_gt).y || 1;
+    _gt.set(0, GRIP_PALM * sc, 0).applyQuaternion(quat); _gt.negate().add(palm); // wrist target (kept apart from solveArm's scratch vectors)
+    this.solveArm(side, _gt, w);
+    hand.updateMatrixWorld(true);
+    hand.parent.getWorldQuaternion(_iq1).invert();
+    _iq2.copy(_iq1).multiply(quat);
+    hand.quaternion.slerp(_iq2, w); hand.updateMatrixWorld(true);
   }
   /** Two-bone IK: bends the forearm to the target distance, then swings the whole arm onto it. */
   private solveArm(side: 'L' | 'R', target: THREE.Vector3, w: number) {

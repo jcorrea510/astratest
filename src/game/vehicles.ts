@@ -12,6 +12,8 @@ export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vec
 export class VehicleManager {
   list: Vehicle[] = [];
   onCrash: ((e: CrashEvent) => void) | null = null;
+  /** extra crash subscribers (traffic reacts to accidents) */
+  crashListeners: ((e: CrashEvent) => void)[] = [];
   onExplode: ((v: Vehicle, at: THREE.Vector3) => void) | null = null;
   private engines = new Map<number, EngineVoice>();
   private skidVoice: LoopVoice | null = null;
@@ -78,7 +80,8 @@ export class VehicleManager {
         this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);
         if (imp > 6) this.audio.play('glass', { pos: pt, volume: Math.min(1, imp / 14) });
         this.audio.play('crash', { pos: pt, volume: Math.min(1, imp / 12), pitch: 0.9 + Math.random() * 0.2 });
-        this.onCrash?.({ vehicle: v, impact: imp, point: pt.clone() });
+        const ev: CrashEvent = { vehicle: v, impact: imp, point: pt.clone() };
+        this.onCrash?.(ev); for (const l of this.crashListeners) l(ev);
         void destroyed;
       }
       void time;

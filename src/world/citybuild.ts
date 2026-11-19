@@ -8,10 +8,12 @@ import { buildFlatiron } from './flatiron';
 import { diagTriangles } from './broadway';
 import { RAPIER, groups, G_STATIC, ALL } from '../core/physics';
 import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
-import { buildExpansion, expansionPads, helipadPad } from './expansion';
+import { buildExpansion, expansionPads } from './expansion';
 import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
+import { signalPosts } from './signals';
+import { buildPrecinct, precinctFootprint } from './precinct';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
@@ -28,7 +30,7 @@ import {
   BRICK_COLORS, PLASTER_COLORS, PASTEL_COLORS, CONCRETE_COLORS, STONE_COLORS,
 } from './buildings';
 import {
-  LAMP, streetLightGeo, signalGeo, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
+  LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
   powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
@@ -298,8 +300,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const ctx: BuildCtx = { fac, trim, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
   const towerLots = merged.filter(l => l.kind === 'tower' && l.blockId >= 0 && city.blocks[l.blockId].district === 'heights').sort((a, b) => b.height - a.height);
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
-  const PS = POLICE_STATION;
-  const policeLot = (l: Lot) => Math.abs(l.x - PS.x) < PS.w / 2 && Math.abs(l.z - PS.z) < 3;
+  const pf = precinctFootprint();
+  const policeLot = (l: Lot) => { const sw = Math.abs(Math.sin(l.rot)) > 0.7, hw = (sw ? l.d : l.w) / 2, hd = (sw ? l.w : l.d) / 2; return l.x + hw > pf.x0 && l.x - hw < pf.x1 && l.z + hd > pf.z0 && l.z - hd < pf.z1; };
   for (const lot of merged) {
     const b = lot.blockId >= 0 ? city.blocks[lot.blockId] : { district: lot.district ?? 'oldtown' };
     const r = new Rng(lot.seed);
@@ -385,27 +387,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   }
 
   // ---------- Metro Police precinct ----------
-  {
-    const exposedPS: [boolean, boolean, boolean, boolean] = [true, true, true, true];
-    streetBuilding(ctx, { cx: PS.x, cz: PS.z, yaw: PS.yaw, w: PS.w, d: PS.d, base: CURB_HEIGHT, seed: 4242, exposed: exposedPS, brand: 11, floors: 3, floorH: 3.6, groundH: 4.6, mat: 3, color: C('#c9c1ae'), ground: 'lobby', winW: 1.6, winH: 2.0, sill: 0.9, cellW: 3.0, cornice: 'simple', fireEscape: false, lit: 0.8, roofItems: 0, awning: false, balconies: false, trimColor: C('#e2ddd0') });
-    const H = CURB_HEIGHT + 4.6 + 3 * 3.6;
-    const tb = trim.at(PS.x, PS.z);
-    // rooftop helipad on a steel deck over the parapet
-    tb.box(PS.x + 6, H + 1.05, PS.z, 10.4, 0.25, 9.6, 0, C('#55595c'), T_METAL);
-    for (const dx of [-4.5, 4.5]) for (const dz of [-4, 4]) tb.box(PS.x + 6 + dx, H + 0.5, PS.z + dz, 0.25, 1, 0.25, 0, C('#55595c'), T_METAL);
-    physics.addStaticBox(PS.x + 6, H + 1.05, PS.z, 5.2, 0.13, 4.8);
-    helipadPad(tb, physics, PS.x + 6, H + 1.18, PS.z, 'Metro Police roof helipad', helipads, 4.7);
-    // entrance: blue lamps, flag pole, badge sign
-    const fz = PS.z - PS.d / 2;
-    for (const dx of [-2.2, 2.2]) { tb.cyl(PS.x + dx, CURB_HEIGHT, fz - 0.6, 0.06, 0.06, 2.4, 6, C('#222'), T_METAL); tb.box(PS.x + dx, CURB_HEIGHT + 2.6, fz - 0.6, 0.35, 0.45, 0.35, 0, C('#3a7bff'), T_GLOW(3)); }
-    tb.cyl(PS.x - 12, CURB_HEIGHT, fz - 2.6, 0.08, 0.05, 11, 8, C('#ddd'), T_METAL); tb.box(PS.x - 11, CURB_HEIGHT + 10, fz - 2.6, 2.2, 1.3, 0.03, 0, C('#2a4a6b'), T_PAINT);
-    physics.addStaticCylinder(PS.x - 12, 5, fz - 2.6, 5, 0.1);
-    const c = document.createElement('canvas'); c.width = 512; c.height = 96; const g = c.getContext('2d')!;
-    g.fillStyle = '#16233a'; g.fillRect(0, 0, 512, 96); g.fillStyle = '#e8eef8'; g.font = '800 46px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('METRO POLICE  ·  PRECINCT 4', 256, 50, 480);
-    const st = new THREE.CanvasTexture(c); st.colorSpace = THREE.SRGBColorSpace;
-    const sm = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.25), new THREE.MeshStandardMaterial({ map: st, emissiveMap: st, emissive: new THREE.Color(0.6, 0.6, 0.6), roughness: 0.5 }));
-    sm.position.set(PS.x, CURB_HEIGHT + 4.0, fz - 0.12); sm.rotation.y = Math.PI; root.add(sm);
-  }
+  buildPrecinct({ root, physics, trim, helipads, curb: CURB_HEIGHT, nightUniform });
   // ---------- Freeway, bridge, Vista Drive, airfield, Fort Calder ----------
   const propsX = new ChunkInstancer(300);
   propsX.register('streetlight', streetLightGeo(), trimMaterial());
@@ -539,38 +521,27 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   };
   for (const b of city.blocks) kerb(b);
 
-  // Traffic lights: one mast arm per approach on the near-right corner, head over the lanes facing traffic.
+  // Traffic lights: one mast arm per approach on the far-right corner (sidewalk), heads over the lanes facing traffic.
   const signalHeads: SignalHead[] = [];
   const lampPositions: { p: THREE.Vector3; f: THREE.Vector3 }[] = [];
   const armGeos = new Map<number, ReturnType<typeof signalGeo>>();
-  for (const inter of city.intersections) {
-    if (!inter.signalized) continue;
-    const approaches: { axis: 'x' | 'z'; dx: number; dz: number }[] = [{ axis: 'z', dx: 0, dz: -1 }, { axis: 'z', dx: 0, dz: 1 }, { axis: 'x', dx: 1, dz: 0 }, { axis: 'x', dx: -1, dz: 0 }];
-    for (const ap of approaches) {
-      const rx = -ap.dz, rz = ap.dx;
-      const along = ap.axis === 'z' ? inter.halfZ : inter.halfX;
-      const across = ap.axis === 'z' ? inter.halfX : inter.halfZ;
-      const exists = ap.axis === 'z' ? city.intersectionAt(inter.ix, inter.iz - ap.dz) : city.intersectionAt(inter.ix - ap.dx, inter.iz);
-      if (!exists) continue;
-      const x = inter.x - ap.dx * (along + 1.2) + rx * (across + 1.0);
-      const z = inter.z - ap.dz * (along + 1.2) + rz * (across + 1.0);
-      const yaw = Math.atan2(-ap.dx, -ap.dz);
-      const arm = Math.round(Math.min(6.5, across + 1.0 - LANE_WIDTH * 0.5 - 0.2));
-      let sgeo = armGeos.get(arm); if (!sgeo) { sgeo = signalGeo(arm); armGeos.set(arm, sgeo); props.register(`signal${arm}`, sgeo.geo, tmat); }
-      props.add(`signal${arm}`, x, CURB_HEIGHT, z, yaw);
-      physics.addStaticCylinder(x, 2, z, 2, 0.17);
-      const head: SignalHead = { inter: inter.id, axis: ap.axis, lamps: [0, 0, 0] };
-      const c = Math.cos(yaw), s = Math.sin(yaw);
-      const hp = sgeo.head;
+  for (const sp of signalPosts(city)) {
+    const { x, z, yaw, arm } = sp;
+    let sgeo = armGeos.get(arm); if (!sgeo) { sgeo = signalGeo(arm); armGeos.set(arm, sgeo); props.register(`signal${arm}`, sgeo.geo, tmat); }
+    props.add(`signal${arm}`, x, CURB_HEIGHT, z, yaw);
+    physics.addStaticCylinder(x, 2, z, 2, 0.17);
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    for (const hp of sgeo.heads) {
+      const head: SignalHead = { inter: sp.inter, axis: sp.axis, lamps: [0, 0, 0] };
       for (let k = 0; k < 3; k++) {
         head.lamps[k] = lampPositions.length;
-        const lx = hp.x, ly = hp.y + 0.34 - k * 0.34, lz = hp.z;
-        lampPositions.push({ p: new THREE.Vector3(x + lx * c + lz * s, CURB_HEIGHT + ly, z - lx * s + lz * c), f: new THREE.Vector3(-ap.dx, 0, -ap.dz) });
+        const lx = hp.x, ly = hp.y + 0.5 - k * 0.5, lz = hp.z + 0.1;
+        lampPositions.push({ p: new THREE.Vector3(x + lx * c + lz * s, CURB_HEIGHT + ly, z - lx * s + lz * c), f: new THREE.Vector3(-sp.dx, 0, -sp.dz) });
       }
       signalHeads.push(head);
     }
   }
-  const lampGeo = new THREE.CircleGeometry(0.12, 12);
+  const lampGeo = new THREE.CircleGeometry(SIGNAL_LENS_R, 16);
   const signalLamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ toneMapped: false }), lampPositions.length);
   const dummy = new THREE.Object3D();
   lampPositions.forEach((lp, i) => {

@@ -9,6 +9,7 @@ import type { Npc } from '../actors/npc';
 import { STORES, STORE_W, STORE_D, type Store } from './places';
 import { buildStoreShell, storeFrame, type StoreShell, type StoreFrame } from '../world/interiors';
 import { CURB_HEIGHT } from '../world/citymap';
+import { aisleWaypoint, newLife, queueSpot, PAY_SPOT, DOOR_IN, DOOR_OUT, WALK_SPEED, type ShopLife } from './storeLife';
 
 type Phase = 'open' | 'robbing' | 'closed';
 interface Kiosk {
@@ -17,9 +18,10 @@ interface Kiosk {
   /** direction the counter faces (towards customers) */
   front: THREE.Vector3; clerkPos: THREE.Vector3; customer: THREE.Vector3; door: number;
   /** shoppers wandering the aisles (2-5), their reactions and the register state when the clerk is out of the picture */
-  shoppers: Shopper[]; panicT: number; callT: number; called: boolean; looting: number; looted: boolean;
+  shoppers: Shopper[]; /** seconds until the next shopper walks in */ refillT: number; clerkT: number; clerkTurn: number; panicT: number; callT: number; called: boolean; looting: number; looted: boolean;
 }
-interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number }
+interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number; life: ShopLife }
+const _v0 = new THREE.Vector3();
 const ROB_TIME = 7; // seconds of covering the clerk to empty the till
 const REOPEN = 240; // seconds until a robbed store reopens
 
@@ -35,7 +37,7 @@ export class Robberies {
       void groundY; // stores sit on the pavement (a raycast would hit the floors above)
       const frame = storeFrame(def, CURB_HEIGHT);
       const front = new THREE.Vector3(Math.sin(def.yaw), 0, Math.cos(def.yaw));
-      this.kiosks.push({ def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, shoppers: [], panicT: -1, callT: 0, called: false, looting: 0, looted: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
+      this.kiosks.push({ def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, shoppers: [], refillT: 8, clerkT: 4, clerkTurn: 0, panicT: -1, callT: 0, called: false, looting: 0, looted: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
     }
   }
   blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: 'shop' as const, label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
@@ -78,7 +80,7 @@ export class Robberies {
       const n = g.pop.spawn('civilian', p.x, p.z, p.y);
       n.persistent = true; n.brain = 'scripted'; n.tag = 'shopper'; n.char.yaw = Math.random() * 6.28;
       n.char.human.setState(Math.random() < 0.5 ? 'talk' : 'loco'); n.char.human.setSpeed(0);
-      k.shoppers.push({ n, act: 'browse', caller: i === 0 && cnt > 2 && Math.random() < 0.8, delay: Math.random() * 0.7 });
+      k.shoppers.push({ n, act: 'browse', caller: i === 0 && cnt > 2 && Math.random() < 0.8, delay: Math.random() * 0.7, life: newLife('walk', Math.random) });
     }
   }
   /** Everyone in the store notices trouble: shots, a hold-up, a body behind the counter. */
@@ -89,7 +91,7 @@ export class Robberies {
     let i = 0;
     for (const s of k.shoppers) {
       if (!s.n.alive) continue;
-      const r = i++ % 3;
+      const r = i++ % 3; s.n.char.human.stopAction();
       s.act = r === 0 ? 'handsUp' : r === 1 ? 'cower' : 'flee';
       if (s.caller) s.act = 'cower';
     }
@@ -111,7 +113,8 @@ export class Robberies {
     const door = k.frame.toWorld(3.1, 0.05, 4.2), out = k.frame.toWorld(3.1, 0.05, 8.5);
     for (const s of k.shoppers) {
       const n = s.n, c = n.char; if (!n.alive) continue;
-      if (s.act === 'browse' || s.act === 'out') continue;
+      if (s.act === 'browse') { this.browse(k, s, dt); continue; }
+      if (s.act === 'out') continue;
       if (s.delay > 0) { s.delay -= dt; continue; }
       const h = c.human;
       if (s.act === 'handsUp') {
@@ -130,6 +133,90 @@ export class Robberies {
         c.move(new THREE.Vector3(dx / d * 5.6, 0, dz / d * 5.6), dt); c.faceTowards(Math.atan2(dx, dz), 12, dt); h.setSpeed(c.speed);
       }
     }
+  }
+  /** Shopper daily life: walk the aisle, stop at the shelf and look, queue at the till, pay, leave. */
+  private browse(k: Kiosk, s: Shopper, dt: number) {
+    const f = k.frame, n = s.n, c = n.char, h = c.human, L = s.life;
+    const lp = f.toLocal(c.pos);
+    const goTo = (x: number, z: number, speed: number, tol: number) => { // steer towards a store-local point; true on arrival
+      const tw = f.toWorld(x, 0.05, z), dx = tw.x - c.pos.x, dz = tw.z - c.pos.z, d = Math.hypot(dx, dz);
+      if (d < tol) { c.move(_v0.set(0, 0, 0), dt); h.setSpeed(c.speed); return true; }
+      if (h.currentState !== 'loco') h.setState('loco');
+      c.move(_v0.set(dx / d * speed, 0, dz / d * speed), dt); c.faceTowards(Math.atan2(dx, dz), 7, dt); h.setSpeed(c.speed);
+      if (Math.abs(d - L.lastD) < 0.4 * dt) L.stuck += dt; else L.stuck = 0; // wedged on a fixture: pick another point
+      L.lastD = d; return false;
+    };
+    const faceLocal = (dx: number, dz: number) => { const a = f.toWorld(lp.x, 0, lp.z), b = f.toWorld(lp.x + dx, 0, lp.z + dz); c.faceTowards(Math.atan2(b.x - a.x, b.z - a.z), 6, dt); };
+    const idle = () => { if (h.currentState !== 'loco') h.setState('loco'); c.move(_v0.set(0, 0, 0), dt); h.setSpeed(0); };
+    switch (L.st) {
+      case 'walk': {
+        if (!L.wx && !L.wz) { const w = aisleWaypoint(Math.random, lp); L.wx = w.x; L.wz = w.z; L.stuck = 0; }
+        if (goTo(L.wx, L.wz, WALK_SPEED, 0.35)) { L.st = 'look'; L.t = 2.2 + Math.random() * 3; L.wx = L.wz = 0; h.playAction('Interact', { layer: 'upper', fade: 0.25 }); }
+        else if (L.stuck > 1.2) { L.wx = L.wz = 0; }
+        break;
+      }
+      case 'look': { // face the shelf, handle the goods
+        idle(); faceLocal(0, -1); L.t -= dt;
+        if (L.t <= 0) {
+          h.stopAction('Interact');
+          const queued = k.shoppers.filter(q => q.act === 'browse' && (q.life.st === 'queue' || q.life.st === 'pay')).length;
+          if (L.buys && queued < 3 && k.clerk?.alive) { L.st = 'queue'; L.arrive = this.game.time; L.wx = L.wz = 0; }
+          else if (Math.random() < 0.3) { L.st = 'leave'; }
+          else { L.st = 'walk'; }
+        }
+        break;
+      }
+      case 'queue': {
+        const line = k.shoppers.filter(q => q.act === 'browse' && (q.life.st === 'queue' || q.life.st === 'pay')).sort((a, b) => a.life.arrive - b.life.arrive);
+        const idx = Math.max(0, line.indexOf(s)), spot = idx === 0 ? PAY_SPOT : queueSpot(idx - 1);
+        if (goTo(spot.x, spot.z, WALK_SPEED, 0.3)) {
+          idle(); faceLocal(idx === 0 ? 0 : -1, idx === 0 ? -1 : -0.3);
+          if (idx === 0) { L.st = 'pay'; L.t = 3.5; h.playAction('Interact', { layer: 'upper', fade: 0.25 }); }
+        }
+        break;
+      }
+      case 'pay': {
+        idle(); faceLocal(0, -1); L.t -= dt;
+        if (L.t <= 0) { h.stopAction('Interact'); L.st = 'leave'; }
+        break;
+      }
+      case 'leave': {
+        const past = lp.z > 4.4;
+        const tgt = past ? DOOR_OUT : DOOR_IN;
+        if (goTo(tgt.x, tgt.z, WALK_SPEED * 1.15, past ? 0.8 : 0.5) && past) {
+          s.act = 'out'; n.persistent = false; n.brain = 'wander'; n.node = -1; h.setState('loco'); // strolls off down the pavement
+          k.shoppers.splice(k.shoppers.indexOf(s), 1); k.refillT = Math.min(k.refillT, 3 + Math.random() * 8);
+        }
+        break;
+      }
+      case 'enter': {
+        if (lp.z <= 4.0 || goTo(DOOR_IN.x, DOOR_IN.z, WALK_SPEED * 1.15, 0.5)) { L.st = 'walk'; L.wx = L.wz = 0; }
+        break;
+      }
+    }
+  }
+  /** Clerk keeps busy behind the counter: serves whoever is paying, otherwise tidies the back shelf every so often. */
+  private clerkLife(k: Kiosk, dt: number) {
+    const n = k.clerk; if (!n?.alive) return;
+    const c = n.char, h = c.human, f = k.frame;
+    const paying = k.shoppers.some(q => q.act === 'browse' && q.life.st === 'pay');
+    k.clerkT -= dt;
+    if (paying && k.clerkTurn !== 2) { k.clerkTurn = 2; k.clerkT = 3.2; h.playAction('Interact', { layer: 'upper', fade: 0.25 }); }
+    else if (!paying && k.clerkTurn === 2) { k.clerkTurn = 0; k.clerkT = 3 + Math.random() * 4; h.stopAction('Interact'); }
+    if (k.clerkTurn === 0 && k.clerkT <= 0) { k.clerkTurn = 1; k.clerkT = 3 + Math.random() * 2; h.playAction('Interact', { layer: 'upper', fade: 0.25 }); }
+    else if (k.clerkTurn === 1 && k.clerkT <= 0) { k.clerkTurn = 0; k.clerkT = 5 + Math.random() * 7; h.stopAction('Interact'); }
+    const yaw = k.def.yaw + (k.clerkTurn === 1 ? Math.PI * 0.85 : 0);
+    c.faceTowards(yaw, 5, dt); void f;
+  }
+  /** A new shopper walks in from the pavement once someone has left. */
+  private refill(k: Kiosk, dt: number) {
+    if (k.shoppers.length >= 2 || k.panicT >= 0 || k.phase !== 'open') return;
+    k.refillT -= dt; if (k.refillT > 0) return;
+    k.refillT = 10 + Math.random() * 12;
+    const g = this.game, p = k.frame.toWorld(DOOR_OUT.x, 0.05, DOOR_OUT.z + 0.5);
+    const n = g.pop.spawn('civilian', p.x, p.z, p.y);
+    n.persistent = true; n.brain = 'scripted'; n.tag = 'shopper'; n.char.human.setState('loco'); n.char.human.setSpeed(0);
+    k.shoppers.push({ n, act: 'browse', caller: false, delay: 0, life: newLife('enter', Math.random) });
   }
   private spawnClerk(k: Kiosk) {
     const g = this.game, c = k.clerkPos;
@@ -187,6 +274,7 @@ export class Robberies {
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
       if (k.phase === 'open' && k.clerk && !k.clerk.alive) this.panic(k);
       this.updateShoppers(k, dt, dist);
+      if (k.phase === 'open' && dist < 70 && k !== this.active && k.panicT < 0) { this.clerkLife(k, dt); this.refill(k, dt); }
       if (k.phase === 'open' && k.panicT < 0 && k !== this.active && k.shoppers.length && g.pcombat.lastShot > this.shotClip[this.kiosks.indexOf(k)] && dist < 28) this.panic(k);
       this.shotClip[this.kiosks.indexOf(k)] = g.pcombat.lastShot;
       this.updateLoot(k, dt);

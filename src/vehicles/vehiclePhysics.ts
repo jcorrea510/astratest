@@ -448,6 +448,17 @@ export class VehiclePhysics {
     }
     this.lastVel.x = v.x; this.lastVel.y = v.y; this.lastVel.z = v.z;
   }
+  /** Body height at which the tyres just touch flat ground at `groundY` with the suspension at its static load (parked cars spawn settled, no drop). */
+  static restBodyY(spec: VehicleSpec, layout: VehicleLayout, groundY: number): number {
+    const wy = layout.wheels.reduce((a, w) => a + w.y, 0) / layout.wheels.length;
+    const sag = G / (Math.max(1, layout.wheels.length) * spec.stiffness * 1.8);
+    return groundY + layout.radius - wy + 0.2 * spec.suspRest - Math.min(sag, spec.suspTravel);
+  }
+  /** Places the car settled on the ground and puts it to sleep: it only wakes when something touches it. */
+  settleAt(x: number, groundY: number, z: number, yaw: number) {
+    this.teleport(x, VehiclePhysics.restBodyY(this.spec, this.layout, groundY), z, yaw);
+    this.body.sleep();
+  }
   reset() {
     const p = this.body.translation();
     const yaw = this.yaw;

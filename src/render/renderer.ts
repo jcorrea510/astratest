@@ -42,6 +42,7 @@ export const LOOK = {
   stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
+const DYN_MIN = 0.7;
 export class Renderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -94,7 +95,7 @@ export class Renderer {
   }
   setQuality(name: QualityName) {
     this.qualityName = name; const q = this.quality = QUALITY[name];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatio));
+    this.applyPixelRatio();
     this.renderer.shadowMap.enabled = q.shadowMap > 0;
     this.sun.castShadow = q.shadowMap > 0;
     if (q.shadowMap > 0) {
@@ -108,6 +109,22 @@ export class Renderer {
     this.buildComposer();
     (this.scene.fog as THREE.Fog).far = q.drawDistance * 1.9; this.camera.far = q.drawDistance + 1200; this.camera.updateProjectionMatrix();
     this.resize();
+  }
+  /** Pixel ratio = preset cap x the adaptive resolution scale (dynScale drops under load and recovers when there is headroom). */
+  private applyPixelRatio() { this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio) * this.dynScale); }
+  /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
+  dynScale = 1; adaptive = typeof navigator === 'undefined' || !navigator.webdriver;
+  private lastRender = 0; private frameEma = 16; private slowT = 0; private fastT = 0; private shadowTick = 0; shadowEvery = 1;
+  private adapt(now: number) {
+    const dt = now - this.lastRender; this.lastRender = now;
+    if (dt <= 0 || dt > 250) return; // first frame / tab was hidden
+    this.frameEma += (dt - this.frameEma) * 0.08;
+    // shadow maps are the biggest GPU cost: when over budget refresh them every other frame (texel-snapped, so it is hardly visible)
+    this.shadowEvery = this.frameEma > 18.5 ? 2 : this.frameEma < 15 ? 1 : this.shadowEvery;
+    if (!this.adaptive) return;
+    if (this.frameEma > 20) { this.slowT += dt; this.fastT = 0; } else if (this.frameEma < 13.5) { this.fastT += dt; this.slowT = 0; } else { this.slowT = 0; this.fastT = 0; }
+    if (this.slowT > 1500 && this.dynScale > DYN_MIN) { this.dynScale = Math.max(DYN_MIN, +(this.dynScale - 0.1).toFixed(2)); this.slowT = 0; this.applyPixelRatio(); this.resize(); }
+    else if (this.fastT > 5000 && this.dynScale < 1) { this.dynScale = Math.min(1, +(this.dynScale + 0.1).toFixed(2)); this.fastT = 0; this.applyPixelRatio(); this.resize(); }
   }
   private buildComposer() {
     this.composer?.dispose();
@@ -168,6 +185,9 @@ export class Renderer {
   }
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
   render() {
+    this.adapt(performance.now());
+    const sm = this.renderer.shadowMap; sm.autoUpdate = false;
+    if (this.shadowEvery <= 1 || (++this.shadowTick % this.shadowEvery) === 0) sm.needsUpdate = true;
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;

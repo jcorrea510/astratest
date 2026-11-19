@@ -15,7 +15,8 @@
  */
 import * as THREE from 'three';
 import { Inventory, WEAPONS, weaponMesh, weaponParts, type WeaponId, type WeaponDef, type WeaponParts } from '../combat/weapons';
-import { muzzleWorld } from '../combat/weaponModels';
+import { muzzleWorld, weaponAnchors } from '../combat/weaponModels';
+import { solveHold, makeHoldOut } from '../combat/gunHold';
 import type { Combat } from '../combat/combat';
 import { aimSearchStart, shotDirection } from '../combat/aim';
 import { type Character, meleeTargets, MELEE_POWER } from '../actors/character'; // [PEOPLE] melee strike targeting
@@ -38,6 +39,7 @@ const RELOAD_STEPS: Record<string, [number, ExtraSfx, boolean][]> = {
   single: [[0.1, 'magOut', false], [0.7, 'magIn', false]],
 };
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _axis = new THREE.Vector3();
+const _sr = new THREE.Vector3(), _sl = new THREE.Vector3(), _lo = new THREE.Vector3(), _dir = new THREE.Vector3(), _a1 = new THREE.Vector3(), _a2 = new THREE.Vector3(), _qr = new THREE.Quaternion();
 /** Rotates a bone about a world-space axis (applied after the animation mixer, so it never accumulates). */
 function rotateBoneWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
   if (!bone.parent) return;
@@ -80,6 +82,9 @@ export class PlayerCombat {
   /** cycling (pump / bolt / slide lock) animation 0..1 and its kind */
   private cycleT = 0; private cycleKind: 'pump' | 'bolt' | null = null;
   private cookT = -1;
+  /** gun-hold IK: blend 0..1 (0 = gun follows the animated hand, e.g. while reloading), raise 0..1 (0 = low ready) */
+  private holdW = 0; private raiseT = 0; private holdDt = 1 / 60; private holdOut = makeHoldOut();
+  private shR: THREE.Object3D | null = null; private shL: THREE.Object3D | null = null;
   private tmpO = new THREE.Vector3(); private tmpD = new THREE.Vector3(); private tmpV = new THREE.Vector3();
   private spine: THREE.Object3D | null = null;
   constructor(private player: Character, private ctl: PlayerController, private input: Input, private cam: CameraRig, private combat: Combat, private physics: Physics, private audio: GameAudio, scene: THREE.Scene) {
@@ -185,6 +190,7 @@ export class PlayerCombat {
     this.wasReloading = inv.reloading;
     this.kick *= Math.exp(-this.kickDef.kickRate * dt);
     this.cycleT = Math.max(0, this.cycleT - dt);
+    this.holdDt = dt;
     this.updateModel(true);
     this.probeAcoustics(dt);
   }
@@ -378,17 +384,36 @@ export class PlayerCombat {
     const { g: m, parts } = this.model(def.id);
     if (this.scoped) { m.visible = false; }
     const hand = c.human.rightHand;
-    hand.getWorldPosition(m.position);
-    if (this.aiming && !def.melee && def.cat !== 'throw') {
+    const ranged = !def.melee && def.cat !== 'throw';
+    // 1) the gun as the animation holds it (follows the right hand bone)
+    hand.getWorldPosition(m.position); hand.getWorldQuaternion(m.quaternion); m.quaternion.multiply(HAND_FIX);
+    // 2) the gun as it should be held: seated on the shoulder / out in front on the aim line; hands follow it
+    const wantW = ranged && !this.scoped && !inv.reloading ? 1 : 0;
+    const dt = this.holdDt, k1 = dt === 0 ? 1 : 1 - Math.exp(-dt * 12);
+    this.holdW += (wantW - this.holdW) * k1;
+    this.raiseT += ((this.aiming ? 1 : 0) - this.raiseT) * (dt === 0 ? 1 : 1 - Math.exp(-dt * 9));
+    this.shR ??= c.human.model.getObjectByName('DEF-upper_armR') ?? null; this.shL ??= c.human.model.getObjectByName('DEF-upper_armL') ?? null;
+    const hold = this.holdW > 0.002 && ranged && this.shR && this.shL;
+    if (hold) {
+      const H = this.holdOut, an = weaponAnchors(m), long = !!an.butt;
+      this.shR!.getWorldPosition(_sr); this.shL!.getWorldPosition(_sl);
+      // aim direction: shoulder -> aim point when raised, else the body forward pitched down (low ready)
+      const lowPitch = long ? 0.85 : 0.3;
+      _lo.set(Math.sin(c.yaw) * Math.cos(lowPitch), -Math.sin(lowPitch), Math.cos(c.yaw) * Math.cos(lowPitch));
+      _dir.copy(this.aimPoint).sub(_sr); if (_dir.lengthSq() < 1.2) _dir.copy(this.tmpD); _dir.normalize();
+      _dir.lerp(_lo, 1 - smooth(0, 1, this.raiseT)).normalize();
+      c.human.rightHand.parent!.getWorldPosition(_a1); c.human.rightHand.getWorldPosition(_a2);
+      solveHold({ shR: _sr, shL: _sl, armLen: _sr.distanceTo(_a1) + _a1.distanceTo(_a2), dir: _dir, anchors: an, supportHand: this.raiseT > 0.4, raise: this.raiseT }, H);
+      const w = this.holdW;
+      m.position.lerp(H.pos, w); m.quaternion.slerp(H.quat, w);
+    }
+    if (this.aiming && ranged && !hold) {
       m.lookAt(this.aimPoint);
       if (m.position.distanceToSquared(this.aimPoint) < 1) m.quaternion.setFromEuler(new THREE.Euler(-this.cam.pitch, this.cam.yaw + Math.PI, 0, 'YXZ'));
-      m.position.addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(m.quaternion), 0.04);
-      if (k > 0.002) {
-        m.position.addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(m.quaternion), -k * kd.kickBack);
-        m.rotateX(-k * kd.kickFlip);
-      }
-    } else {
-      hand.getWorldQuaternion(m.quaternion); m.quaternion.multiply(HAND_FIX);
+    }
+    if (k > 0.002 && this.aiming && ranged) {
+      m.position.addScaledVector(_dir.set(0, 0, 1).applyQuaternion(m.quaternion), -k * kd.kickBack);
+      m.rotateX(-k * kd.kickFlip);
     }
     // reload: the gun rolls and dips while the magazine comes out and goes back in
     const rp = inv.reloading ? inv.reloadProgress : 0;
@@ -399,6 +424,17 @@ export class PlayerCombat {
     animateParts(parts, def, inv.reloading ? rp : -1, k, this.cycleKind ? 1 - this.cycleT / cycleDur(def) : -1, inv.state.clip === 0 && !inv.reloading);
     if (this.cycleT <= 0) this.cycleKind = null;
     m.updateMatrixWorld(true);
+    if (final && hold) { // hands onto the gun as it ended up (recoil, reload tilt and pump included)
+      const an = weaponAnchors(m), H = this.holdOut, w = this.holdW, h = c.human;
+      _a1.copy(an.grip).add(_a2.set(-0.017, 0, 0)); H.rPalm.copy(_a1).applyMatrix4(m.matrixWorld);
+      h.gripSolve('R', H.rPalm, _q.copy(m.quaternion).multiply(_qr.copy(H.quat).invert().multiply(H.rQuat)), w);
+      if (H.hasLeft) {
+        if (an.support && parts.pump) { _a1.copy(an.support); _a1.z += parts.pump.position.z - ((parts.pump.userData.rest as THREE.Vector3 | undefined)?.z ?? parts.pump.position.z); H.lPalm.copy(_a1).applyMatrix4(m.matrixWorld); }
+        else if (an.support) H.lPalm.copy(an.support).applyMatrix4(m.matrixWorld);
+        else { _a1.copy(an.grip).add(_a2.set(0.017, -0.012, 0.012)); H.lPalm.copy(_a1).applyMatrix4(m.matrixWorld); }
+        h.gripSolve('L', H.lPalm, _q.copy(m.quaternion).multiply(_qr.copy(H.quat).invert().multiply(H.lQuat)), w * (an.butt ? 1 : smooth(0.35, 0.8, this.raiseT)));
+      }
+    }
   }
   give(id: WeaponId, ammo: number) { this.inv.give(id, ammo); }
 }

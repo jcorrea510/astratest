@@ -126,7 +126,7 @@ function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
   const pt = (lx: number, y: number, lz: number, sx: number, syy: number, sz: number, col: THREE.Color, t: TrimParams, pitch = 0) => { const p = L(lx, lz); tb.box(p.x, y, p.z, sx, syy, sz, s.yaw, col, t, pitch); };
   // parapet cap
   pt(0, top + 0.06, hd - 0.12, s.w + 0.04, 0.12, 0.32, tc, T_STONE); pt(0, top + 0.06, -hd + 0.12, s.w + 0.04, 0.12, 0.32, tc, T_STONE);
-  { const p1 = L(hw - 0.12, 0), p2 = L(-hw + 0.12, 0); tb.box(p1.x, top + 0.06, p1.z, 0.32, 0.12, s.d, s.yaw, tc, T_STONE); tb.box(p2.x, top + 0.06, p2.z, 0.32, 0.12, s.d, s.yaw, tc, T_STONE); }
+  { const p1 = L(hw - 0.12, 0), p2 = L(-hw + 0.12, 0); tb.box(p1.x, top + 0.06, p1.z, 0.32, 0.12, s.d - 0.6, s.yaw, tc, T_STONE); tb.box(p2.x, top + 0.06, p2.z, 0.32, 0.12, s.d - 0.6, s.yaw, tc, T_STONE); } // side caps stop short of the front/back caps (no coplanar overlap at the corners)
   // cornice / bands on the front (and exposed sides)
   if (s.cornice === 'heavy') {
     pt(0, top - 0.35, hd + 0.25, s.w + 0.5, 0.55, 0.5, tc, T_STONE);

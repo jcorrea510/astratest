@@ -82,3 +82,33 @@ test('GPS routes over the bridge (road lanes), never across the water', async ({
   for (const q of water) expect([-480, 100, 400].some(z => Math.abs(q.z - z) < 12), `${q.x},${q.z}`).toBe(true);
   clean(p);
 });
+
+test('shoppers browse the aisle, stop at shelves, queue and pay; the clerk keeps busy', async ({ page }) => {
+  test.setTimeout(240_000);
+  const p = watch(page);
+  await boot(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, R = (window as any).__meridian.activities.robberies, k = R.kiosks[0];
+    g.police.clear(); g.pedCap = 0;
+    const out = k.frame.toWorld(3.1, 0.3, 14);
+    g.player.place(out.x, out.y, out.z, 0);
+    const seen = new Set<string>(); const moved: Record<number, number> = {}; const start = new Map<any, any>();
+    let clerkTurns = 0, lastClerkYaw: number | null = null, maxShoppers = 0;
+    for (let f = 0; f < 30 * 75; f++) {
+      g.frame(1 / 30, false);
+      maxShoppers = Math.max(maxShoppers, k.shoppers.length);
+      k.shoppers.forEach((s: any, i: number) => {
+        seen.add(s.life.st);
+        if (!start.has(s)) start.set(s, s.n.char.pos.clone());
+        moved[i] = Math.max(moved[i] ?? 0, s.n.char.pos.distanceTo(start.get(s)));
+      });
+      if (k.clerk) { const y = k.clerk.char.yaw; if (lastClerkYaw !== null && Math.abs(Math.sin((y - lastClerkYaw) / 2)) > 0.3) clerkTurns++; lastClerkYaw = y; }
+    }
+    return { seen: [...seen], moved: Object.values(moved), n: maxShoppers, clerkTurns, clerkYawChange: lastClerkYaw !== null };
+  });
+  expect(r.n).toBeGreaterThanOrEqual(2);
+  expect(r.seen).toEqual(expect.arrayContaining(['walk', 'look']));
+  expect(r.moved.filter(d => d > 1.5).length).toBeGreaterThanOrEqual(2); // nobody stands frozen
+  expect(r.seen.some(s => s === 'queue' || s === 'pay' || s === 'leave')).toBe(true);
+  clean(p);
+});

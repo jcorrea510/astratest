@@ -295,7 +295,7 @@ test('tour: every feature in one session, clean console and sane world after eve
         const p = g.player.pos; if (!Number.isFinite(p.x + p.y + p.z) || p.y < -3 || !g.player.alive) out.bad.push(s); else out.spots.push(s);
       }
       for (const h of [0, 6, 12, 18, 23.5]) { sb.act('hour', h); for (let i = 0; i < 5; i++) g.frame(1 / 30, false); }
-      for (const t of [0, 40, 12]) { sb.act('traffic', t); sb.act('peds', t); for (let i = 0; i < 60; i++) g.frame(1 / 30, false); }
+      for (const q of ['low', 'high', 'medium']) { g.renderer.setQuality(q); for (let i = 0; i < 60; i++) g.frame(1 / 30, false); } // density follows the graphics preset only
       out.hour = g.hour; return out;
     });
     expect(r.spawnedAll).toBe(true); expect(r.bad).toEqual([]); expect(r.spots.length).toBeGreaterThanOrEqual(9);

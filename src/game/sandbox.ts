@@ -25,12 +25,10 @@ const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[
 
 export class Sandbox {
   god = false; infiniteAmmo = false; neverWanted = false; clockRunning = true;
-  traffic: number; peds: number;
   private unit: UnitKind = 'police';
   private kind: VehicleKind = 'coupe'; private spot = 'pier';
   open = false;
   constructor(private game: Game, private ui: GameUI) {
-    this.traffic = game.renderer.quality.traffic; this.peds = game.renderer.quality.pedestrians;
   }
   /** A fresh game: some cash, a pistol, golden hour. Everything else is earned, bought or taken from the tools panel. */
   setup() {
@@ -40,7 +38,7 @@ export class Sandbox {
     g.pcombat.inv.medkits = 1;
     this.applyCaps();
   }
-  applyCaps() { this.game.trafficCap = this.traffic; this.game.pedCap = this.peds; this.game.clockRunning = this.clockRunning; }
+  applyCaps() { this.game.clockRunning = this.clockRunning; }
   /** Every weapon incl. melee and throwables, with plenty of ammo. */
   arsenal() {
     const g = this.game;
@@ -68,8 +66,6 @@ export class Sandbox {
       { id: 'never', group: 'Police', label: 'Police ignore you', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
       { id: 'clock', group: 'World', label: 'Clock running', kind: 'toggle', value: this.clockRunning },
-      { id: 'traffic', group: 'World', label: 'Traffic', kind: 'slider', value: this.traffic, min: 0, max: 120, step: 1 },
-      { id: 'peds', group: 'World', label: 'Pedestrians', kind: 'slider', value: this.peds, min: 0, max: 300, step: 1 },
       { id: 'kind', group: 'Vehicles', label: 'Model', kind: 'select', value: this.kind, options: KINDS },
       { id: 'spawn', group: 'Vehicles', label: 'Spawn in front of me', kind: 'button' },
       { id: 'repair', group: 'Vehicles', label: 'Repair my vehicle', kind: 'button' },
@@ -97,8 +93,6 @@ export class Sandbox {
       case 'never': this.neverWanted = !!v; if (this.neverWanted) g.police.clear(); break;
       case 'hour': if (Number.isFinite(num)) g.hour = ((num % 24) + 24) % 24; break;
       case 'clock': this.clockRunning = !!v; g.clockRunning = this.clockRunning; break;
-      case 'traffic': if (Number.isFinite(num)) { this.traffic = num; g.trafficCap = num; } break;
-      case 'peds': if (Number.isFinite(num)) { this.peds = num; g.pedCap = num; } break;
       case 'kind': if (KINDS.some(k => k.value === v)) this.kind = v as VehicleKind; break;
       case 'spawn': this.spawnVehicle(); break;
       case 'repair': { const pv = g.playerVehicle; if (pv && !pv.destroyed) { pv.health = pv.spec.health; pv.lightsBroken = false; pv.phys.enginePower = 1; pv.resetBody(); } break; }
