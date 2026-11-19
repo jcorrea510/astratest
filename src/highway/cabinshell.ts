@@ -78,14 +78,15 @@ export function cabinFrame(kind: VehicleKind): CabinFrame {
  * (A-pillars, windshield frame, the roof's front edge) and every door-mirror triangle. Indexed input is returned unchanged.
  */
 export function stripFrontGreenhouse(g: THREE.BufferGeometry, belt: number, zCut: number): THREE.BufferGeometry {
-  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind');
+  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind'), col = g.getAttribute('color');
   if (g.index || !pos) return g;
   const keep: number[] = [];
   for (let i = 0; i < pos.count; i += 3) {
     const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
-    const ymax = Math.max(pos.getY(i), pos.getY(i + 1), pos.getY(i + 2));
+    const ymax = Math.max(pos.getY(i), pos.getY(i + 1), pos.getY(i + 2)), zmax = Math.max(pos.getZ(i), pos.getZ(i + 1), pos.getZ(i + 2));
     if (kind && Math.round(kind.getX(i)) === K.MIRROR) continue;
-    if (cz > zCut && (cy > belt + 0.012 || (ymax > belt + 0.05 && cy > belt - 0.02))) continue;
+    if (col && cz > zCut && cy > belt - 0.08 && col.getX(i) < 0.012 && col.getY(i) < 0.012 && col.getZ(i) < 0.012) continue; // black windshield trim at the cowl
+    if ((cz > zCut || zmax > zCut + 0.1) && (cy > belt + 0.012 || (ymax > belt + 0.05 && cy > belt - 0.02))) continue; // (long window-frame rails reach forward from behind the cut)
     keep.push(i);
   }
   const c = new THREE.BufferGeometry();

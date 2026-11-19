@@ -200,8 +200,8 @@ export function generateCity(seed = 1977): CityMap {
       const inter: Intersection = {
         id: intersections.length, ix: i, iz: j, x: AVENUES[i], z: STREETS[j],
         halfX: halfWidth(lanesForAvenue(i)), halfZ: halfWidth(lanesForStreet(j)),
-        // progressive timing (swept offline): 7 s per grid step keeps average red waiting ~3x lower than random offsets, both ways along a street
-        offset: ((i + j) * 7) % SIGNAL_PERIOD,
+        // progressive timing (swept offline for real city speeds, 9-13 m/s): 4 s per grid step cuts red waiting by about a third versus random offsets, both ways
+        offset: ((i + j) * 4) % SIGNAL_PERIOD,
         signalized: !((i === 0 || i === nx - 1) && (j === 0 || j === nz - 1)),
       };
       intersections.push(inter); interGrid[i][j] = inter;

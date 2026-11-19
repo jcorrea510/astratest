@@ -150,7 +150,7 @@ export class Cockpit {
     const sideMirrors: { pos: THREE.Vector3; yaw: number; sx: number }[] = [];
     for (const sx of [1, -1]) {
       const bi = V(sx * (B.x + 0.02), belt + 0.004, bz), bo = V(sx * (B.x + 0.068), belt + 0.004, B.z - 0.09);
-      const ti = V(sx * (T.x + 0.07), T.y + 0.012, T.z + 0.01), to = V(sx * (T.x + 0.105), T.y - 0.02, T.z - 0.055);
+      const ti = V(sx * (T.x + 0.072), T.y + 0.012, T.z + 0.008), to = V(sx * (T.x + 0.1), T.y - 0.015, T.z - 0.04);
       const prow: THREE.Vector3[][] = [], mid = V(0, (belt + T.y) / 2, (bz + T.z) / 2 - 0.4);
       for (let i = 0; i <= 10; i++) {
         const t = i / 10, a = bi.clone().lerp(ti, t), b = bo.clone().lerp(to, t), axis = ti.clone().sub(bi), e = b.clone().sub(a);
@@ -161,30 +161,30 @@ export class Cockpit {
       }
       put(mats.fabric, loft(prow, 2, 2));
       // sail: triangle panel between the pillar foot and the sill that the mirror is mounted on
-      const sailTop = bo.clone().lerp(to, 0.16), sailBack = V(sx * (B.x + 0.07), belt + 0.006, B.z - 0.22);
+      const sailTop = bo.clone().lerp(to, 0.24), sailBack = V(sx * (B.x + 0.07), belt + 0.006, B.z - 0.3);
       const sail = new THREE.BufferGeometry().setFromPoints([bi, bo, sailTop, bo, sailBack, sailTop]); sail.computeVertexNormals();
       sail.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(12).fill(0), 2)); put(mats.fabric, sail);
       // door sill (rounded top of the door card at the beltline), door card, armrest, pull, switch pack
-      const z0 = B.z - 0.1, z1 = E.z - 0.95, len = z0 - z1, zc = (z0 + z1) / 2;
+      const z0 = bz, z1 = E.z - 0.95, len = z0 - z1, zc = (z0 + z1) / 2;
       const sillW = Math.max(0.1, W / 2 + 0.02 - (B.x + 0.02));   // reaches the outer door skin so no body paint shows past it
-      add(mats.plastic, rb(sillW, 0.035, len, 0.016), sx * (B.x + 0.02 + sillW / 2), belt - 0.012, zc);
+      add(mats.plastic, rb(sillW, 0.05, len, 0.02), sx * (B.x + 0.02 + sillW / 2), belt + 0.002, zc);   // sill top sits ~2.5 cm over the beltline, hiding the fender
       add(mats.dash, rb(0.06, 0.46, len, 0.02), sx * (B.x + 0.06), belt - 0.26, zc);
       add(mats.leather, rb(0.09, 0.06, 0.42, 0.03), sx * (B.x - 0.0), belt - 0.22, E.z + 0.05);
       add(mats.gloss, rb(0.03, 0.022, 0.18, 0.01), sx * (B.x + 0.02), belt - 0.13, E.z + 0.32);
       add(mats.gloss, rb(0.05, 0.025, 0.14, 0.01), sx * (B.x - 0.005), belt - 0.185, E.z + 0.12);
       // door mirror: housing just outboard of the sail, glass turned to the driver (half way between facing the eye and facing back)
-      const M = V(sx * (B.x + 0.19), belt + 0.07, B.z - 0.15);
+      const M = V(sx * (B.x + 0.13), belt + 0.062, B.z - 0.08);
       const toEye = Math.atan2(E.x - M.x, E.z - M.z);
       const back = Math.PI * (toEye >= 0 ? 1 : -1), myaw = (toEye + back) / 2;
-      add(mats.gloss, rb(0.19, 0.11, 0.075, 0.035), M.x, M.y, M.z, 0, myaw);
-      add(mats.gloss, rb(0.07, 0.05, 0.06, 0.015), sx * (B.x + 0.1), belt + 0.03, B.z - 0.15);   // foot on the sail
+      add(mats.plastic, rb(0.195, 0.115, 0.075, 0.03), M.x, M.y, M.z, 0, myaw);
+      add(mats.plastic, rb(0.08, 0.045, 0.07, 0.015), sx * (B.x + 0.05), belt + 0.03, B.z - 0.1);   // foot on the sail
       sideMirrors.push({ pos: M, yaw: myaw, sx });
     }
     // windshield header, headliner and folded sun visors (a hardtop only)
     const hx = T.x + 0.1;
     add(mats.fabric, rb(hx * 2, 0.06, 0.12, 0.03), 0, T.y + 0.02, T.z - 0.035);
     if (!fr.open) {
-      const zh0 = T.z - 0.05, zh1 = E.z - 1.1;
+      const zh0 = T.z - 0.05, zh1 = Math.min(E.z - 0.8, (tp.shape.gh?.zR2 ?? E.z - 1.1) + 0.04);
       add(mats.fabric, rb(hx * 2 + 0.1, 0.02, zh0 - zh1, 0.01), 0, fr.roofIn, (zh0 + zh1) / 2);
       for (const sx of [1, -1]) add(mats.fabric, rb(0.36, 0.024, 0.17, 0.011), sx * 0.36, Math.min(fr.roofIn, T.y + 0.04) - 0.022, T.z - 0.13);
     }
@@ -201,12 +201,32 @@ export class Cockpit {
     const rear = tp.seats[2];
     if (rear) { add(mats.leather, rb(xD * 2 - 0.1, 0.14, 0.52, 0.06), 0, rear.y - 0.05, rear.z + 0.02); add(mats.leather, rb(xD * 2 - 0.1, 0.6, 0.17, 0.07), 0, rear.y + 0.26, rear.z - 0.26, -0.2); }
 
-    // ---- rear-view mirror: 20 deg right of and 10 deg above the eye's line of sight, half a metre away; its stalk climbs to the header
-    const ry0 = 20 * D2R, el = 10 * D2R, d = 0.52, R = V(E.x - d * Math.cos(el) * Math.sin(ry0), E.y + d * Math.sin(el), E.z + d * Math.cos(el) * Math.cos(ry0));
-    const rToEye = Math.atan2(E.x - R.x, E.z - R.z), rYaw = (rToEye + Math.PI * (rToEye >= 0 ? 1 : -1)) / 2 * 0.25 + rToEye * 0.75;
-    const stalkTop = Math.max(R.y + 0.08, T.y + 0.04);
-    add(mats.plastic, rb(0.02, stalkTop - R.y - 0.02, 0.02, 0.008), R.x, (stalkTop + R.y + 0.02) / 2, R.z + 0.02);
-    add(mats.gloss, rb(0.22, 0.066, 0.034, 0.022), R.x, R.y, R.z, 0, rYaw);
+    // ---- rear-view mirror: 20 deg right of and 10 deg above the eye's line of sight, as far out as the windshield allows (it hangs
+    // from a short stalk on the glass); its size scales with the distance so it always looks the same size from the seat
+    const glassZ = (y: number) => fr.baseCz + ((y - belt) / Math.max(0.05, T.y - belt)) * (T.z - fr.baseCz); // windshield centre line
+    const ry0 = 20 * D2R, el = 10 * D2R;
+    let d = 0.6, R = V(0, 0, 0);
+    for (; d > 0.3; d -= 0.01) { R = V(E.x - d * Math.cos(el) * Math.sin(ry0), E.y + d * Math.sin(el), E.z + d * Math.cos(el) * Math.cos(ry0)); if (R.z + 0.02 <= glassZ(R.y + 0.13 * d)) break; }
+    const mW = 0.37 * d, mH = mW * 0.3, rToEye = Math.atan2(E.x - R.x, E.z - R.z), rYaw = (rToEye + Math.PI * (rToEye >= 0 ? 1 : -1)) / 2 * 0.25 + rToEye * 0.75;
+    const yMount = Math.max(R.y + mH / 2 + 0.012, belt + ((R.z + 0.01 - fr.baseCz) / (T.z - fr.baseCz)) * (T.y - belt));
+    const glassTilt = Math.atan2(T.y - belt, fr.baseCz - T.z);   // windshield rake from horizontal
+    add(mats.plastic, rb(0.016, yMount - R.y - mH / 2 + 0.01, 0.016, 0.006), R.x, (yMount + R.y + mH / 2) / 2, R.z + 0.012);
+    add(mats.plastic, rb(0.04, 0.012, 0.055, 0.005), R.x, yMount, R.z + 0.012, -glassTilt);
+    add(mats.gloss, rb(mW, mH, 0.034, mH * 0.33), R.x, R.y, R.z, 0, rYaw);
+    // tinted shade band across the top of the windshield with the black frit patch behind the mirror mount
+    const xw = T.x + 0.07, yb = T.y - 0.13, bandGeo = new THREE.BufferGeometry();
+    bandGeo.setAttribute('position', new THREE.Float32BufferAttribute([xw, T.y, glassZ(T.y), -xw, T.y, glassZ(T.y), xw, yb, glassZ(yb), -xw, yb, glassZ(yb)].map((v, i) => i % 3 === 2 ? v - 0.004 : v), 3));
+    bandGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2)); bandGeo.setIndex([0, 2, 1, 1, 2, 3]);
+    const [bc, bg] = canvas(512, 64), grad = bg.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, 'rgba(6,8,10,0.97)'); grad.addColorStop(0.3, 'rgba(10,14,20,0.8)'); grad.addColorStop(1, 'rgba(14,20,28,0)');
+    bg.fillStyle = grad; bg.fillRect(0, 0, 512, 64);
+    const fu = ((xw - R.x) / (2 * xw)) * 512, fw = (0.1 / (2 * xw)) * 512, fy = Math.min(60, ((T.y - yMount) / (T.y - yb)) * 64 + 6);
+    bg.fillStyle = 'rgba(5,6,8,0.98)'; bg.beginPath(); bg.moveTo(fu - fw * 0.5, 0); bg.lineTo(fu + fw * 0.5, 0); bg.lineTo(fu + fw * 0.4, fy); bg.lineTo(fu - fw * 0.4, fy); bg.closePath(); bg.fill();
+    for (let yy = 2; yy < fy + 10; yy += 3) for (let xx = -fw * 0.75; xx <= fw * 0.75; xx += 3) { const r = Math.abs(xx) / (fw * 0.75); if (r > 0.6 || yy > fy) { bg.globalAlpha = 0.85; bg.beginPath(); bg.arc(fu + xx, yy, 1.1 * (1 - r * 0.6), 0, 7); bg.fill(); } }
+    bg.globalAlpha = 1;
+    const bandTex = tex(bc, true, 0, 4), bandMat = new THREE.MeshBasicMaterial({ map: bandTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false });
+    const band = new THREE.Mesh(bandGeo, bandMat); band.frustumCulled = false; band.renderOrder = 2; this.group.add(band);
+    this.disposables.push(bandGeo, bandTex, bandMat);
     this.mirrorSpots.rear.copy(R);
     const [mc, mg] = canvas(256, 64); const mirrorTex = tex(mc, true); this.disposables.push(mirrorTex);
     mg.fillStyle = '#3a4048'; mg.fillRect(0, 0, 256, 32); mg.fillStyle = '#2a2a2c'; mg.fillRect(0, 32, 256, 32); mirrorTex.needsUpdate = true;
@@ -217,7 +237,7 @@ export class Cockpit {
       const geo = new THREE.PlaneGeometry(w, h); cropUv(geo, crop); this.disposables.push(geo);
       const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.position.set(p.x + Math.sin(ry) * out, p.y, p.z + Math.cos(ry) * out); m.rotation.set(0, ry, 0); this.group.add(m); return m;
     };
-    glassAt(liveMat, 0.2, 0.051, CROP.rear, R, rYaw, 0.018);
+    glassAt(liveMat, mW * 0.91, mH * 0.78, CROP.rear, R, rYaw, 0.018);
     this.mirror.cam.position.copy(R); this.group.add(this.mirror.cam);
     for (const sm of sideMirrors) {
       const live = sideMirrorsLive(quality), crop = sm.sx > 0 ? CROP.left : CROP.right;
@@ -292,16 +312,14 @@ export class Cockpit {
       const g = rb(WHEEL_R - 0.045, 0.034, 0.016, 0.008); g.translate((WHEEL_R - 0.045) / 2 + 0.04, -0.012, 0.012); g.rotateZ(a); spokeGeos.push(plain(g));
     }
     for (const dx of [-0.022, 0.022]) { const g = rb(0.016, WHEEL_R - 0.05, 0.014, 0.006); g.translate(dx, -(WHEEL_R - 0.05) / 2 - 0.045, 0.014); spokeGeos.push(plain(g)); }
-    const hubG = new THREE.SphereGeometry(1, 24, 12); hubG.scale(0.072, 0.058, 0.03); hubG.translate(0, -0.006, 0.0); spokeGeos.push(plain(hubG));
+    const badge = new THREE.CircleGeometry(0.011, 18).rotateY(Math.PI); badge.translate(0, -0.006, -0.0305); spokeGeos.push(plain(badge));
     const spokeGeo = mergeGeometries(spokeGeos, false)!;
-    const spokeMat = std({ color: 0x121315, roughness: 0.42, metalness: 0.1, emissive: 0x050506 });
+    const spokeMat = std({ color: 0x50545b, roughness: 0.36, metalness: 0.7, emissive: 0x060607, envMapIntensity: 0.5 });   // satin metal spokes + badge
     const spokes = new THREE.Mesh(spokeGeo, spokeMat); spokes.frustumCulled = false; this.wheelSpin.add(spokes);
-    // satin accents on the spokes and the badge (one mesh)
-    const acc: THREE.BufferGeometry[] = [];
-    for (const sx of [1, -1]) { const g = rb(0.05, 0.004, 0.004, 0.0015); g.translate(sx * (WHEEL_R - 0.07), 0.002, -0.0035); acc.push(plain(g)); }
-    const badge = new THREE.CircleGeometry(0.011, 18).rotateY(Math.PI); badge.translate(0, -0.006, -0.0305); acc.push(plain(badge));
-    const accGeo = mergeGeometries(acc, false)!;
-    const accent = new THREE.Mesh(accGeo, mats.trim); accent.frustumCulled = false; this.wheelSpin.add(accent);
+    // airbag cover (dark, slightly domed) over the hub
+    const hubG = new THREE.SphereGeometry(1, 24, 12); hubG.scale(0.074, 0.06, 0.03); hubG.translate(0, -0.006, 0.0);
+    const accGeo = new THREE.BufferGeometry().copy(plain(hubG)); hubG.dispose();
+    const accent = new THREE.Mesh(accGeo, mats.plastic); accent.frustumCulled = false; this.wheelSpin.add(accent);
     this.disposables.push(rimGeo, spokeGeo, accGeo);
     // column shroud running into the dash
     const shroudGeo = new THREE.CylinderGeometry(0.042, 0.055, 0.24, 16).rotateX(Math.PI / 2); this.disposables.push(shroudGeo);

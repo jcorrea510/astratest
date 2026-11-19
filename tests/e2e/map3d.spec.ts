@@ -7,6 +7,16 @@ test('3D map: opens, zooms smoothly, pans, rotates; minimap draws', async ({ pag
   await boot(page);
   await page.evaluate(() => { (window as any).__game.player.place(0, 0.3, 120, 0); });
   await step(page, 1, { render: true });
+  const mini = await page.evaluate(() => {
+    const mm = (window as any).__meridian.ui.hud.minimap;
+    const st = { x: 0, z: 120, heading: 0.4, zoom: 1, blips: [] as unknown[] };
+    mm.state = st; mm.draw(0); // first draw bakes the city once
+    const a: number[] = [];
+    for (let i = 0; i < 40; i++) { mm.state = { ...st, x: i * 3, heading: 0.4 + i * 0.02 }; const t0 = performance.now(); mm.draw(i / 30); a.push(performance.now() - t0); }
+    return a.sort((x, y) => x - y)[20];
+  });
+  console.log('PERF minimap median ms', mini);
+  expect(mini).toBeLessThan(1);
   const shot = process.env.MAP_SHOT;
   if (shot) await page.screenshot({ path: `${shot}/mini.png`, clip: { x: 0, y: 480, width: 330, height: 240 } });
   await page.keyboard.press('KeyM'); await step(page, 1, { render: true });
@@ -30,5 +40,22 @@ test('3D map: opens, zooms smoothly, pans, rotates; minimap draws', async ({ pag
   for (let i = 0; i < 8; i++) await page.mouse.wheel(0, 120);
   await page.waitForTimeout(1800);
   if (shot) await page.screenshot({ path: `${shot}/full.png` });
+  // legend starts collapsed; L toggles it
+  expect(await page.evaluate(() => document.querySelector('.ma-map-legend')!.classList.contains('is-collapsed'))).toBe(true);
+  await page.keyboard.press('KeyL');
+  expect(await page.evaluate(() => document.querySelector('.ma-map-legend')!.classList.contains('is-collapsed'))).toBe(false);
+  await page.keyboard.press('KeyL');
+  // per-frame cost: panning redraws (layer is only re-transformed) and the baked minimap
+  const perf = await page.evaluate(() => {
+    const f = (window as any).__meridian.ui.fullmap;
+    const med = (a: number[]) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+    f.render(); // settle
+    const pan: number[] = [];
+    for (let i = 0; i < 40; i++) { f.view.cx += 6; f.view.cz += 3; f.dirty = true; const t0 = performance.now(); f.render(); pan.push(performance.now() - t0); }
+    return { pan: med(pan), panMax: Math.max(...pan) };
+  });
+  console.log('PERF', JSON.stringify(perf));
+  expect(perf.pan).toBeLessThan(16);
+
   clean(p);
 });

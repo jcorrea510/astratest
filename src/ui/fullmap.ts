@@ -9,6 +9,9 @@ import { fmtDistance } from '../core/units';
 
 /** Ground-plane squash of the pitched map (cos of the camera tilt from straight down). */
 export const MAP_PITCH = 0.64;
+/** The cached ground layer extends this fraction of the viewport past each edge, so panning rarely shows a gap. */
+const LAYER_MARGIN = 0.2;
+const w2 = (p: { x: number; z: number }): [number, number] => [p.x, p.z];
 
 export class FullMap {
   readonly el: HTMLDivElement;
@@ -25,7 +28,11 @@ export class FullMap {
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch: { d: number } | null = null;
   private layer = document.createElement('canvas');
-  private layerKey = '';
+  private layerView: { cx: number; cz: number; scale: number; tilt: number; w: number; h: number; dpr: number; heat: number; fast: boolean; W: number; H: number } | null = null;
+  private viewKey = '';
+  private lastChange = 0;
+  private legendOpen = false;
+  private legendEl!: HTMLDivElement;
   private fitScale = 1;
   private dpr = 1;
   private dirty = true;
@@ -57,8 +64,16 @@ export class FullMap {
     this.canvas.tabIndex = -1;
     this.stage.appendChild(this.canvas);
     body.appendChild(this.stage);
-    const legend = h('div', 'ma-map-legend');
-    legend.appendChild(h('div', 'ma-label', 'Legend'));
+    const legend = h('div', 'ma-map-legend is-collapsed');
+    this.legendEl = legend;
+    const chip = h('button', 'ma-legend-chip', 'Legend');
+    chip.type = 'button'; chip.setAttribute('aria-expanded', 'false');
+    chip.appendChild(h('kbd', 'ma-key', 'L'));
+    chip.addEventListener('click', () => { this.sound('click'); this.toggleLegend(); });
+    legend.appendChild(chip);
+    const lbody = h('div', 'ma-legend-body');
+    legend.appendChild(lbody);
+    lbody.appendChild(h('div', 'ma-label', 'Legend'));
     const list = h('div', 'ma-legend-list');
     for (const kind of BLIP_KINDS) {
       const row = h('div', 'ma-legend-row');
@@ -69,7 +84,7 @@ export class FullMap {
       list.appendChild(row);
       this.legendCanvases.push({ kind, c, row });
     }
-    legend.appendChild(list);
+    lbody.appendChild(list);
     const districts = h('div', 'ma-legend-districts');
     districts.appendChild(h('div', 'ma-label', 'Districts'));
     for (const d of Object.values(DISTRICT_INFO)) {
@@ -79,12 +94,12 @@ export class FullMap {
       row.appendChild(sw); row.appendChild(h('span', '', d.name));
       districts.appendChild(row);
     }
-    legend.appendChild(districts);
+    lbody.appendChild(districts);
     body.appendChild(legend);
     this.el.appendChild(body);
 
     const foot = h('div', 'ma-map-foot');
-    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['Enter', 'Waypoint at centre'], ['Esc', 'Close']]) {
+    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['L', 'Legend'], ['Enter', 'Waypoint at centre'], ['Esc', 'Close']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       foot.appendChild(s);
@@ -148,10 +163,16 @@ export class FullMap {
       if (!this.open || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.code === 'KeyQ') this.rotate(-Math.PI / 12);
       else if (e.code === 'KeyE') this.rotate(Math.PI / 12);
+      else if (e.code === 'KeyL') this.toggleLegend();
       else if (e.code === 'KeyR') { this.targetTilt = MAP_TILT; this.dirty = true; }
     }, true); // capture: the UI layer stops propagation of keys while a menu is open
   }
 
+  private toggleLegend() {
+    this.legendOpen = !this.legendOpen;
+    this.legendEl.classList.toggle('is-collapsed', !this.legendOpen);
+    this.legendEl.querySelector('.ma-legend-chip')?.setAttribute('aria-expanded', String(this.legendOpen));
+  }
   private pinchDist() { const p = [...this.pointers.values()]; return p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0; }
   /** Rotate the map by `da` radians (eased). */
   rotate(da: number) { this.targetTilt += da; this.dirty = true; }
@@ -171,7 +192,7 @@ export class FullMap {
     this.el.classList.add('is-open');
     this.localWaypoint = s.blips.find(b => b.kind === 'waypoint') ?? null;
     this.resize(true);
-    this.targetScale = this.view.scale; this.targetTilt = MAP_TILT; this.view.tilt = MAP_TILT; this.lastRender = performance.now();
+    this.targetScale = this.view.scale; this.targetTilt = MAP_TILT; this.view.tilt = MAP_TILT; this.layerView = null; this.lastRender = performance.now();
     const present = new Set(s.blips.map(b => b.kind));
     for (const l of this.legendCanvases) {
       const ctx = l.c.getContext('2d');
@@ -278,17 +299,33 @@ export class FullMap {
     const ctx = this.ctx, v = this.view, s = this.state;
     const tilt = v.tilt ?? 0, pitch = v.pitch ?? 1;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    // ground + buildings are cached: only redrawn when the view changes (blip pulses reuse the bitmap)
-    const fast = moving || !!this.drag?.moved;
-    const key = `${fast ? 'f' : 's'}${v.cx.toFixed(2)}|${v.cz.toFixed(2)}|${v.scale.toFixed(4)}|${tilt.toFixed(4)}|${v.w}|${v.h}|${this.dpr}|${s?.heatRadius ? Math.round(s.heatRadius.x + s.heatRadius.z + s.heatRadius.r) : 0}`;
-    if (key !== this.layerKey) {
-      this.layerKey = key;
-      if (this.layer.width !== this.canvas.width || this.layer.height !== this.canvas.height) { this.layer.width = this.canvas.width; this.layer.height = this.canvas.height; }
+    // ground + buildings live in an oversized offscreen layer rendered crisply only when the view has settled;
+    // while panning / zooming / rotating it is just re-transformed (a single drawImage)
+    const W = Math.round(v.w * (1 + 2 * LAYER_MARGIN)), H = Math.round(v.h * (1 + 2 * LAYER_MARGIN));
+    const heatKey = s?.heatRadius ? Math.round(s.heatRadius.x + s.heatRadius.z + s.heatRadius.r) : 0;
+    const vkey = `${v.cx.toFixed(2)}|${v.cz.toFixed(2)}|${v.scale.toFixed(4)}|${tilt.toFixed(4)}`;
+    if (vkey !== this.viewKey) { this.viewKey = vkey; this.lastChange = now; }
+    const lv = this.layerView;
+    const stale = !lv || lv.cx !== v.cx || lv.cz !== v.cz || lv.scale !== v.scale || lv.tilt !== tilt || lv.w !== v.w || lv.h !== v.h || lv.dpr !== this.dpr || lv.heat !== heatKey || lv.fast;
+    const settled = now - this.lastChange > 140 && !this.drag?.moved && !this.pinch && !moving;
+    let renderLayer = false, fastLayer = false;
+    if (stale) {
+      if (settled || !lv) { renderLayer = true; fastLayer = !settled; }
+      else {
+        const ratio = v.scale / lv.scale;
+        if (ratio > 2.4 || ratio < 0.42 || lv.w !== v.w || lv.h !== v.h || lv.dpr !== this.dpr) { renderLayer = true; fastLayer = true; }
+        else this.dirty = true; // keep the loop alive until the motion settles
+      }
+    }
+    if (renderLayer) {
+      this.layerView = { cx: v.cx, cz: v.cz, scale: v.scale, tilt, w: v.w, h: v.h, dpr: this.dpr, heat: heatKey, fast: fastLayer, W, H };
+      const lw = Math.round(W * this.dpr), lh = Math.round(H * this.dpr);
+      if (this.layer.width !== lw || this.layer.height !== lh) { this.layer.width = lw; this.layer.height = lh; }
       const lc = this.layer.getContext('2d')!;
       lc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      lc.fillStyle = '#071f2b'; lc.fillRect(0, 0, v.w, v.h);
+      lc.fillStyle = '#071f2b'; lc.fillRect(0, 0, W, H);
       lc.save();
-      lc.translate(v.w / 2, v.h / 2); lc.scale(1, pitch); lc.rotate(tilt); lc.scale(v.scale, v.scale); lc.translate(-v.cx, -v.cz);
+      lc.translate(W / 2, H / 2); lc.scale(1, pitch); lc.rotate(tilt); lc.scale(v.scale, v.scale); lc.translate(-v.cx, -v.cz);
       this.painter.paintGround(lc, v.scale);
       if (s?.heatRadius) {
         lc.beginPath(); lc.arc(s.heatRadius.x, s.heatRadius.z, s.heatRadius.r, 0, Math.PI * 2);
@@ -296,9 +333,20 @@ export class FullMap {
         lc.lineWidth = 2 / v.scale; lc.strokeStyle = 'rgba(120,180,255,0.7)'; lc.stroke();
       }
       lc.restore();
-      this.painter.buildings.drawExtruded(lc, v.cx, v.cz, v.scale, tilt, pitch, v.w, v.h, fast);
+      this.painter.buildings.drawExtruded(lc, v.cx, v.cz, v.scale, tilt, pitch, W, H, fastLayer);
+      if (fastLayer && settled) this.dirty = true; // upgrade to the crisp version next frame
     }
-    ctx.drawImage(this.layer, 0, 0, v.w, v.h);
+    const L = this.layerView;
+    ctx.fillStyle = '#071f2b'; ctx.fillRect(0, 0, v.w, v.h);
+    if (L) {
+      // layer pixel -> world (as rendered) -> current screen, an exact affine map for the ground plane
+      const lvw: MapView = { cx: L.cx, cz: L.cz, scale: L.scale, w: L.W, h: L.H, tilt: L.tilt, pitch };
+      const o = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 0, 0))), px = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 1, 0))), py = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 0, 1)));
+      const d = this.dpr;
+      ctx.setTransform((px.x - o.x) * d, (px.y - o.y) * d, (py.x - o.x) * d, (py.y - o.y) * d, o.x * d, o.y * d);
+      ctx.drawImage(this.layer, 0, 0, L.W, L.H);
+      ctx.setTransform(d, 0, 0, d, 0, 0);
+    }
     // waypoint route, drawn above the buildings in screen space so it keeps a constant width
     if (s?.route && s.route.length > 1) {
       ctx.beginPath();
@@ -316,36 +364,69 @@ export class FullMap {
     vg.addColorStop(0, 'rgba(3,12,16,0)'); vg.addColorStop(1, 'rgba(3,12,16,0.5)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, v.w, v.h);
 
-    // District names
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const fs = Math.max(10, Math.min(15, v.scale * 22));
-    ctx.font = `700 ${fs}px Inter, "Helvetica Neue", Arial, sans-serif`;
-    for (const d of this.painter.districtLabels) {
-      const p = mapWorldToScreen(v, d.x, d.z);
-      const text = d.name.toUpperCase().split('').join(' ');
-      ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.65)'; ctx.strokeText(text, p.x, p.y);
-      ctx.fillStyle = 'rgba(252,242,217,0.78)'; ctx.fillText(text, p.x, p.y);
-    }
-
+    const zoomK = v.scale / this.fitScale;
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const hit = (x0: number, y0: number, x1: number, y1: number) => placed.some(r => x0 < r.x1 && x1 > r.x0 && y0 < r.y1 && y1 > r.y0);
+    const br = 8.5;
+    // blip icons: shops only once zoomed in; key icons (safehouse, arms, garage, mission...) always
+    const icons: { b: MinimapBlip; x: number; y: number }[] = [];
     if (s) {
-      const br = 8.5;
       for (const b of s.blips) {
         if (b.kind === 'waypoint') continue;
+        if ((b.kind === 'shop' || b.kind === 'collectible') && zoomK < 1.6) continue;
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
-        this.blipShadow(ctx, p.x, p.y, br);
-        drawBlip(ctx, b.kind, p.x, p.y - br * 0.7, br, t, !!b.pulse);
+        icons.push({ b, x: p.x, y: p.y });
       }
-      ctx.font = '700 14px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
-      ctx.textAlign = 'left';
-      for (const b of s.blips) {
-        if (!b.label || b.kind === 'waypoint') continue;
-        if (b.kind === 'shop' && this.view.scale < this.fitScale * 1.9) continue; // ~50 shop names only when zoomed in
-        const p = mapWorldToScreen(v, b.x, b.z); p.y -= br * 0.7;
-        if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
-        ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(6,18,21,0.9)'; ctx.strokeText(b.label, p.x + br + 5, p.y);
-        ctx.fillStyle = '#fff3dc'; ctx.fillText(b.label, p.x + br + 5, p.y);
+      for (const i of icons) {
+        this.blipShadow(ctx, i.x, i.y, br);
+        drawBlip(ctx, i.b.kind, i.x, i.y - br * 0.7, br, t, !!i.b.pulse);
+        if (i.b.kind !== 'shop') placed.push({ x0: i.x - br, y0: i.y - br * 1.7, x1: i.x + br, y1: i.y + br * 0.3 });
       }
+    }
+    // text labels, highest priority first; a label that would overlap one already placed is skipped
+    ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+    type Lab = { text: string; x: number; y: number; prio: number; kind: 'district' | 'blip'; alpha: number };
+    const labs: Lab[] = [];
+    for (const d of this.painter.districtLabels) {
+      const p = mapWorldToScreen(v, d.x, d.z);
+      if (p.x < -40 || p.y < -20 || p.x > v.w + 40 || p.y > v.h + 20) continue;
+      labs.push({ text: d.name.toUpperCase().split('').join(' '), x: p.x, y: p.y, prio: 1, kind: 'district', alpha: 1 });
+    }
+    if (s) {
+      const groups = new Map<string, { x: number; y: number; n: number }>();
+      for (const i of icons) {
+        const b = i.b;
+        if (!b.label) continue;
+        const m = /^(.*?)\s+helipad\s+\d+$/i.exec(b.label);
+        if (m) { const g = groups.get(m[1]) ?? { x: 0, y: 0, n: 0 }; g.x += i.x; g.y += i.y; g.n++; groups.set(m[1], g); continue; }
+        const isPad = b.kind === 'vehicle';
+        if (isPad && zoomK < 1.5) continue; // minor labels hidden when zoomed out
+        if (b.kind === 'shop' && zoomK < 1.9) continue;
+        const prio = b.kind === 'safehouse' || b.kind === 'arms' || b.kind === 'garage' || b.kind === 'mission' || b.kind === 'target' || b.kind === 'checkpoint' ? 0 : isPad ? 3 : 2;
+        labs.push({ text: b.label, x: i.x + br + 5, y: i.y - br * 0.7, prio, kind: 'blip', alpha: 1 });
+      }
+      if (zoomK >= 1.5) for (const [name, g] of groups) labs.push({ text: `${name} helipads`, x: g.x / g.n + br + 5, y: g.y / g.n - br * 0.7, prio: 3, kind: 'blip', alpha: 1 });
+    }
+    labs.sort((a2, b2) => a2.prio - b2.prio);
+    const fs = Math.max(10, Math.min(15, v.scale * 22));
+    for (const l of labs) {
+      if (l.kind === 'district') { ctx.font = `700 ${fs}px Inter, "Helvetica Neue", Arial, sans-serif`; ctx.textAlign = 'center'; }
+      else { ctx.font = '700 14px "Barlow Condensed", "Arial Narrow", Arial, sans-serif'; ctx.textAlign = 'left'; }
+      const tw = ctx.measureText(l.text).width, th = l.kind === 'district' ? fs : 15;
+      const x0 = l.kind === 'district' ? l.x - tw / 2 : l.x, y0 = l.y - th / 2;
+      if (hit(x0, y0, x0 + tw, y0 + th)) continue;
+      placed.push({ x0: x0 - 2, y0: y0 - 1, x1: x0 + tw + 2, y1: y0 + th + 1 });
+      if (l.kind === 'district') {
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,30,34,0.65)'; ctx.strokeText(l.text, l.x, l.y);
+        ctx.fillStyle = 'rgba(252,242,217,0.78)'; ctx.fillText(l.text, l.x, l.y);
+      } else {
+        ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(6,18,21,0.9)'; ctx.strokeText(l.text, l.x, l.y);
+        ctx.fillStyle = '#fff3dc'; ctx.fillText(l.text, l.x, l.y);
+      }
+    }
+    ctx.textBaseline = 'middle';
+    if (s) {
       ctx.textAlign = 'center';
       const wp = this.localWaypoint;
       if (wp) { const p = mapWorldToScreen(v, wp.x, wp.z); this.blipShadow(ctx, p.x, p.y, 10); drawBlip(ctx, 'waypoint', p.x, p.y, 10, t); }

@@ -39,7 +39,7 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** seconds panicking and boxed in (the driver bails out on foot) and health last seen (shot at) */
   boxedT?: number; hp?: number;
   /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
-  legitWait?: boolean; blockedBy?: Vehicle | null }
+  legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -83,6 +83,7 @@ export class Traffic {
     v.phys.body.setLinvel({ x: sp.dx * lane.speed * 0.6, y: 0, z: sp.dz * lane.speed * 0.6 }, true);
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
+    if (role === 'civilian' && kind !== 'bus') v.phys.enginePower = 1.7; // city drivers pull away briskly (stock engines are realistic-slow)
     const car: AiCar = { v, driver, lane, s, mode, target: null, stuckT: 0, honkT: 0, reverseT: 0, persistent: false, ram: false, arriveDist: 8 };
     // some civilians drive with a friend in the front passenger seat
     if (role === 'civilian' && mode === 'cruise' && v.tpl.seats.length > 1 && v.doorIndex('right', 0) >= 0 && Math.random() < 0.2) {
@@ -190,7 +191,7 @@ export class Traffic {
       // progress along the lane
       if (car.mode !== 'pursuit' && car.mode !== 'goto' || !car.target || pos.distanceTo(car.target) > 40) this.advanceLane(car, pos, car.target);
       let targetSpeed = car.maxSpeed ?? car.lane.speed * (car.mode === 'flee' ? 1.6 : car.mode === 'pursuit' ? 1.8 : 1);
-      let legit = false;
+      let legit = false, depth = 0;
       const civ = car.mode === 'cruise' && !car.persistent && car.driver.role === 'civilian';
       // shot at: a driver whose car just took damage from the player floors it
       if (car.hp !== undefined && v.health < car.hp - 0.5 && civ && v.lastDamagedBy === player) this.panic(v);
@@ -303,7 +304,8 @@ export class Traffic {
             // cut off / blocked by the player: lean on the horn
             if (car.mode === 'cruise' && blockDist < 14 && speed > 5 && speed - bv.speed > 4) this.honk(car, t, 0.8, 3.5);
             else if (car.mode === 'cruise' && blockDist < 10 && Math.abs(speed) < 1.5) { car.honkT += dt; if (car.honkT > 2) { car.honkT = -1.5; this.honk(car, t, 0.7, 1); } }
-          } else if (boc && (boc.legitWait || Math.abs(bv.speed) > 0.8)) legit = true;
+          } else if (boc && !car.lane.connector && ((boc.legitWait && (boc.legitDepth ?? 0) < 14) || Math.abs(bv.speed) > 0.8)) { legit = true; depth = (boc.legitDepth ?? 0) + 1; } // a queue behind a red; chains that never reach a root cause (cycles) stop counting
+          else if (boc && Math.abs(bv.speed) > 0.8) legit = true;
           // two cars nose to nose (or a cycle in the intersection): the one in the box goes through
           if (boc && boc.blockedBy === v && car.mode === 'cruise' && (car.lane.connector || car.lane.length - car.s < 10 || v.id < bv.id) && (car.jamT ?? 0) > (car.lane.connector ? 1.5 : 4) && (car.ghostT ?? 0) <= 0) { car.ghostT = 6; this.stats.jamBreaks++; }
         }
@@ -316,7 +318,8 @@ export class Traffic {
         if (blocker === 'person' && blockDist < 9 && Math.abs(speed) < 2) { car.honkT += dt; if (car.honkT > 1.6) { car.honkT = -2.5; this.audio.play('horn', { pos, volume: 0.6 }); } }
       }
       if (blockDist === Infinity) car.blockedBy = null;
-      car.legitWait = legit;
+      car.legitWait = legit; car.legitDepth = legit ? depth : 0;
+      if (car.lane.connector && car.mode === 'cruise' && (car.jamT ?? 0) > 2.5 && (car.ghostT ?? 0) <= 0 && blockerV && blockerV !== playerVehicle && this.carOf(blockerV)) { car.ghostT = 6; this.stats.jamBreaks++; }
       // gridlock watchdog: stopped with nothing legitimate to wait for
       if (car.mode === 'cruise' && !car.persistent && Math.abs(speed) < 0.8 && targetSpeed < 0.3 && !legit) car.jamT = (car.jamT ?? 0) + dt;
       else if (Math.abs(speed) > 2 || legit) car.jamT = 0;
