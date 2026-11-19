@@ -9,10 +9,10 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [x] R4-E Player (6697b61): gun held in aim pose while shooting (still broken), faster car entry, physical carjack throw (hands on victim), heli entry anim, better robbing (shoot clerk then rob till), shoppers react.
 - [x] R4-F Highway mode (title entry: infinite realistic highway, AI lane changes with signals, cut-offs, 1st/3rd person, high fps) + US units + fullscreen button.
 - [x] R4-B Density (game.ts/vehicle.ts hooks uncommitted, shared): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
-- [x] R4-M Manhattan island (2776860): tapered island, west river + 5 bridges, Broadway + Flatiron, map tilt 29deg. East river: M2 agent.
+- [x] R4-M Manhattan island (2776860): tapered island, west river + 5 bridges, Broadway + Flatiron, map tilt 29deg. East river + Eastbank done 454e78f.
 - [ ] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
 - [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
-Running: M2 east-river ad3b0e8dbd992ec2b (08:05, stop 10:15), R2 realism a ab1d3a64f24bf97f1 (07:50; grade, ballistics, ped impacts, gravity, grip toggle). R1 done (in 20ac753, see REALISM.md). Resume stopped ones via SendMessage.
+Running: L street-life a59770161fdc32d67 (08:22, stop 10:15), R2 realism a ab1d3a64f24bf97f1 (07:50; grade, ballistics, ped impacts, gravity, grip toggle). R1 done (in 20ac753, see REALISM.md). Resume stopped ones via SendMessage.
 
 ## Done
 - Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
