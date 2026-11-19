@@ -25,7 +25,9 @@ describe('NPC voices removed', () => {
 });
 describe('crowds', () => {
   it('medium has 3-5x the old pedestrian count and more traffic', () => {
-    expect(QUALITY.medium.pedestrians).toBeGreaterThanOrEqual(66);
+    // near (full-AI) pedestrians are capped for M1 frame time; the instanced far crowd carries the density
+    expect(QUALITY.medium.pedestrians).toBeGreaterThanOrEqual(60);
+    expect(QUALITY.medium.pedestrians + QUALITY.medium.farPeds).toBeGreaterThanOrEqual(350);
     expect(QUALITY.medium.traffic).toBeGreaterThan(18);
   });
 });

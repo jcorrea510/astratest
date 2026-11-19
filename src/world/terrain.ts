@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { RAPIER, groups, G_STATIC, ALL, type Physics } from '../core/physics';
-import { type CityMap, type PathRoad, pathHeightAt, CHANNEL, SEABED_Y, STREETS, CUL_DE_SAC_R, AIRFIELD } from './citymap';
+import { type CityMap, type PathRoad, pathHeightAt, CHANNEL, WEST_RIVER, SEABED_Y, STREETS, CUL_DE_SAC_R, AIRFIELD } from './citymap';
 
 export const TERRAIN = { x0: -1104, x1: 1104, z0: -1304, z1: -408, step: 8 };
 /** Southern edge of the terrain (meets the flat city ground). */
@@ -53,6 +53,7 @@ export function makeTerrainHeight(city: CityMap, pads: Pad[]) {
     }
     for (const pad of pads) { const d = Math.hypot(x - pad.x, z - pad.z); const w = 1 - smooth(pad.r, pad.r + 14, d); h = h * (1 - w) + pad.y * w; }
     if (x > CHANNEL.x0 + 1 && x < CHANNEL.x1 - 1 && z > CHANNEL_END_Z) h = SEABED_Y;
+    if (x > WEST_RIVER.x0 + 1 && x < WEST_RIVER.x1 - 1 && z > WEST_RIVER.z0) h = SEABED_Y; // the western river's valley
     return h;
   };
 }

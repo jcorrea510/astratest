@@ -160,3 +160,67 @@ describe('west extension + stores', () => {
     expect(surfaceAt(c, 100, 1100)).toBe('water');
   });
 });
+
+describe('Manhattan island shape', () => {
+  const reach = (start: number, edges: (id: number) => number[]) => {
+    const seen = new Set([start]), q = [start];
+    while (q.length) for (const n of edges(q.pop()!)) if (!seen.has(n)) { seen.add(n); q.push(n); }
+    return seen;
+  };
+  it('the whole lane graph (island, bridges, mainland, freeway) is strongly connected', () => {
+    const out = (id: number) => { const l = city.lanes[id]; return [...l.next, ...(l.leftLane !== undefined ? [l.leftLane] : []), ...(l.rightLane !== undefined ? [l.rightLane] : [])]; }; // lane changes count
+    const prev: number[][] = city.lanes.map(() => []);
+    for (const l of city.lanes) for (const n of out(l.id)) prev[n].push(l.id);
+    expect(reach(0, out).size).toBe(city.lanes.length);
+    expect(reach(0, id => prev[id]).size).toBe(city.lanes.length);
+  });
+  it('the western river and the tapered south tip are water; the four west streets bridge the river', () => {
+    expect(surfaceAt(city, -500, -100)).toBe('water');
+    expect(surfaceAt(city, -300, 760)).toBe('water'); // west of the tapered tip
+    expect(surfaceAt(city, -800, 600)).toBe('water'); // sea south of the mainland
+    expect(surfaceAt(city, -50, 600)).not.toBe('water');
+    expect(surfaceAt(city, 0, 850)).not.toBe('water');
+    let bridges = 0;
+    for (const p of city.paths.filter(q => q.kind === 'street')) {
+      const over = p.pts.filter(q => q.x > -526 && q.x < -464);
+      if (!over.length) continue;
+      bridges++;
+      for (const q of over) expect(surfaceAt(city, q.x, q.z), `bridge ${p.name} at ${q.x},${q.z}`).toBe('road');
+    }
+    expect(bridges).toBeGreaterThanOrEqual(3);
+  });
+  it('no building, store or named spot stands in the water', () => {
+    for (const l of city.lots) expect(surfaceAt(city, l.x, l.z), `lot ${l.id} at ${l.x},${l.z}`).not.toBe('water');
+    for (const s of STORES) expect(surfaceAt(city, s.x, s.z), s.name).not.toBe('water');
+    for (const b of city.blocks) expect(surfaceAt(city, (b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2)).not.toBe('water');
+  });
+  it('a car can drive from the mainland (Old Town) to the island and back over a bridge', () => {
+    const a = nearestLane(city, -760, -100)!, b = nearestLane(city, 0, 200)!;
+    const fwd = routeField(city, 0, 200);
+    expect(Number.isFinite(fwd[a.lane.id])).toBe(true);
+    const back = routeField(city, -760, -100);
+    expect(Number.isFinite(back[b.lane.id])).toBe(true);
+  });
+});
+
+describe('Broadway', () => {
+  it('is a diagonal street through intersections (1,1)..(4,4) with lanes both ways, signals and turning connectors', () => {
+    const bw = city.paths.filter(p => p.name === 'Broadway');
+    expect(bw.length).toBe(3);
+    const diag = city.lanes.filter(l => l.diag);
+    expect(diag.length).toBe(6);
+    for (const l of diag) {
+      expect(l.next.length, `diag lane ${l.id}`).toBeGreaterThan(0);
+      expect(city.intersections[l.intersection].signalized).toBe(true);
+    }
+    // a car on the north-west end can reach the south-east end and vice versa
+    const reach = (from: number) => { const seen = new Set([from]), q = [from]; while (q.length) for (const n of city.lanes[q.pop()!].next) if (!seen.has(n)) { seen.add(n); q.push(n); } return seen; };
+    const first = diag.find(l => l.points[0].x < l.points[1].x)!;
+    expect(diag.filter(l => reach(first.id).has(l.id)).length).toBeGreaterThanOrEqual(3);
+  });
+  it('cuts three blocks into triangles: road in the channel, no building in it, and the Flatiron fits a triangle', () => {
+    expect(city.blocks.filter(b => b.diag).length).toBe(3);
+    expect(surfaceAt(city, -200, -150 + 0)).toBe('road'); // on the diagonal near the middle block
+    for (const l of city.lots) if (l.blockId >= 0 && city.blocks[l.blockId].diag) expect(Math.abs(((l.x + 250) - (l.z + 200)) * Math.SQRT1_2) > 8 || l.x > 0, `lot ${l.id}`).toBe(true);
+  });
+});

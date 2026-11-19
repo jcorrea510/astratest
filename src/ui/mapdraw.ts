@@ -1,5 +1,5 @@
 /** Canvas painting of Port Meridian for the minimap and the full map, plus blip glyphs. */
-import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS } from '../world/citymap';
+import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS, WEST_RIVER, MAINLAND_Z1, ISLAND_LEFT, islandShore } from '../world/citymap';
 import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 import { WEST, WEST_PLAZAS } from '../world/westside';
@@ -38,8 +38,12 @@ export class CityPainter {
     water.rect(-big, COAST_Z, big * 2, big);
     water.rect(HARBOR_X, -60, big, big);
     water.rect(CHANNEL.x0, -700, CHANNEL.x1 - CHANNEL.x0, 700 - 60); // CITY: the Cannery Channel (land east of it)
+    water.rect(WEST_RIVER.x0, WEST_RIVER.z0, WEST_RIVER.x1 - WEST_RIVER.x0, COAST_Z - WEST_RIVER.z0); // the western river
+    water.rect(-big, MAINLAND_Z1, WEST_RIVER.x1 + big, COAST_Z - MAINLAND_Z1); // sea south of the mainland
+    for (let j = 10; j < ISLAND_LEFT.length; j++) water.rect(WEST_RIVER.x1, j === 10 ? STREETS[j] - 8 : STREETS[j] + 8, AVENUES[ISLAND_LEFT[j]] - 14 - WEST_RIVER.x1, STREETS[j + 1] - STREETS[j] + (j === 10 ? 16 : 0) + 40 * (j === ISLAND_LEFT.length - 1 ? 1 : 0)); // bays of the tapered south tip
+    const tipX = AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14;
     const beach = new Path2D();
-    beach.rect(WEST.x0, STREETS[STREETS.length - 1] + 9, HARBOR_X - WEST.x0, COAST_Z - STREETS[STREETS.length - 1] - 9);
+    beach.rect(tipX, STREETS[STREETS.length - 1] + 9, HARBOR_X - tipX, COAST_Z - STREETS[STREETS.length - 1] - 9);
     const quay = new Path2D();
     quay.rect(AVENUES[AVENUES.length - 1] + 9, STREETS[0] - 30, HARBOR_X - AVENUES[AVENUES.length - 1] - 9, COAST_Z - STREETS[0] + 30);
     this.base.push({ color: '#1d4436', path: land });
@@ -57,8 +61,10 @@ export class CityPainter {
     }
 
     this.coastline = new Path2D();
-    this.coastline.moveTo(-big, COAST_Z); this.coastline.lineTo(HARBOR_X, COAST_Z);
-    this.coastline.lineTo(HARBOR_X, -700); this.coastline.moveTo(CHANNEL.x1, -700); this.coastline.lineTo(CHANNEL.x1, -60); this.coastline.lineTo(big, -60);
+    this.coastline.moveTo(tipX, COAST_Z); this.coastline.lineTo(HARBOR_X, COAST_Z);
+    this.coastline.lineTo(HARBOR_X, -700);
+    for (const sg of islandShore(STREETS[0] - 8, STREETS[STREETS.length - 1] + 8)) { this.coastline.moveTo(sg.x0, sg.z0); this.coastline.lineTo(sg.x1, sg.z1); }
+    this.coastline.moveTo(WEST_RIVER.x0, WEST_RIVER.z0); this.coastline.lineTo(WEST_RIVER.x0, MAINLAND_Z1); this.coastline.lineTo(-big, MAINLAND_Z1); this.coastline.moveTo(CHANNEL.x1, -700); this.coastline.lineTo(CHANNEL.x1, -60); this.coastline.lineTo(big, -60);
 
     const blockPaths = new Map<string, Path2D>();
     const lotPaths = new Map<string, Path2D>();

@@ -41,3 +41,12 @@ describe('GPS routing in the south extension', () => {
     expect(r.slice(1, -1).every(onRoad)).toBe(true);
   });
 });
+
+describe('GPS across the western river', () => {
+  it('routes from the mainland to the island over a bridge and never over open water', () => {
+    const r = gpsRoute(city, -800, 150, 0, 150)!;
+    expect(r).toBeDefined();
+    expect(r.slice(1, -1).every(onRoad)).toBe(true);
+    expect(r.some(p => p.x > -526 && p.x < -464)).toBe(true);
+  });
+});

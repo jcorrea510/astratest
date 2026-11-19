@@ -36,6 +36,8 @@ export class VehiclePhysics {
   steer = 0;
   /** smoothed steering input (-1..1) */
   steerIn = 0;
+  /** seconds a slide has been left alone (hands off the wheel, no handbrake): the car then self-aligns instead of circling forever */
+  driftLazy = 0;
   speed = 0; // forward speed m/s (signed)
   rpm = 0;
   airTime = 0;
@@ -132,9 +134,9 @@ export class VehiclePhysics {
   }
   /** Maximum road-wheel angle at a given speed: generous when parking, calm on the highway. */
   steerLimit(absV: number) {
-    const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(5, 42, absV);
+    const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(9, 46, absV); // full-ish lock stays available through city speeds
     // never ask the front tyres for much more slip than their peak: full lock = best possible turn, not a plough
-    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 1.45;
+    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 1.7;
     return Math.min(geo, grip);
   }
 
@@ -170,16 +172,17 @@ export class VehiclePhysics {
       this.drift = Math.max(this.drift, 0.6);
     }
     const drifting = this.drift > 0;
+    if (drifting && Math.abs(sInRaw) < 0.12 && this.hb < 0.05) this.driftLazy += dt; else this.driftLazy = Math.max(0, this.driftLazy - dt * 2);
 
     // Steering: rate-limited input with faster return-to-centre, speed-sensitive lock, countersteer help.
     const sIn = clamp(input.steer, -1, 1);
     const toward = Math.abs(sIn) > Math.abs(this.steerIn) && Math.sign(sIn) === Math.sign(this.steerIn || sIn);
-    const rate = (toward ? 6.2 - 2.6 * smooth(5, 38, absV) : 8) * dt;
+    const rate = (toward ? 9.5 - 3.4 * smooth(8, 38, absV) : 9) * dt; // keyboard: full lock in ~0.1-0.15 s
     this.steerIn += clamp(sIn - this.steerIn, -rate, rate);
     let steerAngle = this.steerIn * (drifting ? spec.maxSteer * 0.9 : this.steerLimit(absV));
     if (fwdSpeed > 4) {
       const b = this.beta, dead = drifting ? 0.02 : 0.07;
-      if (Math.abs(b) > dead) steerAngle += (b - Math.sign(b) * dead) * (drifting ? 0.4 : 0.5);
+      if (Math.abs(b) > dead) steerAngle += (b - Math.sign(b) * dead) * (drifting ? 0.55 : 0.5);
     }
     steerAngle = clamp(steerAngle, -spec.maxSteer, spec.maxSteer);
     this.steer = steerAngle;
@@ -304,12 +307,13 @@ export class VehiclePhysics {
         const I = spec.mass * (this.wheelBase * this.wheelBase) * 0.3;
         if (this.hb > 0.3 && absV > 6) {
           // handbrake flick: rotate in the steering direction
-          body.applyTorqueImpulse({ x: 0, y: this.steerIn * spec.mass * 2.4 * dt, z: 0 }, true);
+          // (fades out once the car is already well sideways so a flick is a drift, not a spin)
+          body.applyTorqueImpulse({ x: 0, y: this.steerIn * spec.mass * 2.4 * (1 - smooth(0.3, 0.8, Math.abs(this.beta))) * dt, z: 0 }, true);
         } else if (drifting) {
           // hold the drift: keep the slide angle inside a fun window, throttle keeps the speed up
           // steering into the drift deepens it, countersteering straightens it out; the throttle keeps it alive
           const b = this.beta, dir = this.driftDir || -Math.sign(b) || 1;
-          const want = -dir * clamp(0.42 + 0.3 * this.steerIn * dir, 0.06, 0.78);
+          const want = -dir * clamp((0.42 + 0.3 * this.steerIn * dir) * (1 - 0.9 * smooth(0.25, 1.1, this.driftLazy)), 0.04, 0.78);
           const k = thr > 0.2 ? 1 : 0.35;
           const tau = I * (5.5 * (b - want) + 2.4 * dBeta) * k * this.drift;
           body.applyTorqueImpulse({ x: 0, y: clamp(tau, -I * 6, I * 6) * dt, z: 0 }, true);

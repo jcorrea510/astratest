@@ -14,6 +14,12 @@ import { clamp, wrapAngle } from '../core/rng';
 
 export type PlayerSound = 'jump' | 'land' | 'whoosh' | 'footstep' | 'splash';
 
+/** Health lost on touching down at `impact` m/s (vertical). Safe up to a ~3 m drop, painful at ~5 m, lethal from rooftop heights. */
+export function fallDamage(impact: number, rolled = false): number {
+  const d = Math.max(0, (impact - 15) * 7.5);
+  return Math.round(rolled ? d * 0.6 : d);
+}
+
 /** On-foot tuning in SI units (m, s, rad). */
 export const MOVE = {
   walk: 1.8, jog: 4.5, sprint: 7.0, aim: 2.4, swim: 3.4,
@@ -40,6 +46,8 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export class PlayerController {
   onSound: ((s: PlayerSound, volume: number) => void) | null = null;
+  /** health lost to a hard landing (the game applies it and handles death) */
+  onFallDamage: ((damage: number) => void) | null = null;
   private wasSwimming = false;
   aiming = false;
   /** Set by PlayerCombat while a ranged gun is raised without the aim button (firing from the hip): body keeps facing the camera line. */
@@ -354,6 +362,7 @@ export class PlayerController {
     this.cam.landDip(clamp((impact - 3) * 0.03, 0, 0.4));
     if (this.jumping) { const k = MOVE.landKeep; c.vel.x *= k; c.vel.z *= k; }
     if (fromWater) return;
+    { const fd = fallDamage(impact, sp > 3 && !this.strafing); if (fd > 0) this.onFallDamage?.(fd); }
     if (impact > MOVE.hardLanding) {
       this.cam.addShake(clamp((impact - 10) * 0.03, 0.08, 0.35));
       if (sp > 3 && !this.strafing) {

@@ -1,6 +1,6 @@
 /** Rotating rectangular radar drawn on a canvas, throttled to ~30 fps. */
 import type { MinimapState } from './contracts';
-import { clampToBox, worldToMinimap } from './geometry';
+import { clampToBox, worldToMinimap, TRUE_NORTH } from './geometry';
 import { CityPainter, drawBlip, drawPlayerArrow } from './mapdraw';
 import { h } from './dom';
 
@@ -103,7 +103,7 @@ export class Minimap {
     drawPlayerArrow(ctx, cx, cy, Math.max(6.5, H * 0.06), 0);
 
     // North marker on the frame
-    const n = worldToMinimap(0, 0, s.heading, 1, 0, -1, this.tmp);
+    const n = worldToMinimap(0, 0, s.heading, 1, TRUE_NORTH.x, TRUE_NORTH.z, this.tmp);
     n.x *= 1e4; n.y *= 1e4;
     const nm = 10;
     clampToBox(n, -cx + nm, W - cx - nm, -cy + nm, H - cy - nm);

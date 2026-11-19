@@ -6,7 +6,7 @@
 import { Rng } from './../core/rng';
 import type { Intersection, Lot, LotKind, P3, PathRoad, PedNode } from './citymap';
 
-export const WEST = { x0: -1060, x1: -470, z0: -392, z1: 405 };
+export const WEST = { x0: -1060, x1: -540, z0: -392, z1: 405 };
 export interface Plaza { x: number; z: number; r: number; kind: 'plaza' | 'park' | 'island'; name: string }
 export interface Landmark { kind: 'clock' | 'lighthouse' | 'cathedral' | 'watertower'; x: number; z: number; yaw: number; name: string }
 export const WEST_ROUNDABOUT = { x: -760, z: 0, r: 34 };

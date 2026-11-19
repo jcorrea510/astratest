@@ -172,6 +172,7 @@ export class Game {
     this.events.arrestAnimationDone = this.police.dispatch.animHook; // [POLICE] the cop cuffs the player before the ARRESTED card
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
+    this.playerCtl.onFallDamage = (d) => { if (!this.ghost && this.player.damage(d, null, this.time)) this.playerDown('down'); };
     this.playerCtl.onSound = (snd, vol) => { this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: snd === 'footstep' ? 0.9 + Math.random() * 0.2 : 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
     onProgress(0.85, 'Warming up the city lights');
     this.physics.world.step();

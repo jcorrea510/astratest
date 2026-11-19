@@ -3,6 +3,10 @@ import { worldGlass } from './glass';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
+import { buildIsland } from './islandbuild';
+import { buildFlatiron } from './flatiron';
+import { diagTriangles } from './broadway';
+import { RAPIER, groups, G_STATIC, ALL } from '../core/physics';
 import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
 import { buildExpansion, expansionPads, helipadPad } from './expansion';
 import { buildWest } from './westbuild';
@@ -10,7 +14,7 @@ import { CHANNEL, pathHeightAt } from './citymap';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
-  type CityMap, type Lot, type Block, AVENUES, STREETS, lanesForStreet, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
+  type CityMap, type Lot, type Block, AVENUES, STREETS, ISLAND_LEFT, WEST_RIVER, MAINLAND_Z1, lanesForStreet, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
 } from './citymap';
 import { ChunkInstancer, colorize, mergeColored } from './geometry';
 import {
@@ -86,26 +90,28 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   // ---------- Ground: grass land, asphalt, water ----------
   const grassMat = surfaceMat(grassSurface(), 1, {}, 0.3, 'grass');
   const land = new GeoBuilder();
-  slab(land, -1400, NORTH_EDGE, maxX + 2, maxZ + 8, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
-  slab(land, maxX, NORTH_EDGE, CHANNEL.x0, -62, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
-  slab(land, CHANNEL.x1, NORTH_EDGE, 1400, -62, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
-  slab(land, -1400, -1400, -1104, NORTH_EDGE, -0.05, -0.05, C('#ffffff'), C('#ffffff'), 7);
+  const wht = C("#ffffff");
+  // island ground: one strip per block row (the grid tapers toward the south tip), the mainland across the river, the shores north and east
+  const strips: [number, number, number, number][] = []; // x0, z0, x1, z1
+  for (let j = 0; j < ISLAND_LEFT.length; j++) strips.push([AVENUES[ISLAND_LEFT[j]] - 14, j === 0 ? NORTH_EDGE : STREETS[j] - 8, maxX + 2, STREETS[j + 1] + 8]);
+  strips.push([-1400, NORTH_EDGE, WEST_RIVER.x0, MAINLAND_Z1]);
+  strips.push([maxX, NORTH_EDGE, CHANNEL.x0, -62], [CHANNEL.x1, NORTH_EDGE, 1400, -62], [-1400, -1400, -1104, NORTH_EDGE]);
+  for (const [x0, z0, x1, z1] of strips) slab(land, x0, z0, x1, z1, -0.05, -0.05, wht, wht, 7);
   const landMesh = new THREE.Mesh(land.build(), grassMat); landMesh.receiveShadow = true; root.add(landMesh);
   // Ground as 200 m tiles: one huge box loses contact precision for the character controller.
-  // Only land gets ground: the sea and harbor are open water down to a seabed (swim, sink).
+  // Only land gets ground; everything else is open water down to a seabed (swim, sink).
   const tileRect = (x0: number, z0: number, x1: number, z1: number, top: number) => {
     for (let gx = x0; gx < x1; gx += 200) for (let gz = z0; gz < z1; gz += 200) {
       const ex = Math.min(gx + 200, x1), ez = Math.min(gz + 200, z1);
       physics.addStaticBox((gx + ex) / 2, top - 0.5, (gz + ez) / 2, (ex - gx) / 2, 0.5, (ez - gz) / 2);
     }
   };
-  tileRect(-1500, NORTH_EDGE, maxX + 2, maxZ + 7, -0.05); // city and the land around it (the hills to the north are terrain)
-  tileRect(maxX + 2, NORTH_EDGE, CHANNEL.x0, -62, -0.05); // north of the docks
-  tileRect(CHANNEL.x1, NORTH_EDGE, 1500, -62, -0.05); // east of the Cannery Channel
+  for (const [x0, z0, x1, z1] of strips.slice(0, ISLAND_LEFT.length + 3)) tileRect(Math.max(x0, -1500), z0, x1, z1, -0.05);
   tileRect(CHANNEL.x0, -1500, CHANNEL.x1, -62, SEABED_Y); // channel bed
+  tileRect(WEST_RIVER.x0, -700, WEST_RIVER.x1, NORTH_EDGE, SEABED_Y); // river bed up the carved valley
   // outer limits beyond the terrain
   physics.addStaticBox(-1090, 20, -850, 2, 60, 460); physics.addStaticBox(1090, 20, -700, 2, 60, 640); physics.addStaticBox(0, 20, -1290, 1100, 60, 2);
-  tileRect(-1500, maxZ + 7, 1500, SEA_EDGE_Z, SEABED_Y); // seabed south of the coast
+  tileRect(-1500, NORTH_EDGE, maxX + 2, SEA_EDGE_Z, SEABED_Y); // seabed under the island, the river and the sea
   tileRect(maxX + 2, -62, SEA_EDGE_X, maxZ + 7, SEABED_Y); // harbor floor
   physics.addStaticBox(0, -2, SEA_EDGE_Z, 1500, 8, 1);
   physics.addStaticBox(SEA_EDGE_X, -2, (SEA_EDGE_Z - 62) / 2, 1, 8, (SEA_EDGE_Z + 62) / 2);
@@ -113,7 +119,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const asphaltS = asphaltSurface();
   const asphaltMat = surfaceMat(asphaltS, 1, {}, 0.2, 'asphalt');
   const road = new GeoBuilder();
-  slab(road, minX, minZ, maxX, maxZ, 0, 0, C('#ffffff'), C('#ffffff'), 12);
+  for (let j = 0; j < ISLAND_LEFT.length; j++) slab(road, AVENUES[ISLAND_LEFT[j]] - halfWidth(2), j === 0 ? minZ : STREETS[j] - halfWidth(lanesForStreet(j)), maxX, j === ISLAND_LEFT.length - 1 ? maxZ : STREETS[j + 1] + halfWidth(lanesForStreet(j + 1)), 0, 0, C('#ffffff'), C('#ffffff'), 12);
   const roadMesh = new THREE.Mesh(road.build(), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
 
   // Water with gentle animated waves and shoreline foam.
@@ -129,7 +135,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         float w2 = cos(dot(vW.xz, vec2(0.29, -0.13)) - uTime * 1.3) + cos(dot(vW.xz, vec2(0.08, 0.31)) + uTime * 0.7) + 0.35 * cos(dot(vW.xz, vec2(0.52, 0.47)) - uTime * 2.1) + 0.25 * cos(dot(vW.xz, vec2(-1.1, 1.4)) - uTime * 2.9);
         normal = normalize(normal + (viewMatrix * vec4(w1 * 0.03, 0.0, w2 * 0.03, 0.0)).xyz * fadeW);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z) * step(${(COAST_Z - 20).toFixed(1)}, vW.z) * step(vW.x, ${(HARBOR_X - 2).toFixed(1)});
+        float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z) * step(${(COAST_Z - 20).toFixed(1)}, vW.z) * step(vW.x, ${(HARBOR_X - 2).toFixed(1)}) * step(${(AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14).toFixed(1)}, vW.x);
         float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(${(HARBOR_X - 1).toFixed(1)}, vW.x) * step(-60.0, vW.z) * step(vW.z, ${(COAST_Z - 30).toFixed(1)});
         float foamBand = max(shoreS, shoreE);
         float foam = foamBand * step(0.5, 0.5 + 0.5 * sin(vW.x * 1.7 + sin(vW.x * 0.21) * 4.0 + uTime * 1.6 + foamBand * 7.0)) * step(0.35, 0.5 + 0.5 * sin(vW.x * 0.37 + vW.z * 0.9 - uTime * 0.8));
@@ -146,7 +152,29 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const inner = new GeoBuilder();
   const grassInner = new GeoBuilder();
   const trim = new Chunked(125, () => new TrimBuilder());
+  // Broadway cuts three blocks into triangles: raised pavement triangles either side of a street-level channel
+  const triPrism = (gb: GeoBuilder, t0: { x: number; z: number }[], y0: number, y1: number, top: THREE.Color, side: THREE.Color) => {
+    let t = t0;
+    if ((t[1].x - t[0].x) * (t[2].z - t[0].z) - (t[1].z - t[0].z) * (t[2].x - t[0].x) < 0) t = [t[0], t[2], t[1]];
+    const V = (p: { x: number; z: number }, y: number) => new THREE.Vector3(p.x, y, p.z);
+    gb.quad(V(t[0], y1), V(t[1], y1), V(t[2], y1), V(t[2], y1), [t[0].x / 6, t[0].z / 6, t[1].x / 6, t[1].z / 6, t[2].x / 6, t[2].z / 6, t[2].x / 6, t[2].z / 6], top);
+    const h = (y1 - y0) / 6;
+    for (let i = 0; i < 3; i++) { const a = t[i], b = t[(i + 1) % 3], len = Math.hypot(b.x - a.x, b.z - a.z) / 6; gb.quad(V(a, y0), V(b, y0), V(b, y1), V(a, y1), [0, 0, len, 0, len, h, 0, h], side); }
+  };
+  const buildDiagBlock = (b: Block) => {
+    const cc = C('#b9b5ad'), ch = CURB_HEIGHT + 0.012, tri = diagTriangles(b.x0, b.z0, b.x1, b.z1);
+    for (const t of [tri.ne, tri.sw]) {
+      triPrism(walks, t, 0, CURB_HEIGHT, C('#ffffff'), C('#c8c4bb'));
+      const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(t.flatMap(p => [p.x, -0.3, p.z, p.x, CURB_HEIGHT, p.z])));
+      if (desc) physics.tag(physics.world.createCollider(desc.setFriction(0.8).setCollisionGroups(groups(G_STATIC, ALL))), { kind: 'static' });
+      for (let i = 0; i < 3; i++) {
+        const a = t[i], e = t[(i + 1) % 3], len = Math.hypot(e.x - a.x, e.z - a.z), mx = (a.x + e.x) / 2, mz = (a.z + e.z) / 2;
+        trim.at(mx, mz).box(mx, ch / 2, mz, len, ch, 0.3, -Math.atan2(e.z - a.z, e.x - a.x), cc, T_STONE);
+      }
+    }
+  };
   for (const b of city.blocks) {
+    if (b.diag) { buildDiagBlock(b); continue; }
     const top = b.district === 'strand' ? C('#f4ead8') : b.district === 'heights' ? C('#e4e1dc') : b.district === 'cannery' ? C('#c9c6bf') : C('#ffffff');
     slab(walks, b.x0, b.z0, b.x1, b.z1, 0, CURB_HEIGHT, top, C('#c8c4bb'), 6);
     physics.addStaticBox((b.x0 + b.x1) / 2, CURB_HEIGHT / 2, (b.z0 + b.z1) / 2, (b.x1 - b.x0) / 2, CURB_HEIGHT / 2, (b.z1 - b.z0) / 2, 0, 0.8);
@@ -160,8 +188,9 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     else if (b.kind === 'buildings' && b.district !== 'heights') slab(inner, ix0 + 10, iz0 + 10, ix1 - 10, iz1 - 10, CURB_HEIGHT + 0.01, CURB_HEIGHT + 0.01, C('#9a9894'), C('#9a9894'), 12);
   }
   // promenade along the coast and the dock quay
-  slab(walks, minX, maxZ, maxX, maxZ + 7, 0, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6);
-  physics.addStaticBox((minX + maxX) / 2, CURB_HEIGHT / 2, maxZ + 3.5, (maxX - minX) / 2, CURB_HEIGHT / 2, 3.5);
+  const tipX = AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14; // west end of the south tip
+  slab(walks, tipX, maxZ, maxX, maxZ + 7, 0, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6);
+  physics.addStaticBox((tipX + maxX) / 2, CURB_HEIGHT / 2, maxZ + 3.5, (maxX - tipX) / 2, CURB_HEIGHT / 2, 3.5);
   slab(walks, maxX, -62, HARBOR_X, maxZ + 7, -3, CURB_HEIGHT, C('#c4beb4'), C('#8d8780'), 6);
   physics.addStaticBox((maxX + HARBOR_X) / 2, (CURB_HEIGHT - 3) / 2, (maxZ + 7 - 62) / 2, (HARBOR_X - maxX) / 2, (CURB_HEIGHT + 3) / 2, (maxZ + 7 + 62) / 2);
   const walkMesh = new THREE.Mesh(walks.build(), paveMat); walkMesh.receiveShadow = true; root.add(walkMesh);
@@ -171,10 +200,10 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // Beach: sloping sand from the promenade into the sea.
   const sandS = sandSurface();
-  const beachGeo = new THREE.PlaneGeometry(maxX - minX + 600, 90, 120, 18).rotateX(-Math.PI / 2);
+  const beachGeo = new THREE.PlaneGeometry(maxX + 300 - tipX, 90, 120, 18).rotateX(-Math.PI / 2);
   const bp = beachGeo.attributes.position, buv = beachGeo.attributes.uv;
   for (let i = 0; i < bp.count; i++) {
-    const x = bp.getX(i) + (minX + maxX) / 2 - 300, z = bp.getZ(i) + maxZ + 7 + 45;
+    const x = bp.getX(i) + (tipX + maxX + 300) / 2, z = bp.getZ(i) + maxZ + 7 + 45;
     const t = (z - (maxZ + 7)) / 90;
     const y = CURB_HEIGHT - 0.05 - t * 5.2 + Math.sin(x * 0.05) * 0.15 * t;
     bp.setXYZ(i, x, Math.min(y, CURB_HEIGHT - 0.02), z); buv.setXY(i, x / 8, z / 8);
@@ -186,7 +215,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const len = 90, drop = 5.2, ang = Math.atan2(drop, len);
     const cz = maxZ + 7 + len / 2, cy = CURB_HEIGHT - 0.05 - drop / 2 - 0.5 / Math.cos(ang);
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), ang);
-    physicsSlope(physics, (minX + maxX) / 2 - 300, cy, cz, (maxX - minX) / 2 + 300, 0.5, Math.hypot(len, drop) / 2, q);
+    physicsSlope(physics, (tipX + maxX + 300) / 2, cy, cz, (maxX + 300 - tipX) / 2, 0.5, Math.hypot(len, drop) / 2, q);
   }
 
   // Hills to the north and west close the map visually.
@@ -247,7 +276,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   }
   // parking bays in courtyard lots
   for (const b of city.blocks) {
-    if (b.kind !== 'buildings' || b.district === 'heights' || b.district === 'hillside') continue;
+    if (b.kind !== 'buildings' || b.district === 'heights' || b.district === 'hillside' || b.diag) continue;
     const x0 = b.x0 + SIDEWALK + 10, x1 = b.x1 - SIDEWALK - 10, z0 = b.z0 + SIDEWALK + 10, z1 = b.z1 - SIDEWALK - 10;
     const yy = CURB_HEIGHT + 0.025;
     const line = (ax: number, az: number, bx: number, bz: number, wdt = 0.12) => rect(ax - (az === bz ? 0 : wdt / 2), az - (az === bz ? wdt / 2 : 0), bx + (az === bz ? 0 : wdt / 2), bz + (az === bz ? wdt / 2 : 0), white, yy);
@@ -579,7 +608,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     } else if (b.district === 'hillside') {
       for (let i = 0; i < 14; i++) { const x = r.range(ix0 + 12, ix1 - 12), z = r.range(iz0 + 12, iz1 - 12); addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(1.0, 1.4), r); }
       for (let i = 0; i < 16; i++) props.add(`shrub${r.int(0, 1)}`, r.range(ix0 + 11, ix1 - 11), CURB_HEIGHT, r.range(iz0 + 11, iz1 - 11), r.range(0, 6), r.range(0.9, 1.6));
-    } else if (b.kind === 'buildings') {
+    } else if (b.kind === 'buildings' && !b.diag) {
       // courtyard clutter: dumpsters behind the buildings
       for (let i = 0; i < 3; i++) {
         const x = r.range(ix0 + 12, ix1 - 12), z = r.chance(0.5) ? iz0 + 10.9 : iz1 - 10.9;
@@ -598,12 +627,14 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       props.add(`tree${k2}`, x, y - 0.2, z, yaw, sc); props.add(`leaf${k2}`, x, y - 0.2, z, yaw, sc); placed++;
     } }
   // beach palms (kept clear of the landing strip in front of each beach ramp)
-  { const pr = new Rng(91); for (let x = minX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, false); } }
+  { const pr = new Rng(91); for (let x = tipX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, false); } }
   // billboards on poles along the edge of the city
   { const br = new Rng(5); for (let k = 0; k < 6; k++) { const x = -380 + k * 150 + br.range(-20, 20); if (nearPath(x, minZ - 14, 14)) continue; addBillboard({ x, y: 0, z: minZ - 14, yaw: 0, idx: k % 8, w: 12 }); } }
 
   // Old Town + Seacliff: sidewalks, plazas, landmarks, trees for the western extension
   buildWest({ root, physics, city, trim, props, paveMat, grassMat, addTree, addPalm });
+  buildFlatiron(ctx);
+  buildIsland({ physics, city, trim, northEdge: NORTH_EDGE, southEdge: maxZ + 8 });
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {

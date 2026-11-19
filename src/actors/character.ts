@@ -125,7 +125,19 @@ export class Character {
       if (ledge && ledge.rise > 0.04) { delta.y = ledge.rise + 0.01; stepped = true; }
     }
     this.controller.computeColliderMovement(this.collider, delta, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(0xffff, G_STATIC | G_VEHICLE | G_CHAR));
-    const cm = this.controller.computedMovement();
+    let cm = this.controller.computedMovement();
+    // Standing inside another character (teleported onto the clerk, spawned on top of someone): the capsule solver would eject
+    // us straight up onto their head. Resolve against the world only and walk apart horizontally instead.
+    if (!stepped && (cm.y - delta.y > 0.45 || (cm.y - delta.y > 0.03 && hs < 0.004))) { // (standing still yet rising = ejected, not stepping)
+      this.controller.computeColliderMovement(this.collider, delta, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(0xffff, G_STATIC | G_VEHICLE));
+      cm = this.controller.computedMovement();
+      const other = this.overlappingCharacter();
+      if (other) {
+        let sx = this.pos.x - other.x, sz = this.pos.z - other.z; const sl = Math.hypot(sx, sz);
+        if (sl < 0.05) { sx = Math.sin(this.yaw + 2.4); sz = Math.cos(this.yaw + 2.4); } else { sx /= sl; sz /= sl; }
+        cm = { x: cm.x + sx * 1.6 * dt, y: cm.y, z: cm.z + sz * 1.6 * dt };
+      }
+    }
     const m = { x: cm.x, y: cm.y, z: cm.z };
     const wasGrounded = this.grounded;
     let grounded = this.controller.computedGrounded();
@@ -155,6 +167,16 @@ export class Character {
     // horizontal velocity follows actual movement so blocked characters do not run on the spot
     if (dt > 0) { const ax = m.x / dt, az = m.z / dt; if (Math.hypot(ax, az) < Math.hypot(this.vel.x, this.vel.z) - 0.5) { this.vel.x = damp(this.vel.x, ax, 20, dt); this.vel.z = damp(this.vel.z, az, 20, dt); } }
     this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER, z: this.pos.z });
+  }
+  /** Position of another character whose capsule currently overlaps ours, or null. */
+  private overlappingCharacter(): { x: number; z: number } | null {
+    const w = this.physics.world, c = this.body.translation();
+    let found: { x: number; z: number } | null = null;
+    w.intersectionsWithShape({ x: c.x, y: c.y, z: c.z }, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Capsule(CAP_HALF, CAP_R), (o) => {
+      if (o.handle === this.collider.handle) return true;
+      const t = o.translation(); found = { x: t.x, z: t.z }; return false;
+    }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(0xffff, G_CHAR), undefined, this.body);
+    return found;
   }
   /** Height of walkable ground within `reach` metres below the feet at (x, y, z), or null. */
   groundBelow(x: number, y: number, z: number, reach: number): number | null {

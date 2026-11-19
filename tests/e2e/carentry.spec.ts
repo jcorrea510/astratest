@@ -83,7 +83,8 @@ test('a locked parked car needs the window smashed and a hotwire before it drive
   await step(page, 2);
   expect(await page.evaluate(() => (window as any).__v.ignition)).toBe(true);
   expect(await page.evaluate(() => (window as any).__game.carEntry.active)).toBe(false);
-  await step(page, 2.5, { hold: ['KeyW'] });
+  // a wall stands ~10 m ahead of this spot (yaw 0), so check the pull-away after one second instead of 2.5 s
+  await step(page, 1, { hold: ['KeyW'] });
   expect(await page.evaluate(() => (window as any).__v.speed)).toBeGreaterThan(4);
   // once stolen it stays open and started
   expect(await page.evaluate(() => { const v = (window as any).__v; return !v.doorsLocked && v.playerUsed; })).toBe(true);

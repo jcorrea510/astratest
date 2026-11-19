@@ -4,7 +4,7 @@ import { Inventory, WEAPONS } from '../combat/weapons';
 import { parseSave, serialize, type SaveData } from './save';
 import { HeatState } from './police';
 import { generateCity, surfaceAt } from '../world/citymap';
-import { PLACES, POSTCARDS } from './places';
+import { PLACES, POSTCARDS, RAMPS } from './places';
 import { MISSIONS, RACE_ROUTE } from './missions';
 
 describe('inventory', () => {
@@ -84,6 +84,9 @@ describe('places', () => {
       const s = surfaceAt(city, p.x, p.z);
       expect(['sidewalk', 'road'], `${k} on ${s}`).toContain(s);
     }
+  });
+  it('keeps postcards, contacts and stunt ramps out of the water', () => {
+    for (const p of [...POSTCARDS, ...RAMPS, PLACES.vesna]) if (!('y' in p)) expect(surfaceAt(city, p.x, p.z), `${p.x},${p.z}`).not.toBe('water');
   });
   it('has 12 postcards and five missions in order', () => {
     expect(POSTCARDS.length).toBe(12);

@@ -129,3 +129,17 @@ describe('title flyover', () => {
     }
   });
 });
+
+import { MAP_TILT, TRUE_NORTH } from './geometry';
+describe('tilted map presentation', () => {
+  const v = { cx: 100, cz: -50, scale: 0.7, w: 800, h: 500, tilt: MAP_TILT };
+  it('round-trips world and screen coordinates', () => {
+    const s = mapWorldToScreen(v, 340, 120), w = mapScreenToWorld(v, s.x, s.y);
+    expect(w.x).toBeCloseTo(340, 6); expect(w.z).toBeCloseTo(120, 6);
+  });
+  it('grid north leans 29 degrees clockwise and true north points straight up', () => {
+    const c = mapWorldToScreen(v, v.cx, v.cz), g = mapWorldToScreen(v, v.cx, v.cz - 100), t = mapWorldToScreen(v, v.cx + TRUE_NORTH.x * 100, v.cz + TRUE_NORTH.z * 100);
+    expect(g.x).toBeGreaterThan(c.x); expect(Math.atan2(g.x - c.x, c.y - g.y)).toBeCloseTo(MAP_TILT, 6);
+    expect(t.x).toBeCloseTo(c.x, 6); expect(t.y).toBeLessThan(c.y);
+  });
+});

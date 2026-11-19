@@ -5,6 +5,7 @@
 import { Rng } from '../core/rng';
 import { buildWestRoads, genWestLots, genWestPeds, WEST } from './westside';
 import { genStores } from './storegen';
+import { isDiagBlock, clearChannel, broadwayLots, addBroadwayLanes, diagConnectors, bwDist, BROADWAY } from './broadway';
 import { setGeneratedStores } from '../game/places';
 
 export type District = 'financial' | 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
@@ -34,6 +35,49 @@ export const HARBOR_X = 560; // quay edge on the east side
 export const SEABED_Y = -7; // open water south of the beach and east of the quay
 export const SEA_EDGE_Z = 1150; // swimmable sea ends here (invisible wall)
 export const SEA_EDGE_X = 660;
+/**
+ * Manhattan-style island: per block row (between STREETS[j] and STREETS[j+1]) the first kept avenue column. The grid
+ * tapers toward the south tip (Financial District); everything west of it is the Hudson-like river, and the old
+ * west districts are the mainland across it (joined by bridges).
+ */
+export const ISLAND_LEFT = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3];
+/** The western river between the island and the mainland (bridged by the four west streets). */
+export const WEST_RIVER = { x0: -526, x1: -464, z0: -700 };
+/** The mainland's southern coast (water beyond). */
+export const MAINLAND_Z1 = 440;
+export function blockKept(i: number, j: number): boolean { return j >= 0 && j < ISLAND_LEFT.length && i >= ISLAND_LEFT[j] && i <= AVENUES.length - 2; }
+/** West edge (x) of the island's ground at depth z (strips overlap by a street half width). Infinity outside the island rows. */
+export function islandLeftEdge(z: number): number {
+  let best = Infinity;
+  for (let j = 0; j < ISLAND_LEFT.length; j++) {
+    const z0 = STREETS[j] - 8, z1 = STREETS[j + 1] + 8;
+    if (z >= z0 && z <= z1) best = Math.min(best, AVENUES[ISLAND_LEFT[j]] - 14);
+  }
+  if (z > STREETS[STREETS.length - 1] + 8) best = AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14;
+  return best;
+}
+export interface ShoreSeg { x0: number; z0: number; x1: number; z1: number }
+/** The island's shoreline as axis-aligned wall segments (west side of the grid; the taper steps toward the south tip). */
+export function islandShore(northEdge: number, southEdge: number): ShoreSeg[] {
+  const segs: ShoreSeg[] = [];
+  let r0 = 0;
+  while (r0 < ISLAND_LEFT.length) {
+    let r1 = r0; while (r1 + 1 < ISLAND_LEFT.length && ISLAND_LEFT[r1 + 1] === ISLAND_LEFT[r0]) r1++;
+    const x = AVENUES[ISLAND_LEFT[r0]] - 14;
+    const zA = r0 === 0 ? northEdge : STREETS[r0] + 8, zB = r1 === ISLAND_LEFT.length - 1 ? southEdge : STREETS[r1 + 1] + 8;
+    segs.push({ x0: x, z0: zA, x1: x, z1: zB });
+    if (r1 < ISLAND_LEFT.length - 1) segs.push({ x0: x, z0: zB, x1: AVENUES[ISLAND_LEFT[r1 + 1]] - 14, z1: zB });
+    r0 = r1 + 1;
+  }
+  return segs;
+}
+
+export function islandWater(x: number, z: number): boolean {
+  if (x > WEST_RIVER.x0 && x < WEST_RIVER.x1 && z > WEST_RIVER.z0) return true;
+  if (x <= WEST_RIVER.x0 && z > MAINLAND_Z1) return true;
+  if (x >= WEST_RIVER.x1 && z > STREETS[0] - 10 && x < AVENUES[AVENUES.length - 1] && x < islandLeftEdge(z)) return true;
+  return false;
+}
 export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 1100 };
 
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
@@ -46,7 +90,7 @@ export function halfWidth(lanes: number): number { return lanes * LANE_WIDTH + 0
 export interface V2 { x: number; z: number }
 export interface Road { id: number; axis: 'x' | 'z'; index: number; coord: number; from: number; to: number; lanes: 1 | 2; half: number; name: string }
 export interface Intersection { id: number; ix: number; iz: number; x: number; z: number; halfX: number; halfZ: number; offset: number; signalized: boolean }
-export interface Block { id: number; ix: number; iz: number; x0: number; x1: number; z0: number; z1: number; district: District; kind: 'buildings' | 'park' | 'plaza' | 'docks' }
+export interface Block { id: number; ix: number; iz: number; x0: number; x1: number; z0: number; z1: number; district: District; kind: 'buildings' | 'park' | 'plaza' | 'docks'; /** cut diagonally by Broadway into two triangles */ diag?: boolean }
 export type LotKind = 'brownstone' | 'pastel' | 'tower' | 'midrise' | 'warehouse' | 'house';
 export interface Lot { id: number; blockId: number; /** lots outside the grid (blockId -1) carry their own district; street=false means no street frontage */ district?: District; street?: boolean; x: number; z: number; w: number; d: number; rot: number; kind: LotKind; height: number; seed: number }
 export interface Lane {
@@ -56,6 +100,8 @@ export interface Lane {
   leftLane?: number; rightLane?: number;
   /** surface height per point (absent = street level); freeway, ramps and hill roads carry it */
   ys?: number[];
+  /** Broadway's diagonal lanes (connectors to them are built separately) */
+  diag?: boolean;
 }
 export interface P3 { x: number; y: number; z: number }
 /** A free-form road outside the grid (freeway, ramps, hill road, airfield road): centreline with heights. */
@@ -137,6 +183,7 @@ export function generateCity(seed = 1977): CityMap {
   for (let i = 0; i < nx; i++) {
     interGrid[i] = [];
     for (let j = 0; j < nz; j++) {
+      if (!(blockKept(i - 1, j - 1) || blockKept(i, j - 1) || blockKept(i - 1, j) || blockKept(i, j))) continue;
       const inter: Intersection = {
         id: intersections.length, ix: i, iz: j, x: AVENUES[i], z: STREETS[j],
         halfX: halfWidth(lanesForAvenue(i)), halfZ: halfWidth(lanesForStreet(j)),
@@ -148,16 +195,19 @@ export function generateCity(seed = 1977): CityMap {
   }
   // Roads: one entry per segment between adjacent intersections
   for (let i = 0; i < nx; i++) for (let j = 0; j < nz - 1; j++) {
+    if (!(blockKept(i - 1, j) || blockKept(i, j))) continue;
     const a = interGrid[i][j], b = interGrid[i][j + 1];
     roads.push({ id: roads.length, axis: 'z', index: i, coord: AVENUES[i], from: a.z + a.halfZ, to: b.z - b.halfZ, lanes: lanesForAvenue(i), half: halfWidth(lanesForAvenue(i)), name: AVENUE_NAMES[i] });
   }
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx - 1; i++) {
+    if (!(blockKept(i, j - 1) || blockKept(i, j))) continue;
     const a = interGrid[i][j], b = interGrid[i + 1][j];
     roads.push({ id: roads.length, axis: 'x', index: j, coord: STREETS[j], from: a.x + a.halfX, to: b.x - b.halfX, lanes: lanesForStreet(j), half: halfWidth(lanesForStreet(j)), name: STREET_NAMES[j] });
   }
 
   // Blocks
   for (let i = 0; i < nx - 1; i++) for (let j = 0; j < nz - 1; j++) {
+    if (!blockKept(i, j)) continue;
     const district = districtFor(i, j);
     const x0 = AVENUES[i] + halfWidth(lanesForAvenue(i)), x1 = AVENUES[i + 1] - halfWidth(lanesForAvenue(i + 1));
     const z0 = STREETS[j] + halfWidth(lanesForStreet(j)), z1 = STREETS[j + 1] - halfWidth(lanesForStreet(j + 1));
@@ -165,7 +215,7 @@ export function generateCity(seed = 1977): CityMap {
     if (district === 'juniper') kind = 'park';
     else if (district === 'cannery') kind = 'docks';
     else if ((i === 3 && j === 1) || (i === 2 && j === 5) || (i === 6 && j === 7) || (i === 3 && j === 10)) kind = 'plaza';
-    blocks.push({ id: blocks.length, ix: i, iz: j, x0, x1, z0, z1, district, kind });
+    blocks.push({ id: blocks.length, ix: i, iz: j, x0, x1, z0, z1, district, kind, ...(isDiagBlock(i, j) ? { diag: true } : {}) });
   }
 
   // Lots along block perimeters (inside the sidewalk ring)
@@ -226,10 +276,16 @@ export function generateCity(seed = 1977): CityMap {
       cornerDepth[name + 'b'] = lastDepth;
     };
     // sides: north (faces -z), south (+z), west (-x), east (+x). rot = yaw so model front (+z) faces the street.
+    const lotStart = lots.length;
     place({ ax: 'x', fixed: iz0, from: ix0, to: ix1, rot: Math.PI }, 'N');
     place({ ax: 'x', fixed: iz1, from: ix0, to: ix1, rot: 0 }, 'S');
     place({ ax: 'z', fixed: ix0, from: iz0 + cornerDepth.Na, to: iz1 - cornerDepth.Sa, rot: -Math.PI / 2 }, 'W');
     place({ ax: 'z', fixed: ix1, from: iz0 + cornerDepth.Nb, to: iz1 - cornerDepth.Sb, rot: Math.PI / 2 }, 'E');
+    if (b.diag) { // Broadway cuts this block into two triangles: drop lots that hit the channel, then add frontage lots along it
+      const kept = clearChannel(lots.splice(lotStart));
+      for (const l of kept) lots.push({ ...l, id: lots.length });
+      lots.push(...broadwayLots(b, lots, rng, lots.length, b.id));
+    }
   }
 
   // Lanes: road lanes then intersection connectors
@@ -262,18 +318,21 @@ export function generateCity(seed = 1977): CityMap {
     }
   }
   const paths = buildExpansion(intersections, interGrid, lanes, push);
+  addBroadwayLanes(interGrid, lanes, paths, push, polyLength);
   // connectors
   for (const inter of intersections) {
     const ins = laneEnds.get(`${inter.id}:in`) ?? [];
     const outs = laneEnds.get(`${inter.id}:out`) ?? [];
     for (let pass = 0; pass < 2; pass++) for (const li of ins) {
       const a = lanes[li];
+      if (a.diag) continue;
       if (pass === 1 && a.next.length > 0) continue;
       const relaxed = pass === 1;
       const ae = a.points[a.points.length - 1], ap = a.points[a.points.length - 2];
       const adx = Math.sign(ae.x - ap.x), adz = Math.sign(ae.z - ap.z);
       for (const lo of outs) {
         const b = lanes[lo];
+        if (b.diag) continue;
         const bs = b.points[0], bn = b.points[1];
         const bdx = Math.sign(bn.x - bs.x), bdz = Math.sign(bn.z - bs.z);
         if (adx === -bdx && adz === -bdz) continue; // no U-turns
@@ -304,6 +363,7 @@ export function generateCity(seed = 1977): CityMap {
         a.next.push(c.id);
       }
     }
+    diagConnectors(inter, ins, outs, lanes, polyLength);
   }
 
   deadEndLoops(paths, intersections, lanes, laneEnds);
@@ -333,7 +393,10 @@ export function generateCity(seed = 1977): CityMap {
   }
 
   // West extension: lots along the curved frontages, sidewalks for pedestrians
-  lots.push(...genWestLots(paths, lots.length, new Rng(seed + 31), SIDEWALK));
+  lots.push(...genWestLots(paths, lots.length, new Rng(seed + 31), SIDEWALK).filter(l => {
+    const r = Math.max(l.w, l.d) / 2 + 3;
+    return !(l.x + r > WEST_RIVER.x0 && l.x - r < WEST_RIVER.x1) && l.z + r < MAINLAND_Z1;
+  }).map((l, k) => ({ ...l, id: lots.length + k })));
   genWestPeds(paths, pedNodes, SIDEWALK);
   // ~50 walk-in stores: picked from the street-facing lots (grid and west), resized to the shop footprint
   setGeneratedStores(genStores(lots, blocks, new Rng(seed + 77)));
@@ -358,6 +421,10 @@ export function surfaceAt(city: CityMap, x: number, z: number): Surface {
       if (Math.hypot(x - i.x, z - i.z) < (dead ? CUL_DE_SAC_R : Math.max(i.halfX, i.halfZ) * 1.42)) return 'road';
     }
   }
+  if (islandWater(x, z)) {
+    if (x > WEST_RIVER.x0 - 12 && x < WEST_RIVER.x1 + 12) for (const p of city.paths) if (p.kind === 'street' && pathHeightAt(p, x, z).d < p.half + SIDEWALK) return 'sidewalk';
+    return 'water';
+  }
   if (z > COAST_Z) return 'water';
   if (x > HARBOR_X && z > -60 && x < SEA_EDGE_X + 40) return 'water';
   if (x > CHANNEL.x0 && x < CHANNEL.x1 && z <= -60) return 'water';
@@ -371,6 +438,7 @@ export function surfaceAt(city: CityMap, x: number, z: number): Surface {
   for (let i = 0; i < AVENUES.length; i++) if (Math.abs(x - AVENUES[i]) < halfWidth(lanesForAvenue(i)) && z > STREETS[0] - 9 && z < STREETS[STREETS.length - 1] + 9) return 'road';
   for (let j = 0; j < STREETS.length; j++) if (Math.abs(z - STREETS[j]) < halfWidth(lanesForStreet(j)) && x > AVENUES[0] - 9 && x < AVENUES[AVENUES.length - 1] + 9) return 'road';
   if (x > CHANNEL.x1) return 'offmap';
+  { const bw = bwDist(x, z); if (bw < BROADWAY.channel) return 'road'; if (bw < BROADWAY.channel + SIDEWALK && x > AVENUES[1] && x < AVENUES[4]) return 'sidewalk'; }
   const b = blockAt(city, x, z);
   if (!b) return 'sidewalk';
   if (x < b.x0 + SIDEWALK || x > b.x1 - SIDEWALK || z < b.z0 + SIDEWALK || z > b.z1 - SIDEWALK) return 'sidewalk';

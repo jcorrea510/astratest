@@ -29,7 +29,7 @@ function sideSlip(car: VehiclePhysics) {
 }
 export interface HandlingMetrics {
   kind: VehicleKind; t100: number; vTop: number; brake100: number; latG15: number; latG25: number; steerT90: number;
-  turnR8: number; turnR15: number; yaw05: number; hbYawDeg: number; hbSpeedKeep: number; driftHold: number; driftSpeed: number; hbRecover: boolean; smallInputSlipDeg: number; revT5: number; slalomUp: number; revOk: boolean; maxSlipLaunch: number; upright: number;
+  turnR8: number; turnR15: number; yaw05: number; hbYawDeg: number; turnIn50: number; turnR12: number; hbLazyYaw: number; hbSpeedKeep: number; driftHold: number; driftSpeed: number; hbRecover: boolean; smallInputSlipDeg: number; revT5: number; slalomUp: number; revOk: boolean; maxSlipLaunch: number; upright: number;
 }
 export function measure(kind: VehicleKind): HandlingMetrics {
   const m = {} as HandlingMetrics; m.kind = kind;
@@ -76,6 +76,22 @@ export function measure(kind: VehicleKind): HandlingMetrics {
     for (let i = 0; i < 60 * 20 && car.speed < 12; i++) step({ throttle: 1, steer: 0, handbrake: false });
     for (let i = 0; i < 30; i++) step({ throttle: hold(car, 12), steer: 1, handbrake: false });
     m.yaw05 = Math.abs(car.body.angvel().y);
+  }
+  { // keyboard turn-in at city speed: full-lock step at 12 m/s; time to half of the yaw rate reached after 1.5 s, and the radius then
+    const { car, step } = setup(kind);
+    for (let i = 0; i < 60 * 20 && car.speed < 12; i++) step({ throttle: 1, steer: 0, handbrake: false });
+    const rates: number[] = []; let rs = 0, n = 0;
+    for (let i = 0; i < 90; i++) { step({ throttle: hold(car, 12), steer: 1, handbrake: false }); rates.push(Math.abs(car.body.angvel().y)); if (i > 45) { const v = car.body.linvel(); rs += Math.hypot(v.x, v.z) / Math.max(0.05, rates[i]); n++; } }
+    m.turnIn50 = (rates.findIndex(r => r >= rates[rates.length - 1] * 0.5) + 1) * DT; m.turnR12 = rs / n;
+  }
+  { // lazy handbrake drift: flick at 18 m/s then let go of the wheel entirely (throttle only) -> how far does the car spin in 3 s?
+    const { car, step } = setup(kind);
+    for (let i = 0; i < 60 * 20 && car.speed < 18; i++) step({ throttle: 1, steer: 0, handbrake: false });
+    const y0 = yawOf(car); let acc = 0, prev = y0;
+    for (let i = 0; i < 30; i++) step({ throttle: 0.5, steer: 1, handbrake: true });
+    for (let i = 0; i < 180; i++) { step({ throttle: 0.6, steer: 0, handbrake: false }); const y = yawOf(car); acc += wrap(y - prev); prev = y; }
+    m.hbLazyYaw = Math.abs(wrap(yawOf(car) - y0)) * 180 / Math.PI;
+    void acc;
   }
   { // steering response at 20 m/s: time to 90% of the yaw rate reached after 1.5 s
     const { car, step } = setup(kind);
@@ -141,7 +157,9 @@ describe('handling benchmark', () => {
     it(`${kind} handles like its class`, () => {
       const m = measure(kind);
       const f = (x: number, d = 2) => Number.isFinite(x) ? x.toFixed(d) : String(x);
-      process.stdout.write(`HANDLING ${kind.padEnd(11)} 0-100 ${f(m.t100, 1)}s top ${f(m.vTop, 0)}km/h brake100 ${f(m.brake100, 1)}m latG15 ${f(m.latG15)} latG25 ${f(m.latG25)} steerT90 ${f(m.steerT90)}s R8 ${f(m.turnR8, 1)}m R15 ${f(m.turnR15, 1)}m yaw05 ${f(m.yaw05)} hbYaw ${f(m.hbYawDeg, 0)}deg hbKeep ${f(m.hbSpeedKeep)} recover ${m.hbRecover} driftHold ${f(m.driftHold)} @${f(m.driftSpeed, 1)}m/s smallSlip ${f(m.smallInputSlipDeg, 1)}deg rev5 ${f(m.revT5, 1)}s launchSlip ${f(m.maxSlipLaunch, 1)} upright ${f(m.upright)} slalomUp ${f(m.slalomUp)}\n`);
+      process.stdout.write(`HANDLING ${kind.padEnd(11)} 0-100 ${f(m.t100, 1)}s top ${f(m.vTop, 0)}km/h brake100 ${f(m.brake100, 1)}m latG15 ${f(m.latG15)} latG25 ${f(m.latG25)} steerT90 ${f(m.steerT90)}s R8 ${f(m.turnR8, 1)}m R15 ${f(m.turnR15, 1)}m turnIn50 ${f(m.turnIn50)}s R12 ${f(m.turnR12, 1)}m lazyYaw ${f(m.hbLazyYaw, 0)}deg yaw05 ${f(m.yaw05)} hbYaw ${f(m.hbYawDeg, 0)}deg hbKeep ${f(m.hbSpeedKeep)} recover ${m.hbRecover} driftHold ${f(m.driftHold)} @${f(m.driftSpeed, 1)}m/s smallSlip ${f(m.smallInputSlipDeg, 1)}deg rev5 ${f(m.revT5, 1)}s launchSlip ${f(m.maxSlipLaunch, 1)} upright ${f(m.upright)} slalomUp ${f(m.slalomUp)}\n`);
+      // everyday cars take 7-11 s to 100 km/h like real ones (raw tunes were 5-6 s, a go-kart)
+      if (['hatch', 'sedan', 'fullsize', 'wagon', 'minivan', 'pickup', 'suv', 'taxi'].includes(kind)) { expect(m.t100).toBeGreaterThan(7); expect(m.t100).toBeLessThan(12); }
       expect(m.upright).toBeGreaterThan(0.7);
       expect(m.revOk).toBe(true);
       expect(m.slalomUp).toBeGreaterThan(0.6);
@@ -153,6 +171,9 @@ describe('handling benchmark', () => {
       if (!mil) expect(m.turnR8).toBeLessThan(6.5);
       if (!mil) expect(m.turnR15).toBeLessThan(18);
       expect(m.yaw05).toBeGreaterThan(0.95);
+      // keyboard feel: the wheel is on full lock within ~0.1 s, and a handbrake flick left alone self-aligns (before: sedan 174 deg, i.e. a donut)
+      if (!mil) expect(m.turnIn50).toBeLessThan(0.15);
+      if (['hatch', 'sedan', 'suv', 'pickup', 'police', 'taxi', 'fbi'].includes(kind)) expect(m.hbLazyYaw).toBeLessThan(125);
       expect(m.smallInputSlipDeg).toBeLessThan(6);
       expect(m.brake100).toBeLessThan(45);
     });

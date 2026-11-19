@@ -62,6 +62,15 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
   army: spec('Gorman Mule 6x6', 'military', t({ ...truckT, mass: 6200, engine: 30000, brake: 8, topSpeed: 30, reverseSpeed: 6, maxSteer: 0.56, highSteer: 0.14, grip: 0.8, rearGrip: 0.8, stability: 0.9, suspRest: 0.45, suspTravel: 0.32, stiffness: 30, comY: -0.4, drive: 'all', health: 4200 }), ['#6a7050']),
   tank: spec('Gorman Bulwark', 'military', t({ ...truckT, mass: 14000, engine: 70000, brake: 9, topSpeed: 17, reverseSpeed: 6, maxSteer: 0.8, highSteer: 0.4, grip: 0.95, rearGrip: 0.95, traction: 1.0, peakSlip: 0.2, slide: 0.85, handbrakeGrip: 0.6, driftGrip: 0.9, tc: true, stability: 1, suspRest: 0.4, suspTravel: 0.2, stiffness: 40, compression: 3.5, relaxation: 3.5, comY: -0.6, downforce: 0, drive: 'all', health: 9000 }), ['#6d7352']),
 };
+/**
+ * Real-world acceleration: everyday cars take 7-10 s to 100 km/h (the raw tunes did it in 5-6 s, which feels like a go-kart).
+ * Multipliers on engine force; sports/super/race cars stay quick, top speeds are untouched.
+ */
+export const ENGINE_REALISM: Partial<Record<VehicleKind, number>> = {
+  hatch: 0.68, sedan: 0.64, fullsize: 0.63, luxury: 0.74, wagon: 0.7, minivan: 0.73, pickup: 0.65, suv: 0.64, taxi: 0.66,
+  convertible: 0.72, coupe: 0.8, muscle: 0.78, police: 0.86, fbi: 0.88,
+};
+for (const [k, f] of Object.entries(ENGINE_REALISM)) VEHICLES[k as VehicleKind].engine *= f!;
 /** Civilian traffic: realistic share of everyday cars, a few trucks, rare exotics. */
 export const TRAFFIC_MIX: { kind: VehicleKind; weight: number }[] = [
   { kind: 'sedan', weight: 6 }, { kind: 'hatch', weight: 4.5 }, { kind: 'fullsize', weight: 3 }, { kind: 'suv', weight: 3 }, { kind: 'minivan', weight: 2.2 },

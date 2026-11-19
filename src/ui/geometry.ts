@@ -35,13 +35,24 @@ export function clampToBox(p: { x: number; y: number }, minX: number, maxX: numb
   return true;
 }
 
-/** Full-map view: a non-rotated top-down view centred on (cx, cz) at `scale` pixels per metre. */
-export interface MapView { cx: number; cz: number; scale: number; w: number; h: number }
+/** The island's grid is drawn tilted like Manhattan's: grid north (-z) leans this many radians clockwise on the maps. */
+export const MAP_TILT = 29 * Math.PI / 180;
+/** World direction of true north (the direction that points straight up on the tilted maps). */
+export const TRUE_NORTH = { x: -Math.sin(MAP_TILT), z: -Math.cos(MAP_TILT) };
+/** Full-map view centred on (cx, cz) at `scale` pixels per metre; `tilt` (radians, clockwise) rotates the map presentation. */
+export interface MapView { cx: number; cz: number; scale: number; w: number; h: number; tilt?: number }
 export function mapWorldToScreen(v: MapView, x: number, z: number) {
-  return { x: (x - v.cx) * v.scale + v.w / 2, y: (z - v.cz) * v.scale + v.h / 2 };
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), dx = x - v.cx, dz = z - v.cz;
+  return { x: (dx * c - dz * s) * v.scale + v.w / 2, y: (dx * s + dz * c) * v.scale + v.h / 2 };
 }
 export function mapScreenToWorld(v: MapView, sx: number, sy: number) {
-  return { x: (sx - v.w / 2) / v.scale + v.cx, z: (sy - v.h / 2) / v.scale + v.cz };
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), px = (sx - v.w / 2) / v.scale, py = (sy - v.h / 2) / v.scale;
+  return { x: px * c + py * s + v.cx, z: -px * s + py * c + v.cz };
+}
+/** A screen-space delta (pixels / scale already applied) expressed in world metres. */
+export function mapScreenDeltaToWorld(v: MapView, dx: number, dy: number) {
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t);
+  return { x: dx * c + dy * s, z: -dx * s + dy * c };
 }
 
 /** Wheel slot for a direction in screen space (dy positive = down). Slot 0 is at the top, then clockwise. */

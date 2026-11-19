@@ -1,7 +1,7 @@
 /** Full-screen city map: pan (drag / arrows / stick), zoom (wheel / +-), click or Enter to set a waypoint. */
 import { AVENUE_NAMES, STREET_NAMES, districtAt, DISTRICT_INFO, type CityMap } from '../world/citymap';
 import type { MinimapBlip, MinimapState } from './contracts';
-import { mapScreenToWorld, mapWorldToScreen, type MapView } from './geometry';
+import { mapScreenToWorld, mapScreenDeltaToWorld, mapWorldToScreen, MAP_TILT, type MapView } from './geometry';
 import { BLIP_KINDS, BLIP_LABELS } from './icons';
 import { CityPainter, drawBlip, drawPlayerArrow, nearestStreets } from './mapdraw';
 import { h, backButton } from './dom';
@@ -14,7 +14,7 @@ export class FullMap {
   private stage: HTMLDivElement;
   private readout: HTMLDivElement;
   private state: MinimapState | null = null;
-  private view: MapView = { cx: 0, cz: 0, scale: 1, w: 1, h: 1 };
+  private view: MapView = { cx: 0, cz: 0, scale: 1, w: 1, h: 1, tilt: MAP_TILT };
   private fitScale = 1;
   private dpr = 1;
   private dirty = true;
@@ -96,7 +96,7 @@ export class FullMap {
       if (this.drag && this.drag.id === e.pointerId) {
         const dx = e.clientX - this.drag.x, dy = e.clientY - this.drag.y;
         if (Math.hypot(dx, dy) > 5) this.drag.moved = true;
-        if (this.drag.moved) { this.view.cx = this.drag.cx - dx / this.view.scale; this.view.cz = this.drag.cz - dy / this.view.scale; this.clampView(); }
+        if (this.drag.moved) { const d = mapScreenDeltaToWorld(this.view, dx / this.view.scale, dy / this.view.scale); this.view.cx = this.drag.cx - d.x; this.view.cz = this.drag.cz - d.z; this.clampView(); }
       }
       this.dirty = true;
     });
@@ -158,10 +158,11 @@ export class FullMap {
   action(a: 'up' | 'down' | 'left' | 'right' | 'select' | 'zoomIn' | 'zoomOut'): boolean {
     const step = 90 / this.view.scale;
     this.keyboardCursor = true;
-    if (a === 'up') this.view.cz -= step;
-    else if (a === 'down') this.view.cz += step;
-    else if (a === 'left') this.view.cx -= step;
-    else if (a === 'right') this.view.cx += step;
+    const mv = (dx: number, dy: number) => { const d = mapScreenDeltaToWorld(this.view, dx, dy); this.view.cx += d.x; this.view.cz += d.z; };
+    if (a === 'up') mv(0, -step);
+    else if (a === 'down') mv(0, step);
+    else if (a === 'left') mv(-step, 0);
+    else if (a === 'right') mv(step, 0);
     else if (a === 'zoomIn') this.zoomAt(1.25, this.view.w / 2, this.view.h / 2);
     else if (a === 'zoomOut') this.zoomAt(1 / 1.25, this.view.w / 2, this.view.h / 2);
     else if (a === 'select') { this.setWaypoint(this.view.cx, this.view.cz); return true; }
@@ -173,8 +174,8 @@ export class FullMap {
   pan(x: number, y: number, dt: number) {
     if (Math.abs(x) < 0.2 && Math.abs(y) < 0.2) return;
     this.keyboardCursor = true;
-    this.view.cx += (x * 520 * dt) / this.view.scale;
-    this.view.cz += (y * 520 * dt) / this.view.scale;
+    const d = mapScreenDeltaToWorld(this.view, (x * 520 * dt) / this.view.scale, (y * 520 * dt) / this.view.scale);
+    this.view.cx += d.x; this.view.cz += d.z;
     this.clampView(); this.dirty = true;
   }
 
@@ -196,7 +197,8 @@ export class FullMap {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(hgt * this.dpr);
     const b = this.painter.bounds;
     const prevFit = this.fitScale;
-    this.fitScale = Math.min(w / (b.maxX - b.minX), hgt / (b.maxZ - b.minZ));
+    const bw = b.maxX - b.minX, bh = b.maxZ - b.minZ, ct = Math.abs(Math.cos(MAP_TILT)), st = Math.abs(Math.sin(MAP_TILT));
+    this.fitScale = Math.min(w / (bw * ct + bh * st), hgt / (bw * st + bh * ct)) * 1.12;
     this.view.w = w; this.view.h = hgt;
     if (refit) {
       this.view.scale = this.fitScale;
@@ -216,7 +218,7 @@ export class FullMap {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, v.w, v.h);
     ctx.save();
-    ctx.translate(v.w / 2, v.h / 2); ctx.scale(v.scale, v.scale); ctx.translate(-v.cx, -v.cz);
+    ctx.translate(v.w / 2, v.h / 2); ctx.rotate(v.tilt ?? 0); ctx.scale(v.scale, v.scale); ctx.translate(-v.cx, -v.cz);
     this.painter.paint(ctx, 'full');
     ctx.lineWidth = 1.5 / v.scale; ctx.strokeStyle = 'rgba(255,195,126,0.35)'; ctx.stroke(this.painter.coastline);
     if (s?.heatRadius) {
@@ -266,7 +268,7 @@ export class FullMap {
       const wp = this.localWaypoint;
       if (wp) { const p = mapWorldToScreen(v, wp.x, wp.z); drawBlip(ctx, 'waypoint', p.x, p.y, 10, t); }
       const pp = mapWorldToScreen(v, s.x, s.z);
-      drawPlayerArrow(ctx, pp.x, pp.y, 11, s.heading);
+      drawPlayerArrow(ctx, pp.x, pp.y, 11, s.heading + (v.tilt ?? 0));
     }
 
     // Cursor readout and keyboard reticle

@@ -376,3 +376,24 @@ test('a car despawned mid car-entry job drops the job instead of panicking the p
   expect(r.active).toBe(false);
   clean(p);
 });
+
+test('standing on the clerk spot behind a store counter does not pop anyone up through the ceiling', async ({ page }) => {
+  test.setTimeout(240_000);
+  const p = watch(page);
+  await boot(page);
+  await quietStreets(page);
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, R = (window as any).__meridian.activities.robberies; const out: { i: number; dy: number; clerkDy: number }[] = [];
+    for (const i of [30, 33, 51]) {
+      const k = R.kiosks[i]; g.police.clear();
+      const c = k.frame.toWorld(-3.0, 0.05, 0.25);
+      g.player.place(c.x, c.y + 0.1, c.z, 0);
+      for (let f = 0; f < 30 * 6; f++) g.frame(1 / 30, false);
+      const l = k.frame.toLocal(g.player.pos), cl = k.clerk ? k.frame.toLocal(k.clerk.pos) : { y: 0 };
+      out.push({ i, dy: l.y, clerkDy: cl.y });
+    }
+    return out;
+  });
+  for (const o of r) { expect(o.dy, `player in store ${o.i}`).toBeLessThan(0.5); expect(o.clerkDy, `clerk in store ${o.i}`).toBeLessThan(0.5); }
+  clean(p);
+});
