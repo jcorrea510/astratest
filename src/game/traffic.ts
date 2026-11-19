@@ -11,6 +11,8 @@ import { TRAFFIC_MIX, PARKED_MIX, type VehicleKind } from '../vehicles/specs';
 import type { GameAudio } from '../ui/contracts';
 import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
+import { carActivity } from './schedule';
+import { COP_LOOK } from './dispatch';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
 export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number;
@@ -21,12 +23,18 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** riders besides the driver (seat 1..) */
   passengers?: Npc[];
   /** lane change in progress: target lane, seconds since the signal came on, committed once the car has moved over */
-  lc?: { to: number; t: number; done: boolean } | null; lcCool?: number }
+  lc?: { to: number; t: number; done: boolean } | null; lcCool?: number;
+  /** curbside stop: where (arc position on a lane), why; seconds left standing; lane the plan was last rolled for */
+  stopPlan?: { s: number; lane: number; kind: 'drop' | 'pick' | 'deliver'; npc?: Npc } | null; stopT?: number; planLane?: number; scanT?: number; lastHonk?: number;
+  /** ambient police cruiser on patrol (no heat) */
+  patrol?: boolean }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
   cars: AiCar[] = [];
   maxCars = 18;
+  /** world clock hour (set by the game each frame): rush hours / quiet nights */
+  hour = 17;
   prewarming = false;
   private spawnT = 0; private laneT = 0; private nearLanes: Lane[] = [];
   private parkedBlocks = new Map<number, Vehicle[]>();
@@ -160,6 +168,7 @@ export class Traffic {
         const dStop = this.distToStop(car);
         if (st !== 'green' && dStop > -1 && !(st === 'yellow' && dStop < speed * 0.45)) targetSpeed = Math.min(targetSpeed, Math.max(0, dStop) * 0.9);
       }
+      if (car.mode === 'cruise' && !car.persistent) targetSpeed = this.curbStops(car, dt, targetSpeed, f, t);
       // Following distance / obstacles ahead
       let blockDist = Infinity, blocker: 'car' | 'person' | null = null, blockerV: Vehicle | null = null, blockerLat = 0;
       const check = (ox: number, oz: number, radius: number, kind: 'car' | 'person', ov: Vehicle | null = null) => {
@@ -187,6 +196,8 @@ export class Traffic {
           car.blockedT = (car.blockedT ?? 0) + dt;
           if (car.blockedT > 3 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
         } else car.blockedT = 0;
+        // honk at somebody stepping out in front of a moving car (jaywalkers)
+        if (blocker === 'person' && speed > 3 && blockDist < 15 && t - (car.lastHonk ?? -99) > 5) { car.lastHonk = t; this.audio.play('horn', { pos, volume: 0.55 }); }
         if (blocker === 'person' && blockDist < 9 && Math.abs(speed) < 2) { car.honkT += dt; if (car.honkT > 1.6) { car.honkT = -2.5; this.audio.play('horn', { pos, volume: 0.6 }); } }
       }
       this.laneChange(car, dt, pos, f, speed, blockDist, blocker, blockerV);
@@ -207,6 +218,61 @@ export class Traffic {
       void playerVehicle;
     }
   }
+  /** Taxis hail-and-drop, delivery vans double-park with hazards. Returns the (possibly reduced) target speed. */
+  private curbStops(car: AiCar, dt: number, ts: number, f: { x: number; z: number }, t: number): number {
+    const v = car.v, lane = car.lane, kind = v.kind;
+    if ((car.stopT ?? 0) > 0) {
+      car.stopT = (car.stopT ?? 0) - dt; v.hazard = car.stopPlan?.kind === 'deliver';
+      const pl = car.stopPlan;
+      if (pl?.kind === 'pick') {
+        const n = pl.npc;
+        if (!n || n.disposed || !n.alive) car.stopT = Math.min(car.stopT, 0.5);
+        else if (n.brain === 'inside' && n.activity === 'taxi') { this.pop.remove(n); pl.npc = undefined; car.stopT = Math.min(car.stopT, 1.2); }
+      }
+      if (car.stopT <= 0) { v.hazard = false; car.stopPlan = null; car.stopT = 0; car.lcCool = 4; }
+      return 0;
+    }
+    if (lane.connector || lane.length < 55) return ts;
+    const plan = car.stopPlan;
+    if (plan && plan.lane !== lane.id) { car.stopPlan = null; return ts; }
+    if (!plan) {
+      if (car.planLane !== lane.id) {
+        car.planLane = lane.id;
+        if ((kind === 'taxi' || kind === 'van') && car.s < lane.length * 0.35 && Math.random() < (kind === 'van' ? 0.5 : 0.4))
+          car.stopPlan = { s: car.s + 14 + Math.random() * Math.max(4, lane.length - car.s - 45), lane: lane.id, kind: kind === 'van' ? 'deliver' : 'drop' };
+      }
+      // a taxi spots a raised hand ahead on the pavement
+      if (!car.stopPlan && kind === 'taxi') {
+        car.scanT = (car.scanT ?? Math.random()) - dt;
+        if (car.scanT <= 0) {
+          car.scanT = 0.6;
+          const pos = car.v.position;
+          for (const n of this.pop.npcs) {
+            if (n.activity !== 'hail' || n.brain !== 'idle') continue;
+            const dx = n.pos.x - pos.x, dz = n.pos.z - pos.z, ahead = dx * f.x + dz * f.z;
+            if (ahead < 9 || ahead > 55 || Math.abs(dx * f.z - dz * f.x) > 14) continue;
+            car.stopPlan = { s: Math.min(lane.length - 12, car.s + ahead - 1.5), lane: lane.id, kind: 'pick', npc: n }; break;
+          }
+        }
+      }
+      return ts;
+    }
+    const dist = plan.s - car.s;
+    if (dist < -4) { car.stopPlan = null; return ts; }
+    if (dist < 1.6 && Math.abs(v.speed) < 0.7) { // arrived: do the thing
+      if (plan.kind === 'drop' || plan.kind === 'deliver') {
+        const p = v.doorPoint(1), n = this.pop.spawn('civilian', p.x, p.z, Math.max(0.2, v.position.y), undefined);
+        n.node = -1; n.nextNode = -1; n.char.yaw = v.yaw; n.char.human.playAction('exit_car');
+        car.stopT = plan.kind === 'deliver' ? 18 + Math.random() * 22 : 5 + Math.random() * 4;
+      } else if (plan.npc && plan.npc.alive && plan.npc.brain === 'idle') {
+        const n = plan.npc, p = v.doorPoint(1);
+        this.pop.runner.endAct(n); n.brain = 'wander'; n.activity = 'taxi'; n.destPt = new THREE.Vector3(p.x, n.pos.y, p.z); n.stateT = 0;
+        car.stopT = 16;
+      } else { car.stopPlan = null; return ts; }
+      void t; return 0;
+    }
+    return Math.min(ts, Math.max(0, dist - 0.8) * 0.75);
+  }
   /** Both lanes in use: signal, then move over when a slower/stopped car is ahead (or now and then to even out the lanes). */
   private laneChange(car: AiCar, dt: number, pos: THREE.Vector3, f: { x: number; z: number }, speed: number, blockDist: number, blocker: 'car' | 'person' | null, blockerV: Vehicle | null) {
     const v = car.v;
@@ -223,7 +289,7 @@ export class Traffic {
       } else if (car.lc.t > 3.4) { car.lc = null; v.signal = 0; }
       return;
     }
-    if (car.lcCool > 0 || speed < 3 || car.lane.length - car.s < 30 || car.s < 8) return;
+    if (car.lcCool > 0 || car.stopPlan || speed < 3 || car.lane.length - car.s < 30 || car.s < 8) return;
     const lane = car.lane;
     const toId = lane.lane > 0 ? lane.leftLane : lane.rightLane;
     if (toId === undefined) return;
@@ -231,7 +297,7 @@ export class Traffic {
     let want = false;
     if (blocker === 'car' && blockerV && blockDist < 24) {
       const slow = blockerV.speed < lane.speed * 0.55 && blockerV.speed > 0.3;
-      const dead = !this.carOf(blockerV) && Math.abs(blockerV.speed) < 0.6;
+      const oc = this.carOf(blockerV), dead = oc ? (oc.stopT ?? 0) > 0 : Math.abs(blockerV.speed) < 0.6; // parked, wrecked, or a taxi / double-parked van standing in the lane
       const st = signalState(this.city.intersections[lane.intersection], lane.axis, this.time());
       if ((slow || dead) && (st === 'green' || lane.length - car.s > 45)) want = true;
     }
@@ -291,7 +357,7 @@ export class Traffic {
     return lane.next[Math.floor(this.rng.next() * lane.next.length)];
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, maxCars: number) {
-    this.maxCars = maxCars;
+    this.maxCars = Math.max(2, Math.round(maxCars * carActivity(this.hour)));
     // Despawn
     for (const car of [...this.cars]) {
       if (car.persistent) continue;
@@ -325,7 +391,10 @@ export class Traffic {
         if (Math.random() > DISTRICT_INFO[districtAt(this.city, p.x, p.z)].trafficDensity) continue;
         if (!this.prewarming && d < 100 && this.frustum.containsPoint(p)) continue;
         if (this.vehicles.list.some(o => o.position.distanceTo(p) < 11) || this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 16)) continue;
-        this.spawnOnLane(this.pickKind(), lane, s);
+        // now and then an ambient police cruiser rolls by on patrol (max two, only while the heat is off)
+        if (!this.prewarming && ambient > 5 && Math.random() < 0.05 && this.cars.filter(c => c.patrol).length < 2) {
+          const pc = this.spawnOnLane('police', lane, s, 'cruise', 'police', COP_LOOK); pc.patrol = true; pc.maxSpeed = lane.speed * 0.85;
+        } else this.spawnOnLane(this.pickKind(), lane, s);
         break;
       }
     }

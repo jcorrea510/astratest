@@ -1,6 +1,8 @@
 /** Keeps the streets alive: spawns/despawns civilians, runs every NPC brain, and resolves danger and vehicle hits. */
+import { pedImpact } from './impact';
 import * as THREE from 'three';
-import { Npc, NpcBrainRunner, type NpcEnv, type Role } from '../actors/npc';
+import { Npc, NpcBrainRunner, streetClock, type NpcEnv, type Role } from '../actors/npc';
+import { pedActivity, districtNightFactor } from './schedule';
 import { randomLook, type HumanTemplate, type Look } from '../actors/human';
 import type { CityMap } from '../world/citymap';
 import { DISTRICT_INFO, districtAt } from '../world/citymap';
@@ -14,6 +16,9 @@ export class Population {
   npcs: Npc[] = [];
   runner: NpcBrainRunner;
   maxCivilians = 22;
+  /** world clock hour (set by the game each frame); drives crowd size, nightlife and idles */
+  hour = 17;
+  private lastSpeed = new WeakMap<Vehicle, number>(); private crashT = 0;
   prewarming = false;
   private spawnT = 0;
   private frustum = new THREE.Frustum();
@@ -33,7 +38,7 @@ export class Population {
     const p = this.env.player; if (!p.alive || p.inVehicle) return;
     const aim = this.aimProvider?.() ?? null;
     for (const n of this.npcs) {
-      if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.far) continue;
+      if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.far) continue;
       const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
       if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender') {
         // shoulder-checked: stumble, glare
@@ -61,7 +66,7 @@ export class Population {
     if (!pv || !(pv.sirenOn ?? pv.siren) || !['police', 'fbi', 'swat', 'army'].includes(pv.kind ?? '')) return;
     const vp = pv.position;
     for (const n of this.npcs) {
-      if (!n.alive || n.role !== 'civilian' || n.far || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender') continue;
+      if (!n.alive || n.role !== 'civilian' || n.far || n.brain === 'inside' || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender') continue;
       const c = n.char, dx = c.pos.x - vp.x, dz = c.pos.z - vp.z, d = Math.hypot(dx, dz);
       if (d > 16) continue;
       if (n.brain === 'wander') { n.brain = 'idle'; n.stateT = 2; }
@@ -77,27 +82,55 @@ export class Population {
   }
   adopt(n: Npc) { this.scene.add(n.char.human.root); }
   remove(n: Npc) { const i = this.npcs.indexOf(n); if (i < 0) return; this.npcs.splice(i, 1); n.dispose(); }
-  *characters(): Iterable<Character> { for (const n of this.npcs) yield n.char; }
-  /** Civilians in a radius react to danger (gunfire, explosions, crashes). */
+  *characters(): Iterable<Character> { for (const n of this.npcs) if (n.brain !== 'inside') yield n.char; }
+  /** Civilians in a radius react to danger (gunfire, explosions, crashes): near ones react at once, far ones a beat later (a wave). */
   danger(at: THREE.Vector3, radius: number, source: Character | null) {
+    const from = source ? source.pos : at;
     for (const n of this.npcs) {
-      if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger') continue;
+      if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside') continue;
       const d = n.pos.distanceTo(at);
       if (d > radius) continue;
-      if (n.brain !== 'flee' && n.brain !== 'cower') {
-        n.brain = Math.random() < 0.25 && d > 8 ? 'cower' : 'flee'; n.stateT = 0;
-        n.fleeFrom.copy(source ? source.pos : at);
-        if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
-      } else if (n.brain === 'flee') { n.fleeFrom.copy(source ? source.pos : at); n.stateT = Math.min(n.stateT, 2); }
+      if (n.brain === 'flee') { n.fleeFrom.copy(from); n.stateT = Math.min(n.stateT, 2); continue; }
+      if (n.brain === 'cower' || n.alertT > 0) continue;
+      if (d > 9) { n.alertT = Math.min(3, (d - 9) * 0.06) + Math.random() * 0.5; n.alertFrom.copy(from); continue; }
+      this.panic(n, from, d);
     }
   }
+  private panic(n: Npc, from: THREE.Vector3, d: number) {
+    if (n.activity || n.brain === 'idle') this.runner.endAct(n);
+    if (d > 24 && Math.random() < 0.4) { // too far to be scared: stop and stare / film
+      this.runner.startAct(n, 'film', 8 + Math.random() * 14, Math.atan2(from.x - n.pos.x, from.z - n.pos.z)); return;
+    }
+    n.brain = Math.random() < (d > 8 ? 0.3 : 0.1) ? 'cower' : 'flee'; n.stateT = 0;
+    n.fleeFrom.copy(from);
+    if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
+  }
+  /** A crash or other spectacle: people nearby stop and watch, some film it. */
+  onlookers(at: THREE.Vector3, radius = 32) {
+    for (const n of this.npcs) {
+      if (!n.alive || n.role !== 'civilian' || n.far || (n.brain !== 'wander' && !(n.brain === 'idle' && !n.activity))) continue;
+      const d = n.pos.distanceTo(at); if (d > radius || d < 3 || Math.random() > 0.55) continue;
+      this.runner.startAct(n, Math.random() < 0.6 ? 'film' : 'window', 6 + Math.random() * 14, Math.atan2(at.x - n.pos.x, at.z - n.pos.z));
+    }
+  }
+  private watchCrashes(vehicles: Iterable<Vehicle>, dt: number) {
+    this.crashT -= dt;
+    for (const v of vehicles) {
+      const sp = Math.abs(v.speed), prev = this.lastSpeed.get(v) ?? 0;
+      this.lastSpeed.set(v, sp);
+      if (prev > 7 && sp < prev * 0.5 && this.crashT <= 0 && !v.destroyed) { this.crashT = 2; this.onlookers(v.position); }
+    }
+  }
+  private hitPt = new THREE.Vector3(); private hitDir = new THREE.Vector3();
   /** Vehicles knock people over. Returns list of people hit this step. */
   vehicleHits(vehicles: Iterable<Vehicle>, player: Character, onPlayerHit: (v: Vehicle, speed: number) => void) {
+    this.watchCrashes(vehicles, 1 / 60);
     for (const v of vehicles) {
       const sp = Math.abs(v.speed);
       if (sp < 3) continue;
       const hx = v.tpl.layout.half[0] + 0.35, hz = v.tpl.layout.half[2] + 0.35;
       const yaw = v.yaw, c = Math.cos(yaw), s = Math.sin(yaw);
+      const lateralOf = (ch: Character) => { const dx = ch.pos.x - v.position.x, dz = ch.pos.z - v.position.z; return Math.max(-1, Math.min(1, (dx * c - dz * s) / hx)); };
       const test = (ch: Character) => {
         const dx = ch.pos.x - v.position.x, dz = ch.pos.z - v.position.z;
         if (Math.abs(ch.pos.y - v.position.y) > 2) return false;
@@ -108,19 +141,17 @@ export class Population {
         if (!n.alive || n.char.inVehicle || n.char.knockT > 0) continue;
         if (!test(n.char)) continue;
         const vel = v.phys.body.linvel();
+        const im = pedImpact(sp, lateralOf(n.char), Math.random()), hd = Math.hypot(vel.x, vel.z) || 1, hx2 = vel.x / hd, hz2 = vel.z / hd;
         n.char.knockT = 1;
-        if (sp > 8) {
-          n.char.damage(sp * 9, v.driver, this.env.time());
-          n.char.vel.set(vel.x * 0.6, 3, vel.z * 0.6);
-          this.audio.play('hitBody', { pos: n.pos, volume: 1 });
-          if (!n.alive) this.onKilled?.(n, v.driver, 'vehicle');
-        } else {
-          if (n.char.damage(sp * 3, v.driver, this.env.time())) this.onKilled?.(n, v.driver, 'vehicle');
-          n.char.vel.set(vel.x * 0.8 + (Math.random() - 0.5) * 2, 0, vel.z * 0.8);
-          n.char.human.playOnce('Hit_Chest', 'full', 0.05);
-          if (n.role === 'civilian' && n.alive) { n.brain = 'flee'; n.fleeFrom.copy(v.position); n.stateT = 0; }
-        }
-        v.damage(sp * 1.5);
+        n.char.lastHit = { zone: 'torso', dx: hx2, dz: hz2, power: im.outcome === 'over' ? 3.5 : im.outcome === 'hood' ? 3 : 0.8, blast: im.outcome === 'over' };
+        const killed = n.char.damage(im.damage, v.driver, this.env.time());
+        if (!killed) n.char.hitReact(hx2, hz2, im.outcome === 'brush' ? 0.6 : 1.5); // stagger or full knockdown
+        n.char.vel.set(hx2 * im.carry - hz2 * im.side, im.up, hz2 * im.carry + hx2 * im.side);
+        if (im.outcome !== 'brush') this.audio.play('hitBody', { pos: n.pos, volume: 1 });
+        if (killed) this.onKilled?.(n, v.driver, 'vehicle');
+        else if (n.role === 'civilian') { n.brain = 'flee'; n.fleeFrom.copy(v.position); n.stateT = 0; }
+        v.damage(im.carDamage, this.hitPt.set(n.char.pos.x, n.char.pos.y + 0.7, n.char.pos.z), this.hitDir.set(hx2, 0, hz2), v.driver);
+        continue;
       }
       if (player.alive && !player.inVehicle && player.knockT <= 0 && test(player)) { player.knockT = 1.2; onPlayerHit(v, sp); }
     }
@@ -150,6 +181,7 @@ export class Population {
     this.runner.beginTick();
     this.tick++;
     for (const n of this.npcs) {
+      if (n.alertT > 0 && (n.alertT -= dt) <= 0 && n.alive && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'scripted' && n.brain !== 'inside') this.panic(n, n.alertFrom, n.pos.distanceTo(n.alertFrom));
       const fd = n.pos.distanceTo(focus);
       n.far = fd > 75 && n.role === 'civilian' && n.brain === 'wander';
       if (n.char.inVehicle) continue;
@@ -170,12 +202,13 @@ export class Population {
     }
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, quality: number) {
-    this.maxCivilians = quality;
+    this.maxCivilians = Math.round(quality * pedActivity(this.hour)); streetClock.hour = this.hour;
     // Visuals (throttled animation far away). The skinned meshes are not frustum-culled by three (their bounds are the bind
     // pose), so people outside the view are hidden here: that saves two draw calls (plus shadows) per person behind the camera.
     this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
     for (const n of this.npcs) {
       const c = n.char, h = c.human;
+      if (n.brain === 'inside') { h.root.visible = false; continue; }
       if (!c.alive) {
         c.deadTime += dt;
         if (c.deadTime > 0.05 && c.deadTime < 0.1) h.setState('dead');
@@ -217,11 +250,18 @@ export class Population {
         const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2, nd.z + (to.z - nd.z) * t);
         const d = p.distanceTo(focus);
         if (d < (this.prewarming ? 10 : 35) || d > 120) continue;
-        const dens = DISTRICT_INFO[districtAt(this.city, p.x, p.z)].pedDensity;
+        const dist = districtAt(this.city, p.x, p.z), dens = DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour);
         if (Math.random() > dens) continue;
         if (!this.prewarming && d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
         const n = this.spawn('civilian', p.x, p.z, 0.2);
         n.node = nd.id; n.nextNode = Math.random() < 0.5 ? e.to : nd.id;
+        // walking with friends: a quarter of arrivals come as a pair or trio
+        if (Math.random() < 0.26 && civ + 1 < this.maxCivilians) {
+          for (let k = 0, cnt = Math.random() < 0.3 ? 2 : 1; k < cnt; k++) {
+            const m = this.spawn('civilian', p.x + (k + 1) * 0.8, p.z + 0.5, 0.2);
+            m.node = n.node; m.nextNode = n.nextNode; m.buddy = n; m.speedMul = 1;
+          }
+        }
         break;
       }
     }

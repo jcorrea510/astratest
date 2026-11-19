@@ -8,9 +8,16 @@ import { type CityMap, pedestrianMayCross } from '../world/citymap';
 import { WEAPONS, weaponMesh, MUZZLE, type WeaponId } from '../combat/weapons';
 import type { Combat } from '../combat/combat';
 import { Rng, wrapAngle } from '../core/rng';
+import { STORES, STORE_D } from '../game/places';
 
 export type Role = 'civilian' | 'gang' | 'police';
-export type Brain = 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger';
+export type Brain = 'inside' | 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger';
+
+/** Street-life activities of civilians (stand still doing something, walk to a shop, board a cab). */
+export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi';
+const ACT_ANIM: Partial<Record<Activity, string>> = { phone: 'phone', smoke: 'smoke', film: 'film', hail: 'hail', wait: 'talk' };
+/** World clock for time-of-day behaviour (the game sets this each frame). */
+export const streetClock = { hour: 17 };
 
 const EYE = 1.55;
 let NPC_ID = 0;
@@ -45,6 +52,12 @@ export class Npc {
   /** holding a covered position: kneels while waiting */
   crouching = false;
   dropMoney = 0;
+  /** street life */
+  activity: Activity = ''; actOn = false; actDur = 0; actCool = Math.random() * 12; idleFace: number | null = null;
+  buddy: Npc | null = null; jay = Math.random() < 0.08; disposed = false;
+  destPt: THREE.Vector3 | null = null; destYaw = 0;
+  /** delayed reaction to danger: seconds until it registers, and where from */
+  alertT = 0; alertFrom = new THREE.Vector3(); alertFar = false;
   constructor(physics: Physics, tpl: HumanTemplate, look: Look, public role: Role, x: number, z: number, y = 0.2) {
     this.char = new Character(physics, tpl, look, role === 'police' ? 'police' : role === 'gang' ? 'gang' : 'civilian', x, z, y);
     this.home.set(x, y, z);
@@ -58,7 +71,7 @@ export class Npc {
   }
   get alive() { return this.char.alive; }
   get pos() { return this.char.pos; }
-  dispose() { if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }
+  dispose() { this.disposed = true; this.buddy = null; if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }
 }
 
 export interface NpcEnv {
@@ -113,7 +126,8 @@ export class NpcBrainRunner {
   update(n: Npc, dt: number) {
     const c = n.char, env = this.env, t = env.time();
     if (!c.alive) { n.brain = 'dead'; return; }
-    n.think -= dt; n.cooldown -= dt; n.stateT += dt;
+    n.think -= dt; n.cooldown -= dt; n.stateT += dt; n.actCool -= dt;
+    if (n.activity && (n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender')) this.endAct(n);
     if (n.reloadT > 0) { n.reloadT -= dt; if (n.reloadT <= 0) n.clip = WEAPONS[n.weapon].clip; }
     const desired = tvDesired.set(0, 0, 0);
     let deferThink = false;
@@ -138,11 +152,26 @@ export class NpcBrainRunner {
 
     switch (n.brain) {
       case 'wander': speed = this.wander(n, desired, dt) * n.speedMul; break;
-      case 'idle': { speed = 0; if (n.role === 'civilian' && n.stateT > 6) n.brain = 'wander'; break; }
+      case 'idle': {
+        speed = 0;
+        if (n.role !== 'civilian') break;
+        if (n.idleFace !== null) faceYaw = n.idleFace;
+        if (n.activity && !n.actOn) { n.actOn = true; const a = ACT_ANIM[n.activity]; if (a && !c.human.busy) c.human.playAction(a); }
+        const mate = n.buddy;
+        const gone = n.activity === 'wait' && (!mate || (mate.brain !== 'idle' && mate.brain !== 'inside'));
+        if (n.stateT > (n.actDur || 6) || gone) this.endAct(n);
+        break;
+      }
+      case 'inside': { speed = 0; if (n.stateT > n.actDur) this.exitBuilding(n); break; }
       case 'flee': {
         tv.copy(c.pos).sub(n.fleeFrom); tv.y = 0; if (tv.lengthSq() < 0.01) tv.set(1, 0, 0);
         tv.normalize(); desired.copy(tv); speed = 6.2;
-        if (n.stateT > 7) { n.brain = 'wander'; n.node = -1; n.stateT = 0; }
+        if (n.stateT > 7) {
+          n.node = -1; n.stateT = 0;
+          // once things calm down some stop at a distance and film it
+          if (n.role === 'civilian' && Math.random() < 0.35 && c.pos.distanceTo(n.fleeFrom) > 18) this.startAct(n, 'film', 9 + Math.random() * 14, Math.atan2(n.fleeFrom.x - c.pos.x, n.fleeFrom.z - c.pos.z));
+          else n.brain = 'wander';
+        }
         break;
       }
       case 'cower': { speed = 0; c.human.setState('cower'); if (n.stateT > 6) { n.brain = 'flee'; n.stateT = 0; c.human.setState('loco'); } break; }
@@ -294,9 +323,96 @@ export class NpcBrainRunner {
     else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)); }
     n.model.updateMatrixWorld(true);
   }
+  /** Starts a standing activity (phone, smoke, filming...). */
+  startAct(n: Npc, a: Activity, dur: number, face: number | null) {
+    n.brain = 'idle'; n.activity = a; n.actOn = false; n.actDur = dur; n.idleFace = face; n.stateT = 0;
+    n.actCool = 18 + Math.random() * 25;
+  }
+  endAct(n: Npc) {
+    const a = ACT_ANIM[n.activity];
+    if (a && n.char.human.actionName === a) n.char.human.stopAction(a);
+    n.activity = ''; n.actOn = false; n.idleFace = null; n.actDur = 0; n.destPt = null;
+    if (n.brain === 'idle') { n.brain = 'wander'; n.stateT = 0; }
+  }
+  /** Walks into a building: hidden and non-solid until it is time to come back out. */
+  private enterBuilding(n: Npc, dur: number) {
+    if (n.char.human.actionName) n.char.human.stopAction(n.char.human.actionName);
+    n.char.setCollision(false); n.brain = 'inside'; n.stateT = 0; n.actDur = dur;
+    n.char.body.setNextKinematicTranslation({ x: n.pos.x, y: n.pos.y + 0.87, z: n.pos.z });
+  }
+  private exitBuilding(n: Npc) {
+    const p = n.destPt ?? n.pos;
+    n.char.place(p.x, n.pos.y, p.z, n.destYaw); n.char.setCollision(true);
+    n.activity = ''; n.actOn = false; n.destPt = null; n.brain = 'wander'; n.node = -1; n.stateT = 0;
+  }
+  private onRoad(x: number, z: number): boolean {
+    for (const r of this.env.city.roads) {
+      const along = r.axis === 'x' ? x : z, across = Math.abs((r.axis === 'x' ? z : x) - r.coord);
+      if (across < r.half + 0.3 && along > r.from && along < r.to) return true;
+    }
+    return false;
+  }
+  /** Direction (yaw) pointing away from the nearest road, i.e. towards the shop fronts. */
+  private awayFromRoad(x: number, z: number): number | null {
+    let best: { axis: string; off: number } | null = null, bd = 16;
+    for (const r of this.env.city.roads) {
+      const off = (r.axis === 'x' ? z : x) - r.coord; const a = Math.abs(off) - r.half;
+      if (a < bd) { bd = a; best = { axis: r.axis, off }; }
+    }
+    if (!best) return null;
+    const sg = best.off >= 0 ? 1 : -1;
+    return best.axis === 'x' ? (sg > 0 ? 0 : Math.PI) : sg > 0 ? Math.PI / 2 : -Math.PI / 2;
+  }
+  /** Rolled when a pedestrian reaches a corner: stop for a call / smoke / shop window, hail a cab, or pop into a shop. */
+  private maybeActivity(n: Npc): boolean {
+    if (n.role !== 'civilian' || n.actCool > 0 || n.buddy || Math.random() > 0.16) return false;
+    const away = this.awayFromRoad(n.pos.x, n.pos.z), hr = streetClock.hour, night = hr >= 22 || hr < 5;
+    const r = Math.random();
+    if (r < (night ? 0.12 : 0.34)) { // pop into a shop
+      let best: { x: number; z: number; yaw: number } | null = null, bd = 34 * 34;
+      for (const s of STORES) {
+        if (night && s.kind !== 'convenience' && s.kind !== 'liquor' && s.kind !== 'gas' && s.kind !== 'diner') continue;
+        if (s.standalone) continue;
+        // the sliding door sits 3.1 m to the side of the shop's centreline, on the front face (local +z)
+        const sy = Math.sin(s.yaw), cy = Math.cos(s.yaw), fz = STORE_D / 2 + 1.2;
+        const px = s.x + 3.1 * cy + fz * sy, pz = s.z - 3.1 * sy + fz * cy;
+        const d = (px - n.pos.x) ** 2 + (pz - n.pos.z) ** 2; if (d > bd) continue;
+        let clear = true; for (let k = 1; k < 8 && clear; k++) if (this.onRoad(n.pos.x + (px - n.pos.x) * k / 8, n.pos.z + (pz - n.pos.z) * k / 8)) clear = false;
+        if (clear) { bd = d; best = { x: px, z: pz, yaw: s.yaw + Math.PI }; }
+      }
+      if (best) { n.activity = 'shop'; n.destPt = new THREE.Vector3(best.x, n.pos.y, best.z); n.destYaw = best.yaw; n.stateT = 0; n.actCool = 30; return false; }
+    }
+    if (r < 0.5) this.startAct(n, 'phone', 7 + Math.random() * 14, null);
+    else if (r < 0.62) this.startAct(n, 'smoke', 8 + Math.random() * 12, away);
+    else if (r < 0.8) this.startAct(n, 'window', 5 + Math.random() * 10, away);
+    else if (r < 0.9 && away !== null) this.startAct(n, 'hail', 14 + Math.random() * 14, away + Math.PI);
+    else return false;
+    return true;
+  }
   /** Sidewalk wandering on the pedestrian graph; obeys crossing signals. Returns walking speed. */
   private wander(n: Npc, dir: THREE.Vector3, dt: number): number {
     const city = this.env.city, nodes = city.pedNodes;
+    // errand: walk straight to the shop door / the cab and go inside
+    if ((n.activity === 'shop' || n.activity === 'taxi') && n.destPt) {
+      tv.set(n.destPt.x - n.pos.x, 0, n.destPt.z - n.pos.z); const dd = tv.length();
+      if (dd < 1.1) { this.enterBuilding(n, n.activity === 'taxi' ? 30 : 10 + Math.random() * 28); return 0; }
+      if (n.stateT > 45 || (n.stuckT > 0.5 && dd < 4 && n.stateT > 5)) { n.activity = ''; n.destPt = null; n.node = -1; }
+      else { dir.copy(tv.normalize()); return 1.5; }
+    }
+    // walking with a friend
+    const mate = n.buddy;
+    if (mate) {
+      if (mate.disposed || !mate.alive || mate.brain === 'flee' || mate.brain === 'cower' || mate.brain === 'surrender' || mate.brain === 'scripted' || mate.char.inVehicle) { n.buddy = null; n.node = -1; }
+      else if (mate.brain === 'idle' || mate.brain === 'inside') { this.startAct(n, 'wait', 90, Math.atan2(mate.pos.x - n.pos.x, mate.pos.z - n.pos.z)); return 0; }
+      else {
+        const fx = Math.sin(mate.char.yaw), fz = Math.cos(mate.char.yaw);
+        tv.set(mate.pos.x + fz * 0.85 - fx * 0.5 - n.pos.x, 0, mate.pos.z - fx * 0.85 - fz * 0.5 - n.pos.z);
+        const dd = tv.length(), ms = mate.char.speed;
+        if (ms < 0.3) return dd > 2.2 ? (dir.copy(tv.normalize()), 1.4) : 0;
+        dir.copy(tv.normalize());
+        return THREE.MathUtils.clamp(ms + (dd - 0.4) * 1.6, 0.4, 2.8);
+      }
+    }
     if (n.node < 0 || n.nextNode < 0) {
       let best = 0, bd = Infinity;
       for (const nd of nodes) { const d = (nd.x - n.pos.x) ** 2 + (nd.z - n.pos.z) ** 2; if (d < bd) { bd = d; best = nd.id; } }
@@ -310,12 +426,14 @@ export class NpcBrainRunner {
     tv.set(target.x + ox - n.pos.x, 0, target.z + oz - n.pos.z);
     const d = tv.length();
     if (d < 0.9 || (n.node === n.nextNode)) {
+      const arrived = n.node !== n.nextNode;
       n.node = n.nextNode;
+      if (arrived && this.maybeActivity(n)) return 0;
       const opts = nodes[n.node].edges;
       const e = opts[Math.floor(Math.random() * opts.length)];
       if (e.crossing) {
         const inter = city.intersections[e.crossing.intersection];
-        if (!pedestrianMayCross(inter, e.crossing.axis, this.env.time())) { n.waitT += dt; return 0; }
+        if (!pedestrianMayCross(inter, e.crossing.axis, this.env.time()) && !(n.jay && n.waitT > 1.2 + n.laneOffset)) { n.waitT += dt; return 0; }
       }
       n.waitT = 0; n.nextNode = e.to;
       return 0;

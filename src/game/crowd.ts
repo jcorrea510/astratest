@@ -11,10 +11,12 @@ import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX } from '../vehicles/specs';
 import { Rng } from '../core/rng';
+import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
 export interface CrowdCaps { farCars: number; farPeds: number; parked: number }
 
 const CAR_PAINT = [0xb8bcc2, 0x1d1f24, 0xe8e8e8, 0x7a1f26, 0x24406b, 0x6b7a86, 0xc9a227, 0x3d5a3a, 0x8a8f95, 0xd8d0c0, 0x2f2f33];
+const BUS_PAINT = [0x2a5f9e, 0x3d7a4a, 0xb8bcc2, 0xc9a227];
 const SHIRTS = [0x2b4a7a, 0xb23a3a, 0x3a7a4a, 0xd8d8d0, 0x1d1d22, 0x8a5a9a, 0xd89a2b, 0x5a6a7a, 0x9a3a1a, 0x4aa0b0, 0xe0c8c0];
 const PANTS = [0x23262f, 0x3a4a6a, 0x4a3a2a, 0x1a1a1a, 0x6a6a70, 0x2f3a2f];
 const SKIN = [0xf0c8a0, 0xd9a577, 0xb07a4f, 0x7a4a2f, 0x4f2f20, 0xe8b890];
@@ -73,6 +75,27 @@ function carGeometry(): THREE.BufferGeometry {
     box(1.5, 0.12, 0.06, 0, 0.78, -2.27, 0xc02020, 0),
   ]);
 }
+/** Head and tail light blocks, drawn unlit (bright) at night through a second instanced mesh that shares the car matrices. */
+function carLightGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const sx of [-1, 1]) {
+    parts.push(box(0.38, 0.2, 0.08, sx * 0.62, 0.74, 2.27, 0xfff0c0, 0), box(0.34, 0.16, 0.08, sx * 0.66, 0.78, -2.28, 0xff2418, 0));
+  }
+  return merge(parts);
+}
+function busGeometry(): THREE.BufferGeometry {
+  const L = 11.6;
+  const parts = [
+    box(2.5, 2.5, L, 0, 1.75, 0, 0xffffff, 1),
+    box(2.54, 0.85, L - 1.2, 0, 2.15, 0, 0x28323c, 0),
+    box(2.52, 0.14, L, 0, 0.78, 0, 0xe8e8e8, 0),
+    box(1.6, 0.3, 3, 0, 3.1, -1.5, 0xb8bcc2, 0),
+    box(2.4, 0.5, 0.1, 0, 2.0, L / 2 + 0.01, 0x1a1f26, 0),
+    box(2.3, 0.2, 0.1, 0, 3.1, L / 2 + 0.02, 0xffd060, 0),
+  ];
+  for (const z of [-3.8, 3.4]) for (const sx of [-1, 1]) parts.push(box(0.3, 1.0, 1.0, sx * 1.2, 0.5, z, 0x111111, 0));
+  return merge(parts);
+}
 function pedGeometry(): THREE.BufferGeometry {
   return merge([
     box(0.4, 0.58, 0.24, 0, 1.18, 0, 0xffffff, 1),
@@ -99,8 +122,10 @@ function makeInstanced(base: THREE.BufferGeometry, n: number, walk: boolean): { 
   return { mesh, geo };
 }
 
-interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number }
-interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; yaw: number; tint: number; tint2: number; skin: number; phase: number }
+interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
+  /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
+  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number }
+interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0, y: 0 as number | undefined };
@@ -109,6 +134,8 @@ const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vect
 export class Crowd {
   readonly cars: GCar[] = []; readonly peds: GPed[] = [];
   caps: CrowdCaps = { farCars: 0, farPeds: 0, parked: 0 };
+  hour = 17; busCount = 0;
+  private lightMesh: THREE.InstancedMesh; private busMesh: ReturnType<typeof makeInstanced>;
   private carMesh: ReturnType<typeof makeInstanced>; private pedMesh: ReturnType<typeof makeInstanced>; private parkMesh: ReturnType<typeof makeInstanced>;
   private slots: Slot[] = []; private visSlots: Slot[] = [];
   private rng = new Rng(4242); private nextId = 1; private t = 0; private slowT = 0; private parkT = 0; private slowIdx = 0;
@@ -117,7 +144,11 @@ export class Crowd {
   constructor(scene: THREE.Scene, private city: CityMap, private vehicles: VehicleManager, private time: () => number) {
     this.carMesh = makeInstanced(carGeometry(), 400, false); this.parkMesh = makeInstanced(carGeometry(), 1200, false);
     this.pedMesh = makeInstanced(pedGeometry(), 900, true);
-    scene.add(this.carMesh.mesh, this.parkMesh.mesh, this.pedMesh.mesh);
+    this.busMesh = makeInstanced(busGeometry(), 16, false);
+    const lg = carLightGeometry(), lm = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+    this.lightMesh = new THREE.InstancedMesh(lg, lm, 400); this.lightMesh.instanceMatrix = this.carMesh.mesh.instanceMatrix;
+    this.lightMesh.frustumCulled = false; this.lightMesh.castShadow = false; this.lightMesh.count = 0; this.lightMesh.visible = false;
+    scene.add(this.carMesh.mesh, this.parkMesh.mesh, this.pedMesh.mesh, this.busMesh.mesh, this.lightMesh);
     this.carLaneIdx = city.lanes.filter(l => !l.connector && l.length > 30).map(l => l.id);
     this.buildSlots();
   }
@@ -150,7 +181,9 @@ export class Crowd {
   clear() { this.cars.length = 0; this.peds.length = 0; this.carMesh.mesh.count = 0; this.pedMesh.mesh.count = 0; }
 
   update(dt: number, focus: THREE.Vector3, caps: CrowdCaps) {
+    caps = { farCars: Math.round(caps.farCars * carActivity(this.hour)), farPeds: Math.round(caps.farPeds * pedActivity(this.hour)), parked: caps.parked };
     this.caps = caps; this.t += dt;
+    this.lightMesh.visible = this.hour >= 18.8 || this.hour < 6.2;
     const nowT = this.time();
     (this.pedMesh.mesh.material as THREE.MeshLambertMaterial).userData.crowdUniforms.uTime.value = this.t;
     this.updateCars(dt, nowT, focus);
@@ -159,17 +192,18 @@ export class Crowd {
   }
 
   // ---------------------------------------------------------------- cars
-  private spawnCar(focus: THREE.Vector3) {
+  private spawnCar(focus: THREE.Vector3, bus = false) {
     for (let tries = 0; tries < 10; tries++) {
       const lane = this.city.lanes[this.carLaneIdx[Math.floor(Math.random() * this.carLaneIdx.length)]];
+      if (bus && lane.length < 70) continue;
       const s = 6 + Math.random() * (lane.length - 12);
       samplePath(lane, s, sp);
       const d = Math.hypot(sp.x - focus.x, sp.z - focus.z);
       if (d < (this.prewarming ? 40 : 55) || d > 230) continue;
       if (Math.random() > DISTRICT_INFO[districtAt(this.city, sp.x, sp.z)].trafficDensity) continue;
-      if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 13)) continue;
+      if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 13))) continue;
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
-      this.cars.push({ lane, s, v: lane.speed * 0.8, paint: CAR_PAINT[Math.floor(Math.random() * CAR_PAINT.length)], len: 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++ });
+      this.cars.push({ lane, s, v: lane.speed * 0.8, paint: bus ? BUS_PAINT[Math.floor(Math.random() * BUS_PAINT.length)] : CAR_PAINT[Math.floor(Math.random() * CAR_PAINT.length)], len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1 });
       return true;
     }
     return false;
@@ -187,12 +221,28 @@ export class Crowd {
     }
     let spawns = this.prewarming ? 60 : 4;
     while (cars.length < cap && spawns-- > 0) if (!this.spawnCar(focus)) break;
+    // a few city buses on the long avenue lanes
+    this.busCount = 0; for (const c of cars) if (c.bus) this.busCount++;
+    const busCap = Math.min(14, Math.round(cap / 28));
+    if (this.busCount < busCap && cars.length < 399 && (this.prewarming || Math.random() < 0.08)) for (let k = 0; k < (this.prewarming ? 6 : 1); k++) if (this.spawnCar(focus, true)) this.busCount++;
     // per-lane ordering for leader lookup
     const byLane = new Map<number, GCar[]>();
     for (const c of cars) { const l = byLane.get(c.lane.id); if (l) l.push(c); else byLane.set(c.lane.id, [c]); }
     for (const c of cars) {
       const lane = c.lane;
-      let target = lane.speed * 0.85;
+      let target = lane.speed * (c.bus ? 0.7 : 0.85);
+      c.lcCool -= dt;
+      if (c.ox !== 0 || c.oz !== 0) { const k = Math.exp(-dt * 1.1); c.ox *= k; c.oz *= k; if (Math.abs(c.ox) + Math.abs(c.oz) < 0.02) { c.ox = 0; c.oz = 0; } }
+      // bus stop: roll once per lane, brake to a halt at the kerb, stand a while, then pull away
+      if (c.bus && !lane.connector) {
+        if (c.planLane !== lane.id) { c.planLane = lane.id; c.stopS = c.s < lane.length * 0.4 && Math.random() < 0.6 ? c.s + 12 + Math.random() * Math.max(2, lane.length - c.s - 40) : -1; }
+        if (c.dwell > 0) { c.dwell -= dt; target = 0; if (c.dwell <= 0) c.stopS = -1; }
+        else if (c.stopS > 0) {
+          const dStop = c.stopS - c.s;
+          if (dStop < -2) c.stopS = -1;
+          else { target = Math.min(target, Math.max(0, dStop - 0.5) * 0.7); if (dStop < 1.5 && c.v < 0.5) c.dwell = 7 + Math.random() * 7; }
+        }
+      }
       if (!lane.connector) {
         const inter = this.city.intersections[lane.intersection];
         const dStop = lane.length - c.s - 5.4;
@@ -202,7 +252,27 @@ export class Crowd {
         }
       } else target = Math.min(target, 8);
       const same = byLane.get(lane.id);
-      if (same && same.length > 1) for (const o of same) { if (o === c) continue; const gap = o.s - c.s - 5; if (gap > -2 && gap < 40) target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); }
+      let lead: GCar | null = null, leadGap = 99;
+      if (same && same.length > 1) for (const o of same) {
+        if (o === c) continue; const gap = o.s - c.s - (o.len + c.len) * 0.5 - 0.5;
+        if (gap > -2 && gap < 40) { target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); if (gap < leadGap) { leadGap = gap; lead = o; } }
+      }
+      // overtake / even out: move to the neighbouring lane when it is free (a stopped bus ahead makes it likely)
+      if (!lane.connector && c.lcCool <= 0 && c.v > 3 && c.s > 12 && lane.length - c.s > 32 && !c.bus) {
+        const stuck = lead !== null && (lead as GCar).dwell > 0 && leadGap < 24;
+        if (stuck || Math.random() < dt * 0.012) {
+          const toId = lane.lane > 0 ? lane.leftLane : lane.rightLane;
+          if (toId !== undefined) {
+            const tl = this.city.lanes[toId], other = byLane.get(toId);
+            if (!other || !other.some(o => Math.abs(o.s - c.s) < 16 + o.v * 0.4)) {
+              samplePath(tl, Math.min(c.s, tl.length - 0.1), sp);
+              c.ox = c.x - sp.x; c.oz = c.z - sp.z; c.lane = tl; c.lcCool = 8 + Math.random() * 10;
+              (other ?? byLane.set(toId, []).get(toId)!).push(c);
+              (same as GCar[]).splice((same as GCar[]).indexOf(c), 1);
+            } else c.lcCool = 1.5;
+          } else c.lcCool = 6;
+        }
+      }
       c.v += THREE.MathUtils.clamp(target - c.v, -7 * dt, 2.6 * dt);
       if (c.v < 0) c.v = 0;
       c.s += c.v * dt;
@@ -212,18 +282,24 @@ export class Crowd {
         if (c.s > c.lane.length) c.s = 0;
       }
       samplePath(c.lane, c.s, sp);
-      c.x = sp.x; c.z = sp.z; const yaw = Math.atan2(sp.dx, sp.dz); c.yaw = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 8);
+      c.x = sp.x + c.ox; c.z = sp.z + c.oz; const yaw = Math.atan2(sp.dx, sp.dz); c.yaw = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 8);
     }
     const mesh = this.carMesh.mesh, geo = this.carMesh.geo;
     const tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;
-    const n = Math.min(cars.length, 400);
-    for (let i = 0; i < n; i++) {
+    const bm = this.busMesh.mesh, btint = this.busMesh.geo.attributes.aTint as THREE.InstancedBufferAttribute;
+    let n = 0, nb = 0;
+    for (let i = 0; i < cars.length && n < 400; i++) {
       const c = cars[i];
+      if (c.bus && nb >= 16) continue;
       samplePath(c.lane, c.s, sp); const y = c.lane.ys ? (sp.y ?? 0) : 0;
-      q.setFromAxisAngle(up, c.yaw); pos.set(c.x, y + 0.05, c.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
-      hex(c.paint, col); tint.setXYZ(i, col.r, col.g, col.b);
+      q.setFromAxisAngle(up, c.yaw); pos.set(c.x, y + 0.05, c.z); m4.compose(pos, q, scl);
+      hex(c.paint, col);
+      if (c.bus) { bm.setMatrixAt(nb, m4); btint.setXYZ(nb, col.r, col.g, col.b); nb++; }
+      else { mesh.setMatrixAt(n, m4); tint.setXYZ(n, col.r, col.g, col.b); n++; }
     }
     mesh.count = n; mesh.instanceMatrix.needsUpdate = true; tint.needsUpdate = true;
+    this.lightMesh.count = n;
+    bm.count = nb; bm.instanceMatrix.needsUpdate = true; btint.needsUpdate = true;
   }
 
   // ---------------------------------------------------------------- pedestrians
@@ -237,9 +313,15 @@ export class Crowd {
       const x = nd.x + (to.x - nd.x) * t, z = nd.z + (to.z - nd.z) * t;
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d < (this.prewarming ? 30 : 42) || d > 210) continue;
-      if (Math.random() > Math.min(1, DISTRICT_INFO[districtAt(this.city, x, z)].pedDensity)) continue;
+      const dist = districtAt(this.city, x, z);
+      if (Math.random() > Math.min(1, DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour))) continue;
       const rnd = (n: number) => Math.floor(Math.random() * n);
-      this.peds.push({ from: nd.id, to: e.to, t, speed: 1.1 + Math.random() * 0.7, wait: 0, off: (Math.random() - 0.5) * 1.6, look: 0, x, z, yaw: 0, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)], phase: Math.random() * 6.28 });
+      const lead: GPed = { from: nd.id, to: e.to, t, speed: 1.1 + Math.random() * 0.7, wait: 0, off: (Math.random() - 0.5) * 1.6, look: 0, x, z, yaw: 0, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)], phase: Math.random() * 6.28 };
+      this.peds.push(lead);
+      // friends walk side by side: pairs and the odd trio
+      if (Math.random() < 0.3) for (let k = 1, cnt = Math.random() < 0.25 ? 2 : 1; k <= cnt; k++) {
+        this.peds.push({ ...lead, leader: lead, off: lead.off + 0.72 * k, phase: lead.phase + k * 1.3, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)] });
+      }
       return true;
     }
     return false;
@@ -248,13 +330,16 @@ export class Crowd {
     const peds = this.peds, cap = Math.min(this.caps.farPeds, 900), nodes = this.city.pedNodes;
     for (let i = peds.length - 1; i >= 0; i--) {
       const p = peds[i], d = Math.hypot(p.x - focus.x, p.z - focus.z);
-      if (d < 36 || d > 235 || i >= cap) peds.splice(i, 1);
+      if (d < 36 || d > 235 || i >= cap) { p.dead = true; peds.splice(i, 1); }
     }
     let spawns = this.prewarming ? 120 : 10;
     while (peds.length < cap && spawns-- > 0) if (!this.spawnPed(focus)) break;
     for (const p of peds) {
+      const lead = p.leader && !p.leader.dead ? p.leader : undefined; if (!lead) p.leader = undefined;
+      if (lead) { p.from = lead.from; p.to = lead.to; p.t = lead.t; p.wait = lead.wait; p.speed = lead.speed; }
       const a = nodes[p.from], b = nodes[p.to];
-      if (p.wait > 0) { p.wait -= dt; }
+      if (lead) { /* follows its friend */ }
+      else if (p.wait > 0) { p.wait -= dt; }
       else {
         const edge = a.edges.find(e => e.to === p.to);
         const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
@@ -274,7 +359,7 @@ export class Crowd {
       const a2 = nodes[p.from], b2 = nodes[p.to];
       const dx = b2.x - a2.x, dz = b2.z - a2.z, l = Math.hypot(dx, dz) || 1;
       const crossing = a2.edges.find(e => e.to === p.to)?.crossing;
-      const off = crossing ? 0 : p.off;
+      const off = crossing ? (lead ? p.off - lead.off : 0) : p.off;
       p.x = a2.x + dx * p.t - dz / l * off; p.z = a2.z + dz * p.t + dx / l * off;
       const yaw = Math.atan2(dx, dz); if (p.wait <= 0) p.yaw = yaw;
     }

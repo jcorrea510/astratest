@@ -102,6 +102,11 @@ export const ACTIONS: Record<string, ActionDef> = {
   // --- misc
   pick_up: { clip: 'PickUp_Table', layer: 'full', fade: 0.12 },
   push: { clip: 'Push_Loop', layer: 'full', loop: true, hold: true, fade: 0.2 },
+  // --- street life (civilians): phone call, filming, smoking, hailing a cab
+  phone: { layer: 'upper', loop: true, hold: true, dur: 0.8, fade: 0.3, poses: [[0, { armR: [-62, 0, -10], foreR: [-120, 0, 0], head: [-4, 14, 0] }], [0.5, { armR: [-64, 0, -12], foreR: [-124, 0, 0], head: [-2, 10, 0] }], [1, { armR: [-62, 0, -10], foreR: [-120, 0, 0], head: [-4, 14, 0] }]] },
+  film: { layer: 'upper', loop: true, hold: true, dur: 1, fade: 0.35, poses: [[0, sym({ armL: [-72, 0, 16], foreL: [-70, 0, 0], head: [2, 0, 0] })], [0.5, sym({ armL: [-74, 0, 18], foreL: [-72, 0, 0], head: [3, 3, 0] })], [1, sym({ armL: [-72, 0, 16], foreL: [-70, 0, 0], head: [2, 0, 0] })]] },
+  smoke: { layer: 'upper', loop: true, hold: true, dur: 4, fade: 0.3, poses: [[0, { armR: [-6, 0, -8], foreR: [-30, 0, 0] }], [0.35, { armR: [-6, 0, -8], foreR: [-30, 0, 0] }], [0.5, { armR: [-62, 0, -14], foreR: [-135, 0, 0], head: [-6, 0, 0] }], [0.7, { armR: [-62, 0, -14], foreR: [-135, 0, 0], head: [-6, 0, 0] }], [0.85, { armR: [-6, 0, -8], foreR: [-30, 0, 0], head: [-10, 0, 0] }], [1, { armR: [-6, 0, -8], foreR: [-30, 0, 0] }]] },
+  hail: { layer: 'upper', loop: true, hold: true, dur: 1.2, fade: 0.25, poses: [[0, { armR: [0, 0, -150], foreR: [0, 0, 20], head: [0, -10, 0] }], [0.5, { armR: [0, 0, -156], foreR: [0, 0, -6], head: [0, -10, 0] }], [1, { armR: [0, 0, -150], foreR: [0, 0, 20], head: [0, -10, 0] }]] },
   talk: { clip: 'Idle_Talking_Loop', layer: 'upper', loop: true, hold: true, fade: 0.25 },
   sit: { clip: 'Sitting_Idle_Loop', layer: 'full', loop: true, hold: true, fade: 0.3 },
   dance: { clip: 'Dance_Loop', layer: 'full', loop: true, hold: true, fade: 0.3 },
