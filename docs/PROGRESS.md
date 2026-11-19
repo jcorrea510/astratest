@@ -11,7 +11,7 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [ ] R4-B Density (after C): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
 - [ ] R4-R Realism audit: agent screenshots/plays, lists what's still cartoony, fix waves.
 - [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
-Running: (filled below)
+Running (02:45 UTC): A af294024da09cd08f, C a7a7be7520825c548, D a904aed365e2d86ce, E a6e93bbda4a62f151, F a917c3bc3de1d6808. Resume stopped ones via SendMessage.
 
 ## Done
 - Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
