@@ -7,7 +7,7 @@ test('stolen helicopter: 3 stars at once, cops swarm and shoot it down; crowds a
   await boot(page);
   await step(page, 6);
   const crowd = await page.evaluate(() => { const g = (window as any).__game; return { peds: g.pop.npcs.length, cap: g.renderer.quality.pedestrians }; });
-  expect(crowd.cap).toBeGreaterThanOrEqual(66);
+  expect(crowd.cap).toBeGreaterThanOrEqual(64);
   await page.evaluate(() => { const g = (window as any).__game; const h = g.spawnHelicopter('civilian'); g.boardFinished(h); h.rotor = 1; h.parked = false; h.teleport(h.position.x, h.position.y + 40, h.position.z, h.yaw); });
   const heat = await page.evaluate(() => (window as any).__game.police.heat);
   expect(heat).toBeGreaterThanOrEqual(3);

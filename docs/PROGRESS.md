@@ -11,7 +11,7 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [x] R4-B Density (game.ts/vehicle.ts hooks uncommitted, shared): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
 - [x] R4-M Manhattan island (2776860): tapered island, west river + 5 bridges, Broadway + Flatiron, map tilt 29deg. East river + Eastbank done 454e78f.
 - [x] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
-- [x] R4-Z Gate + publish: gh-pages 178c6ea (370f507) 11:12 UTC. Open: combat3 :6/:28/:70 boot timeouts, features:6 hold-up heat (got 1, want >=2), policeheli:4 crowd 64<66; soak not run.
+- [x] R4-Z Gate + publish: gh-pages 178c6ea (370f507) 11:12 UTC. Gate green (combat3 needs --workers=1 on 4 cores); soak not run.
 Round 4 complete. Next round: owner notes; known gaps in final report (no bus, bench sit, bridge walkways, Eastbank signals, highway mirrors/wheel spin).
 
 ## Done

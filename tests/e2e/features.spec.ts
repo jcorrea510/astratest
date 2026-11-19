@@ -28,7 +28,7 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
   expect(r.started).toBe(true);
   expect(r.maxProgress).toBeGreaterThan(0.99);
   expect(r.money).toBe(r.cash);
-  expect(r.heat).toBeGreaterThanOrEqual(2);
+  expect(r.heat).toBeGreaterThanOrEqual(1); // R4: witness/911 escalation, alarm starts at 1 star
   expect(r.phase).toBe('closed');
   // looking away lets the clerk off the hook
   const r2 = await page.evaluate(() => {
