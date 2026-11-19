@@ -26,6 +26,8 @@ import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
 import { CarEntry, type Enterable } from './carEntry';
+import { COP_LOOK } from './dispatch';
+import { getTemplate } from '../vehicles/models/build';
 import { HeliManager } from '../vehicles/helicopterManager';
 import { Helicopter } from '../vehicles/helicopter';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -110,6 +112,9 @@ export class Game {
   private lampTimer = 0;
   respawnPoint = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw };
   private ambT = 0;
+  /** Police vehicle models are built one per ~1.5 s in the background so the first patrol car never hitches a fight. */
+  private warmKinds: ('police' | 'fbi' | 'swat' | 'army' | 'tank')[] = ['police', 'fbi', 'swat', 'army', 'tank'];
+  private warmT = 4;
 
   constructor(public canvas: HTMLCanvasElement, public settings: Settings, public assets: Assets, public audio: GameAudio = new NullAudio()) {
     this.renderer = new Renderer(canvas);
@@ -308,6 +313,12 @@ export class Game {
       this.pop.update(0.2, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
     }
     this.pop.prewarming = this.traffic.prewarming = false;
+    // compile the cop/gun shader variants now (off to the side, one frame) so the first fight doesn't hitch
+    try {
+      const p = this.player.pos, cop = this.pop.spawn('police', p.x + 2, p.z + 2, p.y, COP_LOOK);
+      this.police.dispatch.arm(cop, 'police', 3, true);
+      this.renderer.render(); this.pop.remove(cop);
+    } catch { /* warm-up only */ }
     for (let i = 0; i < 30; i++) this.fixedUpdate(1 / 60);
   }
   /** Enter the nearest vehicle (walk to the door; carjacking if occupied) or get out of the current one. */
@@ -551,6 +562,8 @@ export class Game {
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);
+    this.warmT -= raw;
+    if (this.warmT <= 0 && this.warmKinds.length && !this.paused) { this.warmT = 1.5; getTemplate(this.warmKinds.shift()!); }
     this.ambT -= raw;
     if (this.ambT <= 0) {
       this.ambT = 0.5;

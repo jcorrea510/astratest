@@ -189,7 +189,8 @@ export class Dispatch {
     const night = h.night();
     if (this.light && this.beam) {
       const on = night > 0.25 && !b.destroyed;
-      this.light.visible = on; this.beam.visible = on;
+      // the light stays in the scene (a changing light count recompiles every material = a hitch); intensity does the on/off
+      this.light.intensity = on ? 170 : 0; this.beam.visible = on;
       if (on) {
         const from = pos.clone(); from.y -= 1.2;
         this.light.position.copy(from); this.lightTarget.position.copy(pp);
@@ -255,7 +256,7 @@ export class Dispatch {
   private ensureLight() {
     if (this.light) return;
     const l = new THREE.SpotLight('#eaf4ff', 170, 120, 0.075, 0.85, 1.6);
-    l.castShadow = false; l.target = this.lightTarget; l.visible = false;
+    l.castShadow = false; l.target = this.lightTarget; l.intensity = 0;
     this.scene.add(l, this.lightTarget);
     const g = new THREE.CylinderGeometry(0.12, 1, 1, 18, 1, true);
     const m = new THREE.MeshBasicMaterial({ color: '#dfeeff', transparent: true, opacity: 0.04, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
@@ -264,7 +265,7 @@ export class Dispatch {
   }
   dropHeli() {
     if (this.heli) { this.heli.input.pitch = 0; this.heli.input.yaw = 0; this.heli.input.lift = 0.3; this.heli.persistent = false; this.hooks?.removeHeli(this.heli); this.heli = null; }
-    if (this.light) { this.scene.remove(this.light, this.lightTarget, this.beam!); this.beam!.geometry.dispose(); (this.beam!.material as THREE.Material).dispose(); this.light.dispose(); this.light = null; this.beam = null; }
+    if (this.light && this.beam) { this.light.intensity = 0; this.beam.visible = false; }
   }
 
   // ------------------------------------------------------------------------------------------------ foot orders
