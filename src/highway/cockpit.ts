@@ -193,7 +193,7 @@ export class Cockpit {
     const yD = Math.max(S.y + 0.38, cowl - 0.04);  // top of the dash pad
     const zW = Math.min(S.z + 0.5, zA - 0.38);     // steering wheel plane
     const yW = yD - 0.19;
-    this.dims = { eye: new THREE.Vector3(S.x, gh?.open ? yD + 0.3 : Math.min(Math.max(S.y + 0.66, yD + 0.3), roofY - 0.16), S.z - 0.22), wheelZ: zW, dashY: yD };
+    this.dims = { eye: new THREE.Vector3(S.x, gh?.open ? yD + 0.3 : Math.min(Math.max(S.y + 0.66, yD + 0.3), roofY - 0.12), S.z - 0.22), wheelZ: zW, dashY: yD };
 
     const bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
     this.disposables.push(bump, leather, carpet);

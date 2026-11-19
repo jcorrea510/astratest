@@ -21,7 +21,7 @@ test('world r5: precinct + signals + bridges exist, near plane grows with altitu
   // at the top of a bridge tower and over roofs the camera near plane moves out; at street level it returns
   const near = await page.evaluate(() => {
     const g = (window as any).__game; const out: number[] = [];
-    for (const y of [2, 120, 2]) { g.renderer.camera.position.y = y; g.frame(1 / 60, true); out.push(g.renderer.camera.near); }
+    for (const y of [0.3, 150, 0.3]) { g.player.place(0, y, 60, 0); g.frame(1 / 60, true); out.push(g.renderer.camera.near); }
     return out;
   });
   expect(near[1]).toBeGreaterThan(1);
