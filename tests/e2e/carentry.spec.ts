@@ -138,7 +138,7 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   expect(pads.length).toBeGreaterThanOrEqual(2);
   expect(pads.every((s: any) => s.heli)).toBe(true);
   expect(pads.some((s: any) => s.y > 12)).toBe(true); // a rooftop pad
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-280, 0.25, -100, 0); (window as any).__h = g.spawnHelicopter('news', -275, -100, 0); });
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-405, 0.25, -250, 0); (window as any).__h = g.spawnHelicopter('news', -400, -250, 0); });
   await step(page, 0.5);
   const g0 = await page.evaluate(() => { const h = (window as any).__h; return { y: h.position.y, grounded: h.grounded }; });
   expect(g0.grounded).toBe(true);
@@ -159,7 +159,10 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   expect(fwd.destroyed).toBe(false);
   // let go: it levels and brakes; then descend and land
   await step(page, 4);
-  await step(page, 20, { hold: ['ShiftLeft'] });
+  // a pilot flares: sink fast while high, then feather the collective near the ground (full sink rate at touchdown is a crash)
+  await page.evaluate(() => { const g = (window as any).__game, h = (window as any).__h; const dt = 1 / 30;
+    for (let i = 0; i < 30 * 40 && !h.grounded; i++) { const low = h.agl < 9; const down = low ? (i % 15 < 3) : true; if (down) g.input.press('ShiftLeft'); g.frame(dt, false); g.input.release('ShiftLeft'); }
+    for (let i = 0; i < 60; i++) g.frame(dt, false); });
   const land = await page.evaluate(() => { const h = (window as any).__h; return { grounded: h.grounded, destroyed: h.destroyed, health: h.health / h.maxHealth, sp: Math.hypot(h.phys.body.linvel().x, h.phys.body.linvel().z) }; });
   expect(land.grounded).toBe(true);
   expect(land.destroyed).toBe(false);

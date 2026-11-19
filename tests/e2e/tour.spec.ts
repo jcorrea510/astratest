@@ -182,7 +182,7 @@ test('tour: every feature in one session, clean console and sane world after eve
 
   await S('smash + hotwire a parked car', async () => {
     await resetFoot(page, -276, -101);
-    await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.spawn('coupe', -278, -97.5, 0, 1); v.persistent = true; v.parked = true; v.doorsLocked = true; v.ignition = false; (window as any).__v = v; const d = v.doorWorldPos(0); g.player.place(d.x, 0.1, d.z, 0); });
+    await page.evaluate(() => { const g = (window as any).__game; const v = g.vehicles.spawn('coupe', -278, -97.5, Math.PI / 2, 1); v.persistent = true; v.parked = true; v.doorsLocked = true; v.ignition = false; (window as any).__v = v; const d = v.doorWorldPos(0); g.player.place(d.x, 0.1, d.z, 0); });
     await step(page, 0.3); await tap(page, 'KeyF');
     const r = await page.evaluate(() => { const g = (window as any).__game, v = (window as any).__v; const ph = new Set<string>(); for (let i = 0; i < 600 && g.playerVehicle !== v; i++) { g.frame(1 / 30, false); if (g.carEntry.phase) ph.add(g.carEntry.phase); } return { seated: g.playerVehicle === v, phases: [...ph], ign: v.ignition }; });
     expect(r.seated).toBe(true); expect(r.phases.join(',')).toMatch(/smash/); expect(r.ign).toBe(false);
@@ -356,14 +356,14 @@ test('tour: every feature in one session, clean console and sane world after eve
   await S('pier / water: swim, a car floods', async () => {
     await page.evaluate(() => { (window as any).__meridian.sandbox.act('god', false); });
     const walk = await page.evaluate(() => {
-      const g = (window as any).__game; g.player.place(10, 0.3, 430, 0);
+      const g = (window as any).__game; g.player.place(10, 0.3, 930, 0);
       g.input.press('KeyW'); for (let i = 0; i < 25 * 30; i++) { g.cam.yaw = Math.PI; g.frame(1 / 30, false); } g.input.release('KeyW');
       return { swimming: g.player.swimming, alive: g.player.alive };
     });
     expect(walk).toEqual({ swimming: true, alive: true });
     const car = await page.evaluate(() => {
-      const g = (window as any).__game; g.player.place(0, 0.3, 405, 0);
-      const v = g.vehicles.spawn('sedan', 0, 405, 0); v.persistent = true; g.seatPlayer(v);
+      const g = (window as any).__game; g.player.place(0, 0.3, 925, 0);
+      const v = g.vehicles.spawn('sedan', 0, 925, 0); v.persistent = true; g.seatPlayer(v);
       g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
       for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
       return { flooded: v.flooded, inCar: !!g.playerVehicle, alive: g.player.alive };

@@ -66,10 +66,11 @@ test('walk, sprint, jump, roll; take a car, drive, handbrake, crash and get out'
   expect(v).toBeGreaterThan(10);
   await step(page, 1, { hold: ['KeyW', 'KeyA', 'Space'] });
   // Crash: aim at a building and accelerate
-  await page.evaluate(() => { const g = (window as any).__game; g.playerVehicle.phys.teleport(-420, 0.6, -102, -Math.PI / 2); });
-  const hp0 = await state<number>(page, 'window.__game.playerVehicle.health');
+  await page.evaluate(() => { const g = (window as any).__game; g.playerVehicle.phys.teleport(-470, 0.6, -102, Math.PI / 2); });
+  await page.evaluate(() => { (window as any).__cv = (window as any).__game.playerVehicle; });
+  const hp0 = await state<number>(page, 'window.__cv.health');
   await step(page, 5, { hold: ['KeyW'] });
-  const hp1 = await state<number>(page, 'window.__game.playerVehicle.health');
+  const hp1 = await state<number>(page, 'window.__cv.health');
   expect(hp1).toBeLessThan(hp0);
   await step(page, 1, { render: true });
   await page.screenshot({ path: 'test-results/shots/crash.png' });
