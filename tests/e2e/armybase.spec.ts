@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 import { boot, step, watch, clean, quietStreets } from './helpers';
 
 const SHOT = process.env.SHOT_DIR; // set to also write inspection screenshots
-async function look(page: import('@playwright/test').Page, name: string, from: [number, number, number], at: [number, number, number]) {
+async function look(page: import('@playwright/test').Page, name: string, from: [number, number, number], at: [number, number, number], place = true) {
   if (!SHOT) return;
-  await page.evaluate(({ from, at }) => { const g = (window as any).__game; if (!g.playerHeli) g.player.place(at[0], Math.max(0.3, at[1]), at[2], 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); g.frame(1 / 30, true); const c = g.renderer.camera; c.position.set(...from); c.lookAt(...at); c.updateMatrixWorld(); g.renderer.render(); }, { from, at });
+  await page.evaluate(({ from, at, place }) => { const g = (window as any).__game; if (place && !g.playerHeli) g.player.place(at[0], Math.max(0.3, at[1]), at[2], 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); g.frame(1 / 30, true); const c = g.renderer.camera; c.position.set(...from); c.lookAt(...at); c.updateMatrixWorld(); g.renderer.render(); }, { from, at, place });
   await page.screenshot({ path: `${SHOT}/${name}.png` });
 }
 
@@ -69,8 +69,8 @@ test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-dow
     return { far, guards: g.armyGuards.guards.length, alive: g.armyGuards.guards.filter((n: any) => n.npc.alive).length };
   });
   expect(lod.guards).toBeGreaterThanOrEqual(8);
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(1180, 0.5, -650, 0); });
-  await look(page, 'base-far', [1160, 40, -650], [665, 10, -650]);
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(660, 0.5, -300, 0); for (let i = 0; i < 20; i++) g.frame(1 / 30, false); });
+  await look(page, 'base-far', [640, 70, -250], [665, 5, -650], false);
   const near = await page.evaluate(() => { const g = (window as any).__game; g.player.place(770, 0.5, -650, 1.5); for (let i = 0; i < 30; i++) g.frame(1 / 30, false); return g.armyLod.visible; });
   expect(near).toBe(false);
   // trespass: guards turn hostile and one fires back at the player
@@ -91,7 +91,7 @@ test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-dow
     return { frames, hpLost: hp0 - g.player.health };
   });
   expect(strike.frames).toBeLessThan(200);
-  await page.evaluate(() => { const g = (window as any).__game; g.frame(1 / 30, false); g.frame(1 / 30, true); g.frame(1 / 30, false); });
+  await page.evaluate(() => { const g = (window as any).__game; for (let i = 0; i < 6; i++) g.frame(1 / 30, false); g.frame(1 / 30, true); });
   if (SHOT) await page.screenshot({ path: `${SHOT}/missile-strike.png` });
 
   // a hostile gunship shot down: smoke, fall, crash explosion, wreck

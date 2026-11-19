@@ -3,6 +3,7 @@ import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District,
 import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 import { WEST, WEST_PLAZAS } from '../world/westside';
+import { Buildings3D } from './map3d';
 
 const BASE = '#173a3e';
 const BLOCK_BASE = '#21474b';
@@ -26,15 +27,19 @@ export class CityPainter {
   readonly lots: FillGroup[] = [];
   readonly roads: Path2D;
   readonly majorRoads: Path2D;
+  readonly freeway = new Path2D();
+  private readonly water = new Path2D();
+  private bld: Buildings3D | null = null;
+  private bake: { canvas: HTMLCanvasElement; k: number; x0: number; z0: number } | null = null;
   readonly coastline: Path2D;
   readonly districtLabels: { name: string; x: number; z: number }[] = [];
   readonly bounds = { minX: WEST.x0 - 30, maxX: Math.max(AIRFIELD.x1, EAST_SHORE.x1) + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
 
-  constructor(city: CityMap) {
+  constructor(private city: CityMap) {
     const big = 4000;
     const land = new Path2D();
     land.rect(-big, -big, big * 2, big * 2);
-    const water = new Path2D();
+    const water = this.water;
     water.rect(-big, COAST_Z, big * 2, big);
     water.rect(EAST_RIVER.x0, -60, EAST_RIVER.x1 - EAST_RIVER.x0, big); // the East River
     water.rect(EAST_SHORE.x1, -60, big, big); // sea beyond Eastbank
@@ -114,7 +119,7 @@ export class CityPainter {
     }
     // CITY: freeway, ramps, Vista Drive and Airfield Road as polygon strips
     for (const p of city.paths) {
-      const tgt = p.kind === 'freeway' ? this.majorRoads : this.roads;
+      const tgt = p.kind === 'freeway' ? this.freeway : this.roads;
       for (let i = 1; i < p.pts.length; i++) {
         const a = p.pts[i - 1], b = p.pts[i]; const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; const nx = -(b.z - a.z) / l * p.half, nz = (b.x - a.x) / l * p.half;
         tgt.moveTo(a.x + nx, a.z + nz); tgt.lineTo(b.x + nx, b.z + nz); tgt.lineTo(b.x - nx, b.z - nz); tgt.lineTo(a.x - nx, a.z - nz); tgt.closePath();
@@ -124,17 +129,46 @@ export class CityPainter {
     this.districtLabels.push({ name: 'Old Town', x: -850, z: -60 }, { name: 'East River', x: 625, z: 250 }, { name: 'Eastbank', x: 850, z: 450 }, { name: 'Seacliff', x: -820, z: 300 }, { name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
   }
 
-  /** Paints in world coordinates; the caller sets the transform. */
-  paint(ctx: CanvasRenderingContext2D, detail: 'mini' | 'full') {
-    for (const g of this.base) { ctx.fillStyle = g.color; ctx.fill(g.path); }
+  /** Extruded building footprints (built on first use). */
+  get buildings(): Buildings3D { return this.bld ??= new Buildings3D(this.city); }
+
+  /** Ground layer in world coordinates (water gradient, land, blocks, ranked roads); the caller sets the transform. */
+  paintGround(ctx: CanvasRenderingContext2D, scale: number) {
+    const b = this.bounds, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2, r = Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5;
+    const wg = ctx.createRadialGradient(cx, cz, r * 0.1, cx, cz, r);
+    wg.addColorStop(0, '#15566a'); wg.addColorStop(0.55, '#0f3f52'); wg.addColorStop(1, '#071f2b');
+    for (const g of this.base) {
+      ctx.fillStyle = g.path === this.water ? wg : g.color; ctx.fill(g.path);
+    }
+    // shallows and shoreline
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 16; ctx.strokeStyle = 'rgba(110,205,205,0.10)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(140,225,215,0.16)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 1.4 / Math.max(scale, 0.2); ctx.strokeStyle = 'rgba(255,225,170,0.55)'; ctx.stroke(this.coastline);
     for (const g of this.blocks) { ctx.fillStyle = g.color; ctx.fill(g.path); }
-    ctx.globalAlpha = detail === 'mini' ? 0.75 : 1;
-    for (const g of this.lots) { ctx.fillStyle = g.color; ctx.fill(g.path); }
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(236, 220, 186, 0.42)';
-    ctx.fill(this.roads);
-    ctx.fillStyle = 'rgba(255, 205, 140, 0.62)';
-    ctx.fill(this.majorRoads);
+    // road hierarchy: streets, avenues (wider, brighter, cased), freeway (distinct, with an elevated shadow)
+    ctx.fillStyle = 'rgba(206,196,170,0.5)'; ctx.fill(this.roads);
+    const cw = 1.6 / Math.max(scale, 0.2);
+    ctx.lineWidth = cw; ctx.strokeStyle = 'rgba(8,22,26,0.55)'; ctx.stroke(this.majorRoads);
+    ctx.fillStyle = '#ffd08e'; ctx.fill(this.majorRoads);
+    ctx.save(); ctx.translate(3, 5); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill(this.freeway); ctx.restore();
+    ctx.lineWidth = cw * 1.6; ctx.strokeStyle = 'rgba(70,24,10,0.8)'; ctx.stroke(this.freeway);
+    ctx.fillStyle = '#ff9a5c'; ctx.fill(this.freeway);
+  }
+
+  /** Top-down shaded city rendered once into a canvas for the minimap (about 1 px per metre). */
+  minimapBake(): { canvas: HTMLCanvasElement; k: number; x0: number; z0: number } | null {
+    if (this.bake) return this.bake;
+    const b = this.bounds, w = b.maxX - b.minX, hh = b.maxZ - b.minZ;
+    const k = Math.min(1, 3072 / Math.max(w, hh));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(w * k); canvas.height = Math.ceil(hh * k);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.setTransform(k, 0, 0, k, -b.minX * k, -b.minZ * k);
+    this.paintGround(ctx, k * 2);
+    this.buildings.drawFlat(ctx);
+    return (this.bake = { canvas, k, x0: b.minX, z0: b.minZ });
   }
 }
 

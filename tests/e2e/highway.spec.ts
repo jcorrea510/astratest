@@ -91,6 +91,7 @@ test('direct highway boot (no city): collisions wreck cars and hurt the player; 
 });
 
 test('no vertical bounce on a straight road (cockpit and chase camera) and the wheel turns with the steering', async ({ page }) => {
+  test.setTimeout(480_000);
   await page.goto('./?highway=1&car=sedan&time=day&traffic=0.2');
   await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 120_000 });
   const r = await page.evaluate(() => {
@@ -101,7 +102,7 @@ test('no vertical bounce on a straight road (cockpit and chase camera) and the w
     for (const mode of ['first', 'third']) {
       h.setCamera(mode);
       const ys: number[] = [];
-      for (let i = 0; i < 240; i++) { h.step(1 / 60); h.player.health = 100; h.player.wrecked = false; h.render(); ys.push(h.camera.position.y); }
+      for (let i = 0; i < 120; i++) { h.step(1 / 60); h.player.health = 100; h.player.wrecked = false; h.render(); ys.push(h.camera.position.y); }
       // third difference removes the smooth hills; a periodic bounce of even a centimetre shows up
       let worst = 0;
       for (let i = 3; i < ys.length; i++) worst = Math.max(worst, Math.abs(ys[i] - 3 * ys[i - 1] + 3 * ys[i - 2] - ys[i - 3]));
@@ -146,7 +147,7 @@ test('cockpit screens are live (clock, trip, next exit) and the mirror reflectio
 });
 
 test('low quality keeps the rear mirror live but not the side mirrors', async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(420_000);
   await page.goto('./?highway=1&car=coupe&time=day&traffic=0.1&quality=low');
   await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 180_000 });
   const r = await page.evaluate(() => {

@@ -7,7 +7,9 @@ import { h } from './dom';
 /** Metres from the player to the top/bottom rim at zoom 1 (the radar is wider than it is tall). */
 export const MINIMAP_VIEW_RADIUS = 135;
 /** The player sits below centre so more of the road ahead is visible. */
-const PLAYER_Y = 0.6;
+const PLAYER_Y = 0.62;
+/** Vertical squash of the radar: a tilted, 3D-style look consistent with the full map. */
+const PITCH = 0.74;
 
 export class Minimap {
   readonly el: HTMLDivElement;
@@ -64,8 +66,9 @@ export class Minimap {
 
     // World layer
     ctx.save();
-    ctx.translate(cx, cy); ctx.rotate(-s.heading); ctx.scale(scale, scale); ctx.translate(-s.x, -s.z);
-    this.painter.paint(ctx, 'mini');
+    ctx.translate(cx, cy); ctx.scale(1, PITCH); ctx.rotate(-s.heading); ctx.scale(scale, scale); ctx.translate(-s.x, -s.z);
+    const bk = this.painter.minimapBake();
+    if (bk) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low'; ctx.drawImage(bk.canvas, bk.x0, bk.z0, bk.canvas.width / bk.k, bk.canvas.height / bk.k); }
     if (s.heatRadius) {
       const hr = s.heatRadius;
       const pulse = 0.5 + 0.5 * Math.sin(t * 5);
@@ -85,7 +88,7 @@ export class Minimap {
 
     // Edge shading so blips on the rim read clearly
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, 'rgba(6,18,21,0.45)'); g.addColorStop(0.18, 'rgba(6,18,21,0)'); g.addColorStop(0.85, 'rgba(6,18,21,0)'); g.addColorStop(1, 'rgba(6,18,21,0.35)');
+    g.addColorStop(0, 'rgba(6,22,28,0.8)'); g.addColorStop(0.22, 'rgba(6,22,28,0)'); g.addColorStop(0.85, 'rgba(6,18,21,0)'); g.addColorStop(1, 'rgba(6,18,21,0.4)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
     // Blips (upright, clamped to the frame)
@@ -94,6 +97,7 @@ export class Minimap {
     const minX = -cx + m, maxX = W - cx - m, minY = -cy + m, maxY = H - cy - m;
     for (const b of s.blips) {
       const p = worldToMinimap(s.x, s.z, s.heading, scale, b.x, b.z, this.tmp);
+      p.y *= PITCH;
       const clamped = clampToBox(p, minX, maxX, minY, maxY);
       if (clamped && b.kind === 'collectible') continue;
       if (clamped && (b.kind === 'enemy' || b.kind === 'police' || b.kind === 'vehicle')) ctx.globalAlpha = 0.7;

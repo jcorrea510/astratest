@@ -211,7 +211,7 @@ export class Police {
   alarm(crime: Crime, at: THREE.Vector3) {
     if (crime === 'copCarTheft') this.pendingStolen = true;
     this.call911(crime, at);
-    if (crime === 'heliTheft' || crime === 'policeHeliTheft') { this.rushT = 40; this.spawnT = 0; this.violentT = 30; }
+    if (crime === 'heliTheft' || crime === 'policeHeliTheft') { this.rushT = 40; this.spawnT = 0; this.violentT = 30; this.holdT = 0; } // a stolen aircraft is seen by the whole city: no dispatch delay
   }
   clear() {
     if (this.state.heat > 0) { this.state.heat = 0; this.onHeatChange?.(0, true); }

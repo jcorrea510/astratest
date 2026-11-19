@@ -40,19 +40,19 @@ export const MAP_TILT = 29 * Math.PI / 180;
 /** World direction of true north (the direction that points straight up on the tilted maps). */
 export const TRUE_NORTH = { x: -Math.sin(MAP_TILT), z: -Math.cos(MAP_TILT) };
 /** Full-map view centred on (cx, cz) at `scale` pixels per metre; `tilt` (radians, clockwise) rotates the map presentation. */
-export interface MapView { cx: number; cz: number; scale: number; w: number; h: number; tilt?: number }
+export interface MapView { cx: number; cz: number; scale: number; w: number; h: number; tilt?: number; /** vertical squash of the ground plane (1 = top-down, <1 = pitched 3D view) */ pitch?: number }
 export function mapWorldToScreen(v: MapView, x: number, z: number) {
-  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), dx = x - v.cx, dz = z - v.cz;
-  return { x: (dx * c - dz * s) * v.scale + v.w / 2, y: (dx * s + dz * c) * v.scale + v.h / 2 };
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), dx = x - v.cx, dz = z - v.cz, p = v.pitch ?? 1;
+  return { x: (dx * c - dz * s) * v.scale + v.w / 2, y: (dx * s + dz * c) * v.scale * p + v.h / 2 };
 }
 export function mapScreenToWorld(v: MapView, sx: number, sy: number) {
-  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), px = (sx - v.w / 2) / v.scale, py = (sy - v.h / 2) / v.scale;
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), px = (sx - v.w / 2) / v.scale, py = (sy - v.h / 2) / v.scale / (v.pitch ?? 1);
   return { x: px * c + py * s + v.cx, z: -px * s + py * c + v.cz };
 }
 /** A screen-space delta (pixels / scale already applied) expressed in world metres. */
 export function mapScreenDeltaToWorld(v: MapView, dx: number, dy: number) {
-  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t);
-  return { x: dx * c + dy * s, z: -dx * s + dy * c };
+  const t = v.tilt ?? 0, c = Math.cos(t), s = Math.sin(t), py = dy / (v.pitch ?? 1);
+  return { x: dx * c + py * s, z: -dx * s + py * c };
 }
 
 /** Wheel slot for a direction in screen space (dy positive = down). Slot 0 is at the top, then clockwise. */

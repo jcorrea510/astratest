@@ -5,8 +5,8 @@
 import * as THREE from 'three';
 
 export interface Pillar { a: THREE.Vector3; b: THREE.Vector3 }
-/** Slimmed fraction of the original pillar width (0.55 leaves about 4.7 cm). */
-export const PILLAR_KEEP = 0.55;
+/** Slimmed fraction of the original pillar width (0.55 leaves about 6 cm). */
+export const PILLAR_KEEP = 0.7;
 
 /** Height of the windshield's bottom edge (the cowl) in the body mesh: the lowest dark windshield-frame triangle ahead of `zFront`. */
 export function cowlHeight(g: THREE.BufferGeometry, zFront: number): number | null {
@@ -63,7 +63,7 @@ export function slimPillars(g: THREE.BufferGeometry, zFront: number, keep = PILL
     if (tris[side].length < 4) continue;
     let line = fit(tris[side]); if (!line) continue;
     // only triangles that really lie along the pillar (the window-frame rail that joins its top end must not be dragged in)
-    const list = tris[side].filter(i => [0, 1, 2].every(q => distTo(line!, vert(i + q)) < 0.085));
+    const list = tris[side].filter(i => [0, 1, 2].every(q => distTo(line!, vert(i + q)) < 0.11));
     if (list.length < 4) continue;
     line = fit(list); if (!line) continue;
     const d = line.b.clone().sub(line.a), dd = d.lengthSq();

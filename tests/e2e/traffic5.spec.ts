@@ -110,7 +110,7 @@ test('drivers honk when cut off, tuck over for a siren, floor it when shot at, s
     out.sirenShift = minShift; out.sirenSpeed = minSpeed; out.yields = T.stats.yields;
     // 3. gunfire: a civilian nearby panics and drives away
     clear(); g.exitVehicle(true); g.vehicles.remove(cop);
-    const v3 = mkAi(80); const o3 = g.player.pos.clone(); o3.set(v3.v.position.x - 10, 1, v3.v.position.z - 10); T.gunfire(o3, g.player.pos); out.farMode = v3.mode; // 14 m from the muzzle, not hit: stays calm
+    const v3 = mkAi(80); const o3 = g.player.pos.clone(); o3.set(v3.v.position.x - 10, 1, v3.v.position.z - 10); T.gunfire(o3, undefined); out.farMode = v3.mode; // 14 m from the muzzle, not hit: stays calm
     T.gunfire(o3, g.player.pos, [{ target: v3.v, point: v3.v.position }]); // the car the bullets hit panics
     out.fleeMode = v3.mode;
     // 4. boxed in while panicking: the driver bails out on foot
