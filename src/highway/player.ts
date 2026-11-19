@@ -36,9 +36,11 @@ export class PlayerCar {
     this.v = Math.max(0, this.v + a * dt);
     // steering: keyboard-smoothed, much less lock at speed
     const target = dead ? 0 : input.steer;
-    const rate = Math.abs(target) > Math.abs(this.steer) || Math.sign(target) !== Math.sign(this.steer) ? 5.5 : 8;
+    // a held key reaches full lock in ~0.3 s, release self-centres in ~0.2 s; the road-wheel lock shrinks with speed
+    const toward = Math.abs(target) > Math.abs(this.steer) || Math.sign(target) !== Math.sign(this.steer);
+    const rate = toward ? 3.4 : 5.5;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
-    const lock = sp.maxSteer / (1 + Math.pow(this.v / 5.5, 2));
+    const lock = sp.maxSteer / (1 + Math.pow(this.v / 7, 2));
     this.steerAngle = this.steer * lock;
     const grip = input.handbrake ? 0.55 : 1;
     const turn = (this.v / (this.len * 0.58)) * Math.tan(this.steerAngle) * grip;

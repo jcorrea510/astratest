@@ -60,7 +60,7 @@ test('fullscreen button + Alt+Enter call requestFullscreen; highway boots from t
   await page.keyboard.press('KeyV');
   expect((await hw(page)).camera).toBe('first');
   await page.evaluate(() => (window as any).__highway.render());
-  await page.screenshot({ path: 'docs/screenshots/highway-first.jpg', type: 'jpeg', quality: 70 });
+  await page.screenshot({ path: 'docs/screenshots/highway-first.jpg', type: 'jpeg', quality: 80 });
   await page.keyboard.press('KeyV');
   expect((await hw(page)).camera).toBe('third');
   await page.evaluate(() => (window as any).__highway.render());
@@ -88,4 +88,31 @@ test('direct highway boot (no city): collisions wreck cars and hurt the player; 
   });
   expect(r.health).toBeLessThan(100); // flat-out into traffic hurts
   expect(r.st.chunks).toBeLessThan(16);
+});
+
+test('no vertical bounce on a straight road (cockpit and chase camera) and the wheel turns with the steering', async ({ page }) => {
+  await page.goto('./?highway=1&car=sedan&time=day&traffic=0.2');
+  await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 120_000 });
+  const r = await page.evaluate(() => {
+    const h = (window as any).__highway as Hw & { camera: any; cockpit: any };
+    h.stop(); h.override = { throttle: 0.25 };
+    for (let i = 0; i < 120; i++) h.step(1 / 60);
+    const out: Record<string, number> = {};
+    for (const mode of ['first', 'third']) {
+      h.setCamera(mode);
+      const ys: number[] = [];
+      for (let i = 0; i < 240; i++) { h.step(1 / 60); h.player.health = 100; h.player.wrecked = false; h.render(); ys.push(h.camera.position.y); }
+      // third difference removes the smooth hills; a periodic bounce of even a centimetre shows up
+      let worst = 0;
+      for (let i = 3; i < ys.length; i++) worst = Math.max(worst, Math.abs(ys[i] - 3 * ys[i - 1] + 3 * ys[i - 2] - ys[i - 3]));
+      out[mode] = worst;
+    }
+    h.setCamera('first'); h.override = { throttle: 0.25, steer: 1 };
+    for (let i = 0; i < 30; i++) { h.step(1 / 60); h.render(); }
+    return { first: out.first, third: out.third, wheel: h.cockpit.wheelAngle as number, calls: h.stats().calls as number };
+  });
+  expect(r.first).toBeLessThan(0.0015);
+  expect(r.third).toBeLessThan(0.0015);
+  expect(Math.abs(r.wheel)).toBeGreaterThan(0.25); // > 14 degrees even at 60 mph
+  expect(r.calls).toBeLessThan(140);
 });

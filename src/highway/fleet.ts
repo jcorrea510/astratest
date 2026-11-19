@@ -4,8 +4,30 @@ import { getTemplate } from '../vehicles/models/build';
 import type { VehicleKind } from '../vehicles/specs';
 import { makeCarMaterial, makeGlassMaterial, semiGeometry, busGeometry, type CarUniforms } from './cars';
 import { beamTexture } from './textures';
+import { K } from '../vehicles/models/kinds';
 
 const CAP = 56;
+/** The player's cabin is drawn by Cockpit, so strip the baked-in interior (dash, seats, wheel, cluster discs) from its body mesh. */
+function withoutInterior(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const kind = g.getAttribute('aKind'), col = g.getAttribute('color');
+  if (!kind || g.index || !kind.array.length) return g; // (the template body is non-indexed; already uploaded geometry keeps everything)
+  const n = kind.count, keep: number[] = [];
+  for (let i = 0; i < n; i += 3) {
+    const k = Math.round(kind.getX(i));
+    if (k === K.INTERIOR) continue;
+    if (k === K.LIGHT && col && col.getZ(i) > col.getX(i) + 0.3) continue; // cluster dials
+    keep.push(i);
+  }
+  const c = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'uv', 'color', 'aKind']) {
+    const a = g.getAttribute(name) as THREE.BufferAttribute | undefined; if (!a) continue;
+    const sz = a.itemSize, out = new (a.array.constructor as new (n: number) => Float32Array)(keep.length * 3 * sz);
+    keep.forEach((v, j) => { for (let q = 0; q < 3; q++) for (let c2 = 0; c2 < sz; c2++) out[(j * 3 + q) * sz + c2] = a.array[(v + q) * sz + c2]; });
+    c.setAttribute(name, new THREE.BufferAttribute(out, sz));
+  }
+  c.computeBoundingSphere(); c.computeBoundingBox();
+  return c;
+}
 interface Slot { name: string; body: THREE.InstancedMesh; glass: THREE.InstancedMesh | null; lamp: THREE.InstancedBufferAttribute; n: number; hi: boolean }
 export interface InstanceIn {
   model: string; x: number; y: number; z: number;
@@ -39,7 +61,7 @@ export class Fleet {
     const hi = model.startsWith('player:'), name = hi ? model.slice(7) : model; // the player's own car uses the detailed LOD
     if (name === 'semi') src = semiGeometry();
     else if (name === 'bus') src = busGeometry();
-    else { const t = getTemplate(name as VehicleKind), l = t.lods[hi ? 0 : 1]; src = l.body; glassSrc = l.glass ?? t.lods[0].glass; }
+    else { const t = getTemplate(name as VehicleKind), l = t.lods[hi ? 0 : 1]; src = hi ? withoutInterior(l.body) : l.body; glassSrc = l.glass ?? t.lods[0].glass; }
     const clone = (g: THREE.BufferGeometry) => {
       // share the (possibly already uploaded) attributes, add our own instanced lamp attribute
       const c = new THREE.BufferGeometry();

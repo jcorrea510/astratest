@@ -12,6 +12,7 @@ import { SkyDome, PRESETS, type TimeOfDay, type Preset } from './sky';
 import { roadTexture, signAtlas, glowTexture } from './textures';
 import { HighwayHud } from './hud';
 import { HighwayAudio } from './audio';
+import { Cockpit, wheelFrac } from './cockpit';
 import { mulberry } from './rng';
 import { getTemplate } from '../vehicles/models/build';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
@@ -40,6 +41,7 @@ export class HighwayGame {
   private sky = new SkyDome();
   private hemi = new THREE.HemisphereLight(); private sun = new THREE.DirectionalLight();
   private fleet = new Fleet();
+  readonly cockpit: Cockpit;
   private builder: ChunkBuilder;
   private chunks = new Map<number, Chunk>();
   private mats!: ChunkMats; private matExtras: { glow: THREE.MeshBasicMaterial; sign: THREE.MeshBasicMaterial; lamp: THREE.MeshBasicMaterial; road: THREE.MeshStandardMaterial; textures: THREE.Texture[] } | null = null;
@@ -61,7 +63,7 @@ export class HighwayGame {
   private pose = { x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, lx: 0, ly: 0, lz: 0 };
   private seat: { x: number; y: number; z: number };
   /** cockpit eye position relative to the seat cushion (metres up / forward) */
-  eyeLift = 0.5; eyeFwd = -0.04;
+  eyeLift = 0.6; eyeFwd = -0.1;
 
   constructor(private opts: HighwayOptions) {
     this.renderer = opts.renderer;
@@ -70,10 +72,11 @@ export class HighwayGame {
     this.player = new PlayerCar(opts.model);
     this.preset = PRESETS[opts.time];
     const sd = getTemplate(opts.model).seats[0]; this.seat = { x: sd?.x ?? 0.37, y: sd?.y ?? 0.7, z: sd?.z ?? 0.1 };
+    this.cockpit = new Cockpit(opts.model); this.eyeLift = this.cockpit.dims.eye.y - this.seat.y; this.eyeFwd = this.cockpit.dims.eye.z - this.seat.z;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.buildMaterials();
     this.builder = new ChunkBuilder(this.mats);
-    this.scene.add(this.sky.mesh, this.hemi, this.sun, this.sun.target, this.fleet.group);
+    this.scene.add(this.sky.mesh, this.hemi, this.sun, this.sun.target, this.fleet.group, this.cockpit.group);
     this.scene.fog = new THREE.Fog(0x000000, 100, 600);
     this.applyPreset(this.preset);
     this.hud = new HighwayHud({ onResume: () => this.setPaused(false), onQuit: () => this.quit(), onRetry: () => this.retry(), onPause: () => this.setPaused(true) });
@@ -106,6 +109,7 @@ export class HighwayGame {
     this.hemi.color.set(p.hemiSky); this.hemi.groundColor.set(p.hemiGround); this.hemi.intensity = p.hemi;
     this.sun.color.set(p.sun); this.sun.intensity = p.sunI; this.sun.position.set(...p.sunDir).multiplyScalar(100);
     this.renderer.toneMappingExposure = p.exposure;
+    this.cockpit.applyPreset(p.top, p.horizon, p.hemiGround, Math.min(1, p.hemi * p.env + 0.3));
     this.fleet.uniforms.uTailBase.value = p.tail; this.fleet.uniforms.uHeadAmt.value = 1;
     const x = this.matExtras!; x.sign.color.setScalar(p.sign); x.lamp.color.setScalar(p.lamps ? 1 : 0.35); x.glow.color.setScalar(0.28 * p.lamps); x.glow.visible = p.lamps > 0;
     // reflections come from a sky-only scene
@@ -158,7 +162,7 @@ export class HighwayGame {
     this.stop(); this.audio.dispose(); this.hud.dispose();
     window.removeEventListener('keydown', this.onKey); window.removeEventListener('keyup', this.onKeyUp); window.removeEventListener('blur', this.onBlur); window.removeEventListener('resize', this.onResize);
     for (const c of this.chunks.values()) this.builder.dispose(c);
-    this.fleet.dispose(); this.envRT?.dispose(); this.pmrem.dispose();
+    this.fleet.dispose(); this.cockpit.dispose(); this.envRT?.dispose(); this.pmrem.dispose();
     this.matExtras?.textures.forEach(t => t.dispose());
   }
   resize(): void {
@@ -182,7 +186,7 @@ export class HighwayGame {
     else if (e.code === 'KeyL') this.headlights = !this.headlights;
     else if (e.code === 'KeyR' && this.player.wrecked) this.retry();
   }
-  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? 78 : 64; this.camera.updateProjectionMatrix(); }
+  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; this.fleet.uniforms.uTrimY.value = this.cockpit.dims.dashY + 0.1; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? 72 : 64; this.camera.updateProjectionMatrix(); }
   private setHorn(on: boolean): void { if (on !== this.hornOn) { this.hornOn = on; this.audio.honk(on); } }
   setPaused(p: boolean): void { this.paused = p; this.hud.showPause(p); this.audio.setPaused(p); if (p) this.setHorn(false); if (!p) this.last = performance.now(); }
   private readInput(): DriveInput {
@@ -348,10 +352,12 @@ export class HighwayGame {
       this.addInstance(n.model, col, n.brake, l, r, head, dist < 260);
     }
     // the player's car
-    this.place(P.s, P.u, P.psi, 1, 0.36 + Math.sin(this.time * 40) * 0.0008 * P.v, P.roll);
+    this.place(P.s, P.u, P.psi, 1, 0.36, P.roll);
     const brk = this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.keys.has('Space') ? 1 : 0;
     this.addInstance('player:' + this.opts.model, this.color(VEHICLES[this.opts.model].paints[0]), brk, 0, 0, this.headlights ? Math.max(head, 0.0) : 0, true);
     this.fleet.end();
+    this.cockpit.setPose(this.pose);
+    this.cockpit.update(P.v * MPS_TO_MPH, P.v, wheelFrac(P.steerAngle / VEHICLES[this.opts.model].maxSteer, P.steer), 1 / 60);
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.renderer.render(this.scene, cam);
     this.metrics.calls = info.render.calls; this.metrics.tris = info.render.triangles;
@@ -376,11 +382,11 @@ export class HighwayGame {
       const q = this.pose, e = this.seat;
       const lookDir = this.lookBack ? -1 : 1;
       target.set(q.x + q.lx * e.x + q.ux * (e.y + this.eyeLift) + q.fx * (e.z + this.eyeFwd), q.y + q.ly * e.x + q.uy * (e.y + this.eyeLift) + q.fy * (e.z + this.eyeFwd), q.z + q.lz * e.x + q.uz * (e.y + this.eyeLift) + q.fz * (e.z + this.eyeFwd));
-      look.set(target.x + q.fx * 20 * lookDir, target.y + q.fy * 20 * lookDir - q.uy * 0.1, target.z + q.fz * 20 * lookDir);
-      cam.fov = 78 + k * 8;
+      look.set(target.x + q.fx * 20 * lookDir, target.y + q.fy * 20 * lookDir - q.uy * 0.9, target.z + q.fz * 20 * lookDir);
+      cam.fov = 72 + k * 8;
     }
-    if (this.shake > 0 || P.v > 25) {
-      const a = this.shake * 0.12 + (P.v > 25 ? 0.002 * k : 0), t = this.time * 61;
+    if (this.shake > 0) {
+      const a = this.shake * 0.12, t = this.time * 61;
       target.x += Math.sin(t) * a; target.y += Math.cos(t * 1.3) * a; target.z += Math.sin(t * 0.7) * a;
     }
     cam.position.copy(target); cam.up.set(0, 1, 0); cam.lookAt(look);
