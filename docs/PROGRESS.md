@@ -10,9 +10,9 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [x] R4-F Highway mode (title entry: infinite realistic highway, AI lane changes with signals, cut-offs, 1st/3rd person, high fps) + US units + fullscreen button.
 - [x] R4-B Density (game.ts/vehicle.ts hooks uncommitted, shared): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
 - [x] R4-M Manhattan island (2776860): tapered island, west river + 5 bridges, Broadway + Flatiron, map tilt 29deg. East river + Eastbank done 454e78f.
-- [ ] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
-- [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
-Running: L street-life a59770161fdc32d67 (stop 10:15), Z QA ab2713d68cc120120 (09:30, report by 11:15). R2 done 04fe49e. R1 done (in 20ac753, see REALISM.md). Resume stopped ones via SendMessage.
+- [x] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
+- [x] R4-Z Gate + publish: gh-pages 178c6ea (370f507) 11:12 UTC. Open: combat3 :6/:28/:70 boot timeouts, features:6 hold-up heat (got 1, want >=2), policeheli:4 crowd 64<66; soak not run.
+Round 4 complete. Next round: owner notes; known gaps in final report (no bus, bench sit, bridge walkways, Eastbank signals, highway mirrors/wheel spin).
 
 ## Done
 - Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
