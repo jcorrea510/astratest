@@ -6,8 +6,8 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { RAPIER, groups, G_STATIC, ALL, type Physics } from '../core/physics';
-import { type CityMap, type P3, pathHeightAt, CHANNEL, EAST_RIVER, AIRFIELD, ARMY_BASE, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
-import { Chunked, FacadeBuilder, TrimBuilder, SOLID, ROOF, type WallSpec, T_METAL, T_STONE, T_PAINT, T_IRON, T_ROUGH, T_GLASS, T_NIGHTGLOW, T_GLOW } from './builders';
+import { type CityMap, type P3, pathHeightAt, CHANNEL, EAST_RIVER, AIRFIELD, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
+import { Chunked, FacadeBuilder, TrimBuilder, SOLID, ROOF, type WallSpec, T_METAL, T_STONE, T_PAINT, T_NIGHTGLOW, T_GLOW } from './builders';
 import { type BuildCtx, type Helipad, house, warehouse } from './buildings';
 import type { ChunkInstancer } from './geometry';
 import { LAMP } from './props';

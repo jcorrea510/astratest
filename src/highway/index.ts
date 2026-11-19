@@ -15,6 +15,8 @@ import { HighwayAudio } from './audio';
 import { Cockpit, wheelFrac } from './cockpit';
 import { mulberry } from './rng';
 import { getTemplate } from '../vehicles/models/build';
+import { loadSettings } from '../core/settings';
+import type { MirrorQuality } from './mirrors';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { MPS_TO_MPH, mpsFromMph } from '../core/units';
 
@@ -24,6 +26,8 @@ export interface HighwayOptions {
 }
 export type CameraMode = 'third' | 'first';
 const AHEAD = 690, BEHIND = 150;
+/** mirror reflection quality follows the graphics preset (?quality= overrides the saved setting) */
+function mirrorQuality(): MirrorQuality { try { const q = new URLSearchParams(location.search).get('quality') ?? loadSettings().quality; return q === 'low' || q === 'high' ? q : 'medium'; } catch { return 'medium'; } }
 const HEAVY_PAINT = ['#c43a31', '#2f6f9a', '#e9e6df', '#1f2226', '#3a6b3a', '#d8a21f', '#7a1f24', '#9a9da1'];
 
 export class HighwayGame {
@@ -55,7 +59,7 @@ export class HighwayGame {
   private nearMiss = new Map<number, number>();
   private headlights = true; private hornOn = false; private wreckShown = false; private wreckT = 0;
   private colors = new Map<string, THREE.Color>();
-  private metrics = { frames: 0, cpuMs: 0, frameMs: [] as number[], maxFrameMs: 0, calls: 0, tris: 0, stepMs: 0, steps: 0 };
+  private metrics = { frames: 0, cpuMs: 0, frameMs: [] as number[], maxFrameMs: 0, calls: 0, tris: 0, stepMs: 0, steps: 0, mirrorCalls: 0 };
   private tmpV = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   private rp = { x: 0, y: 0, z: 0, theta: 0, slope: 0 };
   private onResize = () => this.resize();
@@ -72,10 +76,11 @@ export class HighwayGame {
     this.player = new PlayerCar(opts.model);
     this.preset = PRESETS[opts.time];
     const sd = getTemplate(opts.model).seats[0]; this.seat = { x: sd?.x ?? 0.37, y: sd?.y ?? 0.7, z: sd?.z ?? 0.1 };
-    this.cockpit = new Cockpit(opts.model); this.eyeLift = this.cockpit.dims.eye.y - this.seat.y; this.eyeFwd = this.cockpit.dims.eye.z - this.seat.z;
+    this.cockpit = new Cockpit(opts.model, mirrorQuality()); this.eyeLift = this.cockpit.dims.eye.y - this.seat.y; this.eyeFwd = this.cockpit.dims.eye.z - this.seat.z;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.buildMaterials();
     this.builder = new ChunkBuilder(this.mats);
+    this.camera.layers.enable(1); this.cockpit.group.visible = false;
     this.scene.add(this.sky.mesh, this.hemi, this.sun, this.sun.target, this.fleet.group, this.cockpit.group);
     this.scene.fog = new THREE.Fog(0x000000, 100, 600);
     this.applyPreset(this.preset);
@@ -186,7 +191,7 @@ export class HighwayGame {
     else if (e.code === 'KeyL') this.headlights = !this.headlights;
     else if (e.code === 'KeyR' && this.player.wrecked) this.retry();
   }
-  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; this.fleet.uniforms.uTrimY.value = this.cockpit.dims.dashY + 0.1; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? 72 : 64; this.camera.updateProjectionMatrix(); }
+  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; this.fleet.uniforms.uTrimY.value = this.cockpit.dims.dashY + 0.1; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? 66 : 64; this.camera.layers.enable(1); this.cockpit.group.visible = m === 'first'; this.camera.updateProjectionMatrix(); }
   private setHorn(on: boolean): void { if (on !== this.hornOn) { this.hornOn = on; this.audio.honk(on); } }
   setPaused(p: boolean): void { this.paused = p; this.hud.showPause(p); this.audio.setPaused(p); if (p) this.setHorn(false); if (!p) this.last = performance.now(); }
   private readInput(): DriveInput {
@@ -354,11 +359,13 @@ export class HighwayGame {
     // the player's car
     this.place(P.s, P.u, P.psi, 1, 0.36, P.roll);
     const brk = this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.keys.has('Space') ? 1 : 0;
-    this.addInstance('player:' + this.opts.model, this.color(VEHICLES[this.opts.model].paints[0]), brk, 0, 0, this.headlights ? Math.max(head, 0.0) : 0, true);
+    this.addInstance((this.cameraMode === 'first' ? 'cab:' : 'player:') + this.opts.model, this.color(VEHICLES[this.opts.model].paints[0]), brk, 0, 0, this.headlights ? Math.max(head, 0.0) : 0, true);
     this.fleet.end();
     this.cockpit.setPose(this.pose);
-    this.cockpit.update(P.v * MPS_TO_MPH, P.v, wheelFrac(P.steerAngle / VEHICLES[this.opts.model].maxSteer, P.steer), 1 / 60);
-    const info = this.renderer.info; info.autoReset = false; info.reset();
+    this.cockpit.update(P.v * MPS_TO_MPH, P.v, wheelFrac(P.steerAngle / VEHICLES[this.opts.model].maxSteer, P.steer), 1 / 60, { hour: this.preset.hour + (this.time / 60) * 0.2, meters: P.s - this.startS, time: this.time });
+    const info = this.renderer.info; info.autoReset = false;
+    if (this.cameraMode === 'first') { info.reset(); this.cockpit.mirror.tick(this.renderer, this.scene); this.metrics.mirrorCalls = info.render.calls; }
+    info.reset();
     this.renderer.render(this.scene, cam);
     this.metrics.calls = info.render.calls; this.metrics.tris = info.render.triangles;
   }
@@ -383,7 +390,7 @@ export class HighwayGame {
       const lookDir = this.lookBack ? -1 : 1;
       target.set(q.x + q.lx * e.x + q.ux * (e.y + this.eyeLift) + q.fx * (e.z + this.eyeFwd), q.y + q.ly * e.x + q.uy * (e.y + this.eyeLift) + q.fy * (e.z + this.eyeFwd), q.z + q.lz * e.x + q.uz * (e.y + this.eyeLift) + q.fz * (e.z + this.eyeFwd));
       look.set(target.x + q.fx * 20 * lookDir, target.y + q.fy * 20 * lookDir - q.uy * 0.9, target.z + q.fz * 20 * lookDir);
-      cam.fov = 72 + k * 8;
+      cam.fov = 66 + k * 7;
     }
     if (this.shake > 0) {
       const a = this.shake * 0.12, t = this.time * 61;
@@ -401,7 +408,7 @@ export class HighwayGame {
     const m = this.metrics, sorted = [...m.frameMs].sort((a, b) => a - b), n = sorted.length;
     return {
       frames: m.frames, avgFrameMs: n ? m.frameMs.reduce((a, b) => a + b, 0) / n : 0, p95FrameMs: n ? sorted[Math.floor(n * 0.95)] : 0, maxFrameMs: m.maxFrameMs,
-      avgCpuMs: m.frames ? m.cpuMs / m.frames : 0, avgStepMs: m.steps ? m.stepMs / m.steps : 0, calls: m.calls, triangles: m.tris,
+      avgCpuMs: m.frames ? m.cpuMs / m.frames : 0, avgStepMs: m.steps ? m.stepMs / m.steps : 0, calls: m.calls, mirrorCalls: m.mirrorCalls, mirrorRenders: this.cockpit.mirror.renders, triangles: m.tris,
       chunks: this.chunks.size, npcs: this.traffic.npcs.length, lanechanges: this.traffic.stats.lanechanges, cutoffs: this.traffic.stats.cutoffs,
       mph: this.player.v * MPS_TO_MPH, score: this.score, health: this.player.health, camera: this.cameraMode, s: this.player.s,
     };

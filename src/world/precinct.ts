@@ -20,7 +20,7 @@ export function precinctFootprint() {
 function frontTexture(w: number, h: number): THREE.CanvasTexture {
   const PX = 52, c = document.createElement('canvas'); c.width = Math.round(w * PX); c.height = Math.round(h * PX);
   const g = c.getContext('2d')!;
-  g.fillStyle = '#80848a'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#6e7378'; g.fillRect(0, 0, c.width, c.height);
   // board-formed concrete: faint horizontal boards + noise
   for (let y = 0; y < c.height; y += 9) { g.fillStyle = `rgba(${y % 18 ? 255 : 0},${y % 18 ? 255 : 0},${y % 18 ? 255 : 0},0.035)`; g.fillRect(0, y, c.width, 9); }
   for (let i = 0; i < 5000; i++) { g.fillStyle = `rgba(40,44,48,${0.03 + (i % 5) * 0.012})`; g.fillRect((i * 97) % c.width, (i * 53) % c.height, 2 + (i % 5), 1); }
@@ -52,16 +52,16 @@ function frontTexture(w: number, h: number): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 function signTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas'); c.width = 1536; c.height = 160; const g = c.getContext('2d')!;
+  const c = document.createElement('canvas'); c.width = 1536; c.height = 200; const g = c.getContext('2d')!;
   g.fillStyle = '#0c3a8c'; g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = '#f1f5fb'; g.fillRect(0, 0, c.width, 10); g.fillRect(0, c.height - 10, c.width, 10);
   // blue and white checker (Battenberg) strip along the foot of the band
   for (let x = 0; x < c.width; x += 32) { g.fillStyle = (x / 32) % 2 ? '#f1f5fb' : '#1c56c0'; g.fillRect(x, c.height - 30, 32, 20); }
   // badge
-  const bx = 120, by = 78; g.fillStyle = '#e8b830'; g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 26 : 58; g.lineTo(bx + Math.cos(a) * r, by + Math.sin(a) * r); } g.closePath(); g.fill();
+  const bx = 120, by = 98; g.fillStyle = '#e8b830'; g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 26 : 58; g.lineTo(bx + Math.cos(a) * r, by + Math.sin(a) * r); } g.closePath(); g.fill();
   g.fillStyle = '#0c3a8c'; g.beginPath(); g.arc(bx, by, 17, 0, 7); g.fill();
   g.fillStyle = '#f1f5fb'; g.font = '800 92px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('METRO POLICE  ·  PRECINCT 4', c.width / 2 + 60, 72, 1260);
+  g.fillText('METRO POLICE  ·  PRECINCT 4', c.width / 2 + 60, 92, 1260);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 function lotTexture(): THREE.CanvasTexture {
@@ -98,7 +98,7 @@ export function buildPrecinct(o: { root: THREE.Object3D; physics: Physics; trim:
   const W = PS.w - 1.5, D = PS.d - 2, cx = PS.x, cz = PS.z, zf = cz - D / 2; // front face z
   const H1 = 4.4, H = 12.6, y0 = curb;
   const tb = trim.at(cx, cz);
-  const conc = C('#7b7f84'), dark = C('#4a4e53'), white = C('#e8ecef');
+  const conc = C('#6e7378'), dark = C('#4a4e53'), white = C('#e8ecef');
   // main mass + plinth + roof slab with parapet
   tb.box(cx, y0 + H / 2, cz, W, H, D, 0, conc, T_STONE);
   physics.addStaticBox(cx, y0 + H / 2, cz, W / 2, H / 2, D / 2);
@@ -114,7 +114,7 @@ export function buildPrecinct(o: { root: THREE.Object3D; physics: Physics; trim:
   const st = signTexture();
   const sm = new THREE.MeshStandardMaterial({ map: st, emissiveMap: st, emissive: new THREE.Color(1, 1, 1), roughness: 0.5 });
   sm.onBeforeCompile = sh => { sh.uniforms.uNight = o.nightUniform; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.18 + uNight * 2.2;'); };
-  const signW = 21, signH = signW * 160 / 1536;
+  const signW = 25, signH = signW * 200 / 1536;
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(signW, signH), sm); sign.rotation.y = Math.PI; sign.position.set(cx, y0 + 4.9 + signH / 2, zf - 0.085); root.add(sign);
   tb.box(cx, y0 + 4.9 + signH / 2, zf - 0.03, signW + 0.3, signH + 0.3, 0.04, 0, white, T_PAINT);
   // side and rear: ribbon windows as dark glass strips

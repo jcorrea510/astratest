@@ -5,6 +5,7 @@ import type { VehicleKind } from '../vehicles/specs';
 import { makeCarMaterial, makeGlassMaterial, semiGeometry, busGeometry, type CarUniforms } from './cars';
 import { beamTexture } from './textures';
 import { K } from '../vehicles/models/kinds';
+import { slimPillars, type Pillar } from './cabinshell';
 
 const CAP = 56;
 /** The player's cabin is drawn by Cockpit, so strip the baked-in interior (dash, seats, wheel, cluster discs) from its body mesh. */
@@ -38,6 +39,10 @@ export interface InstanceIn {
 export class Fleet {
   readonly group = new THREE.Group();
   readonly material = makeCarMaterial();
+  /** first-person shell of the player's car (viewed from inside); shares the lamp / exposure uniforms */
+  readonly cabinMaterial = makeCarMaterial(true, this.material.userData.u);
+  /** centre line of the slimmed driver-side A-pillar of the cabin shell (car frame), once built */
+  cabinPillar: Pillar | null = null;
   readonly glassMaterial = makeGlassMaterial();
   private slots = new Map<string, Slot>();
   private beams: THREE.InstancedMesh;
@@ -58,10 +63,11 @@ export class Fleet {
     let s = this.slots.get(model);
     if (s) return s;
     let src: THREE.BufferGeometry, glassSrc: THREE.BufferGeometry | null = null;
-    const hi = model.startsWith('player:'), name = hi ? model.slice(7) : model; // the player's own car uses the detailed LOD
+    const cab = model.startsWith('cab:'), hi = cab || model.startsWith('player:'), name = hi ? model.slice(cab ? 4 : 7) : model; // the player's own car uses the detailed LOD
     if (name === 'semi') src = semiGeometry();
     else if (name === 'bus') src = busGeometry();
-    else { const t = getTemplate(name as VehicleKind), l = t.lods[hi ? 0 : 1]; src = hi ? withoutInterior(l.body) : l.body; glassSrc = l.glass ?? t.lods[0].glass; }
+    else { const t = getTemplate(name as VehicleKind), l = t.lods[hi ? 0 : 1]; src = hi ? withoutInterior(l.body) : l.body; glassSrc = cab ? null : (l.glass ?? t.lods[0].glass);
+      if (cab) { const r = slimPillars(src, (t.shape.gh?.zR1 ?? 0.2) - 0.1); src = r.geo; this.cabinPillar = r.pillar; } }
     const clone = (g: THREE.BufferGeometry) => {
       // share the (possibly already uploaded) attributes, add our own instanced lamp attribute
       const c = new THREE.BufferGeometry();
@@ -73,7 +79,8 @@ export class Fleet {
     const lampArr = new Float32Array(CAP * 4);
     const lamp = new THREE.InstancedBufferAttribute(lampArr, 4); lamp.setUsage(THREE.DynamicDrawUsage);
     bg.setAttribute('iLamp', lamp);
-    const body = new THREE.InstancedMesh(bg, this.material, CAP);
+    const body = new THREE.InstancedMesh(bg, cab ? this.cabinMaterial : this.material, CAP);
+    if (cab) body.layers.set(1); // first-person shell: seen by the main camera only, not by the mirror camera
     body.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3), 3); body.instanceColor.setUsage(THREE.DynamicDrawUsage);
     body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     body.frustumCulled = false; body.count = 0;

@@ -6,9 +6,10 @@ import { K } from '../vehicles/models/kinds';
 export interface CarUniforms { uTailBase: { value: number }; uHeadAmt: { value: number }; uEnv: { value: number }; uCabin: { value: number }; uTrimY: { value: number } }
 
 /** Body material. Reads vertex attributes `color` (vec4) / `aKind` and per-instance `iLamp` (brake, left blinker, right blinker, headlights). */
-export function makeCarMaterial(): THREE.MeshStandardMaterial & { userData: { u: CarUniforms } } {
+/** `cabin` builds the variant for the player's first-person shell: the greenhouse is seen from inside (grey headliner / pillar lining). `shared` reuses another material's uniforms. */
+export function makeCarMaterial(cabin = false, shared?: CarUniforms): THREE.MeshStandardMaterial & { userData: { u: CarUniforms } } {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide });
-  const u: CarUniforms = { uTailBase: { value: 0.25 }, uHeadAmt: { value: 1 }, uEnv: { value: 1 }, uCabin: { value: 0 }, uTrimY: { value: 0.7 } };
+  const u: CarUniforms = shared ?? { uTailBase: { value: 0.25 }, uHeadAmt: { value: 1 }, uEnv: { value: 1 }, uCabin: { value: 0 }, uTrimY: { value: 0.7 } };
   m.userData.u = u;
   const kinds = Object.entries(K).map(([k, v]) => `#define K_${k} ${v}.0`).join('\n');
   m.onBeforeCompile = sh => {
@@ -22,14 +23,15 @@ export function makeCarMaterial(): THREE.MeshStandardMaterial & { userData: { u:
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         ${kinds}
+        #define CABIN ${cabin ? '1.0' : '0.0'}
         varying vec4 vCol; varying float vKind; varying vec3 vObj; varying vec4 vLamp;
         uniform float uTailBase, uHeadAmt, uCabin, uTrimY;
         bool isK(float k) { return abs(vKind - k) < 0.5; }
         float gRough = 0.5, gMetal = 0.0; vec3 gEmis = vec3(0.0);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         vec3 inst = diffuseColor.rgb; vec3 col = vCol.rgb;
-        bool cabinTrim = uCabin > 0.5 && vObj.y > uTrimY && abs(vObj.x) < 0.95 && abs(vObj.z) < 2.0;
-        if (cabinTrim && (isK(K_PAINT) || isK(K_PAINT2) || isK(K_TRIM) || isK(K_SEAM) || isK(K_CHROME))) { col = vec3(0.04, 0.04, 0.045); gRough = 0.8; gMetal = 0.0; } // A/B/C pillars and headliner seen from inside
+        bool cabinTrim = CABIN > 0.5 && vObj.y > uTrimY && abs(vObj.x) < 0.95 && abs(vObj.z) < 2.0;
+        if (cabinTrim && (isK(K_PAINT) || isK(K_PAINT2) || isK(K_TRIM) || isK(K_SEAM) || isK(K_CHROME))) { col = vec3(isK(K_PAINT) ? 0.17 : 0.08); gRough = 0.92; gMetal = 0.0; gEmis = col * 0.45; } // headliner (light grey fabric) and pillar lining seen from inside
         else if (isK(K_PAINT)) { col = inst; gRough = 0.3; gMetal = 0.5; }
         else if (isK(K_PAINT2)) { col = vec3(0.8); gRough = 0.45; gMetal = 0.1; }
         else if (isK(K_CHROME)) { col = vec3(0.8, 0.82, 0.85); gRough = 0.12; gMetal = 1.0; }
@@ -47,7 +49,7 @@ export function makeCarMaterial(): THREE.MeshStandardMaterial & { userData: { u:
         else if (isK(K_UNDER)) { col = vec3(0.02); gRough = 0.95; }
         else if (isK(K_PLASTIC) || isK(K_TRIM)) { gRough = 0.6; }
         else if (isK(K_LIGHT)) { gEmis = vCol.rgb * 0.5; }
-        if (!gl_FrontFacing) {
+        if (!gl_FrontFacing && !cabinTrim) {
           col *= 0.35;
           gEmis = vec3(0.0);
         }
@@ -59,7 +61,7 @@ export function makeCarMaterial(): THREE.MeshStandardMaterial & { userData: { u:
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += gEmis;`);
   };
-  m.customProgramCacheKey = () => 'highway-car-v1';
+  m.customProgramCacheKey = () => cabin ? 'highway-car-cabin-v2' : 'highway-car-v2';
   return m as THREE.MeshStandardMaterial & { userData: { u: CarUniforms } };
 }
 export function makeGlassMaterial(): THREE.MeshStandardMaterial {

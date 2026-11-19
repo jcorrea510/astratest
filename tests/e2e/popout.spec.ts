@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { watch, boot, quietStreets, clean } from './helpers';
+import { watch, boot, quietStreets, clean, step } from './helpers';
 
 /** Regression: people and cars used to vanish as the camera got close (culling + far-crowd despawn). */
 test.describe.configure({ mode: 'serial' });
@@ -66,11 +66,11 @@ test('P and the HUD gear button open the pause menu (Esc is not the only way); P
   test.setTimeout(400_000);
   const p = watch(page);
   await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game; g.start?.(); });
+  await step(page, 1, { render: true });
   expect(await page.locator('.ma-gear').count()).toBe(1);
   await page.locator('.ma-gear').dispatchEvent('click');
   await expect.poll(() => page.evaluate(() => (window as any).__game.paused)).toBe(true);
-  await page.keyboard.press('KeyP');
+  await page.keyboard.press('KeyP'); await step(page, 0.1);
   await expect.poll(() => page.evaluate(() => (window as any).__game.paused)).toBe(false);
   clean(p);
 });

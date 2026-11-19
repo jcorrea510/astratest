@@ -64,7 +64,7 @@ export function buildArmyBase(ctx: BuildCtx, trim: Chunked<TrimBuilder>, physics
   }
   t(gx, gz - 8).box(gx - 1, 2.4, gz - 11, 0.15, 3.2, 6, 0, C('#2d3a2a'), T_PAINT); // gate sign board
   t(gx, gz - 8).box(gx - 1.1, 2.4, gz - 11, 0.05, 2.4, 5.2, 0, C('#e8e2cf'), T_PAINT);
-  for (const s of [-1, 1]) t(gx, gz).cyl(gx - 0.5, 0, gz + s * 8, 0.09, 0.07, 7, 8, C('#6d6f70'), T_METAL), t(gx, gz).box(gx - 0.5, 7.1, gz + s * 8, 0.8, 0.12, 0.35, 0, C('#fff6d8'), T_NIGHTGLOW(6));
+  for (const s of [-1, 1]) { const lb = t(gx, gz); lb.cyl(gx - 0.5, 0, gz + s * 8, 0.09, 0.07, 7, 8, C('#6d6f70'), T_METAL); lb.box(gx - 0.5, 7.1, gz + s * 8, 0.8, 0.12, 0.35, 0, C('#fff6d8'), T_NIGHTGLOW(6)); }
   const bag = (x: number, z: number, n: number, yaw = 0, dx = 1.2) => {
     for (let k = 0; k < n; k++) for (let r = 0; r < 3; r++) { if (r > 0 && k >= n - r) continue; t(x, z).box(x + Math.cos(yaw) * (k + r * 0.5) * dx, 0.2 + r * 0.38, z - Math.sin(yaw) * (k + r * 0.5) * dx, 1.1, 0.36, 0.55, yaw, C(r % 2 ? '#8c7a55' : '#7f6f4b'), [0.95, 0, 2, 0]); }
     physics.addStaticBox(x + Math.cos(yaw) * (n * dx) / 2, 0.55, z - Math.sin(yaw) * (n * dx) / 2, (n * dx) / 2, 0.55, 0.3, yaw);

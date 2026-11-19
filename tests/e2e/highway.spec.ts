@@ -116,3 +116,44 @@ test('no vertical bounce on a straight road (cockpit and chase camera) and the w
   expect(Math.abs(r.wheel)).toBeGreaterThan(0.25); // > 14 degrees even at 60 mph
   expect(r.calls).toBeLessThan(140);
 });
+
+test('cockpit screens are live (clock, trip, next exit) and the mirror reflection renders on a throttle', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.goto('./?highway=1&car=sedan&time=day&traffic=0.2&quality=medium');
+  await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 180_000 });
+  const r = await page.evaluate(() => {
+    const h = (window as any).__highway as Hw & { cockpit: any; time: number };
+    h.stop(); h.setCamera('first'); h.override = { throttle: 0.6 };
+    for (let i = 0; i < 90; i++) h.step(1 / 30);
+    h.render();
+    const log = h.cockpit.screenLog, m = h.cockpit.mirror;
+    const a = { clock: log.clock as string, trip: log.trip as string, exit: log.exit as string, redraws: log.redraws as number }, r0 = m.renders as number;
+    for (let i = 0; i < 60; i++) { h.step(1 / 60); h.render(); }
+    const redrawsPerSec = log.redraws - a.redraws, mirrorPerSec = m.renders - r0;
+    h.time += 600; h.render(); for (let i = 0; i < 20; i++) { h.step(1 / 60); h.render(); } // ten more game minutes... a lot of clock
+    const b = { clock: log.clock as string, trip: log.trip as string, exit: log.exit as string };
+    const pre = m.renders as number; h.setCamera('third'); for (let i = 0; i < 9; i++) h.render();
+    return { a, b, redrawsPerSec, mirrorPerSec, quality: m.quality as string, idleThird: m.renders - pre, stats: h.stats() };
+  });
+  expect(r.redrawsPerSec).toBeGreaterThanOrEqual(3); expect(r.redrawsPerSec).toBeLessThanOrEqual(5); // 4 Hz, not every frame
+  expect(r.mirrorPerSec).toBe(20); // one reflection pass every 3rd frame
+  expect(r.b.clock).not.toBe(r.a.clock);
+  expect(r.b.trip).not.toBe(r.a.trip);
+  expect(r.a.clock).toMatch(/^(1[0-2]|[1-9]):[0-5]\d (AM|PM)$/);
+  expect(r.quality).toBe('medium');
+  expect(r.idleThird).toBe(0); // no reflection pass while the cockpit is not shown
+  expect(r.stats.mirrorCalls).toBeLessThan(110);
+});
+
+test('low quality keeps the rear mirror live but not the side mirrors', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('./?highway=1&car=coupe&time=day&traffic=0.1&quality=low');
+  await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 180_000 });
+  const r = await page.evaluate(() => {
+    const h = (window as any).__highway as Hw & { cockpit: any };
+    h.stop(); h.setCamera('first'); for (let i = 0; i < 6; i++) h.render();
+    return { q: h.cockpit.mirror.quality as string, renders: h.cockpit.mirror.renders as number };
+  });
+  expect(r.q).toBe('low');
+  expect(r.renders).toBe(2);
+});

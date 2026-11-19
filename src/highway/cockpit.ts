@@ -9,6 +9,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTemplate } from '../vehicles/models/build';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
+import { K } from '../vehicles/models/kinds';
+import { MirrorRT, CROP, cropUv, sideMirrorsLive, type MirrorQuality } from './mirrors';
+import { clockText, nextExit, tripText } from './infotext';
 
 const D2R = Math.PI / 180;
 /** Steering wheel travel shown for full road-wheel lock: 2.5 turns lock to lock = +-450 degrees. */
@@ -93,7 +96,6 @@ function clusterFace(): THREE.CanvasTexture {
     g.fillStyle = col; g.fillRect(x, 66, 60 * f, 8);
   }
   g.fillStyle = '#e8f3ff'; g.font = '700 44px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('D', 360, 150);
-  g.fillStyle = '#6b7e92'; g.font = '600 17px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('TRIP 24.8 mi', 360, 196); g.fillText('72 F', 360, 220);
   // warning lights strip (dim, ready)
   const lamps: [string, number][] = [['#3cff7a', 296], ['#2f88ff', 328], ['#3cff7a', 392], ['#ffb02e', 424]];
   for (const [col, x] of lamps) { g.fillStyle = col; g.globalAlpha = 0.8; g.beginPath(); g.arc(x, 232, 5, 0, Math.PI * 2); g.fill(); }
@@ -101,39 +103,67 @@ function clusterFace(): THREE.CanvasTexture {
   return tex(c, true, 0, 8);
 }
 
-function infotainmentFace(): THREE.CanvasTexture {
-  const W = 640, H = 360, [c, g] = canvas(W, H);
+/** seconds between repaints of the live screens */
+export const SCREEN_PERIOD = 0.25;
+const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
+export interface ScreenState { hour: number; meters: number; mph: number; time: number }
+/** Infotainment screen: moving map (roads scroll with the distance driven), next-exit countdown, clock, trip and a media bar. Cheap enough to repaint a few times a second. */
+function drawInfotainment(g: CanvasRenderingContext2D, st: ScreenState): void {
+  const W = 640, H = 360, ex = nextExit(st.meters);
   g.fillStyle = '#0b1219'; g.fillRect(0, 0, W, H);
-  // map: soft blocks, roads and a route
-  g.fillStyle = '#121d27'; g.fillRect(0, 40, 430, 320);
-  const r = noise(99);
-  for (let i = 0; i < 38; i++) { g.fillStyle = `rgba(${30 + r() * 20},${46 + r() * 24},${60 + r() * 26},1)`; g.fillRect(r() * 420, 50 + r() * 300, 20 + r() * 50, 14 + r() * 40); }
-  g.strokeStyle = '#26394a'; g.lineWidth = 10;
-  for (const [a, b, d, e] of [[0, 120, 430, 200], [60, 40, 140, 360], [260, 40, 330, 360], [0, 300, 430, 250]] as number[][]) { g.beginPath(); g.moveTo(a, b); g.lineTo(d, e); g.stroke(); }
-  g.strokeStyle = '#3d9bff'; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.moveTo(40, 340); g.lineTo(120, 262); g.lineTo(270, 236); g.lineTo(330, 120); g.lineTo(400, 70); g.stroke();
-  g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(120, 262); g.lineTo(108, 282); g.lineTo(132, 282); g.closePath(); g.fill();
+  // map viewport (clipped): blocks and roads scroll toward the bottom as the car drives
+  g.save(); g.beginPath(); g.rect(0, 40, 430, 282); g.clip();
+  g.fillStyle = '#121d27'; g.fillRect(0, 40, 430, 282);
+  const scroll = (st.meters * 0.09) % 120, row0 = Math.floor((st.meters * 0.09) / 120);
+  for (let r = -1; r < 4; r++) {
+    const y = 40 + r * 120 + scroll, rr = noise(row0 * 7 - r * 7 + 1000);
+    for (let i = 0; i < 9; i++) { g.fillStyle = `rgba(${30 + rr() * 20},${46 + rr() * 24},${60 + rr() * 26},1)`; g.fillRect(rr() * 400, y + rr() * 90, 18 + rr() * 50, 12 + rr() * 40); }
+    g.strokeStyle = '#26394a'; g.lineWidth = 9; g.beginPath(); g.moveTo(0, y + 112); g.lineTo(430, y + 112); g.stroke();
+  }
+  g.strokeStyle = '#26394a'; g.lineWidth = 12; g.beginPath(); g.moveTo(190, 40); g.lineTo(190, 322); g.stroke();
+  g.strokeStyle = '#2f465a'; g.lineWidth = 2; g.setLineDash([10, 12]); g.lineDashOffset = -(st.meters * 0.09) % 22; g.beginPath(); g.moveTo(190, 40); g.lineTo(190, 322); g.stroke(); g.setLineDash([]);
+  // route: straight up the highway, then peeling off at the exit that gets nearer as the trip counter climbs
+  const by = 70 + (1 - ex.frac) * 200;
+  g.strokeStyle = '#3d9bff'; g.lineWidth = 8; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(190, 296); g.lineTo(190, by); g.lineTo(300, by - 50); g.lineTo(330, 48); g.stroke();
+  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(190, 262); g.lineTo(177, 292); g.lineTo(203, 292); g.closePath(); g.fill();
+  g.restore();
   // header
   g.fillStyle = '#0f1822'; g.fillRect(0, 0, W, 40);
-  g.fillStyle = '#cfe6ff'; g.font = '600 24px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
-  g.fillText('12:48', 16, 21); g.textAlign = 'right'; g.fillText('72 F   LTE', W - 16, 21);
-  // side card: eta + media
+  g.fillStyle = '#cfe6ff'; g.font = `600 24px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.fillText(clockText(st.hour), 16, 21); g.textAlign = 'right'; g.fillText('72 F   LTE', W - 16, 21);
+  // side card: next exit + media
   g.fillStyle = '#101b26'; g.fillRect(430, 40, 210, 320);
-  g.textAlign = 'left'; g.fillStyle = '#7fb4ff'; g.font = '600 20px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('NEXT TURN', 446, 70);
-  g.fillStyle = '#ffffff'; g.font = '700 46px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('0.6 mi', 446, 110);
-  g.fillStyle = '#9fb3c6'; g.font = '600 22px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('Exit 47B  Harbor Rd', 446, 142);
-  g.fillStyle = '#1b2a39'; g.fillRect(446, 170, 178, 1);
-  g.fillStyle = '#7fb4ff'; g.font = '600 20px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('NOW PLAYING', 446, 200);
-  g.fillStyle = '#ffffff'; g.font = '600 26px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('Afterglow Drive', 446, 232);
-  g.fillStyle = '#9fb3c6'; g.font = '500 20px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('Night Shift Radio', 446, 258);
-  g.fillStyle = '#233446'; g.fillRect(446, 284, 178, 5); g.fillStyle = '#3d9bff'; g.fillRect(446, 284, 84, 5);
+  g.textAlign = 'left'; g.fillStyle = '#7fb4ff'; g.font = `600 20px ${FONT}`; g.fillText('NEXT EXIT', 446, 70);
+  g.fillStyle = '#ffffff'; g.font = `700 46px ${FONT}`; g.fillText(ex.dist, 446, 110);
+  g.fillStyle = '#9fb3c6'; g.font = `600 22px ${FONT}`; g.fillText(`${ex.exit}  ${ex.road}`, 446, 142);
+  g.fillStyle = '#9fb3c6'; g.font = `600 18px ${FONT}`; g.fillText(`TRIP ${tripText(st.meters)}   ${Math.round(st.mph)} mph`, 446, 166);
+  g.fillStyle = '#1b2a39'; g.fillRect(446, 180, 178, 1);
+  g.fillStyle = '#7fb4ff'; g.font = `600 20px ${FONT}`; g.fillText('NOW PLAYING', 446, 204);
+  const track = Math.floor(st.time / 210) % 3;
+  g.fillStyle = '#ffffff'; g.font = `600 26px ${FONT}`; g.fillText(['Afterglow Drive', 'Long Way Home', 'Neon Overpass'][track], 446, 234);
+  g.fillStyle = '#9fb3c6'; g.font = `500 20px ${FONT}`; g.fillText('Night Shift Radio', 446, 260);
+  g.fillStyle = '#233446'; g.fillRect(446, 284, 178, 5); g.fillStyle = '#3d9bff'; g.fillRect(446, 284, 178 * ((st.time % 210) / 210), 5);
   // dock
   g.fillStyle = '#0f1822'; g.fillRect(0, 322, 430, 38);
-  g.fillStyle = '#9fb3c6'; g.font = '600 18px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center';
+  g.fillStyle = '#9fb3c6'; g.font = `600 18px ${FONT}`; g.textAlign = 'center';
   ['NAV', 'MEDIA', 'PHONE', 'CLIMATE', 'CAR'].forEach((t, i) => g.fillText(t, 43 + i * 86, 342));
-  return tex(c, true, 0, 8);
 }
 
 type Part = { geo: THREE.BufferGeometry };
+/** Mirror plates (kind MIRROR) found in the car body mesh: centre of the rear-facing face and its size, one per side. */
+export function sideMirrorPlates(kind: VehicleKind): { x: number; y: number; z: number; w: number; h: number }[] {
+  const g = getTemplate(kind).lods[0].body, P = g.getAttribute('position'), A = g.getAttribute('aKind'), out: { x: number; y: number; z: number; w: number; h: number }[] = [];
+  if (!P || !A) return out;
+  for (const side of [1, -1]) {
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; let n = 0;
+    for (let i = 0; i < P.count; i++) {
+      if (Math.round(A.getX(i)) !== K.MIRROR || Math.sign(P.getX(i)) !== side) continue;
+      n++; for (let c = 0; c < 3; c++) { const v = c === 0 ? P.getX(i) : c === 1 ? P.getY(i) : P.getZ(i); lo[c] = Math.min(lo[c], v); hi[c] = Math.max(hi[c], v); }
+    }
+    if (n) out.push({ x: (lo[0] + hi[0]) / 2, y: (lo[1] + hi[1]) / 2, z: lo[2], w: (hi[0] - lo[0]) * 0.88, h: (hi[1] - lo[1]) * 0.86 });
+  }
+  return out;
+}
 export interface CockpitDims { eye: THREE.Vector3; wheelZ: number; dashY: number }
 
 export class Cockpit {
@@ -145,8 +175,14 @@ export class Cockpit {
   private disposables: { dispose(): void }[] = [];
   private mirrorCtx!: CanvasRenderingContext2D; private mirrorTex!: THREE.CanvasTexture;
   private maxMph: number; private wheel = 0; private spd = -1;
+  private screenCtx!: CanvasRenderingContext2D; private screenTex!: THREE.CanvasTexture; private screenAcc = 1; private st: ScreenState = { hour: 12.8, meters: 0, mph: 0, time: 0 };
+  private tripCtx!: CanvasRenderingContext2D; private tripTex!: THREE.CanvasTexture;
+  /** what the screens last showed and how many times they were repainted (tests read this) */
+  readonly screenLog = { clock: '', exit: '', trip: '', redraws: 0 };
 
-  constructor(kind: VehicleKind) {
+  /** shared live-reflection target for the rear-view and side mirrors */
+  readonly mirror: MirrorRT;
+  constructor(kind: VehicleKind, quality: MirrorQuality = 'medium') {
     const tp = getTemplate(kind), S = tp.seats[0], gh = tp.shape.gh, W = tp.shape.W;
     this.maxMph = 160;
     const zA = gh?.zA ?? S.z + 1.0, zR1 = gh?.zR1 ?? S.z + 0.2, roofY = tp.roofY;
@@ -154,7 +190,7 @@ export class Cockpit {
     const yD = S.y + 0.4;                          // top of the dash pad
     const zW = Math.min(S.z + 0.5, zA - 0.38);     // steering wheel plane
     const yW = S.y + 0.235;
-    this.dims = { eye: new THREE.Vector3(S.x, Math.min(S.y + 0.65, roofY - 0.27), S.z - 0.1), wheelZ: zW, dashY: yD };
+    this.dims = { eye: new THREE.Vector3(S.x, Math.min(S.y + 0.66, roofY - 0.2), S.z - 0.22), wheelZ: zW, dashY: yD };
 
     const bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
     this.disposables.push(bump, leather, carpet);
@@ -233,11 +269,24 @@ export class Cockpit {
     // ---- rear-view mirror (stalk, housing, reflective glass)
     const mx = Math.max(0.08, S.x * 0.35), my = roofY - 0.16, mz = zR1 + 0.28, yawToDriver = Math.atan2(S.x - mx, mz - this.dims.eye.z) * 0.9;
     add(mats.plastic, rb(0.03, 0.06, 0.03, 0.01), mx, my + 0.05, mz + 0.03);
-    add(mats.plastic, rb(0.24, 0.065, 0.03, 0.02), mx, my, mz, 0, Math.PI - yawToDriver, 0);
+    add(mats.plastic, rb(0.25, 0.08, 0.03, 0.02), mx, my, mz, 0, Math.PI - yawToDriver, 0);
+    // painted fallback (also used for the side mirrors on low quality), and the shared live reflection
     const [mc, mg] = canvas(256, 64); this.mirrorCtx = mg; this.mirrorTex = tex(mc, true); this.disposables.push(this.mirrorTex);
-    const mirrorMat = new THREE.MeshBasicMaterial({ map: this.mirrorTex, toneMapped: false }); this.disposables.push(mirrorMat);
-    const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.222, 0.046), mirrorMat); mirrorGlass.frustumCulled = false;
-    mirrorGlass.position.set(mx + Math.sin(Math.PI - yawToDriver) * 0.018, my, mz + Math.cos(Math.PI - yawToDriver) * 0.018); mirrorGlass.rotation.set(0, Math.PI - yawToDriver, 0); this.group.add(mirrorGlass); this.disposables.push(mirrorGlass.geometry);
+    this.mirror = new MirrorRT(quality); this.disposables.push(this.mirror);
+    const liveMat = new THREE.MeshBasicMaterial({ map: this.mirror.texture, fog: false }); this.disposables.push(liveMat);
+    const paintMat = new THREE.MeshBasicMaterial({ map: this.mirrorTex, toneMapped: false, fog: false }); this.disposables.push(paintMat);
+    const glassAt = (mat: THREE.Material, w: number, h: number, crop: readonly [number, number, number, number], x: number, y: number, z: number, ry: number) => {
+      const geo = new THREE.PlaneGeometry(w, h); cropUv(geo, crop); this.disposables.push(geo);
+      const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.position.set(x, y, z); m.rotation.set(0, ry, 0); this.group.add(m); return m;
+    };
+    const ry = Math.PI - yawToDriver;
+    glassAt(liveMat, 0.232, 0.066, CROP.rear, mx + Math.sin(ry) * 0.018, my, mz + Math.cos(ry) * 0.018, ry);
+    this.mirror.cam.position.set(mx, my, mz); this.group.add(this.mirror.cam);
+    // side mirrors: a plane just behind the body's mirror plates (the car body is drawn by the fleet; plates found in its mesh)
+    for (const pl of sideMirrorPlates(kind)) {
+      const live = sideMirrorsLive(quality), crop = pl.x > 0 ? CROP.left : CROP.right;
+      glassAt(live ? liveMat : paintMat, pl.w, pl.h, live ? crop : [0, 1, 0, 1], pl.x, pl.y, pl.z - 0.004, Math.PI);
+    }
     this.applyPreset('#3874c8', '#bdd2e4', '#7a6e58', 1);
     // sun visors folded up at the headliner
     for (const sx of [1, -1]) add(mats.soft, rb(0.34, 0.015, 0.16, 0.007), sx * 0.36, roofY - 0.035, zR1 + 0.15);
@@ -276,11 +325,15 @@ export class Cockpit {
     this.digital = { c: dc, g: dg, t: dt, mph: -1 };
     const dMat = new THREE.MeshBasicMaterial({ map: dt, transparent: true, toneMapped: false }); this.disposables.push(dMat);
     const dPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.013), dMat); dPlane.position.set((544 - 360) / 2000, 0.128 * (0.5 - 130 / 256) - 0.016, 0.0007); dPlane.frustumCulled = false; cluster.add(dPlane);
+    const [tc, tg] = canvas(220, 64); this.tripCtx = tg; this.tripTex = tex(tc, true, 0, 4); this.disposables.push(this.tripTex);
+    const tMat = new THREE.MeshBasicMaterial({ map: this.tripTex, transparent: true, toneMapped: false }); this.disposables.push(tMat);
+    const tPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.032), tMat); tPlane.position.set(0, 0.128 * (0.5 - 208 / 256), 0.0007); tPlane.frustumCulled = false; cluster.add(tPlane);
     this.group.add(cluster);
     this.drawDigital(0);
 
     // ---- infotainment screen in the centre stack (faces the driver)
-    const scr = infotainmentFace(); this.disposables.push(scr);
+    const [sc, sg] = canvas(640, 360); this.screenCtx = sg; const scr = tex(sc, true, 0, 8); this.screenTex = scr; this.disposables.push(scr);
+    this.paintScreen();
     const scrMat = new THREE.MeshBasicMaterial({ map: scr, toneMapped: false, color: 0xb0b8c0 }); this.disposables.push(scrMat);
     const scrYaw = Math.atan2(S.x, zA - 0.3 - this.dims.eye.z) ;
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.23, 0.13), scrMat); screen.frustumCulled = false;
@@ -289,11 +342,11 @@ export class Cockpit {
     this.group.add(bezel, screen); this.disposables.push(bezel.geometry);
 
     // ---- steering wheel: tilted column group; the spin group turns with the front wheels
-    const wheelTilt = 0.5, wy = yW, wr = 0.16;
+    const wheelTilt = 0.42, wy = yW, wr = 0.168;
     const column = new THREE.Group(); column.position.set(S.x, wy, zW); column.rotation.x = wheelTilt; this.group.add(column);
     column.add(this.wheelSpin);
     const rimMat = std({ color: 0xffffff, map: leather, roughness: 0.5, metalness: 0, emissive: 0x0c0a09 });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(wr, 0.017, 10, 40), rimMat); rim.frustumCulled = false; this.wheelSpin.add(rim);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(wr, 0.0175, 12, 48), rimMat); rim.frustumCulled = false; this.wheelSpin.add(rim);
     const hubMat = mats.gloss;
     const spokeGeos: THREE.BufferGeometry[] = [];
     for (const a of [0, Math.PI, -Math.PI / 2]) {
@@ -307,10 +360,19 @@ export class Cockpit {
     // steering column shroud
     const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.2, 14).rotateX(Math.PI / 2), mats.plastic); shroud.position.set(0, 0, 0.12); column.add(shroud); this.disposables.push(shroud.geometry);
 
+    this.group.traverse(o => o.layers.set(1)); this.mirror.cam.layers.set(0); // cockpit = layer 1 (main camera only); the mirror camera sees layer 0
     this.group.matrixAutoUpdate = false; this.group.frustumCulled = false;
     void VEHICLES;
   }
 
+  /** Repaints the infotainment map / next-exit card and the cluster's trip readout from the current state. */
+  private paintScreen(): void {
+    drawInfotainment(this.screenCtx, this.st); this.screenTex.needsUpdate = true;
+    const g = this.tripCtx; g.clearRect(0, 0, 220, 64); g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#9fb3c6'; g.font = `600 26px ${FONT}`; g.fillText(`TRIP ${tripText(this.st.meters)}`, 110, 18);
+    g.fillStyle = '#6b7e92'; g.font = `600 24px ${FONT}`; g.fillText(`${clockText(this.st.hour)}   72 F`, 110, 46); this.tripTex.needsUpdate = true;
+    this.screenLog.clock = clockText(this.st.hour); this.screenLog.exit = nextExit(this.st.meters).dist; this.screenLog.trip = tripText(this.st.meters); this.screenLog.redraws++;
+  }
   private drawDigital(mph: number): void {
     const d = this.digital, g = d.g;
     g.clearRect(0, 0, 128, 56); g.fillStyle = '#eaf4ff'; g.font = '700 46px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -338,7 +400,11 @@ export class Cockpit {
     return 900 + Math.min(1, Math.max(0, (v - lo) / (tops[g] - lo))) * 4600 * (g === 0 ? 0.9 : 0.78);
   }
   /** Per-frame: needles, digital speed and the steering wheel (steerFrac = road-wheel angle / its full lock, -1..1). */
-  update(mph: number, v: number, steerFrac: number, dt: number): void {
+  update(mph: number, v: number, steerFrac: number, dt: number, info?: { hour: number; meters: number; time: number }): void {
+    if (info) {
+      this.st.hour = info.hour; this.st.meters = info.meters; this.st.time = info.time; this.st.mph = mph;
+      this.screenAcc += dt; if (this.screenAcc >= SCREEN_PERIOD) { this.screenAcc = 0; this.paintScreen(); } // a few times a second is plenty
+    }
     this.spd = this.spd < 0 ? mph : this.spd + (mph - this.spd) * Math.min(1, dt * 12);
     this.needleSpeed.rotation.z = needleAngle(this.spd / this.maxMph);
     this.needleRpm.rotation.z = needleAngle(Cockpit.rpmFor(v) / 8000);
@@ -352,5 +418,5 @@ export class Cockpit {
     this.group.matrix.makeBasis(new THREE.Vector3(p.lx, p.ly, p.lz), new THREE.Vector3(p.ux, p.uy, p.uz), new THREE.Vector3(p.fx, p.fy, p.fz)).setPosition(p.x, p.y, p.z);
     this.group.matrixWorldNeedsUpdate = true;
   }
-  dispose(): void { this.group.removeFromParent(); for (const d of this.disposables) d.dispose(); }
+  dispose(): void { this.group.removeFromParent(); this.mirror.dispose(); for (const d of this.disposables) d.dispose(); }
 }
