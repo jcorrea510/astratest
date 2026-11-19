@@ -3,27 +3,32 @@ export type QualityName = 'low' | 'medium' | 'high';
 export interface QualityPreset {
   pixelRatio: number; shadowMap: number; shadowRange: number; bloom: boolean; msaa: number;
   drawDistance: number; pedestrians: number; traffic: number; pointLights: number; particles: number;
+  /** cheap instanced far crowds (src/game/crowd.ts): distant cars, pedestrians, curbside parked cars */
+  farCars: number; farPeds: number; parked: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 45, traffic: 18, pointLights: 0, particles: 300 },
-  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 90, traffic: 32, pointLights: 4, particles: 700 },
-  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 130, traffic: 44, pointLights: 8, particles: 1200 },
+  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 16, pointLights: 0, particles: 300, farCars: 60, farPeds: 140, parked: 250 },
+  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 26, pointLights: 4, particles: 700, farCars: 130, farPeds: 340, parked: 600 },
+  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 120, traffic: 38, pointLights: 8, particles: 1200, farCars: 200, farPeds: 520, parked: 1000 },
 };
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'sprint' | 'jump' | 'crouch' | 'enter' | 'fire' | 'aim' | 'reload'
-  | 'wheel' | 'handbrake' | 'horn' | 'lookBehind' | 'map' | 'pause' | 'interact' | 'nextWeapon' | 'prevWeapon' | 'headlights' | 'radio' | 'camera';
+  | 'wheel' | 'handbrake' | 'horn' | 'lookBehind' | 'map' | 'pause' | 'interact' | 'nextWeapon' | 'prevWeapon' | 'headlights' | 'radio' | 'camera'
+  | 'sirenWail' | 'sirenYelp' | 'sirenPhaser' | 'lightBar';
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Move forward / Accelerate', back: 'Move back / Brake', left: 'Move left / Steer left', right: 'Move right / Steer right',
   sprint: 'Sprint', jump: 'Jump / Handbrake', crouch: 'Dodge roll', enter: 'Enter / exit vehicle', fire: 'Fire / Punch', aim: 'Aim',
   reload: 'Reload', wheel: 'Inventory wheel (hold)', handbrake: 'Handbrake', horn: 'Horn', lookBehind: 'Look behind', map: 'City map',
   pause: 'Pause', interact: 'Interact / Shop', nextWeapon: 'Next weapon', prevWeapon: 'Previous weapon', headlights: 'Headlights', radio: 'Radio station', camera: 'Camera distance',
+  sirenWail: 'Siren: wail', sirenYelp: 'Siren: yelp', sirenPhaser: 'Siren: phaser', lightBar: 'Emergency light bar',
 };
 export const DEFAULT_BINDINGS: Record<Action, string[]> = {
   forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC', 'AltLeft'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
   reload: ['KeyR'], wheel: ['Tab', 'KeyQ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
-  pause: ['Escape', 'KeyP'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyL'], radio: ['Period'], camera: ['KeyB'],
+  pause: ['Escape', 'KeyP'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'],
+  sirenWail: ['KeyJ'], sirenYelp: ['KeyK'], sirenPhaser: ['KeyL'], lightBar: ['KeyU'],
 };
 export interface Settings {
   quality: QualityName; sensitivity: number; invertY: boolean; fov: number;
