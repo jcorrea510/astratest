@@ -188,7 +188,7 @@ test('city buses: loop routes, stop at the kerb with door open and kneeling, dri
     }
     out.spawned = spawned; out.opened = opened; out.kneeled = kneeled; out.left = left; out.stops = B.stats.stops - stops0; out.waitSpeed = atKerb;
     // drivable / stealable: take the bus
-    if (car) { const v = car.v; g.traffic.release(v); g.seatPlayer(v); g.input.press('KeyW'); for (let i = 0; i < 150; i++) g.frame(1 / 30, false); g.input.release('KeyW'); out.driven = v.speed; out.kind = v.kind; }
+    if (car) { const v = car.v; g.traffic.release(v); g.seatPlayer(v); g.input.press('KeyW'); let top = 0; for (let i = 0; i < 150; i++) { g.frame(1 / 30, false); top = Math.max(top, Math.abs(v.speed)); } g.input.release('KeyW'); out.driven = top; out.kind = v.kind; }
     return out;
   })()`) as any;
   console.log('buses', JSON.stringify(r));
