@@ -2,7 +2,7 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/tender-turing-bkf701.
-Current brief: docs/BRIEF3.md (earlier: BRIEF2.md). Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current brief: docs/BRIEF4.md (earlier: BRIEF3, BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Usage: delegate coding to Sonnet subagents (`model: sonnet`); use Opus only for architecture or a bug Sonnet failed twice on.

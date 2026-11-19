@@ -1,16 +1,17 @@
 # Progress (newest first; keep short — git has history)
 
-Resume: read CLAUDE.md, docs/BRIEF3.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
+Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Owner rules in CLAUDE.md. Deadline 12:00 UTC 19 Nov.
 
-## Round 3 (owner playtest, 19 Nov) — status
-- [x] R3-A Combat/death: trails persist, dead cops upright, hit-zone death falls, gun lowered while firing, rocket launcher, lag near cops.
-- [x] R3-B Police/people (verify FPS with 90 peds; heli shot down fast — tune Dispatch.attackHeli): remove NPC voices, many more NPCs, smart realistic cops (guns not fists), heli theft = stars + shot down, spotlight dim.
-- [x] R3-C Visuals (lamp tweak in game.ts uncommitted until others finish): invisible car bodies, headlights/lights, night brighter, helicopter all-glass.
-- [x] R3-D City (gaps: one-way roundabout, west sidewalks/signs/props, cathedral roof check): bigger, curves/character, ~10x walk-in robbable stores, GPS over bridge.
-- [x] R3-E UI: realistic weapon wheel + gun icons, settings close button (Esc breaks), Continue on rooftop breaks.
-- [ ] R3-Z Full gate, publish.
-Running: R3-Z QA agent ad8cfbaddaa80352d (01:25 UTC): full gate, perf, heli tuning, visual checks, soak. Then push main + publish gh-pages.
+## Round 4 (hyper-realism night, 02:40-12:00 UTC)
+- [ ] R4-A Driving: car jitter fwd/back, curbs, easier turns+drift, stolen cop car siren J/K/L + lights key, windshield shatter, bridge camera stutter.
+- [ ] R4-C City: core grid far less boxy (realistic Manhattan blocks), two-lane roads each way, bigger, shootable store windows.
+- [ ] R4-D Police: realistic heat (stars harder, response delay, witnesses/911), army only from Fort Calder at 5 stars, perf with many cops (M1), better handcuffing, peds react to player-as-cop.
+- [ ] R4-E Player: gun held in aim pose while shooting (still broken), faster car entry, physical carjack throw (hands on victim), heli entry anim, better robbing (shoot clerk then rob till), shoppers react.
+- [ ] R4-F Highway mode (title entry: infinite realistic highway, AI lane changes with signals, cut-offs, 1st/3rd person, high fps) + US units + fullscreen button.
+- [ ] R4-B Density (after C): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
+- [ ] R4-R Realism audit: agent screenshots/plays, lists what's still cartoony, fix waves.
+- [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
+Running: (filled below)
 
-## Done before
-- Overnight brief (BRIEF2) delivered and live 18 Nov 23:15 UTC (gh-pages 3cd57c4 from main 20e0f25): realistic cars/people/city,
-  combat, car entry, helicopters, police escalation, sandbox-only menus, memory fix (soak 327->318 MB).
+## Done
+- Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
