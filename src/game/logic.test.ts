@@ -48,7 +48,8 @@ describe('heat', () => {
     const h = new HeatState();
     h.add('shooting'); expect(h.heat).toBe(1);
     h.add('kill'); expect(h.heat).toBe(2);
-    h.add('copKill'); expect(h.heat).toBe(4);
+    h.add('copKill'); expect(h.heat).toBe(2); // one dead officer alone is not yet a 3rd star
+    h.combatT = 400; h.tick(0.1, true, new THREE.Vector3(), true); expect(h.heat).toBeGreaterThanOrEqual(3);
     const p = new THREE.Vector3(0, 0, 0);
     h.tick(0.1, true, p);
     let lost = false; const far = new THREE.Vector3(1000, 0, 0);
@@ -61,7 +62,19 @@ describe('heat', () => {
     for (let t = 0; t < 120; t += 0.1) expect(h.tick(0.1, true, p)).toBe(false);
     expect(h.heat).toBe(2);
   });
-  it('caps at five', () => { const h = new HeatState(); for (let i = 0; i < 10; i++) h.add('copKill'); expect(h.heat).toBe(5); });
+  it('caps at five', () => { const h = new HeatState(); const p = new THREE.Vector3(); h.add('copKill'); for (let t = 0; t < 600; t += 0.5) h.tick(0.5, true, p, true); expect(h.heat).toBe(5); });
+  it('stars rise slowly with sustained combat only: 3 at ~15 s, 4 at ~150 s, 5 at ~300 s', () => {
+    const h = new HeatState(), p = new THREE.Vector3(); h.add('copAttack'); expect(h.heat).toBe(2);
+    const at: Record<number, number> = {};
+    for (let t = 0; t < 400; t += 0.1) { h.tick(0.1, true, p, true); if (!at[h.heat]) at[h.heat] = t; }
+    expect(at[3]).toBeGreaterThan(10); expect(at[3]).toBeLessThan(25);
+    expect(at[4]).toBeGreaterThan(120); expect(at[4]).toBeLessThan(180);
+    expect(at[5]).toBeGreaterThan(280); expect(at[5]).toBeLessThan(330);
+  });
+  it('a single crime never goes past two stars, however violent', () => {
+    const h = new HeatState(); h.add('shooting'); h.add('kill'); h.add('copAttack'); h.add('assault'); h.tick(5, true, new THREE.Vector3(), true);
+    expect(h.heat).toBe(2);
+  });
 });
 describe('places', () => {
   const city = generateCity();

@@ -37,6 +37,8 @@ export class Npc {
   coverPoint: THREE.Vector3 | null = null;
   far = false;
   animAcc = 0;
+  /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
+  accDt = 0;
   arrestT = 0;
   /** smoothed steering for fighters (no jitter / instant direction flips) */
   mdir = new THREE.Vector3(); mspeed = 0;
@@ -65,12 +67,15 @@ export interface NpcEnv {
   onArrest: (by: Npc) => void; onWitness: (npc: Npc, what: 'shot' | 'attack' | 'kill' | 'carjack') => void;
 }
 
-const tv = new THREE.Vector3(), tv2 = new THREE.Vector3();
+const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3();
 export class NpcBrainRunner {
   private rng = new Rng(99);
   private ball = new RAPIER.Ball(0.35);
   constructor(private env: NpcEnv) { }
 
+  /** Per-tick budgets shared by all fighters so a big firefight costs a bounded number of physics queries. */
+  rays = 8; covers = 1;
+  beginTick(maxRays = 8) { this.rays = maxRays; this.covers = 1; }
   private lethal() { return this.env.copsLethal ? this.env.copsLethal() : this.env.playerHeat() >= 2; }
   hasLOS(from: THREE.Vector3, to: THREE.Vector3): boolean {
     const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z; const d = Math.hypot(dx, dy, dz);
@@ -87,6 +92,8 @@ export class NpcBrainRunner {
   }
   /** Finds a nearby point that breaks line of sight to the threat. */
   findCover(n: Npc, threat: THREE.Vector3): THREE.Vector3 | null {
+    if (this.covers <= 0) return null;
+    this.covers--;
     let best: THREE.Vector3 | null = null, bestScore = Infinity;
     const te = tv2.copy(threat).setY(threat.y + 1.2);
     for (let i = 0; i < 12; i++) {
@@ -108,7 +115,8 @@ export class NpcBrainRunner {
     if (!c.alive) { n.brain = 'dead'; return; }
     n.think -= dt; n.cooldown -= dt; n.stateT += dt;
     if (n.reloadT > 0) { n.reloadT -= dt; if (n.reloadT <= 0) n.clip = WEAPONS[n.weapon].clip; }
-    const desired = new THREE.Vector3();
+    const desired = tvDesired.set(0, 0, 0);
+    let deferThink = false;
     let speed = 0, faceYaw: number | null = null, aiming = false;
     // Perception for fighters
     if ((n.role === 'gang' || n.role === 'police') && n.brain !== 'scripted' && n.brain !== 'passenger') {
@@ -116,15 +124,17 @@ export class NpcBrainRunner {
       const want = n.role === 'police' ? env.playerHeat() > 0 : n.hostile;
       if (want && p.alive) {
         const d = c.pos.distanceTo(p.pos);
-        const sees = d < 70 && (n.think <= 0 ? this.hasLOS(this.eye(c, tv), this.chest(p, tv2)) : n.losT > 0);
-        if (n.think <= 0) { n.losT = sees ? 1 : 0; }
+        const doRay = n.think <= 0 && d < 70 && this.rays > 0;
+        if (doRay) this.rays--;
+        const sees = d < 70 && (doRay ? this.hasLOS(this.eye(c, tv), this.chest(p, tv2)) : n.losT > 0);
+        if (doRay || d >= 70) { n.losT = sees ? 1 : 0; } else if (n.think <= 0) deferThink = true; // out of ray budget: retry next tick
         if (sees) { n.seenTime = t; n.lastSeen.copy(p.pos); const want2 = n.role === 'police' && !this.lethal() ? 'chase' : 'combat'; if (n.brain !== want2) { n.brain = want2; n.stateT = 0; n.goal = null; } n.target = p; }
         else if (n.brain === 'combat' && t - n.seenTime > 12) { n.brain = 'chase'; }
         if (n.role === 'police' && this.lethal() && n.brain === 'chase') n.brain = 'combat';
         if (n.brain !== 'combat' && n.brain !== 'chase' && d < 30) { n.brain = 'chase'; n.target = p; n.lastSeen.copy(p.pos); }
       } else if (n.brain === 'combat' || n.brain === 'chase') { n.brain = n.role === 'police' ? 'idle' : 'idle'; n.target = null; }
     }
-    if (n.think <= 0) n.think = 0.25 + Math.random() * 0.25;
+    if (n.think <= 0 && !deferThink) n.think = 0.25 + Math.random() * 0.25;
 
     switch (n.brain) {
       case 'wander': speed = this.wander(n, desired, dt) * n.speedMul; break;
@@ -258,8 +268,8 @@ export class NpcBrainRunner {
   }
   private fire(n: Npc, tgt: Character, dist: number) {
     const w = WEAPONS[n.weapon];
-    const origin = this.muzzle(n, new THREE.Vector3());
-    const aimAt = this.chest(tgt, new THREE.Vector3());
+    const origin = this.muzzle(n, tvO);
+    const aimAt = this.chest(tgt, tvA);
     // Accuracy: distance, target speed, own movement, time aiming; police/gang skill via n.accuracy
     const err = (0.045 + dist * 0.0016 + tgt.speed * 0.012 + n.char.speed * 0.01) * n.accuracy * (n.aimT > 2 ? 0.75 : 1.2) * (tgt.inVehicle ? 1.4 : 1);
     const dir = aimAt.sub(origin).normalize();

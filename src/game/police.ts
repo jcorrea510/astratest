@@ -9,15 +9,19 @@ import type { GameAudio, LoopVoice } from '../ui/contracts';
 import { Dispatch, COP_LOOK, wantedUnits, wantsHelicopter, type UnitKind, type DispatchHooks } from './dispatch';
 
 export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft';
-const CRIME: Record<Crime, { add: number; min: number }> = {
-  robbery: { add: 0, min: 2 },
-  assault: { add: 0, min: 1 }, shooting: { add: 0, min: 1 }, kill: { add: 1, min: 2 }, copAttack: { add: 1, min: 2 }, copKill: { add: 2, min: 3 },
-  carjack: { add: 0, min: 1 }, vehicleWreck: { add: 0, min: 1 }, copCarTheft: { add: 1, min: 2 }, hitPerson: { add: 0, min: 1 },
-  heliTheft: { add: 0, min: 3 }, policeHeliTheft: { add: 0, min: 4 },
+/** min = star level this crime guarantees once reported; further stars come from sustained fighting (see HeatState.tick). */
+const CRIME: Record<Crime, { min: number }> = {
+  robbery: { min: 1 }, assault: { min: 1 }, shooting: { min: 1 }, kill: { min: 2 }, copAttack: { min: 2 }, copKill: { min: 2 },
+  carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 },
 };
 export { COP_LOOK };
 export type { UnitKind };
 export const UNITS_BY_HEAT = [0, 1, 2, 3, 4, 5];
+/** Tuning (seconds of cops-in-contact combat, officers killed) for each escalation step; unit tested. */
+export const ESCALATE = { star3: { combat: 15, copKills: 2 }, star4: { combat: 150, copKills: 6 }, star5: { combat: 300 } };
+/** A witness needs this long to dial 911 (civilians), officers radio it in faster. Dispatch then needs HOLD more before a car rolls. */
+export const CALL_DELAY = { civ: [3, 6] as const, cop: 1 };
+export const DISPATCH_HOLD = 14;
 
 /** Pure heat bookkeeping (unit tested). */
 export class HeatState {
@@ -26,23 +30,35 @@ export class HeatState {
   unseenT = 0;
   cooldown = 0; // grace after losing heat
   seen = false;
+  /** seconds of sustained combat while officers have eyes on the player (drives the 3rd to 5th star) */
+  combatT = 0;
+  copKills = 0;
+  /** set by tick when a star was gained from escalation */
+  raised = false;
   add(crime: Crime) {
     const c = CRIME[crime];
     const before = this.heat;
-    this.heat = Math.min(5, Math.max(this.heat + c.add, c.min));
+    if (crime === 'copKill') this.copKills++;
+    this.heat = Math.min(5, Math.max(this.heat, c.min));
     if (this.heat > before) this.unseenT = 0;
     return this.heat > before;
   }
   searchRadius() { return 45 + this.heat * 25; }
-  /** Returns true when heat was lost this tick. */
-  tick(dt: number, seen: boolean, playerPos: THREE.Vector3): boolean {
-    this.seen = seen;
-    if (this.heat <= 0) return false;
+  /** Returns true when heat was lost this tick. `engaged`: the player is fighting right now. */
+  tick(dt: number, seen: boolean, playerPos: THREE.Vector3, engaged = false): boolean {
+    this.seen = seen; this.raised = false;
+    if (this.heat <= 0) { this.combatT = 0; this.copKills = 0; return false; }
+    if (seen && engaged) this.combatT += dt; else this.combatT = Math.max(0, this.combatT - dt * 0.25);
+    const E = ESCALATE, before = this.heat;
+    if (this.heat >= 2 && this.heat < 3 && (this.combatT >= E.star3.combat || this.copKills >= E.star3.copKills)) this.heat = 3;
+    if (this.heat === 3 && (this.combatT >= E.star4.combat || this.copKills >= E.star4.copKills)) this.heat = 4;
+    if (this.heat === 4 && this.combatT >= E.star5.combat) this.heat = 5;
+    if (this.heat > before) { this.raised = true; this.unseenT = 0; }
     if (seen) { this.unseenT = 0; this.lastSeen.copy(playerPos); return false; }
     this.unseenT += dt;
     const outside = playerPos.distanceTo(this.lastSeen) > this.searchRadius();
     const needed = 7 + this.heat * 3;
-    if ((outside && this.unseenT > needed) || this.unseenT > needed * 3.5) { this.heat = 0; this.unseenT = 0; return true; }
+    if ((outside && this.unseenT > needed) || this.unseenT > needed * 3.5) { this.heat = 0; this.unseenT = 0; this.combatT = 0; this.copKills = 0; return true; }
     return false;
   }
 }
@@ -56,6 +72,21 @@ export class Police {
   /** seconds left in which the player counts as violent (shot or killed someone): cops stop trying to arrest */
   violentT = 0;
   private lastPlayerPos = new THREE.Vector3();
+  private seeT = 0; private seenNow = false; private eyeA = new THREE.Vector3(); private eyeB = new THREE.Vector3();
+  private yieldT = 0; private yielded = new Set<AiCar>();
+  /** Player drives a police car with the light bar on (and is not wanted): civilian traffic slows to a stop at the kerb. */
+  private yieldTraffic(dt: number, pv: { position: THREE.Vector3; siren?: boolean; sirenOn?: boolean; kind?: string } | null) {
+    this.yieldT -= dt; if (this.yieldT > 0) return;
+    this.yieldT = 0.4;
+    const on = !!pv && !!(pv.sirenOn ?? pv.siren) && ['police', 'fbi', 'swat', 'army'].includes(pv.kind ?? '') && this.state.heat === 0;
+    for (const c of this.traffic.cars) {
+      const near = on && c.mode === 'cruise' && !c.persistent && c.driver.role === 'civilian' && c.v.position.distanceTo(pv!.position) < 40;
+      if (near) { c.maxSpeed = 0.5; this.yielded.add(c); }
+      else if (this.yielded.has(c)) { if (c.maxSpeed === 0.5) c.maxSpeed = undefined; this.yielded.delete(c); }
+    }
+    for (const c of this.yielded) if (!this.traffic.cars.includes(c)) this.yielded.delete(c);
+  }
+  private arrived = new Set<AiCar>();
   private progress = new Map<AiCar, { best: number; t: number }>();
   private siren: LoopVoice | null = null;
   /** seconds of rapid unit dispatch left (stolen helicopter) */
@@ -66,41 +97,92 @@ export class Police {
   /** Cops use lethal force at 3+ stars, or at 2 once the player has been violent. */
   get lethal() { return this.state.heat >= 3 || (this.state.heat === 2 && this.violentT > 0); }
   get heat() { return this.state.heat; }
+  /** Pending 911 calls: a witness has seen the crime and is dialling. */
+  pending: { crime: Crime; at: THREE.Vector3; t: number; witness: Npc | null }[] = [];
+  /** seconds before the dispatcher sends the first car after a call (call-taking + rolling out) */
+  holdT = 0;
+  private shootScan = 0;
+  private static readonly VIOLENT: Crime[] = ['shooting', 'kill', 'copAttack', 'copKill', 'assault'];
+  /** Someone who saw (or, for gunfire, heard) the crime, or null. Officers beat civilians because they radio it faster. */
+  findWitness(crime: Crime, at: THREE.Vector3): Npc | null {
+    const eye = new THREE.Vector3(at.x, at.y + 1.3, at.z), head = new THREE.Vector3();
+    let best: Npc | null = null, bd = Infinity;
+    for (const n of this.pop.npcs) {
+      if (!n.alive || (n.role !== 'police' && n.role !== 'civilian') || n.brain === 'dead') continue;
+      const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
+      const pos = car ? car.position : n.pos;
+      const d = pos.distanceTo(at), cop = n.role === 'police';
+      const range = cop ? 70 : 38;
+      if (d > range) continue;
+      const near = (crime === 'shooting' || crime === 'kill') && d < 22; // gunfire is heard
+      if (!near) { head.set(pos.x, pos.y + 1.6, pos.z); if (!this.pop.runner.hasLOS(head, eye)) continue; }
+      const score = d - (cop ? 1000 : 0);
+      if (score < bd) { bd = score; best = n; }
+    }
+    return best;
+  }
   report(crime: Crime, at: THREE.Vector3) {
-    // A crime counts if police or civilians are around to witness it.
-    const nearCop = this.pop.npcs.some(n => n.alive && n.role === 'police' && n.pos.distanceTo(at) < 60);
-    const nearCiv = this.pop.npcs.some(n => n.alive && n.role === 'civilian' && n.pos.distanceTo(at) < 35);
-    if (!nearCop && !nearCiv && crime !== 'copKill' && crime !== 'copAttack') return;
-    if (this.state.add(crime)) { this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); }
-    if (crime === 'shooting' || crime === 'kill' || crime === 'copAttack' || crime === 'copKill' || crime === 'assault') this.violentT = 30;
+    // Officers on scene react to violence at once, but the heat only rises once somebody has seen it and called it in.
+    if (Police.VIOLENT.includes(crime)) this.violentT = 30;
+    if (crime === 'shooting') { // one witness scan per half second: shots are reported every trigger pull
+      if (this.shootScan > 0 || this.pending.some(p => p.crime === 'shooting')) return;
+      this.shootScan = 0.5;
+    }
+    const witness = this.findWitness(crime, at);
+    if (!witness && crime !== 'copKill') return; // dead officers get radioed in by their partners/dispatch
+    const cop = !witness || witness.role === 'police';
+    const [lo, hi] = CALL_DELAY.civ;
+    this.pending.push({ crime, at: at.clone(), t: cop ? CALL_DELAY.cop + (witness ? 0 : 1.5) : lo + Math.random() * (hi - lo), witness });
     this.state.lastSeen.copy(at);
+  }
+  private tickCalls(dt: number) {
+    this.shootScan = Math.max(0, this.shootScan - dt);
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const p = this.pending[i]; p.t -= dt;
+      if (p.witness && !p.witness.alive) { // the witness was silenced: any other eyes on the scene?
+        const w = this.findWitness(p.crime, p.at);
+        if (!w) { this.pending.splice(i, 1); continue; }
+        p.witness = w; p.t = w.role === 'police' ? CALL_DELAY.cop : CALL_DELAY.civ[0];
+      }
+      if (p.t > 0) continue;
+      this.pending.splice(i, 1);
+      this.call911(p.crime, p.at);
+    }
+  }
+  /** A call reaches the dispatcher: stars rise and, if no unit is out yet, a response is queued after DISPATCH_HOLD. */
+  call911(crime: Crime, at: THREE.Vector3) {
+    const first = this.state.heat === 0 && this.units.length === 0;
+    if (this.state.add(crime)) { this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); }
+    if (first) this.holdT = DISPATCH_HOLD;
+    this.state.lastSeen.copy(at); this.state.unseenT = 0;
   }
   /** Sets the wanted level directly (sandbox tools). */
   setHeat(level: number, at: THREE.Vector3) {
     const before = this.state.heat, h = Math.max(0, Math.min(5, level));
     if (h === 0) { this.clear(); return; }
-    this.state.heat = h; this.state.lastSeen.copy(at); this.state.unseenT = 0; this.spawnT = 0;
+    this.state.heat = h; this.state.lastSeen.copy(at); this.state.unseenT = 0; this.spawnT = 0; this.holdT = 0;
     if (h > before) { this.audio.play('heatUp'); this.onHeatChange?.(h, false); }
   }
   /** Sandbox: calls one unit of `kind` in right now (raises the wanted level to the one that normally sends it). */
   callUnit(kind: UnitKind, at: THREE.Vector3, camera: THREE.Camera) {
     const min = { police: 1, swat: 3, fbi: 4, army: 5, tank: 5 }[kind];
     if (this.state.heat < min) this.setHeat(min, at);
-    const car = this.dispatch.spawnUnit(kind, at, camera, this.state.heat);
+    const car = this.dispatch.spawnUnit(kind, at, camera, this.state.heat, 'near');
     if (car) this.units.push(car);
     return car;
   }
   /** A crime reported by an alarm or a phone call: no witness check. */
   alarm(crime: Crime, at: THREE.Vector3) {
-    if (this.state.add(crime)) { this.audio.play('heatUp'); this.onHeatChange?.(this.state.heat, false); }
-    this.state.lastSeen.copy(at); this.state.unseenT = 0;
+    this.call911(crime, at);
     if (crime === 'heliTheft' || crime === 'policeHeliTheft') { this.rushT = 40; this.spawnT = 0; this.violentT = 30; }
   }
   clear() {
     if (this.state.heat > 0) { this.state.heat = 0; this.onHeatChange?.(0, true); }
     this.standDown();
+    this.pending.length = 0; this.holdT = 0;
   }
   private standDown() {
+    this.arrived.clear();
     this.progress.clear();
     for (const u of this.units) { u.mode = 'cruise'; u.target = null; u.v.siren = false; u.persistent = false; u.v.persistent = false; u.ram = false; }
     this.units.length = 0; this.dispatch.standDown();
@@ -109,18 +191,26 @@ export class Police {
   }
   update(dt: number, player: Character, playerInVehicle: boolean, camera: THREE.Camera) {
     const st = this.state;
-    // Line of sight from any officer (on foot or driving)
-    let seen = false;
+    // Line of sight from any officer (on foot or driving); re-evaluated 4x per second, the result is held in between
+    this.seeT -= dt;
     const pp = player.pos;
-    for (const n of this.pop.npcs) {
-      if (!n.alive || n.role !== 'police') continue;
-      // an officer riding in a car is where the car is (their own position is not updated while seated)
-      const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
-      const d = (car ? car.position : n.pos).distanceTo(pp);
-      if (car ? d < 55 : d < 65 && n.losT > 0) { seen = true; break; }
-      if (car && d < 90) { const from = car.position.clone(); from.y += 1.4; if (this.pop.runner.hasLOS(from, pp.clone().setY(pp.y + 1.2))) { seen = true; break; } }
+    if (this.seeT <= 0) {
+      this.seeT = 0.25;
+      let seen = false;
+      for (const n of this.pop.npcs) {
+        if (!n.alive || n.role !== 'police') continue;
+        // an officer riding in a car is where the car is (their own position is not updated while seated)
+        const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
+        const d = (car ? car.position : n.pos).distanceTo(pp);
+        if (car ? d < 55 : d < 65 && n.losT > 0) { seen = true; break; }
+        if (car && d < 90) { this.eyeA.copy(car.position); this.eyeA.y += 1.4; this.eyeB.set(pp.x, pp.y + 1.2, pp.z); if (this.pop.runner.hasLOS(this.eyeA, this.eyeB)) { seen = true; break; } }
+      }
+      this.seenNow = seen;
     }
-    const lost = st.tick(dt, seen, pp);
+    const seen = this.seenNow;
+    this.tickCalls(dt); this.yieldTraffic(dt, player.inVehicle as never);
+    const lost = st.tick(dt, seen, pp, this.violentT > 0);
+    if (st.raised) { this.audio.play('heatUp'); this.onHeatChange?.(st.heat, false); }
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
     // Clean dead/removed units
     for (const u of this.units) if (!this.traffic.cars.includes(u)) { u.persistent = false; u.v.persistent = false; u.v.siren = false; }
@@ -140,7 +230,7 @@ export class Police {
       const inHeli = (player.inVehicle as { kind?: string } | null)?.kind === 'helicopter';
       for (const u of this.units) {
         const kind = D.kindOf(u), idx = ui++;
-        u.target = target.clone(); u.mode = 'pursuit'; u.ram = st.heat >= 3 && playerInVehicle;
+        if (u.target) u.target.copy(target); else u.target = target.clone(); u.mode = 'pursuit'; u.ram = st.heat >= 3 && playerInVehicle;
         // tactics against a driving player: ram, cut in ahead to box in, or PIT the rear quarter
         if (playerInVehicle && pv && kind !== 'tank' && u.v.position.distanceTo(pp) < 45 && pv.speed > 6) {
           const fx = Math.sin(pv.yaw), fz = Math.cos(pv.yaw), role = idx % 3;
@@ -160,15 +250,16 @@ export class Police {
           if (kind === 'police' && st.heat >= 2) { const p = u.v.doorPoint(-1); const extra = this.pop.spawn('police', p.x, p.z, Math.max(0.2, u.v.position.y), COP_LOOK); D.arm(extra, 'police', st.heat, lethal); this.foot.push(extra); }
         }
         // far behind and out of sight: let traffic cull it so a fresh unit can come in from the front
-        if (d > 260 && !seen) { u.persistent = false; u.v.persistent = false; }
+        if (d < 110) this.arrived.add(u);
+        if (d > 260 && !seen && this.arrived.has(u)) { u.persistent = false; u.v.persistent = false; }
       }
       // Escalate: keep enough units in play, fewer on foot than the cap
-      this.spawnT -= dt;
+      this.spawnT -= dt; this.holdT = Math.max(0, this.holdT - dt);
       this.rushT = Math.max(0, this.rushT - dt);
       const extra = this.rushT > 0 ? 4 : 0;
       const need = D.nextNeeded(this.units, st.heat, extra);
-      if (this.spawnT <= 0 && need && this.foot.length < Math.min(this.rushT > 0 ? 32 : 20, st.heat * 4 + 4 + extra * 2)) {
-        this.spawnT = this.rushT > 0 ? 0.45 : this.units.length === 0 ? 0.5 : Math.max(1, 3.2 - st.heat * 0.4);
+      if (this.spawnT <= 0 && this.holdT <= 0 && need && this.foot.length < Math.min(this.rushT > 0 ? 32 : 20, st.heat * 4 + 4 + extra * 2)) {
+        this.spawnT = this.rushT > 0 ? 0.45 : this.units.length === 0 ? 0.5 : Math.max(2.5, 6 - st.heat * 0.5);
         const car = D.spawnUnit(need, target, camera, st.heat);
         if (car) this.units.push(car);
       }

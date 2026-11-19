@@ -6,7 +6,8 @@ import type { Character } from '../actors/character';
 import type { Npc } from '../actors/npc';
 import type { Look } from '../actors/look';
 import type { CityMap } from '../world/citymap';
-import { samplePath } from '../world/citymap';
+import { samplePath, nearestLane, ARMY_BASE } from '../world/citymap';
+import { POLICE_STATION } from './places';
 import type { WeaponId } from '../combat/weapons';
 import { WEAPONS } from '../combat/weapons';
 import type { Combat } from '../combat/combat';
@@ -58,7 +59,7 @@ export interface DispatchHooks {
   night(): number;
 }
 
-interface Arrest { cop: Npc; t: number; done: (() => void) | null; finished: boolean; phase: number; yaw: number; from: THREE.Vector3 }
+interface Arrest { base: THREE.Vector3; cop: Npc; t: number; done: (() => void) | null; finished: boolean; phase: number; yaw: number; from: THREE.Vector3 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Dispatch {
@@ -87,20 +88,59 @@ export class Dispatch {
     return null;
   }
 
-  /** Spawns one unit of `kind` out of view on a road heading to the target (or null when no lane was found). */
-  spawnUnit(kind: UnitKind, target: THREE.Vector3, camera: THREE.Camera, heat: number): AiCar | null {
+  /** Where a unit of this kind starts: army/tank at the Fort Calder gate, SWAT/FBI at the precinct, police alternate precinct / patrol. */
+  originLane(kind: UnitKind): { lane: CityMap['lanes'][number]; s: number } | null {
+    const gate = kind === 'army' || kind === 'tank';
+    const at = gate ? { x: ARMY_BASE.x1, z: ARMY_BASE.gateZ } : POLICE_STATION;
+    const key = gate ? 'gate' : 'precinct';
+    let o = this.originCache.get(key);
+    if (!o) { const n = nearestLane(this.city, at.x, at.z, false); if (n) { o = { lane: n.lane, s: n.s }; this.originCache.set(key, o); } }
+    return o ?? null;
+  }
+  private originCache = new Map<string, { lane: CityMap['lanes'][number]; s: number }>();
+  private spawnCount = 0;
+  /** Seconds a unit of this kind needs from its origin to the target at ~18 m/s along the road (straight line x1.3); for tests/HUD. */
+  eta(kind: UnitKind, target: THREE.Vector3): number {
+    const o = this.originLane(kind); if (!o) return 0;
+    const sp = { x: 0, z: 0, dx: 0, dz: 0 }; samplePath(o.lane, o.s, sp);
+    return Math.hypot(sp.x - target.x, sp.z - target.z) * 1.3 / 18;
+  }
+
+  /**
+   * Spawns one unit of `kind`. `origin` 'base' (default) starts it where it really comes from (precinct, patrol area or Fort Calder's gate)
+   * and it drives to the target; 'near' drops it out of view close to the target (sandbox).
+   */
+  spawnUnit(kind: UnitKind, target: THREE.Vector3, camera: THREE.Camera, heat: number, origin: 'base' | 'near' = 'base'): AiCar | null {
     const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const sp = { x: 0, z: 0, dx: 0, dz: 0 };
     if (!this.lanes.length) this.lanes = this.city.lanes.filter(l => !l.connector && l.length >= 30);
+    const useOrigin = origin === 'base' && this.originLane(kind) && (kind !== 'police' || (this.spawnCount++ % 2 === 0));
     for (let tries = 0; tries < 60; tries++) {
-      const lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
-      const s = 10 + Math.random() * (lane.length - 20);
-      samplePath(lane, s, sp);
-      const p = new THREE.Vector3(sp.x, 1, sp.z);
-      const d = p.distanceTo(target);
-      if (d < 60 || d > 170) continue;
-      if (frustum.containsPoint(p) && d < 100 && tries < 40) continue;
-      if ((target.x - sp.x) * sp.dx + (target.z - sp.z) * sp.dz < 0) continue;
+      let lane: CityMap['lanes'][number], s: number;
+      if (useOrigin) {
+        const o = this.originLane(kind)!; lane = o.lane; s = o.s;
+        // keep convoy cars apart: slide back along the lane until the spot is free
+        for (let k = 0; k < 8; k++) { samplePath(lane, Math.max(2, s), sp); if (!this.traffic.cars.some(c => Math.hypot(c.v.position.x - sp.x, c.v.position.z - sp.z) < 9)) break; s -= 11; if (s < 2) { s = o.s + 11 * (k + 1); if (s > lane.length - 2) break; } }
+        s = Math.max(2, Math.min(lane.length - 2, s));
+        samplePath(lane, s, sp);
+        const pd = Math.hypot(sp.x - target.x, sp.z - target.z);
+        if (kind === 'police' && pd < 40 && frustum.containsPoint(new THREE.Vector3(sp.x, 1, sp.z)) && tries < 2) { tries = 1000; continue; } // would pop in on screen
+      } else if (origin === 'base' && kind === 'police') { // a patrol car from the far side of town
+        lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
+        s = 10 + Math.random() * (lane.length - 20);
+        samplePath(lane, s, sp);
+        const d = Math.hypot(sp.x - target.x, sp.z - target.z);
+        if (d < 220 || d > 480 || frustum.containsPoint(new THREE.Vector3(sp.x, 1, sp.z))) { if (tries < 55) continue; }
+      } else {
+        lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
+        s = 10 + Math.random() * (lane.length - 20);
+        samplePath(lane, s, sp);
+        const p = new THREE.Vector3(sp.x, 1, sp.z);
+        const d = p.distanceTo(target);
+        if (d < 60 || d > 170) continue;
+        if (frustum.containsPoint(p) && d < 100 && tries < 40) continue;
+        if ((target.x - sp.x) * sp.dx + (target.z - sp.z) * sp.dz < 0) continue;
+      }
       const car = this.traffic.spawnOnLane(kind, lane, s, 'pursuit', 'police', LOOK_OF[kind]);
       car.persistent = true; car.v.persistent = true; car.target = target.clone();
       this.kinds.set(car, kind);
@@ -277,7 +317,7 @@ export class Dispatch {
   beginArrest(cop: Npc, player: Character) {
     if (this.arrest || !this.hooks) return;
     const yaw = Math.atan2(player.pos.x - cop.pos.x, player.pos.z - cop.pos.z);
-    this.arrest = { cop, t: 0, done: null, finished: false, phase: 0, yaw, from: cop.pos.clone() };
+    this.arrest = { base: player.pos.clone(), cop, t: 0, done: null, finished: false, phase: 0, yaw, from: cop.pos.clone() };
     cop.brain = 'scripted'; cop.stateT = 0; cop.char.human.setSpeed(0);
     this.hooks.busted(); // sets the death flow (the card waits for our animation hook)
     player.human.setState('crouch');
@@ -303,21 +343,25 @@ export class Dispatch {
     player.health = player.maxHealth; // nobody shoots a suspect who is being cuffed
     const cop = a.cop, ph = player.human, ch = cop.char.human;
     player.yaw = a.yaw; ph.root.rotation.y = a.yaw;
-    const behind = player.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw)), -0.8);
-    if (a.t < 0.15 && a.phase === 0) { a.phase = 1; ph.playAction('hands_up'); this.shout(cop); }
+    const behind = a.base.clone().addScaledVector(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw)), -0.8);
+    // ~4 s: hands up, kneel, officer walks round behind, takes both wrists, cuffs click, suspect led one step
+    if (a.t >= 0.15 && a.phase === 0) { a.phase = 1; ph.playAction('hands_up'); this.shout(cop); }
     if (a.t >= 0.9 && a.phase === 1) { a.phase = 2; ph.playAction('kneel'); }
-    // the officer steps round to stand right behind the kneeling suspect
-    const k = THREE.MathUtils.smoothstep(a.t, 0.4, 1.6);
-    cop.char.place(THREE.MathUtils.lerp(a.from.x, behind.x, k), player.pos.y, THREE.MathUtils.lerp(a.from.z, behind.z, k), a.yaw);
-    if (a.t >= 1.7 && a.phase === 2) { a.phase = 3; ch.playAction('cuffing'); }
-    if (a.t >= 2.4 && a.phase === 3) { a.phase = 4; ph.stopAction('hands_up'); ph.playAction('handcuffed'); }
-    if (a.t >= 3.3 && !a.finished) { a.finished = true; const d = a.done; a.done = null; d?.(); }
+    const k = THREE.MathUtils.smoothstep(a.t, 0.2, 1.9);
+    const lead = THREE.MathUtils.smoothstep(a.t, 3.2, 3.9) * 0.7;
+    const fx = Math.sin(a.yaw), fz = Math.cos(a.yaw);
+    cop.char.place(THREE.MathUtils.lerp(a.from.x, behind.x, k) + fx * lead, player.pos.y, THREE.MathUtils.lerp(a.from.z, behind.z, k) + fz * lead, a.yaw);
+    if (lead > 0) player.place(a.base.x + fx * lead, player.pos.y, a.base.z + fz * lead, a.yaw);
+    if (a.t >= 1.9 && a.phase === 2) { a.phase = 3; ch.playAction('cuff_reach'); }
+    if (a.t >= 2.35 && a.phase === 3) { a.phase = 4; ph.stopAction('hands_up'); ph.playAction('wrists_back'); ch.stopAction('cuff_reach'); ch.playAction('cuffing'); }
+    if (a.t >= 3.0 && a.phase === 4) { a.phase = 5; ph.stopAction('wrists_back'); ph.playAction('handcuffed'); this.hooks?.cam.addShake(0.04); } // the click
+    if (a.t >= 4.0 && !a.finished) { a.finished = true; const d = a.done; a.done = null; d?.(); }
     this.frame(player);
   }
   /** Called when the arrest scene is over (respawn). */
   endArrest(player?: Character) {
-    if (player) { player.human.stopAction('kneel'); player.human.stopAction('handcuffed'); player.human.stopAction('hands_up'); }
-    if (this.arrest) { this.arrest.cop.brain = 'idle'; this.arrest = null; }
+    if (player) { player.human.stopAction('wrists_back'); player.human.stopAction('kneel'); player.human.stopAction('handcuffed'); player.human.stopAction('hands_up'); }
+    if (this.arrest) { const ch = this.arrest.cop.char.human; ch.stopAction('cuff_reach'); ch.stopAction('cuffing'); this.arrest.cop.brain = 'idle'; this.arrest = null; }
     if (this.hooks) this.hooks.cam.cinematic = null;
     this.pendingArrest = null; this.dragT = 0;
   }
