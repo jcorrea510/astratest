@@ -2,7 +2,7 @@
 
 - Read CLAUDE.md (project map) instead of exploring the tree. Never open public/assets, dist, node_modules, lockfiles or
   screenshots unless judging visuals. grep before reading; read big files with offset/limit. Keep reports short.
-- Read docs/BRIEF2.md (the owner's verbatim request) first. Quality bar: "an actual high-quality game", GTA-genre, realistic
+- Read docs/BRIEF5.md (the owner's latest verbatim notes) first. Quality bar: "an actual high-quality game", GTA-genre, realistic
   look, but ALL names/art/UI original (no real brands, no GTA assets/fonts/logos). Teen tone.
 - Work in /home/user/astratest (shared checkout; other agents edit other files at the same time). Only edit files you own;
   for a needed change elsewhere keep it minimal and localized (small hook/one-liner) and list it in your report.

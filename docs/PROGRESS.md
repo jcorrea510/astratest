@@ -1,6 +1,17 @@
 # Progress (newest first; keep short — git has history)
 
-Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Owner rules in CLAUDE.md. Deadline 12:00 UTC 19 Nov.
+Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
+
+## Round 5 (owner notes BRIEF5 + "crazy realistic overhaul")
+- [ ] R5-H Highway: snappy realistic steering (lane change ~1-2 s), no 0.2 s bounce, wheel turns in 1st person, realistic interior.
+- [ ] R5-P Perf+settings: high graphics smooth with full crowd, no culling pop-out of peds/cars near camera, density sliders removed (tied to quality), settings key/button that isn't Esc.
+- [ ] R5-T Traffic: persistent parked cars (no refresh), correct facing, trucks stable/no respawn, no jams, honk when cut off, pull over for accidents/sirens/stolen cop car, flee when shot.
+- [ ] R5-C Police: see traffic violations, stolen cop car always pursued on sight, shot cop car -> cops exit+pursue, heli chase holds heat.
+- [ ] R5-E Player: shot store glass clears + shoot-through, correct two-hand gun hold, store shoppers move/browse.
+- [ ] R5-W World: visible traffic lights, no posts in crosswalks/cross streets, pier road shoulder, East River volume, bridge top glitch, roof flicker from air, Precinct 4 looks like a precinct.
+- [ ] R5-A Army: base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
+- [ ] R5-M Map: 3D-looking map (extruded buildings, shading) for full map + minimap.
+- [ ] R5-Z Gate + publish.
 
 ## Round 4 (hyper-realism night, 02:40-12:00 UTC)
 - [x] R4-A Driving (no steering retune done: owner still says hard to turn — retune keyboard steering in R4-R): car jitter fwd/back, curbs, easier turns+drift, stolen cop car siren J/K/L + lights key, windshield shatter, bridge camera stutter.
