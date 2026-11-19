@@ -132,6 +132,7 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   const p = watch(page);
   await boot(page);
   await quietStreets(page);
+  await page.evaluate(() => (window as any).__meridian.sandbox.act('never', true)); // stealing a heli is a 3-star crime: keep the cops out of this flight test
   const pads = await page.evaluate(() => (window as any).__game.helis.pads.map((s: any) => ({ name: s.def.name, y: s.pos.y, heli: !!s.heli })));
   expect(pads.length).toBeGreaterThanOrEqual(2);
   expect(pads.every((s: any) => s.heli)).toBe(true);

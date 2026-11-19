@@ -330,7 +330,7 @@ test('tour: every feature in one session, clean console and sane world after eve
       g.trafficCap = 0; g.pedCap = 20;
       const wrong: string[] = [];
       for (let i = 0; i < 120; i++) g.frame(1 / 30, false);
-      for (const k of R.kiosks) { const d = Math.hypot(k.def.x - cp.x, k.def.z - cp.z); if ((d < 105 && !k.root.visible) || (d > 115 && k.root.visible)) wrong.push(`${k.def.name}:${d.toFixed(0)}:${k.root.visible}`); }
+      for (const k of R.kiosks) { const d = Math.hypot(k.def.x - cp.x, k.def.z - cp.z); const vis = k.shell ? k.shell.root.visible : false; if ((d < 105 && k.shell && !vis) || (d > 115 && vis)) wrong.push(`${k.def.name}:${d.toFixed(0)}:${vis}`); }
       const T = cp.constructor; const fwd = g.renderer.camera.getWorldDirection(new T());
       let behind = 0, behindShown = 0, front = 0, frontHidden = 0;
       for (const n of g.pop.npcs) {

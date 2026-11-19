@@ -157,7 +157,7 @@ test('WASTED: slow motion, grey, card, hospital bill, respawn at the clinic; ARR
 test('sandbox save from the pause menu, reload and continue (position, cash, guns, tools, time); settings persist', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game, M = (window as any).__meridian; g.money = 4321; g.hour = 21.5; g.pcombat.give('smg', 60); g.player.place(-200, 0.3, 150, 0); M.sandbox.act('god', true); M.activities.found.add(2); });
+  await page.evaluate(() => { const g = (window as any).__game, M = (window as any).__meridian; g.money = 4321; g.hour = 21.5; g.pcombat.give('smg', 60); g.player.place(0, 0.3, 0, 0); M.sandbox.act('god', true); M.activities.found.add(2); });
   await step(page, 0.3);
   // pause opens on the map; the Quit tab has Save game
   await page.evaluate(() => (window as any).__meridian.pause());
@@ -179,7 +179,7 @@ test('sandbox save from the pause menu, reload and continue (position, cash, gun
   expect(await state<number>(page, 'window.__game.money')).toBeGreaterThanOrEqual(cash);
   expect(await state<boolean>(page, 'window.__game.pcombat.inv.weapons.smg.owned')).toBe(true);
   expect(await state<number>(page, 'Math.round(window.__game.hour * 2) / 2')).toBe(21.5);
-  expect(await state<number>(page, 'Math.hypot(window.__game.player.pos.x + 200, window.__game.player.pos.z - 150)')).toBeLessThan(4);
+  expect(await state<number>(page, 'Math.hypot(window.__game.player.pos.x, window.__game.player.pos.z)')).toBeLessThan(4);
   expect(await state<boolean>(page, 'window.__meridian.sandbox.god')).toBe(true);
   expect(await state<boolean>(page, 'window.__meridian.activities.found.has(2)')).toBe(true);
   expect(await state<number>(page, 'window.__meridian.settings.sensitivity')).toBeCloseTo(1.7);

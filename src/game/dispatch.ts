@@ -228,7 +228,7 @@ export class Dispatch {
           n.char.yaw = Math.atan2(dir.x, dir.z);
           h.combat.shoot(n.char, w, from, dir, w.aimSpread);
           // tracer bullets alone rarely connect with a moving target: a share of shots count as hits
-          if (Math.random() < 0.2) ph.damage(w.damage * 0.8, aim.clone(), dir, n.char);
+          if (Math.random() < (heat >= 5 ? 0.2 : heat === 4 ? 0.1 : 0.05)) ph.damage(w.damage * 0.8, aim.clone(), dir, n.char);
         }
       }
       this.footFireT.set(n, t);
