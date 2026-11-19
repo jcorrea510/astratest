@@ -273,3 +273,11 @@ describe('traffic signal posts', () => {
     }
   });
 });
+
+describe('east river waterfront', () => {
+  it('has a row of buildings behind the Eastbank esplanade, none on a road', () => {
+    const row = city.lots.filter(l => l.district === 'eastbank' && l.x > 698 && l.x < 726);
+    expect(row.length).toBeGreaterThanOrEqual(8);
+    for (const l of row) expect(surfaceAt(city, l.x, l.z), `lot ${l.id}`).not.toBe('road');
+  });
+});

@@ -66,7 +66,7 @@ export class Traffic {
    * Returns an unsubscribe function. Events are rate limited per kind, so the police can report each one directly.
    */
   onPlayerTrafficViolation(cb: (v: Violation) => void): () => void { this.violationCbs.push(cb); return () => { const i = this.violationCbs.indexOf(cb); if (i >= 0) this.violationCbs.splice(i, 1); }; }
-  constructor(private city: CityMap, private vehicles: VehicleManager, private pop: Population, private audio: GameAudio, private time: () => number) {
+  constructor(private city: CityMap, readonly vehicles: VehicleManager, private pop: Population, private audio: GameAudio, private time: () => number) {
     vehicles.crashListeners.push(e => { this.crashes.push({ pos: e.point.clone(), t: this.time(), v: e.vehicle }); if (this.crashes.length > 6) this.crashes.shift(); });
   }
 
@@ -257,7 +257,7 @@ export class Traffic {
         if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * 6 * Math.max(0, car.lane.length - car.s - 3)));
       }
       // Signals
-      if (car.mode === 'cruise' && !car.lane.connector) {
+      if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20)))) {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, car.lane.axis, t);
         const dStop = this.distToStop(car);
@@ -340,6 +340,8 @@ export class Traffic {
       v.siren = car.mode === 'pursuit' || (car.driver.role === 'police' && car.mode === 'goto');
     }
   }
+  /** Is a world point inside the camera view (as of the last update)? */
+  seen(p: THREE.Vector3): boolean { return this.frustum.containsPoint(p); }
   /** Samples the player's driving at 8 Hz and reports violations (see onPlayerTrafficViolation). */
   private hitLatch = false; private monAcc = 0;
   private monitorPlayer(dt: number, t: number, pv: Vehicle | null) {

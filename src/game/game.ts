@@ -26,6 +26,7 @@ import { PlayerCombat } from './playerCombat';
 import { Population } from './population';
 import { Traffic } from './traffic';
 import { Crowd } from './crowd';
+import { BusService } from './buses';
 import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
@@ -79,6 +80,7 @@ export class Game {
   pop!: Population;
   traffic!: Traffic;
   crowd!: Crowd;
+  buses!: BusService;
   police!: Police;
   playerVehicle: Vehicle | null = null;
   /** the car the player last got out of (kept out of mission clean-ups) */
@@ -166,6 +168,7 @@ export class Game {
     }, this.audio);
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
+    this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
     this.crowd.wire(this.traffic, this.pop, () => ({ traffic: this.trafficCap ?? this.renderer.quality.traffic, peds: this.pop.maxCivilians })); // far crowd hands over to real cars/people (no vanishing)
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
@@ -609,6 +612,7 @@ export class Game {
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
     this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
     this.crowd.sirens = this.traffic.sirenSources;
+    this.buses.update(dt, this.player.pos);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);

@@ -11,6 +11,7 @@ import { getTemplate } from '../vehicles/models/build';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { K } from '../vehicles/models/kinds';
 import { MirrorRT, CROP, cropUv, sideMirrorsLive, type MirrorQuality } from './mirrors';
+import { cowlHeight } from './cabinshell';
 import { clockText, nextExit, tripText } from './infotext';
 
 const D2R = Math.PI / 180;
@@ -188,10 +189,11 @@ export class Cockpit {
     this.maxMph = 160;
     const zA = gh?.zA ?? S.z + 1.0, zR1 = gh?.zR1 ?? S.z + 0.2, roofY = tp.roofY;
     const hwI = W / 2 - 0.16;                      // inner face of the door cards
-    const yD = S.y + 0.4;                          // top of the dash pad
+    const cowl = cowlHeight(tp.lods[0].body, zR1 - 0.1) ?? S.y + 0.5;   // windshield base line of the body: the dash pad meets it
+    const yD = Math.max(S.y + 0.38, cowl - 0.04);  // top of the dash pad
     const zW = Math.min(S.z + 0.5, zA - 0.38);     // steering wheel plane
-    const yW = S.y + 0.235;
-    this.dims = { eye: new THREE.Vector3(S.x, Math.min(S.y + 0.66, roofY - 0.2), S.z - 0.22), wheelZ: zW, dashY: yD };
+    const yW = yD - 0.19;
+    this.dims = { eye: new THREE.Vector3(S.x, gh?.open ? yD + 0.3 : Math.min(Math.max(S.y + 0.66, yD + 0.3), roofY - 0.16), S.z - 0.22), wheelZ: zW, dashY: yD };
 
     const bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
     this.disposables.push(bump, leather, carpet);

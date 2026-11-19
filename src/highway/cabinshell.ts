@@ -8,6 +8,21 @@ export interface Pillar { a: THREE.Vector3; b: THREE.Vector3 }
 /** Slimmed fraction of the original pillar width (0.55 leaves about 4.7 cm). */
 export const PILLAR_KEEP = 0.55;
 
+/** Height of the windshield's bottom edge (the cowl) in the body mesh: the lowest dark windshield-frame triangle ahead of `zFront`. */
+export function cowlHeight(g: THREE.BufferGeometry, zFront: number): number | null {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind'), col = g.getAttribute('color');
+  if (!kind || !col) return null;
+  let y = Infinity;
+  for (let i = 0; i < pos.count; i += 3) {
+    const k = Math.round(kind.getX(i));
+    if ((k !== 0 && k !== 2) || col.getX(i) >= 0.012) continue;
+    const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3, cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+    if (cz < zFront || Math.abs(cx) < 0.3) continue;
+    y = Math.min(y, (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3);
+  }
+  return Number.isFinite(y) ? y : null;
+}
+
 /**
  * Returns a copy of `g` whose dark windshield-pillar triangles (front of `zFront`, above the dash line) are squeezed toward the
  * pillar's centre line (the lowest dark triangles, the windshield's bottom trim, are left alone), plus the centre line of the driver-side (+x) pillar. Non-indexed template geometry only.

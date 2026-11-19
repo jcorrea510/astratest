@@ -194,7 +194,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   }
   // promenade along the coast and the dock quay
   const tipX = AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14; // west end of the south tip
-  slab(walks, tipX, maxZ, maxX, maxZ + 7, CURB_HEIGHT, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6); // flat, kerbed like every other sidewalk (it used to ramp up from road level)
+  slab(walks, tipX, maxZ, maxX, maxZ + 7, 0, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6);
   {
     // proper kerb, painted road edge, and a planter/lamp/bollard buffer so the promenade does not start right at the asphalt
     const stoneC = C('#bdb8ac'), potC = C('#6c6a64'), lampC = C('#2b2e31');
