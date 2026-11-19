@@ -11,6 +11,7 @@ import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
 import { buildExpansion, expansionPads } from './expansion';
 import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
+import { buildQuay } from './quaybuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
 import { signalPosts } from './signals';
 import { buildPrecinct, precinctFootprint } from './precinct';
@@ -629,6 +630,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   buildFlatiron(ctx);
   buildIsland({ physics, city, trim, northEdge: NORTH_EDGE, southEdge: maxZ + 8 });
   buildEast({ root, physics, city, trim, paveMat, grassMat, addTree, addPalm });
+  buildQuay({ ctx, physics, city, trim, addTree });
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {
