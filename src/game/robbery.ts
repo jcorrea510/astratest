@@ -16,7 +16,10 @@ interface Kiosk {
   progress: number; cash: number; uncoveredT: number; reopenAt: number; alarmT: number; pickT: number; brave: boolean;
   /** direction the counter faces (towards customers) */
   front: THREE.Vector3; clerkPos: THREE.Vector3; customer: THREE.Vector3; door: number;
+  /** shoppers wandering the aisles (2-5), their reactions and the register state when the clerk is out of the picture */
+  shoppers: Shopper[]; panicT: number; callT: number; called: boolean; looting: number; looted: boolean;
 }
+interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number }
 const ROB_TIME = 7; // seconds of covering the clerk to empty the till
 const REOPEN = 240; // seconds until a robbed store reopens
 
@@ -32,7 +35,7 @@ export class Robberies {
       void groundY; // stores sit on the pavement (a raycast would hit the floors above)
       const frame = storeFrame(def, CURB_HEIGHT);
       const front = new THREE.Vector3(Math.sin(def.yaw), 0, Math.cos(def.yaw));
-      this.kiosks.push({ def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
+      this.kiosks.push({ def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, shoppers: [], panicT: -1, callT: 0, called: false, looting: 0, looted: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
     }
   }
   blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: 'shop' as const, label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
@@ -47,6 +50,9 @@ export class Robberies {
   prompt(): string | null {
     const g = this.game; if (g.playerVehicle || this.active) return null;
     for (const k of this.kiosks) {
+      if (this.canLoot(k)) return k.looting > 0 ? 'Emptying the register...' : 'E  Open the register';
+    }
+    for (const k of this.kiosks) {
       if (k.phase !== 'open' || !k.clerk?.alive) continue;
       if (this.customerDist(k) < 7) return g.pcombat.armed ? `Aim at the clerk to hold up ${k.def.name}` : `${k.def.name}  ·  draw a gun to hold it up`;
     }
@@ -57,6 +63,73 @@ export class Robberies {
     const l = k.frame.toLocal(this.game.player.pos);
     if (Math.abs(l.x) > STORE_W / 2 + 0.5 || l.z > STORE_D / 2 + 1.5 || l.z < k.frame.counterZ + 0.3 || l.y < -1.5 || l.y > 4) return Infinity;
     return Math.hypot(l.x + 3.0, l.z - k.frame.counterZ);
+  }
+  /** Clerk gone (shot, fled): the player can still walk behind the counter and clean out the register. */
+  private canLoot(k: Kiosk, tolerant = false): boolean {
+    const g = this.game;
+    if (k.phase !== 'open' || k.looted || !k.clerk || k.clerk.alive || g.playerVehicle || g.inputBlocked) return false;
+    const l = k.frame.toLocal(g.player.pos);
+    return Math.abs(g.player.pos.y - k.clerkPos.y) < 2.5 && l.z < k.frame.counterZ + (tolerant ? 0.6 : -0.1) && l.z > -2 && Math.hypot(l.x + 3.0, l.z - 0.25) < (tolerant ? 3.4 : 2.6);
+  }
+  private spawnShoppers(k: Kiosk) {
+    const g = this.game, cnt = 2 + Math.floor(Math.random() * 4), f = k.frame;
+    for (let i = 0; i < cnt; i++) {
+      const lx = -4.3 + Math.random() * 6.2, lz = 2.4 + Math.random() * 1.7, p = f.toWorld(lx, 0.05, lz);
+      const n = g.pop.spawn('civilian', p.x, p.z, p.y);
+      n.persistent = true; n.brain = 'scripted'; n.tag = 'shopper'; n.char.yaw = Math.random() * 6.28;
+      n.char.human.setState(Math.random() < 0.5 ? 'talk' : 'loco'); n.char.human.setSpeed(0);
+      k.shoppers.push({ n, act: 'browse', caller: i === 0 && cnt > 2 && Math.random() < 0.8, delay: Math.random() * 0.7 });
+    }
+  }
+  /** Everyone in the store notices trouble: shots, a hold-up, a body behind the counter. */
+  private panic(k: Kiosk) {
+    if (k.panicT >= 0) return;
+    k.panicT = 0; k.alarmT = Math.max(k.alarmT, 0.01);
+    const g = this.game;
+    let i = 0;
+    for (const s of k.shoppers) {
+      if (!s.n.alive) continue;
+      const r = i++ % 3;
+      s.act = r === 0 ? 'handsUp' : r === 1 ? 'cower' : 'flee';
+      if (s.caller) s.act = 'cower';
+    }
+    g.audio.play('heatUp', { pos: k.pos, volume: 0.7 });
+  }
+  private updateShoppers(k: Kiosk, dt: number, dist: number) {
+    const g = this.game;
+    if (k.phase === 'open' && dist < 60 && k.shoppers.length === 0 && !k.looted) this.spawnShoppers(k);
+    if (dist > 140) { for (const s of k.shoppers) { s.n.persistent = false; if (s.n.alive) s.n.brain = 'wander'; } k.shoppers = []; k.panicT = -1; k.called = false; k.looted = false; return; }
+    if (k.panicT >= 0) {
+      k.panicT += dt;
+      // one shopper calls 911 a few seconds in, if they are alive and still in the store
+      const caller = k.shoppers.find(s => s.caller && s.n.alive);
+      if (caller && !k.called && k.panicT > 3.5) {
+        k.called = true; caller.n.char.human.playAction('point');
+        g.police.report('robbery', new THREE.Vector3(k.def.x, 0, k.def.z)); this.ui.toast('Someone inside called 911', 'heat');
+      }
+    }
+    const door = k.frame.toWorld(3.1, 0.05, 4.2), out = k.frame.toWorld(3.1, 0.05, 8.5);
+    for (const s of k.shoppers) {
+      const n = s.n, c = n.char; if (!n.alive) continue;
+      if (s.act === 'browse' || s.act === 'out') continue;
+      if (s.delay > 0) { s.delay -= dt; continue; }
+      const h = c.human;
+      if (s.act === 'handsUp') {
+        c.faceTowards(Math.atan2(g.player.pos.x - c.pos.x, g.player.pos.z - c.pos.z), 8, dt);
+        if (h.actionName !== 'hands_up') h.playAction('hands_up', { hold: true });
+        if (k.panicT > 9 && dist > 12) s.act = 'flee';
+      } else if (s.act === 'cower') {
+        if (h.currentState !== 'cower') h.setState('cower');
+        if (k.panicT > 14 && dist > 14) { h.setState('loco'); s.act = 'flee'; }
+      } else if (s.act === 'flee') {
+        if (h.actionName === 'hands_up') h.stopAction('hands_up');
+        if (h.currentState !== 'loco') h.setState('loco');
+        const tgt = c.pos.distanceTo(door) < 1.2 || (k.frame.toLocal(c.pos).z > 4.4) ? out : door;
+        const dx = tgt.x - c.pos.x, dz = tgt.z - c.pos.z, d = Math.hypot(dx, dz);
+        if (d < 1.0 && tgt === out) { s.act = 'out'; n.brain = 'flee'; n.fleeFrom.copy(g.player.pos); n.stateT = 0; n.persistent = false; continue; }
+        c.move(new THREE.Vector3(dx / d * 5.6, 0, dz / d * 5.6), dt); c.faceTowards(Math.atan2(dx, dz), 12, dt); h.setSpeed(c.speed);
+      }
+    }
   }
   private spawnClerk(k: Kiosk) {
     const g = this.game, c = k.clerkPos;
@@ -98,7 +171,7 @@ export class Robberies {
     for (const k of this.kiosks) {
       const dist = Math.hypot(p.x - k.def.x, p.z - k.def.z);
       // shutters come down once the player has left a robbed store; it reopens later
-      if (k.phase === 'closed' && t > k.reopenAt && dist > 60) { k.phase = 'open'; k.shell?.setClosed(false); }
+      if (k.phase === 'closed' && t > k.reopenAt && dist > 60) { k.phase = 'open'; k.shell?.setClosed(false); k.panicT = -1; k.called = false; k.looted = false; k.alarmT = 0; for (const s of k.shoppers) { s.n.persistent = false; if (s.n.alive && s.n.brain === 'scripted') s.n.brain = 'wander'; } k.shoppers = []; }
       const sh = k.shell;
       if (sh) {
         const closedNow = k.phase === 'closed' && dist > 9;
@@ -107,12 +180,16 @@ export class Robberies {
         const near = dist < 8.5 && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
         k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
         sh.setDoor(k.door * k.door * (3 - 2 * k.door));
-        sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
+        sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || k.panicT >= 0 || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
       }
       // a clerk staffs every open store the player is near
       if (k.phase === 'open' && dist < 110 && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
-      if (k.phase === 'open' && k.clerk && !k.clerk.alive) { this.close(k); }
+      if (k.phase === 'open' && k.clerk && !k.clerk.alive) this.panic(k);
+      this.updateShoppers(k, dt, dist);
+      if (k.phase === 'open' && k.panicT < 0 && k !== this.active && k.shoppers.length && g.pcombat.lastShot > this.shotClip[this.kiosks.indexOf(k)] && dist < 28) this.panic(k);
+      this.shotClip[this.kiosks.indexOf(k)] = g.pcombat.lastShot;
+      this.updateLoot(k, dt);
       if (k.phase === 'open' && k.clerk?.alive && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
     }
     // one shared interior light follows the player into a store
@@ -124,7 +201,7 @@ export class Robberies {
     const clip = g.pcombat.inv.state.clip;
     if (this.lastClip >= 0 && clip < this.lastClip) this.boostT = 1.5;
     this.lastClip = clip; this.boostT = Math.max(0, this.boostT - dt);
-    if (!n?.alive) { this.end(false, 'The clerk is down. The till stays shut.'); return; }
+    if (!n?.alive) { this.active = null; this.ui.robberyMeter(null); this.game.audio.setMusicMood('none'); k.phase = 'open'; this.ui.toast('The clerk is down. Get behind the counter and clean out the register.', 'warning'); this.panic(k); return; }
     if (g.deathT >= 0) { this.end(false, null); return; }
     k.alarmT += dt;
     if (k.alarmT > 3 && k.alarmT - dt <= 3) { g.police.alarm('robbery', new THREE.Vector3(k.def.x, 0, k.def.z)); this.ui.toast(`${k.def.name}: silent alarm tripped`, 'heat'); }
@@ -150,11 +227,29 @@ export class Robberies {
       this.end(true, `Grab the cash: $${k.def.cash}`);
     }
   }
+  private shotClip: number[] = [];
+  /** Walk behind the counter, press E and hold position for a few seconds to empty the register. */
+  private updateLoot(k: Kiosk, dt: number) {
+    const g = this.game;
+    if (k.looting > 0 || (this.canLoot(k) && g.input.justPressed('interact'))) {
+      if (!this.canLoot(k, k.looting > 0)) { k.looting = 0; this.ui.robberyMeter(null); return; }
+      if (k.looting === 0) { k.looting = 0.001; this.panic(k); g.player.human.playOnce('PickUp_Table', 'full', 0.15); }
+      k.looting = Math.min(1, k.looting + dt / 4);
+      this.ui.robberyMeter({ label: 'Emptying the register', progress: k.looting, cash: Math.round(k.def.cash * 0.7 * k.looting) });
+      if (k.looting >= 1) {
+        k.looting = 0; k.looted = true; this.ui.robberyMeter(null);
+        g.spawnPickup('cash', Math.round(k.def.cash * 0.7), k.frame.bag.clone());
+        g.police.alarm('robbery', new THREE.Vector3(k.def.x, 0, k.def.z)); g.pop.danger(k.pos, 20, g.player);
+        this.ui.toast('Register cleaned out. Grab the cash and go.', 'money');
+        k.phase = 'closed'; k.reopenAt = g.time + REOPEN;
+      }
+    }
+  }
   private begin(k: Kiosk) {
     const g = this.game;
     this.active = k; k.phase = 'robbing'; k.progress = 0; k.uncoveredT = 0; k.alarmT = 0; k.pickT = 0.4; this.lastClip = g.pcombat.inv.state.clip;
     k.clerk!.char.yaw = k.def.yaw;
-    g.pop.danger(k.pos, 25, g.player);
+    g.pop.danger(k.pos, 25, g.player); this.panic(k);
     this.ui.toast('Hold-up! Keep the clerk covered.', 'warning');
     g.audio.setMusicMood('tension');
   }

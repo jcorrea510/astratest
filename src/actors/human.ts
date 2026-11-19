@@ -48,6 +48,8 @@ const _e = new THREE.Euler(), _r = new THREE.Quaternion(), _p = new THREE.Quater
 const _chain: THREE.Object3D[] = [];
 
 /** One animated person. */
+const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
+const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
 export class Human {
   root = new THREE.Group();
   model: THREE.Object3D;
@@ -71,6 +73,8 @@ export class Human {
   private act: Active | null = null;
   private poseTmp = new Map<BoneKey, Euler>();
   aimPitch = 0;
+  /** World-space hand targets (two-bone IK, applied last each update): used to grab and haul people. */
+  readonly reach: { L: THREE.Vector3 | null; R: THREE.Vector3 | null; w: number } = { L: null, R: null, w: 0 };
   speed = 0;
   /** Yaw rate (rad/s) fed by the character; drives turn-in-place stepping. */
   turnRate = 0;
@@ -341,6 +345,36 @@ export class Human {
       this.applyPose(samplePose(a.def.poses, u, this.poseTmp), actK);
     }
     if (this.state === 'cower' && (!this.act || this.act.name !== 'cower')) this.applyPose(samplePose(ACTIONS.cower.poses!, 0, this.poseTmp), Math.min(1, this.stateTime * 4));
+    if (this.reach.w > 0.001) {
+      this.root.updateMatrixWorld(true);
+      if (this.reach.L) this.solveArm('L', this.reach.L, this.reach.w);
+      if (this.reach.R) this.solveArm('R', this.reach.R, this.reach.w);
+    }
+  }
+  /** Two-bone IK: bends the forearm to the target distance, then swings the whole arm onto it. */
+  private solveArm(side: 'L' | 'R', target: THREE.Vector3, w: number) {
+    const A = this.bones.get(side === 'L' ? 'armL' : 'armR'), B = this.bones.get(side === 'L' ? 'foreL' : 'foreR'), C = this.bones.get(side === 'L' ? 'handL' : 'handR');
+    if (!A || !B || !C) return;
+    const a = A.getWorldPosition(_ia), b = B.getWorldPosition(_ib), c = C.getWorldPosition(_ic);
+    const l1 = a.distanceTo(b), l2 = b.distanceTo(c);
+    if (l1 < 1e-4 || l2 < 1e-4) return;
+    const rot = (bone: THREE.Object3D, q: THREE.Quaternion) => {
+      const pq = bone.parent!.getWorldQuaternion(_iq1), wq = bone.getWorldQuaternion(_iq2).premultiply(q);
+      bone.quaternion.copy(pq.invert().multiply(wq)); bone.updateMatrixWorld(true);
+    };
+    const d = THREE.MathUtils.clamp(a.distanceTo(target), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.005);
+    const want = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
+    _iu.subVectors(a, b).normalize(); _iv.subVectors(c, b).normalize();
+    const cur = Math.acos(THREE.MathUtils.clamp(_iu.dot(_iv), -1, 1));
+    _ia2.crossVectors(_iu, _iv); if (_ia2.lengthSq() < 1e-8) _ia2.set(1, 0, 0).applyQuaternion(this.root.quaternion); _ia2.normalize();
+    _iqw.setFromAxisAngle(_ia2, want - cur);
+    const save = [A.quaternion.clone(), B.quaternion.clone()];
+    rot(B, _iqw);
+    C.getWorldPosition(_ic);
+    _iu.subVectors(_ic, a).normalize(); _iv.subVectors(target, a).normalize();
+    _iqw.setFromUnitVectors(_iu, _iv);
+    rot(A, _iqw);
+    if (w < 0.999) { A.quaternion.slerpQuaternions(save[0], A.quaternion.clone(), w); B.quaternion.slerpQuaternions(save[1], B.quaternion.clone(), w); A.updateMatrixWorld(true); }
   }
   private holdClip(name: string, dt: number) {
     for (const l of [this.lower, this.upper]) {

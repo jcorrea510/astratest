@@ -197,7 +197,7 @@ export class CarEntry {
         return;
       }
       const far = c.pos.distanceTo(v.position) > 4.5 || j.path.length > 1;
-      const sp = last && d < 1.2 ? Math.max(1.1, d * 2.2) : far ? 4.6 : 2.2;
+      const sp = last && d < 1.2 ? Math.max(1.6, d * 3) : far ? 5.4 : 3.2;
       c.move(_d.set(dx / d * sp, 0, dz / d * sp), dt);
       c.faceTowards(Math.atan2(dx, dz), 12, dt);
       return;
@@ -205,7 +205,7 @@ export class CarEntry {
     // at the door: keep hold of the spot, face the car, step back while the door swings
     const pts = doorPoints(j.f, v.seatLocal(j.entrySeat));
     let tgt = pts.handle;
-    if (j.phase === 'open' && j.t > 0.45) tgt = pts.back;
+    if (j.phase === 'open' && j.t > 0.25) tgt = pts.back;
     if (j.phase === 'jack') tgt = pts.back;
     const w = v.group.localToWorld(_w.copy(tgt));
     const dx = w.x - c.pos.x, dz = w.z - c.pos.z;
@@ -328,7 +328,7 @@ export class CarEntry {
     victim.human.setState('loco'); victim.human.setSpeed(0);
     victim.human.playAction('pulled_out');
     const from = victim.human.root.position.clone();
-    this.victims.push({ char: victim, npc, v, door, f, t: 0, dur: 0.75, from, to: pts.throwTo.clone(), yaw0: 0, yaw1: -f.sg * HALF_PI, thrown: true, puller });
+    this.victims.push({ char: victim, npc, v, door, f, t: 0, dur: 0.6, from, to: pts.throwTo.clone(), yaw0: 0, yaw1: -f.sg * HALF_PI, thrown: true, puller });
   }
   /** Passengers of a jacked car get out on their own side and run. */
   private passengersFlee(v: Enterable) {
@@ -371,44 +371,47 @@ export class CarEntry {
       if (Math.hypot(mv.x, mv.y) > 0.5) { this.abort(); return dragged; }
     }
     const pts = doorPoints(j.f, v.seatLocal(j.entrySeat));
+    const hel = !(v instanceof Vehicle); // helicopters: slower, deliberate climb over the skid
+    const tClimb = hel ? 0.55 : 0.2, tSit = hel ? 0.7 : 0.4, tTurn = hel ? 0.35 : 0.22;
     switch (j.phase) {
       case 'approach': h.setState('loco'); h.setSpeed(c.speed); h.setUpperMode('loco'); break;
       case 'smash':
         h.setSpeed(0);
-        if (j.t > 1.15) this.startOpen(j);
+        if (j.t > 0.9) this.startOpen(j);
         break;
       case 'open':
         h.setSpeed(c.speed);
-        if (j.t > 1.05) {
-          if (v.driver && v.driver !== c) { j.phase = 'jack'; j.t = 0; h.playAction('pull_out', { onEvent: e => { if (e === 'grab') this.grab(j); } }); }
+        if (j.t > (v.driver && v.driver !== c ? 0.5 : hel ? 0.8 : 0.42)) {
+          if (v.driver && v.driver !== c) { j.phase = 'jack'; j.t = 0; h.playAction('pull_out', { rate: 1.7, onEvent: e => { if (e === 'grab') this.grab(j); } }); }
           else this.startClimb(j);
         }
         break;
       case 'jack':
         h.setSpeed(c.speed);
-        if (j.t > 1.35 && j.grabbed) this.startClimb(j);
-        else if (j.t > 2.5) this.startClimb(j);
+        if (j.t > 0.8 && j.grabbed) this.startClimb(j);
+        else if (j.t > 1.6) this.startClimb(j);
         break;
       case 'climb': { // step into the gap, turning the back to the seat
-        const k = sm(j.t / 0.45);
+        const k = sm(j.t / tClimb);
         lerpV(h.root.position, j.startPos, pts.gap, k);
+        if (hel) h.root.position.y += Math.sin(Math.min(1, j.t / tClimb) * Math.PI) * 0.3; // boot up on the skid, then over the sill
         h.root.rotation.y = j.startYaw + wrapAngle(j.f.sg * HALF_PI - j.startYaw) * k;
-        h.setSpeed(j.t < 0.4 ? 1.3 : 0);
-        if (j.t >= 0.45) { j.phase = 'sit'; j.t = 0; h.setSpeed(0); h.playAction('enter_car'); }
+        h.setSpeed(j.t < tClimb * 0.7 ? 1.0 : 0);
+        if (j.t >= tClimb) { j.phase = 'sit'; j.t = 0; h.setSpeed(0); h.playAction('enter_car', { rate: hel ? 1.6 : 2.6 }); }
         break;
       }
       case 'sit': { // sit down onto the seat edge
-        const k = sm((j.t - 0.12) / 0.7);
+        const k = sm((j.t - 0.04) / (tSit - 0.04));
         lerpV(h.root.position, pts.gap, pts.sit, k);
         h.root.rotation.y = j.f.sg * HALF_PI;
-        if (j.t >= 0.8) { j.phase = 'turn'; j.t = 0; h.setState('drive'); h.stopAction(); }
+        if (j.t >= tSit) { j.phase = 'turn'; j.t = 0; h.setState('drive'); h.stopAction(); }
         break;
       }
       case 'turn': { // swing the legs in and face forward
-        const k = sm(j.t / 0.5);
+        const k = sm(j.t / tTurn);
         lerpV(h.root.position, pts.sit, v.seatLocal(j.entrySeat), k);
         h.root.rotation.y = j.f.sg * HALF_PI * (1 - k);
-        if (j.t >= 0.5) {
+        if (j.t >= tTurn) {
           if (j.entrySeat !== j.seat) { j.phase = 'slide'; j.t = 0; }
           else this.seated(j);
         }
@@ -421,7 +424,7 @@ export class CarEntry {
         break;
       }
       case 'close':
-        if (j.t > 0.35) {
+        if (j.t > 0.12) {
           if (v instanceof Vehicle && !v.ignition) { j.phase = 'hotwire'; j.t = 0; this.startHotwire(v); }
           else { this.job = null; if (v instanceof Vehicle) this.game.audio.play('engineStart', { pos: v.position }); }
         }
@@ -495,7 +498,7 @@ export class CarEntry {
     if (v.destroyed || (v.driver && v.driver !== c)) { this.abort(); return; }
     // keep the occupant check honest: someone still in our seat?
     j.phase = 'climb'; j.t = 0;
-    h.stopAction();
+    h.stopAction(); h.reach.w = 0; h.reach.L = h.reach.R = null;
     v.visual.updateMatrixWorld();
     j.startPos.copy(v.visual.worldToLocal(_w.copy(c.pos)));
     j.startYaw = wrapAngle(c.yaw - v.yaw);
@@ -586,6 +589,7 @@ export class CarEntry {
           v.visual.updateMatrixWorld(); h.root.getWorldPosition(this.player.pos); this.player.yaw = v.yaw + h.root.rotation.y;
           h.update(dt); player = true;
         }
+        if (vi.puller && vi.thrown) this.grip(vi);
         if (vi.puller && vi.puller !== this.player && vi.puller.alive) vi.puller.faceTowards(v.yaw - vi.f.sg * HALF_PI, 8, dt);
       }
       if (vi.t >= vi.dur && h.root.parent === v.visual) this.landVictim(vi);
@@ -593,7 +597,17 @@ export class CarEntry {
     }
     return player;
   }
+  /** The puller's hands stay on the victim's shoulders (two-bone IK) while he is hauled out and flung, then let go. */
+  private grip(vi: Victim) {
+    const r = vi.puller!.human.reach, h = vi.char.human, k = vi.t / vi.dur;
+    if (k > 0.82) { r.w = 0; r.L = r.R = null; return; }
+    r.L ??= new THREE.Vector3(); r.R ??= new THREE.Vector3();
+    h.root.updateMatrixWorld(true);
+    h.root.localToWorld(r.L.set(0.2, 1.38, 0.04)); h.root.localToWorld(r.R.set(-0.2, 1.38, 0.04));
+    r.w = Math.min(1, k * 8);
+  }
   private landVictim(vi: Victim) {
+    if (vi.puller) { const r = vi.puller.human.reach; r.w = 0; r.L = r.R = null; }
     const c = vi.char, v = vi.v, h = c.human;
     v.visual.updateMatrixWorld();
     const p = h.root.getWorldPosition(new THREE.Vector3());

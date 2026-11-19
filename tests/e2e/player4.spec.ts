@@ -55,15 +55,16 @@ test('robbery: shoot the clerk, then still rob the register; shoppers panic and 
     // behind the counter
     const reg = k.frame.toWorld(-1.2, 0.05, 0.3); // behind the counter, round its open east end
     g.player.place(reg.x, reg.y + 0.3, reg.z, 0);
-    for (let f = 0; f < 8; f++) g.frame(1 / 30, false);
+    const ys: number[] = [];
+    for (let f = 0; f < 8; f++) { g.player.place(reg.x, reg.y + 0.3, reg.z, 0); g.frame(1 / 30, false); ys.push(+g.player.pos.y.toFixed(2)); }
     const canPrompt = R.prompt();
     const lp0 = k.frame.toLocal(g.player.pos).toArray(); let maxLoot = 0;
-    for (let f = 0; f < 30 * 6; f++) { if (f === 1) g.input.press('KeyE'); g.frame(1 / 30, false); maxLoot = Math.max(maxLoot, k.looting); }
+    for (let f = 0; f < 30 * 6; f++) { if (f === 1) g.input.press('KeyE'); g.player.place(reg.x, reg.y + 0.3, reg.z, 0); g.frame(1 / 30, false); maxLoot = Math.max(maxLoot, k.looting); }
     g.input.release('KeyE');
     const bag = g.pickups.find((q: any) => q.kind === 'cash');
     if (bag) { g.player.place(bag.pos.x, bag.pos.y - 0.55, bag.pos.z, 0); for (let f = 0; f < 15; f++) g.frame(1 / 30, false); }
     for (let f = 0; f < 30 * 3; f++) g.frame(1 / 30, false);
-    return { shoppers0, panicked, canPrompt, looted: k.looted, loot: k.looting, phase: k.phase, clerkAlive: k.clerk?.alive, blocked: g.inputBlocked, lp0, maxLoot, money: g.money, called: k.called, heat: g.police.heat, acts: k.shoppers.map((s: any) => s.act) };
+    return { shoppers0, panicked, canPrompt, looted: k.looted, loot: k.looting, phase: k.phase, clerkAlive: k.clerk?.alive, blocked: g.inputBlocked, lp0, maxLoot, ys, regY: reg.y, money: g.money, called: k.called, heat: g.police.heat, acts: k.shoppers.map((s: any) => s.act) };
   });
   expect(r.shoppers0).toBeGreaterThanOrEqual(2);
   expect(r.panicked).toBe(true);

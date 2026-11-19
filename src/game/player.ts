@@ -42,6 +42,9 @@ export class PlayerController {
   onSound: ((s: PlayerSound, volume: number) => void) | null = null;
   private wasSwimming = false;
   aiming = false;
+  /** Set by PlayerCombat while a ranged gun is raised without the aim button (firing from the hip): body keeps facing the camera line. */
+  hipRaised = false;
+  get strafing() { return this.aiming || this.hipRaised; }
   sprinting = false;
   rollT = 0;
   private rollDirX = 0; private rollDirZ = 1;
@@ -102,7 +105,7 @@ export class PlayerController {
     this.aiming = !opts.blocked && opts.canAim && this.input.held('aim');
 
     // Stamina with exhaustion hysteresis (no sprint flicker at empty) and a short regen delay.
-    const wantSprint = this.input.held('sprint') && !this.aiming && mag > 0.3 && !opts.blocked;
+    const wantSprint = this.input.held('sprint') && !this.strafing && mag > 0.3 && !opts.blocked;
     if (this.stamina <= 0.001) this.exhausted = true;
     else if (this.stamina > MOVE.exhaustedUntil) this.exhausted = false;
     this.sprinting = wantSprint && !this.exhausted && !c.swimming;
@@ -153,13 +156,13 @@ export class PlayerController {
     }
 
     const grounded = c.grounded;
-    const canJump = !opts.blocked && !this.aiming && this.jumpLock <= 0 && this.recoverT <= 0 && (grounded || this.coyoteT > 0);
+    const canJump = !opts.blocked && !this.strafing && this.jumpLock <= 0 && this.recoverT <= 0 && (grounded || this.coyoteT > 0);
     const jumpNow = this.jumpBuffer > 0 && canJump;
-    const tier = this.aiming ? MOVE.aim : this.sprinting ? MOVE.sprint : this.analogSpeed(mag);
+    const tier = this.strafing ? MOVE.aim : this.sprinting ? MOVE.sprint : this.analogSpeed(mag);
     let yawStep = 0, speedNow = 0;
 
     if (grounded && !jumpNow) {
-      if (this.aiming) {
+      if (this.strafing) {
         // Strafing: velocity follows the stick directly; the body faces the aim.
         const tx = moving ? wishX * tier * mag : 0, tz = moving ? wishZ * tier * mag : 0;
         let dx = tx - c.vel.x, dz = tz - c.vel.z;
@@ -231,7 +234,7 @@ export class PlayerController {
       }
       speedNow = Math.hypot(c.vel.x, c.vel.z);
       // Reaching a ledge mid-jump (car roof, bench, low wall): climb onto it.
-      if (!jumpNow && this.jumping && moving && !this.aiming && this.sinceJump > 0.04 && !opts.blocked) {
+      if (!jumpNow && this.jumping && moving && !this.strafing && this.sinceJump > 0.04 && !opts.blocked) {
         const maxRise = Math.min(1.2, this.takeoffY + 1.8 - c.pos.y);
         const ledge = maxRise > 0.05 ? c.findLedge(wishX, wishZ, maxRise) : null;
         if (ledge) {
@@ -280,7 +283,7 @@ export class PlayerController {
     }
 
     // Facing
-    if (this.aiming) {
+    if (this.strafing) {
       let legYaw = camYaw;
       if (moving) {
         const rel = wrapAngle(Math.atan2(c.vel.x, c.vel.z) - camYaw);
@@ -300,10 +303,10 @@ export class PlayerController {
     // Lean into turns (lateral acceleration) and with acceleration / braking.
     const latAcc = (yawStep / dt) * speedNow;
     const longAcc = (speedNow - this.lastSpeed) / dt;
-    if (c.grounded && !this.aiming) {
+    if (c.grounded && !this.strafing) {
       c.leanRoll = clamp(-latAcc * 0.0055, -0.17, 0.17);
       c.leanPitch = clamp(longAcc * 0.009, -0.15, 0.09) + 0.05 * smooth(MOVE.jog, MOVE.sprint, speedNow);
-    } else { c.leanRoll = 0; c.leanPitch = this.aiming ? 0 : clamp(c.vel.y * -0.008, -0.03, 0.06); }
+    } else { c.leanRoll = 0; c.leanPitch = this.strafing ? 0 : clamp(c.vel.y * -0.008, -0.03, 0.06); }
     this.lastSpeed = speedNow;
     this.afterMove();
   }
@@ -353,7 +356,7 @@ export class PlayerController {
     if (fromWater) return;
     if (impact > MOVE.hardLanding) {
       this.cam.addShake(clamp((impact - 10) * 0.03, 0.08, 0.35));
-      if (sp > 3 && !this.aiming) {
+      if (sp > 3 && !this.strafing) {
         // Momentum carries into a forward roll.
         this.startRoll(Math.atan2(c.vel.x, c.vel.z), 0.6);
         h.playOnce('Roll', 'full', 0.06, { from: 0.4, rate: 1.2 });

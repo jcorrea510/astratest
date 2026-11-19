@@ -78,6 +78,9 @@ export const ACTIONS: Record<string, ActionDef> = {
   // --- arrests
   handcuffed: { layer: 'upper', hold: true, dur: 0.6, fade: 0.25, poses: [[0, {}], [1, sym({ shL: [10, 0, 0], armL: [28, 0, -6], foreL: [12, 0, -58], chest: [-4, 0, 0], head: [12, 0, 0] })]] },
   cuffing: { clip: 'Interact', layer: 'upper', rate: 0.8, fade: 0.15, poses: [[0, {}], [0.4, sym({ chest: [14, 0, 0], armL: [-45, 0, -5], foreL: [-40, 0, 0] })], [1, {}]] },
+  // officer reaches down for both wrists from behind, then the suspect's arms are drawn down and back to the cuffs
+  cuff_reach: { layer: 'upper', hold: true, dur: 0.45, fade: 0.15, poses: [[0, {}], [1, { chest: [20, 0, 0], head: [14, 0, 0], ...sym({ armL: [-52, 0, -10], foreL: [-38, 0, 0] }) }]] },
+  wrists_back: { layer: 'upper', hold: true, dur: 0.75, fade: 0.12, poses: [[0, sym({ armL: [0, 0, 150], foreL: [0, 0, -70], head: [-6, 0, 0] })], [0.5, sym({ shL: [6, 0, 0], armL: [14, 0, 70], foreL: [-10, 0, -40], chest: [8, 0, 0], head: [10, 0, 0] })], [1, sym({ shL: [10, 0, 0], armL: [28, 0, -6], foreL: [12, 0, -58], chest: [-4, 0, 0], head: [12, 0, 0] })]] },
   kneel: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25 },
   // --- vehicles
   // driver side: left hand on the handle, pull the door round to the left (the player steps back on the legs layer)

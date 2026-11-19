@@ -72,7 +72,7 @@ export class PlayerCombat {
   bloom = 0;
   /** scope zoom step (0 = widest) while aiming a scoped weapon */
   zoomStep = 0;
-  private time = 0; private lastShot = -10; private burst = 0;
+  private time = 0; lastShot = -10; private burst = 0;
   private pendingPitch = 0; private pendingYaw = 0; private pitchDebt = 0; private yawDebt = 0; private anchorPitch = 0;
   private kick = 0; private kickDef: WeaponDef = WEAPONS.fists;
   private wasReloading = false; private reloadStep = 0; private shellsSeen = 0;
@@ -138,6 +138,8 @@ export class PlayerCombat {
     if (!blocked && !inv.def.melee && inv.def.cat !== 'throw' && (this.input.held('fire') || inv.reloading) && c.alive && !c.inVehicle) this.hipAimT = Math.max(this.hipAimT, HIP_HOLD);
     this.hipAimT = Math.max(0, this.hipAimT - dt);
     const onFoot = c.alive && !c.inVehicle;
+    // Gun up from the hip (fire without the aim button): the body must keep facing the camera line, not the run direction.
+    this.ctl.hipRaised = onFoot && this.armed && this.hipAimT > 0 && !inv.def.melee && inv.def.cat !== 'throw';
     // weapon cycling (the mouse wheel zooms instead while looking through a scope)
     if (!blocked && onFoot) {
       if (this.scoped) {
