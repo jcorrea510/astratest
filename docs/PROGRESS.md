@@ -9,7 +9,7 @@ Resume: read CLAUDE.md, docs/BRIEF3.md, this file. Continue unfinished items. Ow
 - [x] R3-D City (gaps: one-way roundabout, west sidewalks/signs/props, cathedral roof check): bigger, curves/character, ~10x walk-in robbable stores, GPS over bridge.
 - [x] R3-E UI: realistic weapon wheel + gun icons, settings close button (Esc breaks), Continue on rooftop breaks.
 - [ ] R3-Z Full gate, publish.
-Running: R3-A combat agent aebab7edf9fe8a87c (00:50 UTC, restarted after container restart; WIP in 6fac50f). Then R3-Z.
+Running: R3-Z QA agent ad8cfbaddaa80352d (01:25 UTC): full gate, perf, heli tuning, visual checks, soak. Then push main + publish gh-pages.
 
 ## Done before
 - Overnight brief (BRIEF2) delivered and live 18 Nov 23:15 UTC (gh-pages 3cd57c4 from main 20e0f25): realistic cars/people/city,
