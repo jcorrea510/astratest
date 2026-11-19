@@ -99,6 +99,8 @@ export class Robberies {
   }
   private updateShoppers(k: Kiosk, dt: number, dist: number) {
     const g = this.game;
+    // shoppers removed from the population elsewhere (despawn, tests, sandbox clean-up) have a disposed body: drop them
+    if (k.shoppers.some(s => !g.pop.npcs.includes(s.n))) k.shoppers = k.shoppers.filter(s => g.pop.npcs.includes(s.n));
     if (k.phase === 'open' && dist < 60 && k.shoppers.length === 0 && !k.looted) this.spawnShoppers(k);
     if (dist > 140) { for (const s of k.shoppers) { s.n.persistent = false; if (s.n.alive) s.n.brain = 'wander'; } k.shoppers = []; k.panicT = -1; k.called = false; k.looted = false; return; }
     if (k.panicT >= 0) {
@@ -270,6 +272,7 @@ export class Robberies {
         sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || k.panicT >= 0 || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
       }
       // a clerk staffs every open store the player is near
+      if (k.clerk && !g.pop.npcs.includes(k.clerk)) k.clerk = null; // removed elsewhere: its body is disposed
       if (k.phase === 'open' && dist < 110 && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
       if (k.phase === 'open' && k.clerk && !k.clerk.alive) this.panic(k);

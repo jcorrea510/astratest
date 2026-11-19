@@ -57,8 +57,8 @@ test.describe('police realism', () => {
       return { army: pos(a), tank: pos(t), start: { x: g.player.pos.x, z: g.player.pos.z } };
     });
     expect(r.army).not.toBeNull();
-    // 8 s after the order the convoy has barely left the gate (x 730, z -260), nowhere near the player
-    expect(Math.hypot(r.army!.x - 730, r.army!.z + 260)).toBeLessThan(160);
+    // 8 s after the order the convoy has barely left the east gate (735, -650) and is rolling down the access road (x ~760), nowhere near the player
+    expect(Math.hypot(r.army!.x - 760, r.army!.z + 650)).toBeLessThan(160);
     expect(Math.hypot(r.army!.x - r.start.x, r.army!.z - r.start.z)).toBeGreaterThan(400);
     clean(p);
   });
