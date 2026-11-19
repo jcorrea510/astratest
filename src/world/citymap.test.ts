@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { generateCity, signalState, pedestrianMayCross, SIGNAL_PERIOD, surfaceAt, samplePath, nearestLane, routeField } from './citymap';
+import { generateCity, signalState, pedestrianMayCross, SIGNAL_PERIOD, surfaceAt, samplePath, nearestLane, routeField, districtAt } from './citymap';
+import { STORES, storeAt } from '../game/places';
 
 const city = generateCity();
 describe('city layout', () => {
@@ -87,7 +88,7 @@ describe('city expansion', () => {
     expect(Math.max(...fw.pts.map(p => p.y))).toBeGreaterThan(5);
     // walk the lane graph from a grid lane: the freeway lanes must be reachable
     const fwLanes = new Set(city.lanes.filter(l => l.ys && Math.max(...l.ys) > 5 && !l.connector).map(l => l.id));
-    const seen = new Set<number>(); const q = [city.lanes.find(l => !l.connector && !l.ys)!.id];
+    const seen = new Set<number>(); const q = city.lanes.filter(l => !l.connector && !l.ys).map(l => l.id); // any grid lane (some inner lanes are only entered from the cross street)
     while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...city.lanes[id].next); }
     expect([...fwLanes].some(id => seen.has(id))).toBe(true);
     // every expansion lane (freeway, ramps, hill and airfield roads) is reachable from the grid
@@ -98,5 +99,48 @@ describe('city expansion', () => {
     const out = { x: 0, z: 0, dx: 0, dz: 0, y: 0 };
     samplePath(l, l.length / 2, out);
     expect(out.y).toBeGreaterThan(1);
+  });
+});
+
+describe('west extension + stores', () => {
+  const c = generateCity();
+  it('adds Old Town and Seacliff beyond the old west edge, with curved roads and a roundabout', () => {
+    const streets = c.paths.filter(p => p.kind === 'street');
+    expect(streets.length).toBeGreaterThanOrEqual(18);
+    expect(Math.min(...streets.flatMap(p => p.pts.map(q => q.x)))).toBeLessThan(-900);
+    // curved: some street deviates clearly from its end-to-end chord
+    const bent = streets.filter(p => { const a = p.pts[0], b = p.pts[p.pts.length - 1]; const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; return p.pts.some(q => Math.abs((b.x - a.x) * (a.z - q.z) - (a.x - q.x) * (b.z - a.z)) / l > 6); });
+    expect(bent.length).toBeGreaterThanOrEqual(10);
+    expect(streets.filter(p => p.name === 'Clockwork Circle').length).toBe(4);
+    expect(districtAt(c, -850, -60)).toBe('oldtown');
+    expect(districtAt(c, -820, 300)).toBe('seacliff');
+  });
+  it('keeps west buildings off the roads and the whole west lane network drivable', () => {
+    const west = c.lots.filter(l => l.blockId < 0);
+    expect(west.length).toBeGreaterThan(150);
+    for (const l of west) expect(surfaceAt(c, l.x, l.z), `lot ${l.id}`).not.toBe('road');
+    const seen = new Set<number>(); const q = c.lanes.filter(l => !l.connector && !l.ys).map(l => l.id);
+    while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...c.lanes[id].next); }
+    for (const l of c.lanes) if (l.points[0].x < -460) { expect(l.next.length).toBeGreaterThan(0); expect(seen.has(l.id), `lane ${l.id}`).toBe(true); }
+  });
+  it('has ~50 stores of ten kinds, each on its own street-facing lot, spread over the map', () => {
+    expect(STORES.length).toBeGreaterThanOrEqual(45);
+    expect(new Set(STORES.map(s => s.kind)).size).toBe(10);
+    expect(new Set(STORES.map(s => s.name)).size).toBe(STORES.length);
+    for (const s of STORES) {
+      expect(s.cash).toBeGreaterThan(100);
+      if (!s.standalone) expect(storeAt(s.x, s.z), s.name).toBeDefined();
+      expect(['road', 'water', 'offmap']).not.toContain(surfaceAt(c, s.x, s.z));
+    }
+    expect(STORES.filter(s => s.x < -470).length).toBeGreaterThanOrEqual(8); // some in the new west districts
+    expect(STORES.filter(s => s.x > 0).length).toBeGreaterThanOrEqual(8);
+    // a single store lot is never part of a merged run, and shops are >= 40 m apart
+    for (let i = 0; i < STORES.length; i++) for (let j = i + 1; j < STORES.length; j++) expect(Math.hypot(STORES[i].x - STORES[j].x, STORES[i].z - STORES[j].z)).toBeGreaterThan(25);
+  });
+  it('regenerating the city does not duplicate stores', () => {
+    const n = STORES.length; generateCity(); generateCity(); expect(STORES.length).toBe(n);
+  });
+  it('pedestrian graph stays connected with the west sidewalks', () => {
+    expect(c.pedNodes.filter(n => n.blockId < 0).length).toBeGreaterThan(40);
   });
 });

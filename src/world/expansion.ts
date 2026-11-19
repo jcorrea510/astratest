@@ -54,8 +54,8 @@ function orientedBox(physics: Physics, a: P3, b: P3, halfW: number, thick: numbe
   physics.tag(physics.world.createCollider(desc), { kind: 'static' });
 }
 
-interface Ribbon { pos: number[]; nor: number[]; uv: number[]; col: number[] }
-function ribbon(r: Ribbon, pts0: P3[], o0: number, o1: number, lift: number, color: THREE.Color, dash = 0, gap = 0) {
+export interface Ribbon { pos: number[]; nor: number[]; uv: number[]; col: number[] }
+export function ribbon(r: Ribbon, pts0: P3[], o0: number, o1: number, lift: number, color: THREE.Color, dash = 0, gap = 0) {
   // subdivide long straight segments so dashes and lighting follow
   const pts: P3[] = [pts0[0]];
   for (let i = 1; i < pts0.length; i++) { const a = pts0[i - 1], b = pts0[i]; const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (dash > 0 ? Math.min(dash, 10) : 25))); for (let k = 1; k <= n; k++) pts.push({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n, z: a.z + (b.z - a.z) * k / n }); }
@@ -72,7 +72,7 @@ function ribbon(r: Ribbon, pts0: P3[], o0: number, o1: number, lift: number, col
     for (let k = 0; k < 6; k++) { r.pos.push(...quad[k]); r.nor.push(0, 1, 0); r.uv.push(uvs[k][0], uvs[k][1]); r.col.push(color.r, color.g, color.b); }
   }
 }
-function ribbonGeo(r: Ribbon) {
+export function ribbonGeo(r: Ribbon) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(r.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(r.nor, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(r.uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(r.col, 3));
@@ -161,7 +161,7 @@ export function buildExpansion(
       void pts;
     } else {
       const tb = trim.at(j.x, j.z); const s = j.halfX * 2 + 1.2;
-      road.pos.push(j.x - j.halfX, y, j.z + j.halfZ, j.x + j.halfX, y, j.z + j.halfZ, j.x + j.halfX, y, j.z - j.halfZ, j.x - j.halfX, y, j.z + j.halfZ, j.x + j.halfX, y, j.z - j.halfZ, j.x - j.halfX, y, j.z - j.halfZ);
+      const yy = p0.elevated ? y : y + 0.03; road.pos.push(j.x - j.halfX, yy, j.z + j.halfZ, j.x + j.halfX, yy, j.z + j.halfZ, j.x + j.halfX, yy, j.z - j.halfZ, j.x - j.halfX, yy, j.z + j.halfZ, j.x + j.halfX, yy, j.z - j.halfZ, j.x - j.halfX, yy, j.z - j.halfZ);
       for (let k = 0; k < 6; k++) { road.nor.push(0, 1, 0); road.col.push(1, 1, 1); }
       road.uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
       if (y > 1) { tb.box(j.x, y - 0.65, j.z, s, 1.3, s, 0, conc, T_STONE); physics.addStaticBox(j.x, y - 0.3, j.z, s / 2, 0.3, s / 2); }

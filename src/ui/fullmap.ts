@@ -4,7 +4,7 @@ import type { MinimapBlip, MinimapState } from './contracts';
 import { mapScreenToWorld, mapWorldToScreen, type MapView } from './geometry';
 import { BLIP_KINDS, BLIP_LABELS } from './icons';
 import { CityPainter, drawBlip, drawPlayerArrow, nearestStreets } from './mapdraw';
-import { h, button } from './dom';
+import { h, backButton } from './dom';
 
 export class FullMap {
   readonly el: HTMLDivElement;
@@ -36,9 +36,7 @@ export class FullMap {
     head.appendChild(titles);
     this.readout = h('div', 'ma-map-readout');
     head.appendChild(this.readout);
-    const close = button('ma-btn ma-btn-ghost ma-map-close', 'Close', { onClick: () => { this.sound('back'); this.onClose(); } });
-    close.appendChild(h('kbd', 'ma-key', 'Esc'));
-    head.appendChild(close);
+    head.appendChild(backButton(() => { this.sound('back'); this.onClose(); }));
     this.el.appendChild(head);
 
     const body = h('div', 'ma-map-body');
@@ -257,6 +255,7 @@ export class FullMap {
       ctx.textAlign = 'left';
       for (const b of s.blips) {
         if (!b.label || b.kind === 'waypoint') continue;
+        if (b.kind === 'shop' && this.view.scale < this.fitScale * 1.9) continue; // ~50 shop names only when zoomed in
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
         ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(6,18,21,0.9)'; ctx.strokeText(b.label, p.x + br + 5, p.y);

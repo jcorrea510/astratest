@@ -18,8 +18,8 @@ export type PlaceId = keyof typeof PLACES;
  * (front = (sin yaw, cos yaw)). Each one is a real interior (counter, register, shelves, fridges) entered through
  * a sliding door; cash = a full till. `standalone` shops have no building above (the gas station).
  */
-export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn';
-export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number; kind: StoreKind; standalone?: boolean }
+export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn' | 'pharmacy' | 'clothing' | 'electronics' | 'barber' | 'bank';
+export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number; kind: StoreKind; standalone?: boolean; generated?: boolean }
 export const STORE_W = 10.4, STORE_D = 9.8, STORE_H = 4.4;
 export const STORES: Store[] = [
   { x: -210.5, z: 17.5, yaw: Math.PI, name: 'Lucky Gull 24/7', color: '#d1495b', cash: 320, kind: 'convenience' },
@@ -28,6 +28,9 @@ export const STORES: Store[] = [
   { x: 131.5, z: 286.1, yaw: 0, name: 'Hot Plate Diner', color: '#8c1c22', cash: 450, kind: 'diner' },
   { x: -379, z: -213.9, yaw: 0, name: 'Goldleaf Pawn & Jewelry', color: '#141414', cash: 900, kind: 'pawn' },
 ];
+const HANDMADE_STORES = STORES.length;
+/** Replaces the generated shops (the city generator picks lots for ~45 more; handmade ones above stay first). */
+export function setGeneratedStores(list: Store[]) { STORES.length = HANDMADE_STORES; STORES.push(...list); }
 /** Gas station forecourt (canopy + pumps) next to the Fuel Stop shop. */
 export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas station' };
 /** True when a building lot centred at (x,z) is taken by a store (it then only gets the floors above). */

@@ -4,6 +4,7 @@ import { Rng } from '../core/rng';
 import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
 import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
 import { buildExpansion, expansionPads, helipadPad } from './expansion';
+import { buildWest } from './westbuild';
 import { CHANNEL, pathHeightAt } from './citymap';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
@@ -206,9 +207,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     for (let i = 0; i < cp.count; i++) { const y = cp.getY(i); if (y > height * 0.55) cc.setXYZ(i, 0.5, 0.47, 0.36); }
     hillParts.push(col);
   };
-  mkHill(minX - 120, 170, 1150, 220, -Math.PI / 2, 60, 2);
+  mkHill(-1215, 170, 1150, 220, -Math.PI / 2, 60, 2); // far west, behind the Old Town extension
   const hills = new THREE.Mesh(mergeColored(hillParts), hillMat); hills.receiveShadow = true; root.add(hills);
-  physics.addStaticBox(minX - 6, 6, 200, 1, 12, 610);
   // north terrain: hills, road beds, channel, house pads
   const terrainH = makeTerrainHeight(city, expansionPads(city));
   const terrainMat = surfaceMat(grassSurface(), 1, { vertexColors: true }, 0.3, 'terrain');
@@ -268,7 +268,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const PS = POLICE_STATION;
   const policeLot = (l: Lot) => Math.abs(l.x - PS.x) < PS.w / 2 && Math.abs(l.z - PS.z) < 3;
   for (const lot of merged) {
-    const b = city.blocks[lot.blockId];
+    const b = lot.blockId >= 0 ? city.blocks[lot.blockId] : { district: lot.district ?? 'oldtown' };
     const r = new Rng(lot.seed);
     if (policeLot(lot)) continue;
     if (lot.kind === 'tower') {
@@ -286,8 +286,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const hw = lot.w / 2, hd = lot.d / 2;
     const faceOut = (lx: number, lz: number) => ctx.exposed(lot.x + lx * c + lz * s, lot.z - lx * s + lz * c);
     const exposed: [boolean, boolean, boolean, boolean] = [true, faceOut(hw + 1.2, 0), faceOut(0, -hd - 1.2), faceOut(-hw - 1.2, 0)];
-    const brick = b.district === 'brickline' || (lot.kind === 'brownstone' && b.district === 'midtown');
-    const beach = b.district === 'strand';
+    const brick = b.district === 'brickline' || b.district === 'oldtown' || (lot.kind === 'brownstone' && b.district === 'midtown');
+    const beach = b.district === 'strand' || b.district === 'seacliff';
     const store = storeAt(lot.x, lot.z);
     const common = { cx: lot.x, cz: lot.z, yaw: lot.rot, w: lot.w - 0.06, d: lot.d, base: CURB_HEIGHT, seed: lot.seed, exposed, brand: r.int(0, BRANDS.length - 1), hollow: !!store };
     if (store) {
@@ -593,18 +593,18 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   // billboards on poles along the edge of the city
   { const br = new Rng(5); for (let k = 0; k < 6; k++) { const x = -380 + k * 150 + br.range(-20, 20); if (nearPath(x, minZ - 14, 14)) continue; addBillboard({ x, y: 0, z: minZ - 14, yaw: 0, idx: k % 8, w: 12 }); } }
 
+  // Old Town + Seacliff: sidewalks, plazas, landmarks, trees for the western extension
+  buildWest({ root, physics, city, trim, props, paveMat, grassMat, addTree, addPalm });
+
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {
     const tb = trim.at(minX, minZ);
     const railC = C('#c8c2b4'), postC = C('#5e5a55');
     const edgeX = minX - 5.2, edgeZ = minZ - 5.2;
-    for (let z = edgeZ; z < maxZ + 7; z += 3) trim.at(edgeX, z).box(edgeX, 0.45, z, 0.16, 0.9, 0.16, 0, postC, T_METAL);
-    for (let z = edgeZ; z < maxZ + 7; z += 60) trim.at(edgeX, z).box(edgeX + 0.1, 0.7, Math.min(z + 30, maxZ + 7 - 30), 0.08, 0.3, 60, 0, railC, T_METAL);
     for (let x = edgeX; x < maxX + 2; x += 3) if (!nearPath(x, edgeZ, 2)) trim.at(x, edgeZ).box(x, 0.45, edgeZ, 0.16, 0.9, 0.16, 0, postC, T_METAL);
     for (let x = edgeX; x < maxX + 2; x += 6) if (!nearPath(x, edgeZ, 4) && !nearPath(x + 6, edgeZ, 4)) trim.at(x, edgeZ).box(x + 3, 0.7, edgeZ + 0.1, 6, 0.3, 0.08, 0, railC, T_METAL);
     void tb;
     const tr = new Rng(77);
-    for (let z = edgeZ + 4; z < maxZ; z += tr.range(5, 9)) { const k = tr.int(0, 3), x = edgeX - tr.range(6, 22), s = tr.range(1.1, 1.7); props.add(`tree${k}`, x, 0, z, tr.range(0, 6.28), s); props.add(`leaf${k}`, x, 0, z, tr.range(0, 6.28), s); }
     for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; props.add(`tree${k}`, x, 0, z, 0, s); props.add(`leaf${k}`, x, 0, z, 0, s); }
   }
 
@@ -660,7 +660,7 @@ function mergeLots(city: CityMap): Lot[] {
   let i = 0;
   while (i < lots.length) {
     const a = lots[i]; const r = new Rng(a.seed + 1);
-    const b = city.blocks[a.blockId];
+    const b = a.blockId >= 0 ? city.blocks[a.blockId] : { district: a.district ?? 'oldtown' };
     const want = storeAt(a.x, a.z) ? 1 : a.kind === 'midrise' ? r.int(1, 3) : a.kind === 'brownstone' && b.district !== 'hillside' && r.chance(0.25) ? 2 : 1;
     let j = i + 1;
     while (j < lots.length && j - i < want) {

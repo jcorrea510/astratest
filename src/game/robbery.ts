@@ -7,12 +7,12 @@ import type { Game } from './game';
 import type { GameUI, MinimapBlip } from '../ui/contracts';
 import type { Npc } from '../actors/npc';
 import { STORES, STORE_W, STORE_D, type Store } from './places';
-import { buildStoreShell, type StoreShell } from '../world/interiors';
+import { buildStoreShell, storeFrame, type StoreShell, type StoreFrame } from '../world/interiors';
 import { CURB_HEIGHT } from '../world/citymap';
 
 type Phase = 'open' | 'robbing' | 'closed';
 interface Kiosk {
-  def: Store; root: THREE.Group; shell: StoreShell; clerk: Npc | null; phase: Phase;
+  def: Store; /** interior is built lazily when the camera comes near */ shell: StoreShell | null; frame: StoreFrame; pos: THREE.Vector3; clerk: Npc | null; phase: Phase;
   progress: number; cash: number; uncoveredT: number; reopenAt: number; alarmT: number; pickT: number; brave: boolean;
   /** direction the counter faces (towards customers) */
   front: THREE.Vector3; clerkPos: THREE.Vector3; customer: THREE.Vector3; door: number;
@@ -29,10 +29,10 @@ export class Robberies {
   constructor(private game: Game, private ui: GameUI, groundY: (x: number, z: number) => number) {
     game.renderer.scene.add(this.light);
     for (const def of STORES) {
-      void groundY; const y0 = CURB_HEIGHT; // stores sit on the pavement (a raycast would hit the floors above)
-      const shell = buildStoreShell(game.renderer.scene, game.physics, def, y0);
+      void groundY; // stores sit on the pavement (a raycast would hit the floors above)
+      const frame = storeFrame(def, CURB_HEIGHT);
       const front = new THREE.Vector3(Math.sin(def.yaw), 0, Math.cos(def.yaw));
-      this.kiosks.push({ def, root: shell.root, shell, clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, front, clerkPos: shell.clerk, customer: shell.customer, door: 0 });
+      this.kiosks.push({ def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
     }
   }
   blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: 'shop' as const, label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
@@ -40,7 +40,7 @@ export class Robberies {
   /** The store the player is standing in, if any. */
   inside(): Kiosk | null {
     const p = this.game.player.pos;
-    for (const k of this.kiosks) { const l = k.shell.toLocal(p); if (Math.abs(l.x) < STORE_W / 2 && Math.abs(l.z) < STORE_D / 2 && l.y > -1 && l.y < 4) return k; }
+    for (const k of this.kiosks) { const l = k.frame.toLocal(p); if (Math.abs(l.x) < STORE_W / 2 && Math.abs(l.z) < STORE_D / 2 && l.y > -1 && l.y < 4) return k; }
     return null;
   }
   /** Contextual prompt inside an open store. */
@@ -54,9 +54,9 @@ export class Robberies {
   }
   /** Distance from the player to the counter when on the customer side inside the store (or in the doorway), else Infinity. */
   private customerDist(k: Kiosk) {
-    const l = k.shell.toLocal(this.game.player.pos);
-    if (Math.abs(l.x) > STORE_W / 2 + 0.5 || l.z > STORE_D / 2 + 1.5 || l.z < k.shell.counterZ + 0.3 || l.y < -1.5 || l.y > 4) return Infinity;
-    return Math.hypot(l.x + 3.0, l.z - k.shell.counterZ);
+    const l = k.frame.toLocal(this.game.player.pos);
+    if (Math.abs(l.x) > STORE_W / 2 + 0.5 || l.z > STORE_D / 2 + 1.5 || l.z < k.frame.counterZ + 0.3 || l.y < -1.5 || l.y > 4) return Infinity;
+    return Math.hypot(l.x + 3.0, l.z - k.frame.counterZ);
   }
   private spawnClerk(k: Kiosk) {
     const g = this.game, c = k.clerkPos;
@@ -82,8 +82,15 @@ export class Robberies {
   /** Store interiors (about 9 draw calls each) only render when the camera is near enough to see into them. */
   cull() {
     const cp = this.game.renderer.camera.position;
-    for (const k of this.kiosks) k.root.visible = Math.hypot(k.def.x - cp.x, k.def.z - cp.z) < 110;
+    let built = 0;
+    for (const k of this.kiosks) {
+      const d = Math.hypot(k.def.x - cp.x, k.def.z - cp.z);
+      if (!k.shell && d < 125 && built < 1) { k.shell = buildStoreShell(this.game.renderer.scene, this.game.physics, k.def, CURB_HEIGHT); built++; } // one per frame: no hitch
+      if (k.shell) k.shell.root.visible = d < 110;
+    }
   }
+  /** Interiors built so far (they are created on approach). */
+  get builtCount() { return this.kiosks.filter(k => k.shell).length; }
   update(dt: number, missionActive = false) {
     this.cull();
     const g = this.game, t = g.time, p = g.player.pos;
@@ -91,14 +98,17 @@ export class Robberies {
     for (const k of this.kiosks) {
       const dist = Math.hypot(p.x - k.def.x, p.z - k.def.z);
       // shutters come down once the player has left a robbed store; it reopens later
-      if (k.phase === 'closed' && t > k.reopenAt && dist > 60) { k.phase = 'open'; k.shell.setClosed(false); }
-      const closedNow = k.phase === 'closed' && dist > 9;
-      if (closedNow !== k.shell.shutter.visible) k.shell.setClosed(closedNow);
-      // automatic sliding doors
-      const near = dist < 8.5 && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !k.shell.shutter.visible);
-      k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
-      k.shell.setDoor(k.door * k.door * (3 - 2 * k.door));
-      k.shell.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
+      if (k.phase === 'closed' && t > k.reopenAt && dist > 60) { k.phase = 'open'; k.shell?.setClosed(false); }
+      const sh = k.shell;
+      if (sh) {
+        const closedNow = k.phase === 'closed' && dist > 9;
+        if (closedNow !== sh.shutter.visible) sh.setClosed(closedNow);
+        // automatic sliding doors
+        const near = dist < 8.5 && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
+        k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
+        sh.setDoor(k.door * k.door * (3 - 2 * k.door));
+        sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
+      }
       // a clerk staffs every open store the player is near
       if (k.phase === 'open' && dist < 110 && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
@@ -107,7 +117,7 @@ export class Robberies {
     }
     // one shared interior light follows the player into a store
     const inS = this.inside();
-    if (inS) { this.light.position.copy(inS.shell.light); this.light.intensity = 9; } else this.light.intensity = 0;
+    if (inS) { this.light.position.copy(inS.frame.light); this.light.intensity = 9; } else this.light.intensity = 0;
     const k = this.active; if (!k) return;
     const n = k.clerk;
     // shots fired nearby make the clerk hurry
@@ -135,7 +145,7 @@ export class Robberies {
     k.cash = Math.round(k.def.cash * k.progress);
     this.ui.robberyMeter({ label: k.uncoveredT > 0 ? 'Keep the clerk covered!' : `Holding up ${k.def.name}`, progress: k.progress, cash: k.cash });
     if (k.progress >= 1) {
-      g.spawnPickup('cash', k.def.cash, k.shell.bag.clone());
+      g.spawnPickup('cash', k.def.cash, k.frame.bag.clone());
       n.char.human.setState('crouch');
       this.end(true, `Grab the cash: $${k.def.cash}`);
     }
@@ -144,7 +154,7 @@ export class Robberies {
     const g = this.game;
     this.active = k; k.phase = 'robbing'; k.progress = 0; k.uncoveredT = 0; k.alarmT = 0; k.pickT = 0.4; this.lastClip = g.pcombat.inv.state.clip;
     k.clerk!.char.yaw = k.def.yaw;
-    g.pop.danger(k.root.position, 25, g.player);
+    g.pop.danger(k.pos, 25, g.player);
     this.ui.toast('Hold-up! Keep the clerk covered.', 'warning');
     g.audio.setMusicMood('tension');
   }

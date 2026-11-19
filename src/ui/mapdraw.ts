@@ -2,6 +2,7 @@
 import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS } from '../world/citymap';
 import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
+import { WEST, WEST_PLAZAS } from '../world/westside';
 
 const BASE = '#173a3e';
 const BLOCK_BASE = '#21474b';
@@ -27,7 +28,7 @@ export class CityPainter {
   readonly majorRoads: Path2D;
   readonly coastline: Path2D;
   readonly districtLabels: { name: string; x: number; z: number }[] = [];
-  readonly bounds = { minX: AVENUES[0] - 60, maxX: AIRFIELD.x1 + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
+  readonly bounds = { minX: WEST.x0 - 30, maxX: AIRFIELD.x1 + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
 
   constructor(city: CityMap) {
     const big = 4000;
@@ -38,7 +39,7 @@ export class CityPainter {
     water.rect(HARBOR_X, -60, big, big);
     water.rect(CHANNEL.x0, -700, CHANNEL.x1 - CHANNEL.x0, 700 - 60); // CITY: the Cannery Channel (land east of it)
     const beach = new Path2D();
-    beach.rect(AVENUES[0] - 30, STREETS[STREETS.length - 1] + 9, HARBOR_X - AVENUES[0] + 30, COAST_Z - STREETS[STREETS.length - 1] - 9);
+    beach.rect(WEST.x0, STREETS[STREETS.length - 1] + 9, HARBOR_X - WEST.x0, COAST_Z - STREETS[STREETS.length - 1] - 9);
     const quay = new Path2D();
     quay.rect(AVENUES[AVENUES.length - 1] + 9, STREETS[0] - 30, HARBOR_X - AVENUES[AVENUES.length - 1] - 9, COAST_Z - STREETS[0] + 30);
     this.base.push({ color: '#1d4436', path: land });
@@ -50,6 +51,10 @@ export class CityPainter {
     const fort = new Path2D(); fort.rect(ARMY_BASE.x0, ARMY_BASE.z0, ARMY_BASE.x1 - ARMY_BASE.x0, ARMY_BASE.z1 - ARMY_BASE.z0);
     this.base.push({ color: mixColor('#5b6b45', BASE, 0.35), path: fort });
     this.base.push({ color: '#0b2630', path: water });
+    for (const pl of WEST_PLAZAS) { // plazas, park and roundabout island of the west extension
+      const d = new Path2D(); d.arc(pl.x, pl.z, pl.r, 0, Math.PI * 2);
+      this.base.push({ color: pl.kind === 'plaza' ? mixColor('#cdbf9e', BASE, 0.45) : mixColor('#4f8a52', BASE, 0.35), path: d });
+    }
 
     this.coastline = new Path2D();
     this.coastline.moveTo(-big, COAST_Z); this.coastline.lineTo(HARBOR_X, COAST_Z);
@@ -72,10 +77,15 @@ export class CityPainter {
     const blockById = new Map(city.blocks.map(b => [b.id, b]));
     for (const l of city.lots) {
       const b = blockById.get(l.blockId);
-      const tint = b ? DISTRICT_INFO[b.district].color : '#888888';
+      const tint = b ? DISTRICT_INFO[b.district].color : l.district ? DISTRICT_INFO[l.district].color : '#888888';
       const color = mixColor(BLOCK_BASE, tint, 0.45);
       let p = lotPaths.get(color);
       if (!p) { p = new Path2D(); lotPaths.set(color, p); }
+      if (l.blockId < 0) { // free-standing (rotated) lot of the west extension
+        const c = Math.cos(l.rot), sn = Math.sin(l.rot), hw = l.w * 0.46, hd = l.d * 0.46;
+        [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]].forEach(([lx, lz], i) => { const x = l.x + lx * c + lz * sn, z = l.z - lx * sn + lz * c; if (i) p!.lineTo(x, z); else p!.moveTo(x, z); });
+        p.closePath(); continue;
+      }
       const swap = Math.abs(Math.sin(l.rot)) > 0.7;
       const w = (swap ? l.d : l.w) * 0.92, d = (swap ? l.w : l.d) * 0.92;
       p.rect(l.x - w / 2, l.z - d / 2, w, d);
@@ -102,7 +112,7 @@ export class CityPainter {
       }
     }
     for (const [d, s] of dsum) this.districtLabels.push({ name: DISTRICT_INFO[d].name, x: s.x / s.n, z: s.z / s.n });
-    this.districtLabels.push({ name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
+    this.districtLabels.push({ name: 'Old Town', x: -850, z: -60 }, { name: 'Seacliff', x: -820, z: 300 }, { name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
   }
 
   /** Paints in world coordinates; the caller sets the transform. */

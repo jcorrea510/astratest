@@ -3,8 +3,11 @@
  * x grows east, z grows south (three.js convention, north is -z).
  */
 import { Rng } from '../core/rng';
+import { buildWestRoads, genWestLots, genWestPeds, WEST } from './westside';
+import { genStores } from './storegen';
+import { setGeneratedStores } from '../game/places';
 
-export type District = 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield';
+export type District = 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
 export const DISTRICT_INFO: Record<District, { name: string; color: string; pedDensity: number; trafficDensity: number }> = {
   brickline: { name: 'Brickline', color: '#b8674d', pedDensity: 1, trafficDensity: 0.8 },
   heights: { name: 'Meridian Heights', color: '#4f7f8f', pedDensity: 1.2, trafficDensity: 1.2 },
@@ -14,6 +17,8 @@ export const DISTRICT_INFO: Record<District, { name: string; color: string; pedD
   strand: { name: 'Saltwater Strand', color: '#e0b48a', pedDensity: 1, trafficDensity: 0.9 },
   midtown: { name: 'Midtown', color: '#9a7f6a', pedDensity: 0.9, trafficDensity: 1 },
   vista: { name: 'Vista Hills', color: '#6f8a4f', pedDensity: 0.1, trafficDensity: 0.4 },
+  oldtown: { name: 'Old Town', color: '#a07a5a', pedDensity: 1.1, trafficDensity: 0.8 },
+  seacliff: { name: 'Seacliff', color: '#d79a8a', pedDensity: 0.9, trafficDensity: 0.7 },
   airfield: { name: 'Meridian Airfield', color: '#8a8a86', pedDensity: 0.05, trafficDensity: 0.3 },
 };
 
@@ -28,7 +33,7 @@ export const HARBOR_X = 492; // quay edge on the east side
 export const SEABED_Y = -7; // open water south of the beach and east of the quay
 export const SEA_EDGE_Z = 640; // swimmable sea ends here (invisible wall)
 export const SEA_EDGE_X = 660;
-export const MAP_BOUNDS = { minX: -520, maxX: 620, minZ: -470, maxZ: 620 };
+export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 620 };
 
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
 export const STREET_NAMES = ['North Crest St', '1st St', '2nd St', '3rd St', 'Sunset Blvd', '5th St', '6th St', 'Boardwalk St', 'Coastal Dr'];
@@ -42,7 +47,7 @@ export interface Road { id: number; axis: 'x' | 'z'; index: number; coord: numbe
 export interface Intersection { id: number; ix: number; iz: number; x: number; z: number; halfX: number; halfZ: number; offset: number; signalized: boolean }
 export interface Block { id: number; ix: number; iz: number; x0: number; x1: number; z0: number; z1: number; district: District; kind: 'buildings' | 'park' | 'plaza' | 'docks' }
 export type LotKind = 'brownstone' | 'pastel' | 'tower' | 'midrise' | 'warehouse' | 'house';
-export interface Lot { id: number; blockId: number; x: number; z: number; w: number; d: number; rot: number; kind: LotKind; height: number; seed: number }
+export interface Lot { id: number; blockId: number; /** lots outside the grid (blockId -1) carry their own district; street=false means no street frontage */ district?: District; street?: boolean; x: number; z: number; w: number; d: number; rot: number; kind: LotKind; height: number; seed: number }
 export interface Lane {
   id: number; points: V2[]; length: number; cum: number[]; next: number[]; connector: boolean;
   intersection: number; axis: 'x' | 'z'; speed: number; lane: number; lanes: number; roadId: number;
@@ -52,7 +57,7 @@ export interface Lane {
 export interface P3 { x: number; y: number; z: number }
 /** A free-form road outside the grid (freeway, ramps, hill road, airfield road): centreline with heights. */
 export interface PathRoad {
-  id: number; name: string; kind: 'freeway' | 'ramp' | 'hill' | 'service'; pts: P3[]; half: number; lanes: 1 | 2;
+  id: number; name: string; kind: 'freeway' | 'ramp' | 'hill' | 'service' | 'street'; pts: P3[]; half: number; lanes: 1 | 2;
   elevated: boolean; from: number; to: number;
 }
 export interface PedNode { id: number; x: number; z: number; blockId: number; edges: { to: number; crossing: null | { intersection: number; axis: 'x' | 'z' } }[] }
@@ -302,6 +307,12 @@ export function generateCity(seed = 1977): CityMap {
     link(`${i},${j},se`, `${i},${j + 1},ne`, interGrid[i + 1][j + 1], 'x');
   }
 
+  // West extension: lots along the curved frontages, sidewalks for pedestrians
+  lots.push(...genWestLots(paths, lots.length, new Rng(seed + 31), SIDEWALK));
+  genWestPeds(paths, pedNodes, SIDEWALK);
+  // ~50 walk-in stores: picked from the street-facing lots (grid and west), resized to the shop footprint
+  setGeneratedStores(genStores(lots, blocks, new Rng(seed + 77)));
+
   return { roads, intersections, blocks, lots, lanes, pedNodes, paths, intersectionAt: (ix, iz) => interGrid[ix]?.[iz] };
 }
 
@@ -314,7 +325,7 @@ function nearestCoord(arr: number[], v: number): number {
 export type Surface = 'road' | 'sidewalk' | 'lot' | 'park' | 'beach' | 'water' | 'quay' | 'offmap';
 /** Classifies a point on the ground plane. */
 export function surfaceAt(city: CityMap, x: number, z: number): Surface {
-  if (z < STREETS[0] - 9 || x > CHANNEL.x0) {
+  if (z < STREETS[0] - 9 || x > CHANNEL.x0 || x < AVENUES[0] - 4) {
     for (const p of city.paths) { const h = pathHeightAt(p, x, z); if (h.d < p.half) return 'road'; }
     for (const i of city.intersections) {
       if (i.ix >= 0) continue;
@@ -325,7 +336,11 @@ export function surfaceAt(city: CityMap, x: number, z: number): Surface {
   if (z > COAST_Z) return 'water';
   if (x > HARBOR_X && z > -60 && x < SEA_EDGE_X + 40) return 'water';
   if (x > CHANNEL.x0 && x < CHANNEL.x1 && z <= -60) return 'water';
-  if (x < AVENUES[0] - 30 || z < STREETS[0] - 30 || x > SEA_EDGE_X + 40) return 'offmap';
+  if (x < WEST.x0 || z < STREETS[0] - 30 || x > SEA_EDGE_X + 40) return 'offmap';
+  if (x < AVENUES[0] - 5) {
+    for (const p of city.paths) if (p.kind === 'street' && pathHeightAt(p, x, z).d < p.half + SIDEWALK) return 'sidewalk';
+    return 'park';
+  }
   if (x > AVENUES[AVENUES.length - 1] + 9 && x <= HARBOR_X) return 'quay';
   if (z > STREETS[STREETS.length - 1] + 9) return 'beach';
   for (let i = 0; i < AVENUES.length; i++) if (Math.abs(x - AVENUES[i]) < halfWidth(lanesForAvenue(i)) && z > STREETS[0] - 9 && z < STREETS[STREETS.length - 1] + 9) return 'road';
@@ -346,6 +361,7 @@ export function districtAt(city: CityMap, x: number, z: number): District {
   if (x > CHANNEL.x1 && z < -62) return 'airfield';
   if (z < STREETS[0] - 20) return 'vista';
   if (z > STREETS[STREETS.length - 1]) return 'strand';
+  if (x < AVENUES[0] - 4) return z > 150 ? 'seacliff' : 'oldtown';
   if (x > AVENUES[AVENUES.length - 1]) return 'cannery';
   let bi = 0, bj = 0;
   for (let i = 0; i < AVENUES.length - 1; i++) if (x > AVENUES[i]) bi = i;
@@ -397,6 +413,18 @@ export function routeField(city: CityMap, x: number, z: number): Float32Array {
     if (ld < bestD) { bestD = ld; bestLane = lane.id; bestS = ls; }
   }
   if (bestLane >= 0 && !Number.isFinite(D[bestLane])) D[bestLane] = bestS;
+  // target off the roads (sea, building): also seed every lane about as close as the nearest one, so a lane that is hard to reach does not isolate it
+  if (bestD >= 14) for (const lane of city.lanes) {
+    if (lane.connector || Number.isFinite(D[lane.id])) continue;
+    let ld = Infinity, ls = 0;
+    for (let i = 1; i < lane.points.length; i++) {
+      const a = lane.points[i - 1], b = lane.points[i], vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / l2));
+      const d = Math.hypot(x - (a.x + vx * t), z - (a.z + vz * t));
+      if (d < ld) { ld = d; ls = lane.cum[i - 1] + Math.sqrt(l2) * t; }
+    }
+    if (ld < bestD + 12) D[lane.id] = ls + (ld - bestD) * 2;
+  }
   // binary-heap Dijkstra over reversed edges: D[p] = p.length + D[next]
   const heap: number[] = [];
   const push = (id: number) => { heap.push(id); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (D[heap[p]] <= D[heap[i]]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
@@ -469,7 +497,7 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
     const path: PathRoad = { id: paths.length, name, kind, pts, half, lanes: lanesN, elevated, from: from.id, to: to.id };
     paths.push(path);
     // lanes in both directions, offset to the right of travel
-    const speed = kind === 'freeway' ? 24 : kind === 'hill' ? 12 : 15;
+    const speed = kind === 'freeway' ? 24 : kind === 'hill' ? 12 : kind === 'street' ? 12 : 15;
     for (const dir of [1, -1]) {
       const seq = dir > 0 ? pts : [...pts].reverse();
       const endI = dir > 0 ? to : from, startI = dir > 0 ? from : to;
@@ -513,6 +541,8 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
   ], 1, 0, 40, false, 5);
   // Airfield Road: from the freeway's east end south past Fort Calder's gate to the hangars
   add('Airfield Rd', 'service', JA, [0, 1], JS, [0, -1], [{ x: 760, y: 0, z: -330 }], 1, 0, 0, false, 10);
+  // Old Town + Seacliff: curving streets, a roundabout and a winding coast road west of the grid
+  buildWestRoads({ junction, add, grid: (i, j) => interGrid[i][j] });
   return paths;
 }
 

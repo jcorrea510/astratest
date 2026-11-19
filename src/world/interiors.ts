@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
 import { trimMaterial, nightUniform } from '../render/materials';
-import { TrimBuilder, T_PAINT, T_METAL, T_PLASTIC, T_GLASS, T_GLOW, T_FABRIC, T_STONE, type TrimParams } from './builders';
+import { TrimBuilder, T_PAINT, T_METAL, T_PLASTIC, T_GLASS, T_GLOW, T_FABRIC, T_STONE, T_ROUGH, type TrimParams } from './builders';
 import { STORE_W, STORE_D, STORE_H, type Store } from '../game/places';
 
 export interface StoreShell {
@@ -53,6 +53,15 @@ function signMat(name: string, color: string): THREE.MeshStandardMaterial {
   signMats.set(name, m); return m;
 }
 
+/** Pure placement maths of a store (no meshes): lets hold-up logic work before the interior is built. */
+export function storeFrame(def: Store, baseY: number) {
+  const pos = new THREE.Vector3(def.x, baseY, def.z), up = new THREE.Vector3(0, 1, 0), counterZ = 1.2;
+  const toWorld = (lx: number, ly: number, lz: number) => new THREE.Vector3(lx, ly, lz).applyAxisAngle(up, def.yaw).add(pos);
+  const toLocal = (p: THREE.Vector3) => p.clone().sub(pos).applyAxisAngle(up, -def.yaw);
+  return { toWorld, toLocal, counterZ, clerk: toWorld(-3.0, 0.05, 0.25), customer: toWorld(-3.0, 0.05, 3.0), bag: toWorld(-3.0, 0.35, counterZ + 1.0), light: toWorld(0, 3.2, 0) };
+}
+export type StoreFrame = ReturnType<typeof storeFrame>;
+
 export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store, baseY: number): StoreShell {
   const root = new THREE.Group(); root.name = `store:${def.name}`;
   root.position.set(def.x, baseY, def.z); root.rotation.y = def.yaw; scene.add(root);
@@ -61,7 +70,8 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const r = new Rng(Math.round(def.x * 7 + def.z * 13));
   const t = new TrimBuilder();
   const W = STORE_W, D = STORE_D, H = STORE_H, ceil = 3.6, hw = W / 2, hd = D / 2;
-  const wallC = C(def.kind === 'diner' ? '#e8dcc4' : def.kind === 'pawn' ? '#2d2a28' : def.kind === 'liquor' ? '#3a4660' : '#ece8e0');
+  const WALLS: Partial<Record<Store['kind'], string>> = { diner: '#e8dcc4', pawn: '#2d2a28', liquor: '#3a4660', pharmacy: '#eef4f0', clothing: '#e9dfe8', electronics: '#262b33', barber: '#d8c9b0', bank: '#e6e0d2' };
+  const wallC = C(WALLS[def.kind] ?? '#ece8e0');
   const outC = C(def.kind === 'gas' ? '#e9e5dc' : '#4b4743');
   const accent = C(def.color);
   const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number, col: THREE.Color, tp: TrimParams = T_PAINT, pitch = 0) => t.box(x, y, z, sx, sy, sz, 0, col, tp, pitch);
@@ -99,8 +109,9 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   box(-3.9, 1.25, counterZ, 0.3, 0.35, 0.3, C('#cfd2d4'), T_PLASTIC);
   // back wall behind the clerk: cigarette / lottery / liquor shelving
   const backZ = -0.9;
-  box(-3.0, 1.6, backZ, 4.0, 2.4, 0.4, C('#5a4a3c'));
-  for (let row = 0; row < 5; row++) for (let k = 0; k < 14; k++) { const pc = C(['#c0392b', '#f1c40f', '#ecf0f1', '#2980b9', '#27ae60', '#8e44ad', '#d35400'][r.int(0, 6)]); box(-4.85 + k * 0.28, 0.75 + row * 0.42, backZ + 0.24, 0.22, def.kind === 'liquor' ? 0.34 : 0.18, 0.08, pc, T_PLASTIC); }
+  const stocked = def.kind !== 'bank';
+  if (stocked) box(-3.0, 1.6, backZ, 4.0, 2.4, 0.4, C('#5a4a3c'));
+  if (stocked) for (let row = 0; row < 5; row++) for (let k = 0; k < 14; k++) { const pc = C(['#c0392b', '#f1c40f', '#ecf0f1', '#2980b9', '#27ae60', '#8e44ad', '#d35400'][r.int(0, 6)]); box(-4.85 + k * 0.28, 0.75 + row * 0.42, backZ + 0.24, 0.22, def.kind === 'liquor' ? 0.34 : 0.18, 0.08, pc, T_PLASTIC); }
   col(-3.0, 1.6, backZ, 2.0, 1.2, 0.2);
   if (def.kind === 'diner') {
     // booths along the right wall and stools at the counter
@@ -117,6 +128,42 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     }
     for (let k = 0; k < 5; k++) { const x = -4.0 + k * 1.9; box(x, 2.1, -hd + 0.35, 1.2, 0.8, 0.1, C('#111'), T_PLASTIC); box(x, 2.1, -hd + 0.41, 1.05, 0.65, 0.02, C('#2b3a4a'), [0.1, 0.3, 0, 0]); }
     for (let k = 0; k < 4; k++) { const x = 1.5 + k * 0.6; box(x, 1.3, -hd + 0.3, 0.35, 1.0, 0.08, C(['#a0522d', '#d2691e', '#222', '#8b0000'][k]), [0.4, 0, 0, 0]); }
+  } else if (def.kind === 'clothing') {
+    // hanging rails, folded stacks on the wall, mirror and fitting room
+    for (const ax of [0.6, 3.0]) {
+      box(ax, 1.55, -0.6, 0.06, 0.06, 4.4, C('#bfc3c6'), T_METAL); box(ax, 0.8, -2.7, 0.06, 1.6, 0.06, C('#bfc3c6'), T_METAL); box(ax, 0.8, 1.5, 0.06, 1.6, 0.06, C('#bfc3c6'), T_METAL);
+      for (let k = 0; k < 9; k++) box(ax, 1.05, -2.6 + k * 0.5, 0.5, 0.9, 0.14, C(['#c0392b', '#2c3e50', '#f1c40f', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#1abc9c'][r.int(0, 7)]), T_FABRIC);
+      col(ax, 0.8, -0.6, 0.3, 0.8, 2.2);
+    }
+    box(hw - 0.45, 1.0, -0.6, 0.5, 2.0, 6.0, C('#e2dfd8'), T_PAINT);
+    for (let row = 0; row < 5; row++) for (let k = 0; k < 6; k++) box(hw - 0.62, 0.3 + row * 0.38, -3.2 + k * 0.95, 0.3, 0.22, 0.8, C(['#c0392b', '#2c3e50', '#f1c40f', '#ecf0f1', '#8e44ad', '#16a085'][r.int(0, 5)]), T_FABRIC);
+    col(hw - 0.45, 1.0, -0.6, 0.25, 1.0, 3.0);
+    box(-1.4, 1.5, -hd + 0.3, 1.6, 2.2, 0.05, C('#b9d3dc'), T_GLASS);
+    box(-4.3, 1.15, -3.7, 1.5, 2.3, 1.5, C('#7a5c7a'), T_FABRIC); col(-4.3, 1.15, -3.7, 0.75, 1.15, 0.75);
+  } else if (def.kind === 'electronics') {
+    // display tables with screens and a TV wall
+    for (const ax of [0.6, 3.0]) {
+      box(ax, 0.5, -0.8, 1.0, 1.0, 4.4, C('#1b1e24'), T_METAL); col(ax, 0.5, -0.8, 0.5, 0.5, 2.2);
+      for (let k = 0; k < 4; k++) { box(ax, 1.25, -2.4 + k * 1.1, 0.12, 0.55, 0.85, C('#0a0c10'), T_PLASTIC); box(ax + 0.07, 1.25, -2.4 + k * 1.1, 0.02, 0.48, 0.76, C(['#5fb4ff', '#ff8f5f', '#7fe0a0', '#c88fff'][k]), T_GLOW(1.1)); }
+    }
+    for (let k = 0; k < 4; k++) for (let row = 0; row < 2; row++) { const x = -4.2 + k * 1.9; box(x, 1.9 + row * 1.0, -hd + 0.32, 1.7, 0.9, 0.08, C('#0a0c10'), T_PLASTIC); box(x, 1.9 + row * 1.0, -hd + 0.37, 1.55, 0.78, 0.02, C(['#5fb4ff', '#ff6f6f', '#7fe0a0', '#f4d35e'][(k + row) % 4]), T_GLOW(1.0)); }
+  } else if (def.kind === 'barber') {
+    // two barber chairs facing a mirror wall, waiting bench, pole by the door
+    for (const cx of [0.8, 3.0]) {
+      t.cyl(cx, 0, -2.6, 0.35, 0.3, 0.5, 10, C('#222'), T_METAL); box(cx, 0.75, -2.6, 0.8, 0.22, 0.8, C('#8c1c22'), T_FABRIC); box(cx, 1.15, -3.0, 0.8, 0.9, 0.18, C('#8c1c22'), T_FABRIC);
+      box(cx, 1.6, -hd + 0.28, 1.5, 1.6, 0.05, C('#b9d3dc'), T_GLASS); col(cx, 0.8, -2.6, 0.45, 0.8, 0.45);
+    }
+    box(4.4, 0.35, 1.8, 0.7, 0.7, 2.2, C('#3a3a3a'), T_FABRIC); col(4.4, 0.35, 1.8, 0.35, 0.35, 1.1);
+    for (let k = 0; k < 6; k++) t.cyl(-4.8 + k * 0.28, 1.07, counterZ + 0.1, 0.06, 0.05, 0.3, 8, C(['#2c7fb8', '#e67e22', '#27ae60'][k % 3]), T_PLASTIC);
+    for (let k = 0; k < 8; k++) t.cyl(-hw + 0.18, 0.2 + k * 0.45, -4.0, 0.14, 0.14, 0.4, 10, C(k % 2 ? '#c0392b' : '#f4f4f4'), T_PLASTIC);
+  } else if (def.kind === 'bank') {
+    // teller line behind glass, vault door at the back, rope queue, ATM
+    box(-3.0, 1.95, counterZ, 4.0, 1.7, 0.05, C('#bfe3ea'), T_GLASS);
+    { const vx = -3.0, vz = backZ - 0.2; t.cyl(vx, 1.5, vz, 1.3, 1.3, 0.35, 24, C('#7d868c'), T_METAL, 0, Math.PI / 2, 0); t.cyl(vx, 1.5, vz + 0.2, 0.9, 0.9, 0.15, 20, C('#9aa3a8'), T_METAL, 0, Math.PI / 2, 0); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; t.cyl(vx, 1.5, vz + 0.3, 0.05, 0.05, 0.1, 6, C('#444'), T_METAL, 0, Math.PI / 2, 0); box(vx + Math.cos(a) * 0.45, 1.5 + Math.sin(a) * 0.45, vz + 0.36, 0.1, 0.1, 0.1, C('#d4af37'), T_METAL); } }
+    box(-3.0, 1.2, backZ - 0.1, 3.4, 2.6, 0.5, C('#4a5156'), T_METAL); col(-3.0, 1.3, backZ - 0.1, 1.7, 1.3, 0.25);
+    for (let k = 0; k < 4; k++) { const z = 3.4 - k * 0.9; box(0.4, 0.5, z, 0.08, 1.0, 0.08, C('#d4af37'), T_METAL); box(1.8, 0.5, z, 0.08, 1.0, 0.08, C('#d4af37'), T_METAL); box(1.1, 0.8, z, 1.4, 0.04, 0.03, C('#7a1f2b'), T_FABRIC); }
+    box(4.4, 1.0, -2.5, 0.8, 2.0, 0.8, C('#2f3a46'), T_METAL); box(4.4, 1.4, -2.09, 0.6, 0.4, 0.02, C('#a8e0ff'), T_GLOW(0.8)); col(4.4, 1.0, -2.5, 0.4, 1.0, 0.4);
+    box(2.8, 0.45, -3.4, 2.2, 0.9, 1.0, C('#5a4a3c'), T_ROUGH); col(2.8, 0.45, -3.4, 1.1, 0.45, 0.5);
   } else {
     // aisles of shelving with products
     for (const ax of [0.6, 3.0]) {
@@ -135,7 +182,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     col(hw - 0.45, 1.1, -0.6, 0.25, 1.1, 3.0);
   }
   // fridges along the back wall with lit glass doors
-  if (def.kind !== 'pawn') {
+  if (def.kind === 'convenience' || def.kind === 'liquor' || def.kind === 'gas' || def.kind === 'diner') {
     const fx0 = def.kind === 'diner' ? -1.6 : -1.2, n = def.kind === 'diner' ? 2 : 5;
     for (let k = 0; k < n; k++) {
       const x = fx0 + k * 1.2;
@@ -149,6 +196,8 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   // posters, mat, ATM / lottery stand / ice chest
   box(-1.4, 2.2, -hd + 0.26, 1.0, 0.7, 0.02, accent, T_PAINT);
   box(doorX, 0.015, hd - 1.0, 1.8, 0.03, 1.2, C('#2b2b2b'), [0.95, 0, 0, 0]);
+  if (def.kind === 'pharmacy') { box(0, 3.0, -hd + 0.3, 1.4, 0.4, 0.05, C('#1d8f6a'), T_GLOW(1.4)); box(0, 3.0, -hd + 0.3, 0.4, 1.4, 0.05, C('#1d8f6a'), T_GLOW(1.4)); }
+  if (def.kind === 'barber') { t.cyl(-4.6, 0.6, hd + 0.35, 0.12, 0.12, 2.0, 10, C('#f4f4f4'), T_PLASTIC); for (let k = 0; k < 5; k++) t.cyl(-4.6, 0.7 + k * 0.38, hd + 0.35, 0.125, 0.125, 0.14, 10, C('#c0392b'), T_PLASTIC); }
   if (def.kind === 'gas' || def.kind === 'convenience') { box(-0.6, 0.85, hd - 1.0, 0.7, 1.7, 0.6, C('#1d4f8c'), T_PLASTIC); box(-0.6, 1.25, hd - 0.69, 0.5, 0.35, 0.02, C('#a8e0ff'), T_GLOW(0.6)); col(-0.6, 0.85, hd - 1.0, 0.35, 0.85, 0.3); }
   const mesh = new THREE.Mesh(t.build(), trimMat); mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.4, D - 0.3).rotateX(-Math.PI / 2), floorTiles());
