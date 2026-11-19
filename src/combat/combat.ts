@@ -32,11 +32,13 @@ export interface TraceHit {
  */
 export interface GlassApi { glassAt?(worldPoint: THREE.Vector3): string | number | null; breakGlass?(paneId: string | number): void; isGlassBroken?(paneId: string | number): boolean }
 
-const TRACER_SPEED = 520; // m/s (visual)
+const TRACER_SPEED = 900; // m/s (visual)
+export const TRACER_LIFE = 0.18; // s: a streak is always gone by then
 const TRACER_LEN = 7;
 /** Bullet tracers: short bright streaks that fly down the shot path (a few frames), additive, head bright, tail faded. */
-class Tracers {
-  mesh: THREE.LineSegments; private pos: Float32Array; private alpha: Float32Array;
+export class Tracers {
+  mesh: THREE.LineSegments; /** live streak count (tests) */ get live() { return this.seg.filter((s) => s.t < TRACER_LIFE).length; }
+  private pos: Float32Array; private alpha: Float32Array;
   private seg: { ax: number; ay: number; az: number; dx: number; dy: number; dz: number; len: number; t: number; start: number; bright: number }[] = [];
   private i = 0;
   constructor(scene: THREE.Scene, private max = 96) {
@@ -61,11 +63,11 @@ class Tracers {
     for (let k = 0; k < this.max; k++) {
       const s = this.seg[k]; s.t += dt;
       const head = Math.min(s.len, s.start + TRACER_SPEED * s.t), tail = Math.max(s.start, head - TRACER_LEN);
-      const alive = s.t < 1e8 && tail < s.len - 0.01 && head > tail;
+      const alive = s.t < TRACER_LIFE && tail < s.len - 0.01 && head > tail;
       const o = k * 6;
       this.pos[o] = s.ax + s.dx * tail; this.pos[o + 1] = s.ay + s.dy * tail; this.pos[o + 2] = s.az + s.dz * tail;
       this.pos[o + 3] = s.ax + s.dx * head; this.pos[o + 4] = s.ay + s.dy * head; this.pos[o + 5] = s.az + s.dz * head;
-      this.alpha[k * 2] = 0; this.alpha[k * 2 + 1] = alive ? 0.95 * s.bright : 0;
+      this.alpha[k * 2] = 0; this.alpha[k * 2 + 1] = alive ? 0.95 * s.bright * Math.min(1, (TRACER_LIFE - s.t) / 0.08) : 0;
     }
     (this.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.mesh.geometry.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -112,6 +114,8 @@ export class Combat {
   people: () => Iterable<Character> = () => [];
   /** Vehicles (for blast damage); set by PlayerCombat each frame. */
   vehicles: () => Iterable<Vehicle> = () => [];
+  /** Helicopters (damaged by explosion splash; direct bullet hits already go through the vehicle path). */
+  helis: () => Iterable<{ position: THREE.Vector3; damage(amount: number, point?: THREE.Vector3, dir?: THREE.Vector3, by?: unknown): boolean }> = () => [];
   /** Listener position (camera) for near / far gunshot voices. */
   listener = new THREE.Vector3();
   /** Optional ground material lookup (e.g. surfaceAt from the city map): 'park' / 'beach' give dirt, 'water' splashes. */
@@ -211,7 +215,8 @@ export class Combat {
    * Traces a ray through the world and people. Rounds pass through vehicle glass into the cabin (breaking it unless
    * `dry`), where they can hit occupants. `inflate` widens people's capsules (AI shots at the player).
    */
-  trace(o: THREE.Vector3, d: THREE.Vector3, range: number, shooter: Character | null, opts: { dry?: boolean; inflate?: number; excludeVehicle?: Vehicle | null } = {}): TraceHit {
+  private vProj = new THREE.Vector3();
+  trace(o: THREE.Vector3, d: THREE.Vector3, range: number, shooter: Character | null, opts: { dry?: boolean; inflate?: number; excludeVehicle?: Vehicle | null; solidGlass?: boolean } = {}): TraceHit {
     const res: TraceHit = { t: range, point: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), kind: 'none', character: null, zone: null, vehicle: null, collider: null, tag: undefined, glass: [] };
     let start = 0; let excludeRb = opts.excludeVehicle?.phys.body ?? null;
     for (let seg = 0; seg < 3; seg++) {
@@ -243,7 +248,7 @@ export class Combat {
       if (tag?.kind === 'vehicle') {
         const v = tag.ref as Vehicle; res.kind = 'vehicle'; res.vehicle = v;
         const pane = !v.destroyed ? this.glassPane(v, res.point, res.normal, d) : null;
-        if (pane !== null && !res.glass.includes(v)) {
+        if (pane !== null && !res.glass.includes(v) && !opts.solidGlass) {
           // through the window into the cabin
           if (!opts.dry) this.breakPane(v, pane, res.point);
           res.glass.push(v); start = worldT + 0.02; excludeRb = v.phys.body; continue;
@@ -329,6 +334,7 @@ export class Combat {
     const zd = zoneDamage(w, zone, dist, { isPlayer: c.isPlayer, vest }, 0.97 + Math.random() * 0.06);
     const dmg = zd.instantKill ? c.health + c.armor + 1000 : zd.damage;
     if (zd.instantKill) c.armor = 0;
+    c.lastHit = { zone, dx: dir.x, dz: dir.z, power: w.knockback * (w.pellets > 1 ? 0.8 : 1) + (zone === 'head' ? 0.3 : 0), blast: false };
     const killed = c.damage(dmg, from, this.time);
     const h = c.human;
     if (c.alive && !h.busy) {
@@ -410,10 +416,10 @@ export class Combat {
       p.vel.y -= g * dt;
       if (p.kind === 'rocket') { p.trail -= dt; if (p.trail <= 0) { p.trail = 0.012; this.particles.smoke(p.pos.x, p.pos.y, p.pos.z, 0.2, 0.5); this.particles.fire(p.pos.x, p.pos.y - 0.4, p.pos.z); } }
       const step = p.vel.length() * dt;
-      const d = this.v1.copy(p.vel).normalize();
+      const d = this.vProj.copy(p.vel).normalize(); // own vector: trace() reuses v1/v2 internally and used to corrupt this direction
       let exploded = false;
       if (step > 0) {
-        const tr = p.age > 0.04 ? this.trace(p.pos, d, step + 0.05, p.owner, { dry: true }) : null;
+        const tr = p.age > 0.04 ? this.trace(p.pos, d, step + 0.05, p.owner, { dry: true, solidGlass: true }) : null;
         if (tr && tr.kind !== 'none') {
           if (p.kind === 'frag' && tr.kind !== 'character') {
             // bounce
@@ -463,9 +469,14 @@ export class Combat {
       if (!c.alive || c.inVehicle) continue;
       const dist = c.pos.distanceTo(at); if (dist > R) continue;
       const f = 1 - dist / R; const dmg = (c.isPlayer ? w.playerDamage : w.damage) * f * f * 1.4;
-      const killed = c.damage(dmg, by, this.time);
-      const dir = this.v2.copy(c.pos).sub(at).setY(0).normalize(); c.vel.set(dir.x * 7 * f, 4 * f, dir.z * 7 * f); c.knockT = 1.2 * f;
+      const dir = this.v2.copy(c.pos).sub(at).setY(0).normalize();
+      c.lastHit = { zone: 'torso', dx: dir.x, dz: dir.z, power: 6, blast: true };
+      const killed = c.damage(dmg, by, this.time); c.vel.set(dir.x * 7 * f, 4 * f, dir.z * 7 * f); c.knockT = 1.2 * f;
       if (by) this.onHit?.(c, dmg, by, false, killed, w, 'torso');
+    }
+    for (const h of this.helis()) {
+      const dist = h.position.distanceTo(at); if (dist > R * 1.15) continue;
+      const f = 1 - dist / (R * 1.15); h.damage(w.damage * 4.5 * f, at.clone(), this.v2.copy(h.position).sub(at).normalize().clone(), by ?? undefined);
     }
     for (const v of this.vehicles()) {
       const dist = v.position.distanceTo(at); if (dist > R) continue;

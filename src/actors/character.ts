@@ -4,7 +4,6 @@ import { RAPIER, type Physics, G_STATIC, G_VEHICLE, G_CHAR, groups } from '../co
 import { Human, type HumanTemplate, type Look } from './human';
 import { damp, dampAngle, wrapAngle } from '../core/rng';
 import { WATER_LEVEL } from '../world/citymap';
-import { VOICES } from '../audio/voices';
 
 export type Team = 'player' | 'civilian' | 'gang' | 'police';
 /** Melee move kinds: the fist combo (jab, cross, hook) and weapon swings. */
@@ -43,6 +42,10 @@ export class Character {
   health = 100; maxHealth = 100; armor = 0;
   alive = true;
   deadTime = 0;
+  /** The blow that last hurt this character (set by combat): drives how they fall. dir = direction the blow travelled. */
+  lastHit: { zone: string; dx: number; dz: number; power: number; blast: boolean } | null = null;
+  /** Procedural settle of a dying body on top of the fall clip (ragdoll-like spring on pitch / roll / spin / hop). */
+  deathStyle = ''; private dfx = { t: 0, delay: 0, pitchT: 0, rollT: 0, spinT: 0, spinDur: 0.7, lift: 0, liftDur: 0.45, p: 0, pv: 0, r: 0, rv: 0, spin: 0 };
   inVehicle: unknown = null;
   physicsEnabled = true;
   lastDamageFrom: Character | null = null;
@@ -66,8 +69,6 @@ export class Character {
   onMeleeStrike: ((kind: MeleeKind) => void) | null = null;
   private meleeLock = 0; private meleeCombo = 0; private sinceMelee = 9; private queuedMelee: 'fists' | 'knife' | 'bat' | null = null;
   private lastYaw = 0; private turnRateS = 0;
-  /** Picks this person's speaking voice/pitch (see audio/voices.ts). */
-  voiceSeed = Math.random() * 1000;
   get sex() { return this.human.look.sex; }
 
   constructor(public physics: Physics, tpl: HumanTemplate, look: Look, public team: Team, x: number, z: number, y = 0.2) {
@@ -223,18 +224,77 @@ export class Character {
   kill() {
     if (!this.alive) return;
     this.alive = false; this.deadTime = 0; this.downT = 0;
-    // Fall away from whoever dealt the blow: Death01 falls backwards, so face the attacker.
-    const f = this.lastDamageFrom;
-    if (f && f !== this && !this.inVehicle) {
-      const dx = f.pos.x - this.pos.x, dz = f.pos.z - this.pos.z;
-      if (dx * dx + dz * dz > 0.01) { this.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.5; const l = Math.hypot(dx, dz); this.vel.x -= dx / l * 1.6; this.vel.z -= dz / l * 1.6; this.knockT = Math.max(this.knockT, 0.7); }
-    }
-    this.human.setState('dead'); this.human.setUpperMode('none');
+    const f = this.lastDamageFrom, hit = this.lastHit, h = this.human;
+    h.setState('dead'); h.setUpperMode('none');
     this.collider.setCollisionGroups(groups(0, 0));
-    if (!this.isPlayer && Math.random() < 0.5) VOICES.say(this, 'oof', true);
+    this.pickFall(f, hit);
+  }
+  /** Chooses how this body falls from the hit zone, the blow direction and its strength (Death01 only falls backwards). */
+  private pickFall(f: Character | null, hit: Character['lastHit']) {
+    const h = this.human, fx = this.dfx;
+    Object.assign(fx, { t: 0, delay: 0, pitchT: 0, rollT: 0, spinT: 0, spinDur: 0.7, lift: 0, liftDur: 0.45, p: 0, pv: 0, r: 0, rv: 0, spin: 0 });
+    this.deathStyle = 'back';
+    if (this.inVehicle) return;
+    // blow direction (travelling away from the attacker); falls back to the attacker's position, else any
+    let bx = hit?.dx ?? 0, bz = hit?.dz ?? 0;
+    if (bx * bx + bz * bz < 1e-4 && f && f !== this) { bx = this.pos.x - f.pos.x; bz = this.pos.z - f.pos.z; }
+    const bl = Math.hypot(bx, bz);
+    const rnd = (a: number) => (Math.random() * 2 - 1) * a;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    if (bl < 0.1) { // no direction (fire, fall...): crumple where standing
+      this.deathStyle = 'buckle'; h.setDeathClip('Crouch_Idle_Loop', 1.3); Object.assign(fx, { delay: 0.25, pitchT: side > 0 ? 1.45 : -1.4, rollT: rnd(0.3) });
+      return;
+    }
+    bx /= bl; bz /= bl;
+    const rel = Math.sin(this.yaw) * bx + Math.cos(this.yaw) * bz; // +1: blow travelled the way they face (shot in the back)
+    const zone = hit?.zone ?? 'torso', power = hit?.power ?? 0;
+    const faceBlow = () => { this.yaw = Math.atan2(-bx, -bz) + rnd(0.45); }; // face the attacker, fall away from them
+    const push = (k: number) => { this.vel.x += bx * k; this.vel.z += bz * k; this.knockT = Math.max(this.knockT, 0.7 + k * 0.1); };
+    if (hit?.blast || power >= 3) { // thrown by an explosion / shotgun: airborne hop, hard landing, rolls
+      this.deathStyle = 'blast'; faceBlow(); push(hit?.blast ? 5.5 : 4);
+      h.setDeathClip('Death01', 1.5 + Math.random() * 0.3);
+      Object.assign(fx, { lift: 0.5 + Math.random() * 0.4, liftDur: 0.5, rollT: rnd(0.7), spinT: rnd(1.2), spinDur: 0.6 });
+    } else if (zone === 'leg') { // knees buckle, topple forward or sideways
+      this.deathStyle = 'buckle'; this.yaw = Math.atan2(-bx, -bz) + rnd(1.2); push(0.6);
+      h.setDeathClip('Crouch_Idle_Loop', 1.4);
+      Object.assign(fx, { delay: 0.35, pitchT: 1.42, rollT: rnd(0.4), spinT: rnd(0.5), spinDur: 0.8 });
+    } else if (rel > 0.35) { // shot in the back: stumble forward, fall on the face
+      this.deathStyle = 'stumble'; this.yaw = Math.atan2(bx, bz) + rnd(0.3); push(2.2);
+      h.setDeathClip('Crouch_Idle_Loop', 1.6);
+      Object.assign(fx, { delay: 0.18, pitchT: 1.45, rollT: rnd(0.3), spinT: rnd(0.4), spinDur: 0.6 });
+    } else if (zone === 'head' || zone === 'neck') { // headshot: lights out, drops straight down/back
+      this.deathStyle = 'headdrop'; faceBlow(); push(0.5);
+      h.setDeathClip('Death01', 1.45 + Math.random() * 0.2);
+      Object.assign(fx, { rollT: rnd(0.2) });
+    } else if (zone === 'arm' || Math.abs(rel) < 0.35) { // shoulder / side hit: spun round, drops
+      this.deathStyle = 'spin'; faceBlow(); push(1.2);
+      h.setDeathClip('Death01', 1.1 + Math.random() * 0.25);
+      Object.assign(fx, { spinT: side * (1.6 + Math.random() * 1.6), spinDur: 0.75, rollT: rnd(0.5) });
+    } else { // chest from the front
+      faceBlow(); push(1.4 + power * 0.3);
+      h.setDeathClip('Death01', 0.95 + Math.random() * 0.35);
+      Object.assign(fx, { rollT: rnd(0.45), spinT: rnd(0.5), spinDur: 0.9 });
+    }
+  }
+  /** Spring-damped body settle applied to the root each visual update. */
+  private deathFx(dt: number): { pitch: number; roll: number; spin: number; lift: number } | null {
+    if (this.alive || this.inVehicle) return null;
+    const fx = this.dfx; let left = Math.min(dt, 0.1);
+    while (left > 0) {
+      const h = Math.min(left, 1 / 60); left -= h; fx.t += h;
+      const go = fx.t >= fx.delay;
+      const pT = go ? fx.pitchT : 0, rT = go ? fx.rollT : 0;
+      fx.pv += (70 * (pT - fx.p) - 8 * fx.pv) * h; fx.p += fx.pv * h;
+      fx.rv += (50 * (rT - fx.r) - 7 * fx.rv) * h; fx.r += fx.rv * h;
+    }
+    const u = Math.min(1, Math.max(0, fx.t / fx.spinDur));
+    const spin = fx.spinT * (1 - (1 - u) * (1 - u));
+    const lu = fx.t / fx.liftDur;
+    const lift = fx.lift > 0 && lu < 1 ? fx.lift * 4 * lu * (1 - lu) : 0;
+    return { pitch: fx.p, roll: fx.r, spin, lift };
   }
   revive(health = 100) {
-    this.alive = true; this.health = health; this.downT = 0; this.human.setState('loco'); this.human.stopAction();
+    this.alive = true; this.health = health; this.downT = 0; this.human.setState('loco'); this.human.stopAction(); this.deathStyle = ''; this.lastHit = null;
     this.collider.setCollisionGroups(groups(G_CHAR, G_STATIC | G_CHAR));
   }
   /**
@@ -244,7 +304,6 @@ export class Character {
   hitReact(dx: number, dz: number, power: number) {
     if (!this.alive || this.inVehicle) return;
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    VOICES.say(this, power >= 1 ? 'scream' : 'oof', true);
     if (power >= 1 && !(this.isPlayer && power < 1.2)) {
       this.yaw = Math.atan2(-dx, -dz); // face the attacker, fall backwards
       this.human.playAction('knockdown');
@@ -295,10 +354,13 @@ export class Character {
     h.root.position.copy(this.pos);
     h.root.position.y += this.stepOffset;
     if (this.swimming) h.root.position.y += 0.15;
-    h.root.rotation.y = this.yaw;
+    const dfx = this.deathFx(dt);
+    if (!this.alive && !this.inVehicle && !h.dead) h.setState('dead'); // a corpse never stays upright
+    h.root.rotation.y = this.yaw + (dfx?.spin ?? 0);
+    if (dfx) { h.root.position.y += dfx.lift + Math.min(0.16, Math.abs(dfx.pitch) * 0.12 + Math.abs(dfx.roll) * 0.08); h.root.rotation.order = 'YXZ'; h.root.rotation.x = dfx.pitch; h.root.rotation.z = dfx.roll; }
     this.leanRollS = damp(this.leanRollS, this.leanRoll, 9, dt);
     this.leanPitchS = damp(this.leanPitchS, this.leanPitch, 9, dt);
-    if (Math.abs(this.leanRollS) + Math.abs(this.leanPitchS) > 1e-4 || h.root.rotation.x !== 0 || h.root.rotation.z !== 0) {
+    if (!dfx && (Math.abs(this.leanRollS) + Math.abs(this.leanPitchS) > 1e-4 || h.root.rotation.x !== 0 || h.root.rotation.z !== 0)) {
       h.root.rotation.order = 'YXZ'; h.root.rotation.x = this.leanPitchS; h.root.rotation.z = this.leanRollS;
     }
     h.update(dt);

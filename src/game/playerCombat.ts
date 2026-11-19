@@ -48,6 +48,8 @@ function rotateBoneWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: numbe
 }
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+/** Seconds the gun stays raised after firing from the hip. */
+const HIP_HOLD = 1.6;
 export class PlayerCombat {
   inv = new Inventory();
   private models = new Map<WeaponId, { g: THREE.Group; parts: WeaponParts }>();
@@ -132,6 +134,8 @@ export class PlayerCombat {
     this.reloadFoley(def, done);
     this.hitMarker = Math.max(0, this.hitMarker - dt * 3.2);
     this.killMarker = Math.max(0, this.killMarker - dt * 1.4);
+    // Keep the weapon raised while the trigger is held (or the gun is mid-reload) and ~1.6 s after the last shot, so it never dips between rounds.
+    if (!blocked && !inv.def.melee && inv.def.cat !== 'throw' && (this.input.held('fire') || inv.reloading) && c.alive && !c.inVehicle) this.hipAimT = Math.max(this.hipAimT, HIP_HOLD);
     this.hipAimT = Math.max(0, this.hipAimT - dt);
     const onFoot = c.alive && !c.inVehicle;
     // weapon cycling (the mouse wheel zooms instead while looking through a scope)
@@ -200,7 +204,7 @@ export class PlayerCombat {
 
   private fireRanged(def: WeaponDef) {
     const c = this.player;
-    if (!this.ctl.aiming) { this.hipAimT = 0.7; c.yaw = this.cam.yaw + Math.PI; }
+    if (!this.ctl.aiming) { this.hipAimT = HIP_HOLD; c.yaw = this.cam.yaw + Math.PI; }
     c.human.root.rotation.y = c.yaw;
     this.updateModel();
     const o = this.safeMuzzle(new THREE.Vector3());

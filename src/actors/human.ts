@@ -80,6 +80,8 @@ export class Human {
   private flashT = 0;
   private stateTime = 0;
   private deathRate = 1;
+  /** Clip held while dead (Death01 unless a death style picked another base) and the lock that stops stray actions standing a corpse up. */
+  private deathClip = 'Death01'; private deathLock = false;
   private fingers: { bone: THREE.Object3D; rest: THREE.Quaternion }[] = [];
   private relax = 1;
 
@@ -173,9 +175,16 @@ export class Human {
   /** Full-body state: loco, jump, drive, swim, sit, dead, crouch, cower, talk, dance */
   setState(s: string) {
     if (s === this.state) return;
-    this.state = s; this.stateTime = 0;
-    if (s === 'dead') { this.deathRate = 0.95 + Math.random() * 0.35; this.playAction('Death01', { layer: 'full', fade: 0.1, rate: this.deathRate, hold: true }); }
+    this.state = s; this.stateTime = 0; this.deathLock = false;
+    if (s === 'dead') { this.deathRate = 0.95 + Math.random() * 0.35; this.deathClip = 'Death01'; this.playAction('Death01', { layer: 'full', fade: 0.1, rate: this.deathRate, hold: true }); this.deathLock = true; }
   }
+  /** Re-plays the death with another base clip / speed (call right after setState('dead')). */
+  setDeathClip(clip: string, rate = 1, from = 0) {
+    if (this.state !== 'dead') return;
+    this.deathLock = false; this.deathClip = clip; this.deathRate = rate;
+    this.playAction(clip, { layer: 'full', fade: 0.08, rate, from, hold: true, loop: false }); this.deathLock = true;
+  }
+  get dead() { return this.state === 'dead'; }
   get currentState() { return this.state; }
   setUpperMode(m: UpperMode) { this.upperMode = m; }
 
@@ -186,6 +195,7 @@ export class Human {
    * onDone. Returns the action's duration in seconds (Infinity for held/looping actions).
    */
   playAction(name: string, opts: ActionOpts = {}): number {
+    if (this.deathLock) return 0; // a corpse stays down: nothing may stand it back up
     const def: ActionDef = ACTIONS[name] ?? { clip: name, layer: opts.layer ?? 'full' };
     const clipName = def.clip ?? null;
     const layer = opts.layer ?? def.layer;
@@ -308,7 +318,7 @@ export class Human {
       }
       if (a.t >= a.dur) { this.act = null; a.onDone?.(); }
     }
-    if (this.state === 'dead' && (!this.act || this.act.ending)) { for (const l of [this.lower, this.upper]) { for (const s of l.values()) s.target = 0; this.slot(l, 'Death01').target = 1; } }
+    if (this.state === 'dead' && (!this.act || this.act.ending)) { for (const l of [this.lower, this.upper]) { for (const s of l.values()) s.target = 0; this.slot(l, this.deathClip).target = 1; } }
     const rate = 1 - Math.exp(-dt * 14);
     for (const l of [this.lower, this.upper]) for (const s of l.values()) {
       s.weight += (s.target - s.weight) * (dt === 0 ? 1 : rate);
@@ -316,6 +326,10 @@ export class Human {
       s.action.setEffectiveWeight(s.weight);
     }
     if (this.flashT > 0) { this.flashT -= dt; (this.material.userData.uniforms as PersonUniforms).uFlash.value = Math.max(0, this.flashT / 0.12) * 0.6; }
+    // A held one-shot (death, knockdown) must freeze just before its last key: the library clips end on the standing bind
+    // pose, so letting three.js "finish" them snapped corpses back upright a couple of seconds after they fell.
+    if (a && a.hold && a.clip && !a.def.reverse) this.holdClip(a.clip, dt);
+    if (this.state === 'dead') this.holdClip(this.deathClip, dt);
     this.mixer.update(dt);
     // Relaxed hands (the library's idle/locomotion clips clench fists) unless holding, aiming or fighting.
     const wantRelax = this.upperMode === 'loco' && this.state !== 'drive' && !(a && /punch|Punch|smash|pull/.test(a.name)) ? 0.7 : 0;
@@ -327,6 +341,13 @@ export class Human {
       this.applyPose(samplePose(a.def.poses, u, this.poseTmp), actK);
     }
     if (this.state === 'cower' && (!this.act || this.act.name !== 'cower')) this.applyPose(samplePose(ACTIONS.cower.poses!, 0, this.poseTmp), Math.min(1, this.stateTime * 4));
+  }
+  private holdClip(name: string, dt: number) {
+    for (const l of [this.lower, this.upper]) {
+      const sl = l.get(name); if (!sl) continue;
+      const act = sl.action, lim = act.getClip().duration - 0.07, step = act.timeScale * dt;
+      if (act.timeScale > 0 && act.time + step >= lim) { act.time = lim; act.timeScale = 0; }
+    }
   }
   /** Applies body-space bone rotations (degrees) scaled by `weight`; see actions.ts for the axes. */
   applyPose(pose: Map<BoneKey, Euler> | Partial<Record<BoneKey, Euler>>, weight = 1) {

@@ -4,6 +4,7 @@ import { Renderer } from '../render/renderer';
 import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import { Input } from '../core/input';
 import type { Settings } from '../core/settings';
+import { distToPath } from '../world/westside';
 import { generateCity, type CityMap, signalState, districtAt, surfaceAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import type { Assets } from '../world/assets';
@@ -186,7 +187,8 @@ export class Game {
       if (target === this.player) this.cam.addShake(0.15);
     };
     this.combat.onVehicleHit = (v, from) => { if (from === this.player) this.traffic.panic(v); };
-    this.combat.onExplosion = (at, by) => this.explosion(at, by); // COMBAT: grenades / rockets damage people like car explosions
+    this.combat.helis = () => this.helis.list;
+    this.combat.onExplosion = (at, by, R) => this.explosion(at, by, R); // COMBAT: grenades / rockets damage people like car explosions
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
     this.vehicles.onCrash = e => {
       if (e.vehicle === this.playerVehicle) { this.cam.addShake(Math.min(0.8, e.impact / 18)); this.stats.crashes++; this.pop.danger(e.point, 15, this.player); }
@@ -200,14 +202,15 @@ export class Game {
     if (n.weapon !== 'fists' && Math.random() < 0.6) this.spawnPickup('ammo', Math.ceil(WEAPONS[n.weapon].ammoPack / 2), n.pos.clone().add(new THREE.Vector3(0.6, 0, 0.4)), n.weapon);
     this.events.onNpcKilled(n, by);
   }
-  explosion(at: THREE.Vector3, by: Character | null) {
+  explosion(at: THREE.Vector3, by: Character | null, R = 8) {
     this.pop.danger(at, 60, by);
     this.cam.addShake(Math.max(0, 1 - this.renderer.camera.position.distanceTo(at) / 60));
     for (const c of [this.player, ...this.pop.characters()]) {
       if (!c.alive || c.inVehicle) continue;
       const d = c.pos.distanceTo(at);
-      if (d < 8) {
-        const killed = c.damage((8 - d) * 18, by, this.time);
+      if (d < R) {
+        const od = c.pos.clone().sub(at).setY(0); if (od.lengthSq() > 1e-4) od.normalize(); c.lastHit = { zone: 'torso', dx: od.x, dz: od.z, power: 6, blast: true };
+        const killed = c.damage((R - d) * 18, by, this.time);
         if (c === this.player && !c.alive) this.playerDown('down');
         if (c !== this.player) { c.knockT = 1.2; const dir = c.pos.clone().sub(at).setY(0).normalize(); c.vel.set(dir.x * 7, 4, dir.z * 7); }
         const npc = this.pop.npcs.find(n => n.char === c); if (npc && killed) this.onNpcKilled(npc, by);
@@ -334,7 +337,12 @@ export class Game {
   boardFinished(v: Enterable, _seat = 0) {
     const h = this.player.human;
     h.setState('drive'); h.setUpperMode('none'); h.setSpeed(0);
+    const firstUse = !v.playerUsed;
     this.player.inVehicle = v; v.driver = this.player; v.playerUsed = true;
+    if (firstUse) { // stealing aircraft or police/army vehicles raises the wanted level
+      if (v instanceof Helicopter) this.police.alarm(v.variant === 'police' ? 'policeHeliTheft' : 'heliTheft', this.player.pos);
+      else if (['police', 'fbi', 'swat', 'army', 'tank'].includes((v as Vehicle).kind)) this.police.alarm('copCarTheft', this.player.pos);
+    }
     if (v instanceof Helicopter) {
       this.playerHeli = v; v.engineOn = true; v.parked = false;
       this.audio.play('engineStart', { pos: v.position, pitch: 0.7 });
@@ -579,8 +587,8 @@ export class Game {
   private updateLamps(dt: number) {
     const night = this.renderer.skyState.night;
     const on = THREE.MathUtils.smoothstep(night, 0.15, 0.5);
-    (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 3.2, 0.35 + on * 2.6, 0.3 + on * 1.6);
-    (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.55;
+    (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 1.6, 0.35 + on * 1.3, 0.3 + on * 0.8);
+    (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.3;
     this.lampTimer -= dt;
     const n = this.renderer.quality.pointLights;
     if (this.lampTimer <= 0) {
@@ -624,6 +632,7 @@ export class Game {
   // ---------------- HUD data ----------------
   streetName(x: number, z: number): string {
     // nearest road: on sidewalks, plazas and courtyards too
+    if (x < AVENUES[0] - 20) { let best = '', bd = 40; for (const p of this.city.paths) if (p.kind === 'street') { const d = distToPath(p, x, z); if (d < bd) { bd = d; best = p.name; } } if (best) return best; } // Old Town / Seacliff street names
     let bi = -1, bd = 60; AVENUES.forEach((a, i) => { const d = Math.abs(x - a); if (d < bd) { bd = d; bi = i; } });
     let si = -1, sd = 60; STREETS.forEach((s, i) => { const d = Math.abs(z - s); if (d < sd) { sd = d; si = i; } });
     if (bi >= 0 && (si < 0 || bd < sd)) return AVENUE_NAMES[bi];
