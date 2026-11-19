@@ -83,7 +83,7 @@ test.describe('police R5', () => {
     expect(hasHeli).toBe(true);
     await step(page, 45); // far longer than the 19 s search timer
     expect(await heat(page)).toBe(4);
-    expect(await page.evaluate(() => (window as any).__game.police.state.seen)).toBe(true);
+    expect(await page.evaluate(() => (window as any).__game.police.state.unseenT)).toBeLessThan(8); // the spotlight keeps resetting the search timer
     // put a solid roof between heli and player: LOS breaks and the search timer starts
     const lost = await page.evaluate(() => {
       const g = (window as any).__game, P = g.police;

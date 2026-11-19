@@ -1,81 +1,100 @@
 /**
- * First-person body shell: the player's own body mesh with its A-pillars slimmed to a realistic width (the loft that builds the
- * windshield frame is 8.5 cm wide in plan and, seen from the driver's eye, reads as a heavy black bar). Pure geometry work, done once.
+ * First-person cabin frame: where the player's own body has its windshield and side windows (read from the template's glass
+ * mesh), and a copy of the body mesh with the front greenhouse (A-pillars, windshield header, front roof, door-mirror housings)
+ * cut away. The cockpit draws its own thin, dark interior pillars, header and headliner in their place, so the body's exterior
+ * loft (built to be seen from outside, far too thick from the driver's eye) never shows in the cockpit. Pure geometry, done once.
  */
 import * as THREE from 'three';
+import { getTemplate } from '../vehicles/models/build';
+import type { VehicleKind } from '../vehicles/specs';
+import { K } from '../vehicles/models/kinds';
 
-export interface Pillar { a: THREE.Vector3; b: THREE.Vector3 }
-/** Slimmed fraction of the original pillar width (0.55 leaves about 6 cm). */
-export const PILLAR_KEEP = 0.7;
+export interface V3 { x: number; y: number; z: number }
+export interface CabinFrame {
+  /** side-window sill height (the beltline): the dash top and the door sills sit at it */
+  belt: number;
+  /** driver-side (+x) side-window sill: x = its widest point (the door line), z = its front end; the A-pillar base and the door mirror mount */
+  base: V3;
+  /** windshield base z on the car's centre line (the windshield base curves back toward the corners) */
+  baseCz: number;
+  /** windshield top outer corner (driver side, +x) */
+  top: V3;
+  /** headliner height */
+  roofIn: number;
+  /** front edge of the body roof kept in the shell (everything above the belt ahead of it is cut away) */
+  zCut: number;
+  open: boolean;
+}
 
-/** Height of the windshield's bottom edge (the cowl) in the body mesh: the lowest dark windshield-frame triangle ahead of `zFront`. */
-export function cowlHeight(g: THREE.BufferGeometry, zFront: number): number | null {
-  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind'), col = g.getAttribute('color');
-  if (!kind || !col) return null;
-  let y = Infinity;
-  for (let i = 0; i < pos.count; i += 3) {
-    const k = Math.round(kind.getX(i));
-    if ((k !== 0 && k !== 2) || col.getX(i) >= 0.012) continue;
-    const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3, cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
-    if (cz < zFront || Math.abs(cx) < 0.3) continue;
-    y = Math.min(y, (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3);
+/** Reads the windshield / side-glass corners from a glass mesh (normals tell the windshield from the side glass). */
+export function frameFromGlass(glass: THREE.BufferGeometry | null | undefined, fb: { belt: number; zA: number; zR1: number; roofY: number; halfW: number; open: boolean }): CabinFrame {
+  const out: CabinFrame = {
+    belt: fb.belt, base: { x: fb.halfW - 0.18, y: fb.belt, z: fb.zA - 0.15 }, baseCz: fb.zA, top: { x: fb.halfW - 0.3, y: fb.roofY - 0.1, z: fb.zR1 + 0.05 },
+    roofIn: fb.roofY - 0.04, zCut: fb.zR1 - 0.04, open: fb.open,
+  };
+  const P = glass?.getAttribute('position'), N = glass?.getAttribute('normal');
+  if (P && N) {
+    const ws: number[] = [], sd: number[] = [];
+    for (let i = 0; i < P.count; i++) {
+      if (N.getZ(i) > 0.35 && Math.abs(N.getX(i)) < 0.6) ws.push(i);
+      else if (N.getX(i) > 0.6 && P.getX(i) > 0) sd.push(i);
+    }
+    if (ws.length > 8 && sd.length > 8) {
+      let y0 = Infinity, y1 = -Infinity, s0 = Infinity;
+      for (const i of ws) { y0 = Math.min(y0, P.getY(i)); y1 = Math.max(y1, P.getY(i)); }
+      for (const i of sd) s0 = Math.min(s0, P.getY(i));
+      const r = y1 - y0;
+      let top = -1, cz = -Infinity, bz = -Infinity, bx = 0;
+      for (const i of ws) {
+        const x = P.getX(i), y = P.getY(i);
+        if (y > y1 - 0.1 * r && x > 0 && (top < 0 || x > P.getX(top))) top = i;
+        if (y < y0 + 0.08 * r && Math.abs(x) < 0.15) cz = Math.max(cz, P.getZ(i));
+      }
+      for (const i of sd) if (P.getY(i) < s0 + 0.03) { bz = Math.max(bz, P.getZ(i)); bx = Math.max(bx, P.getX(i)); } // front end and widest point of the sill line
+      out.belt = s0;
+      out.base = { x: bx, y: s0, z: bz };
+      if (top >= 0) out.top = { x: P.getX(top), y: P.getY(top), z: P.getZ(top) };
+      out.baseCz = Number.isFinite(cz) ? Math.max(cz, bz) : fb.zA;
+      out.roofIn = Math.min(fb.roofY - 0.035, out.top.y + 0.07);
+      out.zCut = Math.min(out.top.z, fb.zR1) - 0.04;
+    }
   }
-  return Number.isFinite(y) ? y : null;
+  return out;
+}
+
+const frames = new Map<VehicleKind, CabinFrame>();
+/** Cabin frame of a vehicle kind (cached). */
+export function cabinFrame(kind: VehicleKind): CabinFrame {
+  let f = frames.get(kind);
+  if (f) return f;
+  const t = getTemplate(kind), gh = t.shape.gh, S = t.seats[0];
+  f = frameFromGlass(t.lods[0].glass, { belt: S.y + 0.47, zA: gh?.zA ?? S.z + 0.9, zR1: gh?.zR1 ?? S.z + 0.1, roofY: t.roofY, halfW: t.shape.W / 2, open: !!gh?.open });
+  frames.set(kind, f);
+  return f;
 }
 
 /**
- * Returns a copy of `g` whose dark windshield-pillar triangles (front of `zFront`, above the dash line) are squeezed toward the
- * pillar's centre line (the lowest dark triangles, the windshield's bottom trim, are left alone), plus the centre line of the driver-side (+x) pillar. Non-indexed template geometry only.
+ * Copy of a (non-indexed) body mesh without the front greenhouse: triangles above the beltline and ahead of `zCut`
+ * (A-pillars, windshield frame, the roof's front edge) and every door-mirror triangle. Indexed input is returned unchanged.
  */
-export function slimPillars(g: THREE.BufferGeometry, zFront: number, keep = PILLAR_KEEP): { geo: THREE.BufferGeometry; pillar: Pillar | null } {
-  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind'), col = g.getAttribute('color');
-  if (!kind || !col || g.index) return { geo: g, pillar: null };
-  const out = new Float32Array(pos.array.length); out.set(pos.array as Float32Array);
-  const dark = (i: number): boolean => { const k = Math.round(kind.getX(i)); return (k === 0 || k === 2) && col.getX(i) < 0.012 && col.getY(i) < 0.012 && col.getZ(i) < 0.012; };
-  // triangle set per side: dark, ahead of the roof's front edge, above the windshield's bottom trim strip
-  const tris: number[][] = [[], []], cand: { i: number; cx: number; cy: number }[] = [];
-  let ymin = Infinity;
+export function stripFrontGreenhouse(g: THREE.BufferGeometry, belt: number, zCut: number): THREE.BufferGeometry {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute, kind = g.getAttribute('aKind');
+  if (g.index || !pos) return g;
+  const keep: number[] = [];
   for (let i = 0; i < pos.count; i += 3) {
-    if (!dark(i)) continue;
-    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3, cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
-    if (cz < zFront || Math.abs(cx) < 0.3) continue;
-    cand.push({ i, cx, cy }); ymin = Math.min(ymin, cy);
-  }
-  // only the pillar itself: not the windshield's bottom trim, and not the mirror arms further out (x near the pillar's top end)
-  const top = cand.filter(c => c.cy > ymin + 0.08).sort((a, b) => b.cy - a.cy).slice(0, 14);
-  const xTop = [0, 1].map(side => { const xs = top.filter(c => (c.cx > 0 ? 0 : 1) === side).map(c => Math.abs(c.cx)).sort((a, b) => a - b); return xs.length ? xs[xs.length >> 1] : 0; });
-  for (const c of cand) { const side = c.cx > 0 ? 0 : 1; if (c.cy > ymin + 0.08 && Math.abs(Math.abs(c.cx) - xTop[side]) < 0.14) tris[side].push(c.i); }
-  let pillar: Pillar | null = null;
-  const vert = (i: number) => new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
-  /** centre line through the mean of the lowest and of the highest vertices of a triangle list */
-  const fit = (list: number[]): Pillar | null => {
-    let lo = Infinity, hi = -Infinity;
-    for (const i of list) for (let q = 0; q < 3; q++) { const y = pos.getY(i + q); lo = Math.min(lo, y); hi = Math.max(hi, y); }
-    const span = (hi - lo) * 0.12, A = new THREE.Vector3(), B = new THREE.Vector3(); let na = 0, nb = 0;
-    for (const i of list) for (let q = 0; q < 3; q++) {
-      const y = pos.getY(i + q);
-      if (y < lo + span) { A.add(vert(i + q)); na++; } else if (y > hi - span) { B.add(vert(i + q)); nb++; }
-    }
-    return na && nb ? { a: A.multiplyScalar(1 / na), b: B.multiplyScalar(1 / nb) } : null;
-  };
-  const distTo = (l: Pillar, v: THREE.Vector3): number => { const d = l.b.clone().sub(l.a), t = Math.min(1, Math.max(0, v.clone().sub(l.a).dot(d) / d.lengthSq())); return v.distanceTo(l.a.clone().addScaledVector(d, t)); };
-  for (let side = 0; side < 2; side++) {
-    if (tris[side].length < 4) continue;
-    let line = fit(tris[side]); if (!line) continue;
-    // only triangles that really lie along the pillar (the window-frame rail that joins its top end must not be dragged in)
-    const list = tris[side].filter(i => [0, 1, 2].every(q => distTo(line!, vert(i + q)) < 0.11));
-    if (list.length < 4) continue;
-    line = fit(list); if (!line) continue;
-    const d = line.b.clone().sub(line.a), dd = d.lengthSq();
-    for (const i of list) for (let q = 0; q < 3; q++) {
-      const v = vert(i + q), t = Math.min(1, Math.max(0, v.clone().sub(line.a).dot(d) / dd)), c = line.a.clone().addScaledVector(d, t);
-      v.sub(c).multiplyScalar(keep).add(c);
-      out[(i + q) * 3] = v.x; out[(i + q) * 3 + 1] = v.y; out[(i + q) * 3 + 2] = v.z;
-    }
-    if (side === 0) pillar = line;
+    const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+    const ymax = Math.max(pos.getY(i), pos.getY(i + 1), pos.getY(i + 2));
+    if (kind && Math.round(kind.getX(i)) === K.MIRROR) continue;
+    if (cz > zCut && (cy > belt + 0.012 || (ymax > belt + 0.05 && cy > belt - 0.02))) continue;
+    keep.push(i);
   }
   const c = new THREE.BufferGeometry();
-  for (const name of ['position', 'normal', 'uv', 'color', 'aKind']) { const a = g.getAttribute(name); if (a) c.setAttribute(name, name === 'position' ? new THREE.BufferAttribute(out, 3) : a); }
+  for (const name of ['position', 'normal', 'uv', 'color', 'aKind']) {
+    const a = g.getAttribute(name) as THREE.BufferAttribute | undefined; if (!a) continue;
+    const sz = a.itemSize, src = a.array, out = new Float32Array(keep.length * 3 * sz);
+    keep.forEach((v, j) => { for (let q = 0; q < 3 * sz; q++) out[j * 3 * sz + q] = src[v * sz + q]; });
+    c.setAttribute(name, new THREE.BufferAttribute(out, sz));
+  }
   c.computeBoundingSphere(); c.computeBoundingBox();
-  return { geo: c, pillar };
+  return c;
 }

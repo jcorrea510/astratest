@@ -36,15 +36,17 @@ export class Buildings3D {
       const tint = rgb(dist ? DISTRICT_INFO[dist].color : '#888888');
       const h = Math.max(5, l.height || 8);
       const hk = Math.min(1, h / 90);
-      const roof = mix(mix(base, tint, 0.32), [235, 228, 212], 0.12 + hk * 0.32);
-      const wall = mix(mix([120, 112, 104], tint, 0.3), [70, 80, 92], 0.2);
+      const v = 0.9 + ((l.seed % 997) / 997) * 0.22; // per-building brightness variation
+      const warm = (l.seed >> 7) % 3 === 0 ? [214, 168, 132] as [number, number, number] : base;
+      const roof = mix(mix(warm, tint, 0.5), [238, 232, 218], 0.1 + hk * 0.3).map(x => x * v) as [number, number, number];
+      const wall = mix(mix([150, 122, 104], tint, 0.42), [66, 78, 96], 0.18 + hk * 0.15).map(x => x * v) as [number, number, number];
       const p = new Float32Array(8);
       let hw: number, hd: number, c = 1, s = 0;
       if (l.blockId < 0) { c = Math.cos(l.rot); s = Math.sin(l.rot); hw = l.w * 0.46; hd = l.d * 0.46; }
       else { const swap = Math.abs(Math.sin(l.rot)) > 0.7; hw = (swap ? l.d : l.w) * 0.46; hd = (swap ? l.w : l.d) * 0.46; }
       const corners: [number, number][] = [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]];
       corners.forEach(([lx, lz], i) => { p[i * 2] = l.x + lx * c + lz * s; p[i * 2 + 1] = l.z - lx * s + lz * c; });
-      this.list.push({ cx: l.x, cz: l.z, p, h, roof: css(roof), wallL: css(wall, 1.05), wallR: css(wall, 0.72), edge: css(roof, 1.14) });
+      this.list.push({ cx: l.x, cz: l.z, p, h, roof: css(roof), wallL: css(wall, 1.12), wallR: css(wall, 0.68), edge: css(roof, 1.14) });
     }
   }
 
@@ -59,7 +61,7 @@ export class Buildings3D {
   }
 
   /** Extruded draw for the pitched full map. Screen mapping: x' = dx*c - dz*s, y' = (dx*s + dz*c)*pitch. */
-  drawExtruded(ctx: CanvasRenderingContext2D, cx: number, cz: number, scale: number, tilt: number, pitch: number, w: number, hgt: number) {
+  drawExtruded(ctx: CanvasRenderingContext2D, cx: number, cz: number, scale: number, tilt: number, pitch: number, w: number, hgt: number, fast = false) {
     const c = Math.cos(tilt), s = Math.sin(tilt), hw = w / 2, hh = hgt / 2;
     const lift = scale * HEIGHT_K;
     const sx = new Float32Array(4), sy = new Float32Array(4);
@@ -73,7 +75,7 @@ export class Buildings3D {
       const rise = Math.min(b.h, 140) * lift;
       if (px < -60 - rise || px > w + 60 + rise || py < -60 || py > hgt + 80 + rise) continue;
       vis.push(b);
-      if (b.h < 14 && scale < 0.5) continue;
+      if (fast || (b.h < 14 && scale < 0.5)) continue;
       const ox = rise * 0.45, oy = rise * 0.12;
       for (let i = 0; i < 4; i++) {
         const ex = b.p[i * 2] - cx, ez = b.p[i * 2 + 1] - cz;
@@ -108,7 +110,7 @@ export class Buildings3D {
       for (let i = 1; i < 4; i++) ctx.lineTo(sx[i], sy[i] - rise);
       ctx.closePath();
       ctx.fillStyle = b.roof; ctx.fill();
-      if (scale > 0.45) { ctx.lineWidth = 1; ctx.strokeStyle = b.edge; ctx.stroke(); }
+      if (scale > 0.45 && !fast) { ctx.lineWidth = 1; ctx.strokeStyle = b.edge; ctx.stroke(); }
     }
   }
 

@@ -24,6 +24,8 @@ export class FullMap {
   private lastRender = 0;
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch: { d: number } | null = null;
+  private layer = document.createElement('canvas');
+  private layerKey = '';
   private fitScale = 1;
   private dpr = 1;
   private dirty = true;
@@ -123,6 +125,7 @@ export class FullMap {
     });
     this.canvas.addEventListener('pointerup', e => {
       this.pointers.delete(e.pointerId);
+      this.dirty = true;
       if (this.pointers.size < 2) this.pinch = null;
       if (!this.drag || this.drag.id !== e.pointerId) return;
       const moved = this.drag.moved;
@@ -146,7 +149,7 @@ export class FullMap {
       if (e.code === 'KeyQ') this.rotate(-Math.PI / 12);
       else if (e.code === 'KeyE') this.rotate(Math.PI / 12);
       else if (e.code === 'KeyR') { this.targetTilt = MAP_TILT; this.dirty = true; }
-    });
+    }, true); // capture: the UI layer stops propagation of keys while a menu is open
   }
 
   private pinchDist() { const p = [...this.pointers.values()]; return p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0; }
@@ -275,19 +278,27 @@ export class FullMap {
     const ctx = this.ctx, v = this.view, s = this.state;
     const tilt = v.tilt ?? 0, pitch = v.pitch ?? 1;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = '#071f2b'; ctx.fillRect(0, 0, v.w, v.h);
-    // ground: rotated then squashed (pitched), in world metres
-    ctx.save();
-    ctx.translate(v.w / 2, v.h / 2); ctx.scale(1, pitch); ctx.rotate(tilt); ctx.scale(v.scale, v.scale); ctx.translate(-v.cx, -v.cz);
-    this.painter.paintGround(ctx, v.scale);
-    if (s?.heatRadius) {
-      ctx.beginPath(); ctx.arc(s.heatRadius.x, s.heatRadius.z, s.heatRadius.r, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 96, 78, 0.16)'; ctx.fill();
-      ctx.lineWidth = 2 / v.scale; ctx.strokeStyle = 'rgba(120,180,255,0.7)'; ctx.stroke();
+    // ground + buildings are cached: only redrawn when the view changes (blip pulses reuse the bitmap)
+    const fast = moving || !!this.drag?.moved;
+    const key = `${fast ? 'f' : 's'}${v.cx.toFixed(2)}|${v.cz.toFixed(2)}|${v.scale.toFixed(4)}|${tilt.toFixed(4)}|${v.w}|${v.h}|${this.dpr}|${s?.heatRadius ? Math.round(s.heatRadius.x + s.heatRadius.z + s.heatRadius.r) : 0}`;
+    if (key !== this.layerKey) {
+      this.layerKey = key;
+      if (this.layer.width !== this.canvas.width || this.layer.height !== this.canvas.height) { this.layer.width = this.canvas.width; this.layer.height = this.canvas.height; }
+      const lc = this.layer.getContext('2d')!;
+      lc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      lc.fillStyle = '#071f2b'; lc.fillRect(0, 0, v.w, v.h);
+      lc.save();
+      lc.translate(v.w / 2, v.h / 2); lc.scale(1, pitch); lc.rotate(tilt); lc.scale(v.scale, v.scale); lc.translate(-v.cx, -v.cz);
+      this.painter.paintGround(lc, v.scale);
+      if (s?.heatRadius) {
+        lc.beginPath(); lc.arc(s.heatRadius.x, s.heatRadius.z, s.heatRadius.r, 0, Math.PI * 2);
+        lc.fillStyle = 'rgba(255, 96, 78, 0.16)'; lc.fill();
+        lc.lineWidth = 2 / v.scale; lc.strokeStyle = 'rgba(120,180,255,0.7)'; lc.stroke();
+      }
+      lc.restore();
+      this.painter.buildings.drawExtruded(lc, v.cx, v.cz, v.scale, tilt, pitch, v.w, v.h, fast);
     }
-    ctx.restore();
-    // extruded buildings (screen space, painter's order)
-    this.painter.buildings.drawExtruded(ctx, v.cx, v.cz, v.scale, tilt, pitch, v.w, v.h);
+    ctx.drawImage(this.layer, 0, 0, v.w, v.h);
     // waypoint route, drawn above the buildings in screen space so it keeps a constant width
     if (s?.route && s.route.length > 1) {
       ctx.beginPath();

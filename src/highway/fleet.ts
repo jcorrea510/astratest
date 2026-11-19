@@ -5,7 +5,7 @@ import type { VehicleKind } from '../vehicles/specs';
 import { makeCarMaterial, makeGlassMaterial, semiGeometry, busGeometry, type CarUniforms } from './cars';
 import { beamTexture } from './textures';
 import { K } from '../vehicles/models/kinds';
-import { slimPillars, type Pillar } from './cabinshell';
+import { cabinFrame, stripFrontGreenhouse } from './cabinshell';
 
 const CAP = 56;
 /** The player's cabin is drawn by Cockpit, so strip the baked-in interior (dash, seats, wheel, cluster discs) from its body mesh. */
@@ -41,8 +41,6 @@ export class Fleet {
   readonly material = makeCarMaterial();
   /** first-person shell of the player's car (viewed from inside); shares the lamp / exposure uniforms */
   readonly cabinMaterial = makeCarMaterial(true, this.material.userData.u);
-  /** centre line of the slimmed driver-side A-pillar of the cabin shell (car frame), once built */
-  cabinPillar: Pillar | null = null;
   readonly glassMaterial = makeGlassMaterial();
   private slots = new Map<string, Slot>();
   private beams: THREE.InstancedMesh;
@@ -67,7 +65,7 @@ export class Fleet {
     if (name === 'semi') src = semiGeometry();
     else if (name === 'bus') src = busGeometry();
     else { const t = getTemplate(name as VehicleKind), l = t.lods[hi ? 0 : 1]; src = hi ? withoutInterior(l.body) : l.body; glassSrc = cab ? null : (l.glass ?? t.lods[0].glass);
-      if (cab) { const r = slimPillars(src, (t.shape.gh?.zR1 ?? 0.2) - 0.1); src = r.geo; this.cabinPillar = r.pillar; } }
+      if (cab) { const f = cabinFrame(name as VehicleKind); src = stripFrontGreenhouse(src, f.belt, f.zCut); } } // the cockpit draws its own pillars, header and mirrors
     const clone = (g: THREE.BufferGeometry) => {
       // share the (possibly already uploaded) attributes, add our own instanced lamp attribute
       const c = new THREE.BufferGeometry();

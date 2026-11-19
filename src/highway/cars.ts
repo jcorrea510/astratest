@@ -31,7 +31,7 @@ export function makeCarMaterial(cabin = false, shared?: CarUniforms): THREE.Mesh
       .replace('#include <color_fragment>', `#include <color_fragment>
         vec3 inst = diffuseColor.rgb; vec3 col = vCol.rgb;
         bool cabinTrim = CABIN > 0.5 && vObj.y > uTrimY && abs(vObj.x) < 0.95 && abs(vObj.z) < 2.0;
-        if (cabinTrim && (isK(K_PAINT) || isK(K_PAINT2) || isK(K_TRIM) || isK(K_SEAM) || isK(K_CHROME))) { col = vec3(isK(K_PAINT) ? 0.17 : 0.08); gRough = 0.92; gMetal = 0.0; gEmis = col * 0.45; } // headliner (light grey fabric) and pillar lining seen from inside
+        if (cabinTrim && (isK(K_PAINT) || isK(K_PAINT2) || isK(K_TRIM) || isK(K_SEAM) || isK(K_CHROME))) { col = vec3(isK(K_PAINT) ? 0.05 : 0.03); gRough = 0.95; gMetal = 0.0; gEmis = col * 0.25; } // roof lining / pillars behind the driver (charcoal fabric) seen from inside
         else if (isK(K_PAINT)) { col = inst; gRough = 0.3; gMetal = 0.5; }
         else if (isK(K_PAINT2)) { col = vec3(0.8); gRough = 0.45; gMetal = 0.1; }
         else if (isK(K_CHROME)) { col = vec3(0.8, 0.82, 0.85); gRough = 0.12; gMetal = 1.0; }

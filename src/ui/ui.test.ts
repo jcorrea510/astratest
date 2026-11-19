@@ -56,6 +56,14 @@ describe('minimap transform', () => {
     const w = mapScreenToWorld(v, s.x, s.y);
     expect(w.x).toBeCloseTo(123); expect(w.z).toBeCloseTo(456);
   });
+  it('pitched + rotated 3D map view round-trips and squashes vertically', () => {
+    const v = { cx: 40, cz: -20, scale: 0.6, w: 1000, h: 700, tilt: 0.5, pitch: 0.64 };
+    const s = mapWorldToScreen(v, 123, 456);
+    const w = mapScreenToWorld(v, s.x, s.y);
+    expect(w.x).toBeCloseTo(123); expect(w.z).toBeCloseTo(456);
+    const flat = mapWorldToScreen({ ...v, tilt: 0, pitch: 1 }, 40, 100), tilted = mapWorldToScreen({ ...v, tilt: 0 }, 40, 100);
+    expect(tilted.y - 350).toBeCloseTo((flat.y - 350) * 0.64);
+  });
 });
 
 describe('key bindings', () => {

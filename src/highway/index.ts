@@ -114,7 +114,7 @@ export class HighwayGame {
     this.hemi.color.set(p.hemiSky); this.hemi.groundColor.set(p.hemiGround); this.hemi.intensity = p.hemi;
     this.sun.color.set(p.sun); this.sun.intensity = p.sunI; this.sun.position.set(...p.sunDir).multiplyScalar(100);
     this.renderer.toneMappingExposure = p.exposure;
-    this.cockpit.applyPreset(p.top, p.horizon, p.hemiGround, Math.min(1, p.hemi * p.env + 0.3));
+    this.cockpit.applyPreset(Math.min(1, p.hemi * p.env + 0.3));
     this.fleet.uniforms.uTailBase.value = p.tail; this.fleet.uniforms.uHeadAmt.value = 1;
     const x = this.matExtras!; x.sign.color.setScalar(p.sign); x.lamp.color.setScalar(p.lamps ? 1 : 0.35); x.glow.color.setScalar(0.28 * p.lamps); x.glow.visible = p.lamps > 0;
     // reflections come from a sky-only scene
@@ -191,7 +191,7 @@ export class HighwayGame {
     else if (e.code === 'KeyL') this.headlights = !this.headlights;
     else if (e.code === 'KeyR' && this.player.wrecked) this.retry();
   }
-  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; this.fleet.uniforms.uTrimY.value = this.cockpit.dims.dashY + 0.1; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? 66 : 64; this.camera.layers.enable(1); this.cockpit.group.visible = m === 'first'; this.camera.updateProjectionMatrix(); }
+  setCamera(m: CameraMode): void { this.cameraMode = m; this.fleet.uniforms.uCabin.value = m === 'first' ? 1 : 0; this.fleet.uniforms.uTrimY.value = this.cockpit.dims.belt + 0.01; const k = 'player:' + this.opts.model; if (m === 'first') this.fleet.hideGlass.add(k); else this.fleet.hideGlass.delete(k); this.camera.fov = m === 'first' ? this.cockpit.dims.fov : 64; this.camera.layers.enable(1); this.cockpit.group.visible = m === 'first'; this.camera.updateProjectionMatrix(); }
   private setHorn(on: boolean): void { if (on !== this.hornOn) { this.hornOn = on; this.audio.honk(on); } }
   setPaused(p: boolean): void { this.paused = p; this.hud.showPause(p); this.audio.setPaused(p); if (p) this.setHorn(false); if (!p) this.last = performance.now(); }
   private readInput(): DriveInput {
@@ -389,8 +389,9 @@ export class HighwayGame {
       const q = this.pose, e = this.seat;
       const lookDir = this.lookBack ? -1 : 1;
       target.set(q.x + q.lx * e.x + q.ux * (e.y + this.eyeLift) + q.fx * (e.z + this.eyeFwd), q.y + q.ly * e.x + q.uy * (e.y + this.eyeLift) + q.fy * (e.z + this.eyeFwd), q.z + q.lz * e.x + q.uz * (e.y + this.eyeLift) + q.fz * (e.z + this.eyeFwd));
-      look.set(target.x + q.fx * 20 * lookDir, target.y + q.fy * 20 * lookDir - q.uy * 0.9, target.z + q.fz * 20 * lookDir);
-      cam.fov = 66 + k * 7;
+      const dip = 20 * Math.tan(this.cockpit.dims.pitch); // the eye looks a few degrees down the road, like a driver does
+      look.set(target.x + q.fx * 20 * lookDir - q.ux * dip, target.y + q.fy * 20 * lookDir - q.uy * dip, target.z + q.fz * 20 * lookDir - q.uz * dip);
+      cam.fov = this.cockpit.dims.fov + k * 4;
     }
     if (this.shake > 0) {
       const a = this.shake * 0.12, t = this.time * 61;

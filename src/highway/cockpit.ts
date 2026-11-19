@@ -1,310 +1,240 @@
 /**
- * First-person cabin for the highway player's car: sculpted dashboard with a lit instrument cluster (needles move),
- * infotainment screen, centre console, door cards, leather seats, a steering wheel that turns with the front wheels
- * and a rear-view mirror. Everything is built once in car-local coordinates (x left, y up, z forward, the same frame
- * as the car instance) and merged per material, so the whole cabin costs about a dozen draw calls.
+ * First-person cabin for the highway player's car, laid out around the driver's eye: a lofted soft-touch dash that meets the
+ * windshield base, thin dark A-pillars from the windshield corners, a header + headliner (only a sliver shows at the top of the
+ * view), door sills with a door mirror on its sail, a recessed instrument cluster seen through the top of a three-spoke wheel
+ * (needles move, the wheel turns with the front wheels), an infotainment screen and a rear-view mirror. The body shell's own
+ * greenhouse is cut away (cabinshell.ts), so only this geometry frames the view. Built once in car-local coordinates (x left,
+ * y up, z forward) and merged per material: about twenty draw calls.
  */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTemplate } from '../vehicles/models/build';
-import { VEHICLES, type VehicleKind } from '../vehicles/specs';
-import { K } from '../vehicles/models/kinds';
+import type { VehicleKind } from '../vehicles/specs';
 import { MirrorRT, CROP, cropUv, sideMirrorsLive, type MirrorQuality } from './mirrors';
-import { cowlHeight } from './cabinshell';
+import { cabinFrame, type CabinFrame } from './cabinshell';
 import { clockText, nextExit, tripText } from './infotext';
+import { canvas, tex, grainBump, leatherMap, carpetMap, clusterFace, drawInfotainment, dashSkin, pebbleBump, needleAngle, FONT, SCREEN_PERIOD, type ScreenState } from './cockpitTex';
 
+export { needleAngle, SCREEN_PERIOD };
 const D2R = Math.PI / 180;
 /** Steering wheel travel shown for full road-wheel lock: 2.5 turns lock to lock = +-450 degrees. */
 export const WHEEL_LOCK_RAD = 450 * D2R;
-/** Dial layout shared by the cluster paint and the needles (angles ccw from straight up). */
-const DIAL_START = 135 * D2R, DIAL_SWEEP = 270 * D2R;
 /** Wheel turn shown (-1..1 of +-450 deg): the real road-wheel lock fraction, but never less than 20% of the key input so the wheel is always clearly seen turning at speed. */
 export const wheelFrac = (lockFrac: number, input: number): number => Math.abs(lockFrac) > Math.abs(input) * 0.2 ? lockFrac : input * 0.2;
-export const needleAngle = (frac: number): number => DIAL_START - Math.min(1, Math.max(0, frac)) * DIAL_SWEEP;
+/** First-person view: vertical field of view (deg) and how far the view is pitched below the horizon (rad). */
+export const COCKPIT_FOV = 58, COCKPIT_PITCH = 6 * D2R;
+/** Steering wheel: centre this far below the eye's horizon (rad) at this distance (m), rim radius, column tilt from vertical. */
+const WHEEL_DOWN = 28 * D2R, WHEEL_DIST = 0.6, WHEEL_R = 0.185, WHEEL_TILT = 24 * D2R;
 
-function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  return [c, c.getContext('2d')!];
-}
-function tex(c: HTMLCanvasElement, srgb = true, rep = 0, aniso = 4): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(c);
-  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); }
-  t.anisotropy = aniso; return t;
-}
-/** Tiny deterministic noise so the grain is stable between runs. */
-function noise(seed: number): () => number { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+export interface CockpitDims { eye: THREE.Vector3; wheelZ: number; dashY: number; belt: number; pitch: number; fov: number }
 
-/** Fine pebbled plastic grain (bump) for dash and door skins. */
-function grainBump(): THREE.CanvasTexture {
-  const [c, g] = canvas(128, 128), r = noise(7);
-  g.fillStyle = '#808080'; g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 2600; i++) { const v = 90 + r() * 90; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(r() * 128, r() * 128, 1 + r() * 1.6, 1 + r() * 1.6); }
-  return tex(c, false, 6);
-}
-/** Perforated, stitched leather colour map. */
-function leatherMap(base: string): THREE.CanvasTexture {
-  const [c, g] = canvas(256, 256), r = noise(21);
-  g.fillStyle = base; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 5200; i++) { const a = r() * 0.12; g.fillStyle = r() < 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 0.6})`; g.fillRect(r() * 256, r() * 256, 2, 2); }
-  g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 1;
-  for (let i = 0; i <= 256; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); }
-  g.strokeStyle = 'rgba(190,175,150,0.22)'; g.setLineDash([5, 4]);
-  for (let i = 4; i <= 256; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); }
-  return tex(c, true, 2);
-}
-function carpetMap(): THREE.CanvasTexture {
-  const [c, g] = canvas(128, 128), r = noise(3);
-  g.fillStyle = '#1d1d20'; g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 3000; i++) { const v = 20 + r() * 26; g.fillStyle = `rgb(${v},${v},${v + 2})`; g.fillRect(r() * 128, r() * 128, 1, 2); }
-  return tex(c, true, 8);
+/**
+ * Eye point (car frame) for a cabin: on the driver seat, ~62 cm above the cushion but always well under the windshield header and
+ * clear over the beltline, a little ahead of the seat so the A-pillar bases sit out toward the window corners.
+ */
+export function eyePoint(S: { x: number; y: number; z: number }, fr: CabinFrame, roofY: number): THREE.Vector3 {
+  const T = fr.top;
+  const y = Math.max(fr.belt + 0.12, Math.min(S.y + 0.62, T.y - 0.17, roofY - 0.2));
+  const z = Math.min(S.z + 0.06, Math.max(S.z - 0.05, T.z - (T.y - y) / Math.tan(24 * D2R))); // move up to 5 cm forward on low roofs so the header stays above the view
+  return new THREE.Vector3(S.x, y, z);
 }
 
-/** Instrument cluster face: two dials, warning-light strip and trip display, lit from within (drawn bright on black). */
-function clusterFace(): THREE.CanvasTexture {
-  const W = 720, H = 256, [c, g] = canvas(W, H);
-  g.fillStyle = '#05070a'; g.fillRect(0, 0, W, H);
-  const grad = g.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, 'rgba(60,90,120,0.16)'); grad.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = grad; g.fillRect(0, 0, W, H);
-  const dial = (cx: number, cy: number, R: number, max: number, step: number, label: string, unit: string, redFrom: number, labelDiv: number) => {
-    g.save(); g.translate(cx, cy);
-    const ring = g.createRadialGradient(0, 0, R * 0.2, 0, 0, R); ring.addColorStop(0, '#0b1118'); ring.addColorStop(1, '#10161e');
-    g.fillStyle = ring; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = '#2a3440'; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, R - 2, 0, Math.PI * 2); g.stroke();
-    const pt = (rot: number, rr: number): [number, number] => [-Math.sin(rot) * rr, -Math.cos(rot) * rr];
-    for (let v = 0; v <= max; v += step / 2) {
-      const major = Math.abs(v / step - Math.round(v / step)) < 1e-6, rot = needleAngle(v / max);
-      const [x0, y0] = pt(rot, R - 8), [x1, y1] = pt(rot, R - (major ? 28 : 18));
-      g.strokeStyle = v >= redFrom ? '#ff4a3a' : (major ? '#eaf4ff' : '#7f93a8'); g.lineWidth = major ? 3.5 : 2;
-      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-      if (major) {
-        const [tx, ty] = pt(rot, R - 46);
-        g.fillStyle = v >= redFrom ? '#ff6a5a' : '#dcecff'; g.font = `600 ${Math.round(R * 0.17)}px "Barlow Condensed", "Arial Narrow", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(String(Math.round(v / labelDiv)), tx, ty);
-      }
+/** Lofted surface: rows of points (one row per x station) -> indexed grid with uv = (u along rows in metres, v along each row in metres). */
+function loft(rows: THREE.Vector3[][], uScale = 1, vScale = 1): THREE.BufferGeometry {
+  const nr = rows.length, nc = rows[0].length, pos: number[] = [], uv: number[] = [], idx: number[] = [];
+  const u: number[] = [0];
+  for (let i = 1; i < nr; i++) u.push(u[i - 1] + rows[i][0].distanceTo(rows[i - 1][0]));
+  for (let i = 0; i < nr; i++) {
+    let v = 0;
+    for (let j = 0; j < nc; j++) {
+      if (j) v += rows[i][j].distanceTo(rows[i][j - 1]);
+      const p = rows[i][j]; pos.push(p.x, p.y, p.z); uv.push(u[i] * uScale, v * vScale);
     }
-    g.fillStyle = '#7fb4ff'; g.font = `600 ${Math.round(R * 0.13)}px "Barlow Condensed", "Arial Narrow", sans-serif`; g.textAlign = 'center';
-    g.fillText(label, 0, R * 0.52); g.fillStyle = '#6b7e92'; g.fillText(unit, 0, R * 0.7);
-    g.restore();
-  };
-  dial(176, 130, 112, 8000, 1000, 'RPM', 'x1000', 6500, 1000);
-  dial(544, 130, 112, 160, 20, 'MPH', '', 140, 1);
-  // centre: fuel / temp bars, gear, trip
-  g.fillStyle = '#9fd0ff'; g.font = '600 20px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center';
-  g.fillText('FUEL', 300, 54); g.fillText('TEMP', 420, 54);
-  for (const [x, f, col] of [[270, 0.62, '#59d78a'], [390, 0.5, '#59a8ff']] as [number, number, string][]) {
-    g.fillStyle = '#18222c'; g.fillRect(x, 66, 60, 8);
-    g.fillStyle = col; g.fillRect(x, 66, 60 * f, 8);
   }
-  g.fillStyle = '#e8f3ff'; g.font = '700 44px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('D', 360, 150);
-  // warning lights strip (dim, ready)
-  const lamps: [string, number][] = [['#3cff7a', 296], ['#2f88ff', 328], ['#3cff7a', 392], ['#ffb02e', 424]];
-  for (const [col, x] of lamps) { g.fillStyle = col; g.globalAlpha = 0.8; g.beginPath(); g.arc(x, 232, 5, 0, Math.PI * 2); g.fill(); }
-  g.globalAlpha = 1;
-  return tex(c, true, 0, 8);
-}
-
-/** seconds between repaints of the live screens */
-export const SCREEN_PERIOD = 0.25;
-const FONT = '"Barlow Condensed", "Arial Narrow", sans-serif';
-export interface ScreenState { hour: number; meters: number; mph: number; time: number }
-/** Infotainment screen: moving map (roads scroll with the distance driven), next-exit countdown, clock, trip and a media bar. Cheap enough to repaint a few times a second. */
-function drawInfotainment(g: CanvasRenderingContext2D, st: ScreenState): void {
-  const W = 640, H = 360, ex = nextExit(st.meters);
-  g.fillStyle = '#0b1219'; g.fillRect(0, 0, W, H);
-  // map viewport (clipped): blocks and roads scroll toward the bottom as the car drives
-  g.save(); g.beginPath(); g.rect(0, 40, 430, 282); g.clip();
-  g.fillStyle = '#121d27'; g.fillRect(0, 40, 430, 282);
-  const scroll = (st.meters * 0.09) % 120, row0 = Math.floor((st.meters * 0.09) / 120);
-  for (let r = -1; r < 4; r++) {
-    const y = 40 + r * 120 + scroll, rr = noise(row0 * 7 - r * 7 + 1000);
-    for (let i = 0; i < 9; i++) { g.fillStyle = `rgba(${30 + rr() * 20},${46 + rr() * 24},${60 + rr() * 26},1)`; g.fillRect(rr() * 400, y + rr() * 90, 18 + rr() * 50, 12 + rr() * 40); }
-    g.strokeStyle = '#26394a'; g.lineWidth = 9; g.beginPath(); g.moveTo(0, y + 112); g.lineTo(430, y + 112); g.stroke();
+  for (let i = 0; i < nr - 1; i++) for (let j = 0; j < nc - 1; j++) {
+    const a = i * nc + j, b = a + 1, c = a + nc, d = c + 1;
+    idx.push(a, c, b, b, c, d);
   }
-  g.strokeStyle = '#26394a'; g.lineWidth = 12; g.beginPath(); g.moveTo(190, 40); g.lineTo(190, 322); g.stroke();
-  g.strokeStyle = '#2f465a'; g.lineWidth = 2; g.setLineDash([10, 12]); g.lineDashOffset = -(st.meters * 0.09) % 22; g.beginPath(); g.moveTo(190, 40); g.lineTo(190, 322); g.stroke(); g.setLineDash([]);
-  // route: straight up the highway, then peeling off at the exit that gets nearer as the trip counter climbs
-  const by = 70 + (1 - ex.frac) * 200;
-  g.strokeStyle = '#3d9bff'; g.lineWidth = 8; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(190, 296); g.lineTo(190, by); g.lineTo(300, by - 50); g.lineTo(330, 48); g.stroke();
-  g.fillStyle = '#fff'; g.beginPath(); g.moveTo(190, 262); g.lineTo(177, 292); g.lineTo(203, 292); g.closePath(); g.fill();
-  g.restore();
-  // header
-  g.fillStyle = '#0f1822'; g.fillRect(0, 0, W, 40);
-  g.fillStyle = '#cfe6ff'; g.font = `600 24px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'middle';
-  g.fillText(clockText(st.hour), 16, 21); g.textAlign = 'right'; g.fillText('72 F   LTE', W - 16, 21);
-  // side card: next exit + media
-  g.fillStyle = '#101b26'; g.fillRect(430, 40, 210, 320);
-  g.textAlign = 'left'; g.fillStyle = '#7fb4ff'; g.font = `600 20px ${FONT}`; g.fillText('NEXT EXIT', 446, 70);
-  g.fillStyle = '#ffffff'; g.font = `700 46px ${FONT}`; g.fillText(ex.dist, 446, 110);
-  g.fillStyle = '#9fb3c6'; g.font = `600 22px ${FONT}`; g.fillText(`${ex.exit}  ${ex.road}`, 446, 142);
-  g.fillStyle = '#9fb3c6'; g.font = `600 18px ${FONT}`; g.fillText(`TRIP ${tripText(st.meters)}   ${Math.round(st.mph)} mph`, 446, 166);
-  g.fillStyle = '#1b2a39'; g.fillRect(446, 180, 178, 1);
-  g.fillStyle = '#7fb4ff'; g.font = `600 20px ${FONT}`; g.fillText('NOW PLAYING', 446, 204);
-  const track = Math.floor(st.time / 210) % 3;
-  g.fillStyle = '#ffffff'; g.font = `600 26px ${FONT}`; g.fillText(['Afterglow Drive', 'Long Way Home', 'Neon Overpass'][track], 446, 234);
-  g.fillStyle = '#9fb3c6'; g.font = `500 20px ${FONT}`; g.fillText('Night Shift Radio', 446, 260);
-  g.fillStyle = '#233446'; g.fillRect(446, 284, 178, 5); g.fillStyle = '#3d9bff'; g.fillRect(446, 284, 178 * ((st.time % 210) / 210), 5);
-  // dock
-  g.fillStyle = '#0f1822'; g.fillRect(0, 322, 430, 38);
-  g.fillStyle = '#9fb3c6'; g.font = `600 18px ${FONT}`; g.textAlign = 'center';
-  ['NAV', 'MEDIA', 'PHONE', 'CLIMATE', 'CAR'].forEach((t, i) => g.fillText(t, 43 + i * 86, 342));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
 }
-
-type Part = { geo: THREE.BufferGeometry };
-/** Mirror plates (kind MIRROR) found in the car body mesh: centre of the rear-facing face and its size, one per side. */
-export function sideMirrorPlates(kind: VehicleKind): { x: number; y: number; z: number; w: number; h: number }[] {
-  const g = getTemplate(kind).lods[0].body, P = g.getAttribute('position'), A = g.getAttribute('aKind'), out: { x: number; y: number; z: number; w: number; h: number }[] = [];
-  if (!P || !A) return out;
-  for (const side of [1, -1]) {
-    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; let n = 0, zMin = Infinity;
-    for (let i = 0; i < P.count; i++) if (Math.round(A.getX(i)) === K.MIRROR && Math.sign(P.getX(i)) === side) zMin = Math.min(zMin, P.getZ(i));
-    for (let i = 0; i < P.count; i++) {   // the rear-facing face only (not the arm that joins it to the door)
-      if (Math.round(A.getX(i)) !== K.MIRROR || Math.sign(P.getX(i)) !== side || P.getZ(i) > zMin + 0.03) continue;
-      n++; for (let c = 0; c < 3; c++) { const v = c === 0 ? P.getX(i) : c === 1 ? P.getY(i) : P.getZ(i); lo[c] = Math.min(lo[c], v); hi[c] = Math.max(hi[c], v); }
-    }
-    if (n) out.push({ x: (lo[0] + hi[0]) / 2, y: (lo[1] + hi[1]) / 2, z: lo[2], w: (hi[0] - lo[0]) * 0.88, h: (hi[1] - lo[1]) * 0.86 });
-  }
-  return out;
-}
-export interface CockpitDims { eye: THREE.Vector3; wheelZ: number; dashY: number }
 
 export class Cockpit {
   readonly group = new THREE.Group();
   readonly dims: CockpitDims;
+  readonly frame: CabinFrame;
   private wheelSpin = new THREE.Group();
   private needleSpeed = new THREE.Group(); private needleRpm = new THREE.Group();
   private digital: { c: HTMLCanvasElement; g: CanvasRenderingContext2D; t: THREE.CanvasTexture; mph: number };
   private disposables: { dispose(): void }[] = [];
-  private mirrorCtx!: CanvasRenderingContext2D; private mirrorTex!: THREE.CanvasTexture;
   private maxMph: number; private wheel = 0; private spd = -1;
   private screenCtx!: CanvasRenderingContext2D; private screenTex!: THREE.CanvasTexture; private screenAcc = 1; private st: ScreenState = { hour: 12.8, meters: 0, mph: 0, time: 0 };
   private tripCtx!: CanvasRenderingContext2D; private tripTex!: THREE.CanvasTexture;
+  private emissive: THREE.MeshStandardMaterial[] = [];
   /** what the screens last showed and how many times they were repainted (tests read this) */
   readonly screenLog = { clock: '', exit: '', trip: '', redraws: 0 };
+  /** world-independent positions of the mirror glasses (car frame), for tests and tuning */
+  readonly mirrorSpots: { rear: THREE.Vector3; side: THREE.Vector3[] } = { rear: new THREE.Vector3(), side: [] };
 
   /** shared live-reflection target for the rear-view and side mirrors */
   readonly mirror: MirrorRT;
   constructor(kind: VehicleKind, quality: MirrorQuality = 'medium') {
-    const tp = getTemplate(kind), S = tp.seats[0], gh = tp.shape.gh, W = tp.shape.W;
-    this.maxMph = 160;
-    const zA = gh?.zA ?? S.z + 1.0, zR1 = gh?.zR1 ?? S.z + 0.2, roofY = tp.roofY;
-    const hwI = W / 2 - 0.16;                      // inner face of the door cards
-    const cowl = cowlHeight(tp.lods[0].body, zR1 - 0.1) ?? S.y + 0.5;   // windshield base line of the body: the dash pad meets it
-    const yD = Math.max(S.y + 0.38, cowl - 0.04);  // top of the dash pad
-    const zW = Math.min(S.z + 0.5, zA - 0.38);     // steering wheel plane
-    const yW = yD - 0.19;
-    this.dims = { eye: new THREE.Vector3(S.x, gh?.open ? yD + 0.3 : Math.min(Math.max(S.y + 0.66, yD + 0.3), roofY - 0.12), S.z - 0.22), wheelZ: zW, dashY: yD };
+    const tp = getTemplate(kind), S = tp.seats[0], fr = cabinFrame(kind), W = tp.shape.W;
+    this.frame = fr; this.maxMph = 160;
+    const belt = fr.belt, B = fr.base, T = fr.top, E = eyePoint(S, fr, tp.roofY);
+    // steering wheel centre on a ray 28 degrees under the eye's horizon
+    const wc = new THREE.Vector3(S.x, E.y - WHEEL_DIST * Math.sin(WHEEL_DOWN), E.z + WHEEL_DIST * Math.cos(WHEEL_DOWN));
+    // rear edge (brow) of the dash top: just ahead of the wheel's top rim, never closer than 7 cm to the windshield base
+    const zBrow = Math.min(wc.z + 0.12, B.z - 0.1);
+    this.dims = { eye: E, wheelZ: wc.z, dashY: belt - 0.09, belt, pitch: COCKPIT_PITCH, fov: COCKPIT_FOV };
 
-    const bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
-    this.disposables.push(bump, leather, carpet);
-    const std = (o: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial({ envMapIntensity: 0.8, ...o }); this.disposables.push(m); return m; };
+    const pebble = pebbleBump(), skin = dashSkin(), bump = grainBump(), leather = leatherMap('#2b2622'), carpet = carpetMap();
+    this.disposables.push(pebble, skin, bump, leather, carpet);
+    const std = (o: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial({ envMapIntensity: 0.6, ...o }); this.disposables.push(m); this.emissive.push(m); return m; };
     const mats = {
-      plastic: std({ color: 0x17181a, roughness: 0.74, metalness: 0, bumpMap: bump, bumpScale: 0.5, emissive: 0x08090a }),
-      soft: std({ color: 0x1d1e21, roughness: 0.85, metalness: 0, bumpMap: bump, bumpScale: 0.7, emissive: 0x0a0b0c }),
-      leather: std({ color: 0xffffff, map: leather, roughness: 0.6, metalness: 0, envMapIntensity: 0.45, emissive: 0x0f0d0b }),
-      trim: std({ color: 0xaab0b8, roughness: 0.3, metalness: 1, emissive: 0x050505 }),
-      gloss: std({ color: 0x07080a, roughness: 0.18, metalness: 0.2, envMapIntensity: 0.6 }),
+      dash: std({ color: 0xffffff, map: skin, roughness: 0.82, metalness: 0, bumpMap: pebble, bumpScale: 0.6, emissive: 0x060607, envMapIntensity: 0.35 }),
+      plastic: std({ color: 0x1a1b1d, roughness: 0.7, metalness: 0, bumpMap: bump, bumpScale: 0.4, emissive: 0x060607 }),
+      fabric: std({ color: 0x222224, roughness: 0.96, metalness: 0, bumpMap: bump, bumpScale: 0.25, emissive: 0x070708, envMapIntensity: 0.15, side: THREE.DoubleSide }),
+      leather: std({ color: 0xffffff, map: leather, roughness: 0.6, metalness: 0, envMapIntensity: 0.45, emissive: 0x0b0a09 }),
+      trim: std({ color: 0x9aa1aa, roughness: 0.28, metalness: 1, emissive: 0x050505 }),
+      gloss: std({ color: 0x08090b, roughness: 0.16, metalness: 0.25, envMapIntensity: 0.7 }),
       carpet: std({ color: 0xffffff, map: carpet, roughness: 1, metalness: 0, emissive: 0x040404 }),
-      mirror: std({ color: 0xcfd6dc, roughness: 0.04, metalness: 1, envMapIntensity: 1.4 }),
     };
-    const buckets = new Map<THREE.Material, Part[]>();
+    const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const put = (m: THREE.Material, geo: THREE.BufferGeometry) => { (buckets.get(m) ?? buckets.set(m, []).get(m)!).push(geo); };
     const add = (m: THREE.Material, geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
-      const mt = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')), new THREE.Vector3(1, 1, 1));
-      geo.applyMatrix4(mt); (buckets.get(m) ?? buckets.set(m, []).get(m)!).push({ geo });
+      geo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')), new THREE.Vector3(1, 1, 1)));
+      put(m, geo);
     };
-    const addUv = add;
     const rb = (w: number, h: number, d: number, r: number) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3));
-    const bumpMats = new Set<THREE.Material>([mats.plastic, mats.soft, mats.leather, mats.carpet]); // these need uv
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-    // ---- floor, door cards, dashboard
-    addUv(mats.carpet, new THREE.PlaneGeometry(hwI * 2, 3.4).rotateX(-Math.PI / 2), 0, S.y - 0.34, zA - 1.9);
-    const dashZ0 = zW + 0.27, dashD = zA + 0.03 - dashZ0;
-    addUv(mats.soft, rb(hwI * 2, 0.2, dashD, 0.09), 0, yD - 0.1, dashZ0 + dashD / 2);           // upper pad
-    addUv(mats.plastic, rb(hwI * 2 - 0.04, 0.36, 0.14, 0.05), 0, yD - 0.36, zW + 0.24);       // lower fascia / knee panel
-    addUv(mats.soft, rb(0.46, 0.14, 0.26, 0.05), S.x, yD + 0.02, zW + 0.31);                              // binnacle behind the cluster
-    addUv(mats.soft, rb(0.46, 0.014, 0.27, 0.007), S.x, yD + 0.092, zW + 0.31);                      // hood
-    // instrument cluster: dark bezel, lit face and moving needles
-    const clZ = zW + 0.18, clY = yD + 0.025;
-    // door cards: skin, armrest pad, handle
-    for (const sx of [1, -1]) {
-      const xs = sx * (hwI - 0.02), z0 = zA - 0.25, z1 = S.z - 0.7, len = z0 - z1, zc = (z0 + z1) / 2;
-      addUv(mats.plastic, rb(0.07, 0.62, len, 0.03), xs, yD - 0.24, zc);
-      addUv(mats.soft, rb(0.1, 0.09, len * 0.7, 0.04), xs - sx * 0.01, yD - 0.14, zc - 0.05);       // upper roll
-      addUv(mats.leather, rb(0.1, 0.07, 0.42, 0.035), xs - sx * 0.02, yD - 0.3, S.z - 0.18);       // armrest
-      add(mats.trim, rb(0.04, 0.025, 0.2, 0.012), xs - sx * 0.04, yD - 0.22, S.z - 0.18 + 0.38);   // door pull
-      add(mats.gloss, rb(0.05, 0.03, 0.14, 0.01), xs - sx * 0.03, yD - 0.33, S.z + 0.15);          // switch pack (driver side faces)
+    // ---- dashboard: one lofted skin across the car - tucked under the windshield base, a gently crowned top, a rounded brow
+    // over the cluster, then the fascia falling away toward the floor
+    const xD = B.x + 0.07, bz = B.z - 0.03;
+    const zf = (x: number) => { const k = Math.min(1, Math.abs(x) / B.x); return Math.max(zBrow + 0.09, fr.baseCz - (fr.baseCz - bz) * Math.pow(k, 2.2)); };
+    const rows: THREE.Vector3[][] = [];
+    for (let i = 0; i <= 44; i++) {
+      const x = -xD + (2 * xD * i) / 44, f = zf(x), crown = 0.012 * (1 - Math.pow(Math.abs(x) / xD, 4));
+      rows.push([
+        V(x, belt - 0.035, f + 0.03), V(x, belt - 0.004, f), V(x, belt + 0.006 + crown * 0.5, f - 0.04),
+        V(x, belt + 0.01 + crown, f + (zBrow - f) * 0.55), V(x, belt + 0.006 + crown * 0.6, zBrow + 0.035),
+        V(x, belt - 0.012, zBrow + 0.008), V(x, belt - 0.04, zBrow), V(x, belt - 0.075, zBrow + 0.012),
+        V(x, belt - 0.16, zBrow + 0.035), V(x, belt - 0.3, zBrow + 0.08), V(x, belt - 0.46, zBrow + 0.15),
+      ]);
     }
-    // A-pillar / sill trim strip at the dash edge
-    for (const sx of [1, -1]) addUv(mats.soft, rb(0.1, 0.07, 0.5, 0.03), sx * (hwI - 0.03), yD + 0.0, zA - 0.2);
-
-    // ---- centre stack, screen, vents, console
-    add(mats.gloss, rb(0.3, 0.14, 0.1, 0.03), 0, yD - 0.17, zA - 0.3);                            // stack body
-    
-    for (let i = 0; i < 6; i++) add(mats.trim, rb(0.012, 0.03, 0.02, 0.004), -0.07 + i * 0.028, yD - 0.2, zA - 0.245); // climate keys
-    // vents (flush slats) - left, right and driver
-    for (const vx of [S.x - 0.0, -S.x, 0.0]) {
-      if (vx === 0) continue;
-      add(mats.gloss, rb(0.16, 0.05, 0.03, 0.012), vx, yD - 0.115, zW + 0.4);
-      add(mats.trim, rb(0.17, 0.004, 0.032, 0.001), vx, yD - 0.115, zW + 0.4);
+    put(mats.dash, loft(rows, 1.6, 1.6));
+    // cluster binnacle: a small hood over the gauges and a dark surround they sit in
+    const clW = 0.3, clH = 0.107, clZ = zBrow - 0.012, clY = belt - 0.075;
+    const clTilt = Math.atan2(E.y - clY, clZ - E.z) * 0.8;
+    add(mats.dash, rb(clW + 0.07, 0.03, 0.075, 0.014), S.x, belt - 0.004, zBrow - 0.022, -0.06);
+    add(mats.gloss, rb(clW + 0.03, clH + 0.03, 0.03, 0.012), S.x, clY, clZ + 0.018, clTilt);
+    // centre air vents and outboard vents, set into the fascia
+    for (const vx of [0.075, -0.075, B.x - 0.11, -(B.x - 0.11)]) {
+      add(mats.gloss, rb(0.11, 0.032, 0.02, 0.008), vx, belt - 0.048, zBrow + 0.002);
+      for (let s = 0; s < 3; s++) add(mats.plastic, rb(0.105, 0.0025, 0.004, 0.001), vx, belt - 0.058 + s * 0.01, zBrow - 0.009);
     }
-    // console between the seats
-    addUv(mats.plastic, rb(0.3, 0.3, 1.0, 0.07), 0, S.y - 0.06, S.z - 0.05 + 0.1);
-    add(mats.plastic, rb(0.24, 0.02, 0.5, 0.008), 0, S.y + 0.1, S.z + 0.22);                       // gloss deck
-    addUv(mats.leather, rb(0.25, 0.06, 0.36, 0.03), 0, S.y + 0.12, S.z - 0.34);                  // armrest lid
-    add(mats.gloss, new THREE.SphereGeometry(0.028, 12, 8), 0, S.y + 0.16, S.z + 0.35);          // shifter knob
+    // centre stack under the screen, climate keys, console between the seats
+    add(mats.plastic, rb(0.27, 0.26, 0.16, 0.04), 0, belt - 0.33, zBrow + 0.1);
+    add(mats.plastic, rb(0.3, 0.3, 1.0, 0.07), 0, S.y - 0.06, S.z + 0.05);
+    add(mats.gloss, rb(0.24, 0.02, 0.5, 0.008), 0, S.y + 0.1, S.z + 0.22);
+    add(mats.leather, rb(0.25, 0.06, 0.36, 0.03), 0, S.y + 0.12, S.z - 0.34);
+    add(mats.gloss, new THREE.SphereGeometry(0.028, 12, 8), 0, S.y + 0.16, S.z + 0.35);
     add(mats.trim, new THREE.CylinderGeometry(0.01, 0.012, 0.05, 8), 0, S.y + 0.13, S.z + 0.35);
-    for (const dz of [0.12, 0.3]) add(mats.trim, new THREE.TorusGeometry(0.036, 0.004, 5, 18).rotateX(Math.PI / 2), 0, S.y + 0.112, S.z + dz); // cup rims
+    add(mats.carpet, new THREE.PlaneGeometry(xD * 2, 3.4).rotateX(-Math.PI / 2), 0, S.y - 0.34, zBrow - 1.6);
 
-    // ---- seats (cushion, back, headrest) for the front pair and a rear bench
+    // ---- A-pillars (thin trim strips bulging into the cabin), the sail panels and door mirrors, door sills and cards
+    const sideMirrors: { pos: THREE.Vector3; yaw: number; sx: number }[] = [];
+    for (const sx of [1, -1]) {
+      const bi = V(sx * (B.x + 0.02), belt + 0.004, bz), bo = V(sx * (B.x + 0.068), belt + 0.004, B.z - 0.09);
+      const ti = V(sx * (T.x + 0.07), T.y + 0.012, T.z + 0.01), to = V(sx * (T.x + 0.105), T.y - 0.02, T.z - 0.055);
+      const prow: THREE.Vector3[][] = [], mid = V(0, (belt + T.y) / 2, (bz + T.z) / 2 - 0.4);
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10, a = bi.clone().lerp(ti, t), b = bo.clone().lerp(to, t), axis = ti.clone().sub(bi), e = b.clone().sub(a);
+        const n = axis.cross(e).normalize(); if (n.dot(mid.clone().sub(a)) < 0) n.negate();
+        const row: THREE.Vector3[] = [];
+        for (let j = 0; j <= 6; j++) { const s = j / 6; row.push(a.clone().lerp(b, s).addScaledVector(n, 0.018 * Math.sin(Math.PI * s))); }
+        prow.push(row);
+      }
+      put(mats.fabric, loft(prow, 2, 2));
+      // sail: triangle panel between the pillar foot and the sill that the mirror is mounted on
+      const sailTop = bo.clone().lerp(to, 0.16), sailBack = V(sx * (B.x + 0.07), belt + 0.006, B.z - 0.22);
+      const sail = new THREE.BufferGeometry().setFromPoints([bi, bo, sailTop, bo, sailBack, sailTop]); sail.computeVertexNormals();
+      sail.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(12).fill(0), 2)); put(mats.fabric, sail);
+      // door sill (rounded top of the door card at the beltline), door card, armrest, pull, switch pack
+      const z0 = B.z - 0.1, z1 = E.z - 0.95, len = z0 - z1, zc = (z0 + z1) / 2;
+      const sillW = Math.max(0.1, W / 2 + 0.02 - (B.x + 0.02));   // reaches the outer door skin so no body paint shows past it
+      add(mats.plastic, rb(sillW, 0.035, len, 0.016), sx * (B.x + 0.02 + sillW / 2), belt - 0.012, zc);
+      add(mats.dash, rb(0.06, 0.46, len, 0.02), sx * (B.x + 0.06), belt - 0.26, zc);
+      add(mats.leather, rb(0.09, 0.06, 0.42, 0.03), sx * (B.x - 0.0), belt - 0.22, E.z + 0.05);
+      add(mats.gloss, rb(0.03, 0.022, 0.18, 0.01), sx * (B.x + 0.02), belt - 0.13, E.z + 0.32);
+      add(mats.gloss, rb(0.05, 0.025, 0.14, 0.01), sx * (B.x - 0.005), belt - 0.185, E.z + 0.12);
+      // door mirror: housing just outboard of the sail, glass turned to the driver (half way between facing the eye and facing back)
+      const M = V(sx * (B.x + 0.19), belt + 0.07, B.z - 0.15);
+      const toEye = Math.atan2(E.x - M.x, E.z - M.z);
+      const back = Math.PI * (toEye >= 0 ? 1 : -1), myaw = (toEye + back) / 2;
+      add(mats.gloss, rb(0.19, 0.11, 0.075, 0.035), M.x, M.y, M.z, 0, myaw);
+      add(mats.gloss, rb(0.07, 0.05, 0.06, 0.015), sx * (B.x + 0.1), belt + 0.03, B.z - 0.15);   // foot on the sail
+      sideMirrors.push({ pos: M, yaw: myaw, sx });
+    }
+    // windshield header, headliner and folded sun visors (a hardtop only)
+    const hx = T.x + 0.1;
+    add(mats.fabric, rb(hx * 2, 0.06, 0.12, 0.03), 0, T.y + 0.02, T.z - 0.035);
+    if (!fr.open) {
+      const zh0 = T.z - 0.05, zh1 = E.z - 1.1;
+      add(mats.fabric, rb(hx * 2 + 0.1, 0.02, zh0 - zh1, 0.01), 0, fr.roofIn, (zh0 + zh1) / 2);
+      for (const sx of [1, -1]) add(mats.fabric, rb(0.36, 0.024, 0.17, 0.011), sx * 0.36, Math.min(fr.roofIn, T.y + 0.04) - 0.022, T.z - 0.13);
+    }
+
+    // ---- seats (cushion, back, bolsters, headrest) for the front pair and a rear bench
     const seat = (x: number, y: number, z: number, w: number) => {
-      addUv(mats.leather, rb(w, 0.13, 0.52, 0.06), x, y - 0.05, z + 0.02, 0.05);
-      addUv(mats.leather, rb(w, 0.62, 0.17, 0.07), x, y + 0.27, z - 0.26, -0.2);
-      addUv(mats.leather, rb(0.07, 0.4, 0.2, 0.03), x - w / 2 + 0.02, y + 0.2, z - 0.2, -0.2);   // bolsters
-      addUv(mats.leather, rb(0.07, 0.4, 0.2, 0.03), x + w / 2 - 0.02, y + 0.2, z - 0.2, -0.2);
-      addUv(mats.leather, rb(0.27, 0.19, 0.1, 0.05), x, y + 0.66, z - 0.36, -0.2);
-      addUv(mats.plastic, rb(0.02, 0.1, 0.02, 0.008), x - 0.07, y + 0.52, z - 0.34, -0.2);
-      addUv(mats.plastic, rb(0.02, 0.1, 0.02, 0.008), x + 0.07, y + 0.52, z - 0.34, -0.2);
+      add(mats.leather, rb(w, 0.13, 0.52, 0.06), x, y - 0.05, z + 0.02, 0.05);
+      add(mats.leather, rb(w, 0.62, 0.17, 0.07), x, y + 0.27, z - 0.26, -0.2);
+      add(mats.leather, rb(0.07, 0.4, 0.2, 0.03), x - w / 2 + 0.02, y + 0.2, z - 0.2, -0.2);
+      add(mats.leather, rb(0.07, 0.4, 0.2, 0.03), x + w / 2 - 0.02, y + 0.2, z - 0.2, -0.2);
+      add(mats.leather, rb(0.27, 0.19, 0.1, 0.05), x, y + 0.66, z - 0.36, -0.2);
     };
     for (const st of tp.seats.slice(0, 2)) seat(st.x, st.y, st.z, 0.5);
     const rear = tp.seats[2];
-    if (rear) { addUv(mats.leather, rb(hwI * 2 - 0.1, 0.14, 0.52, 0.06), 0, rear.y - 0.05, rear.z + 0.02); addUv(mats.leather, rb(hwI * 2 - 0.1, 0.6, 0.17, 0.07), 0, rear.y + 0.26, rear.z - 0.26, -0.2); }
+    if (rear) { add(mats.leather, rb(xD * 2 - 0.1, 0.14, 0.52, 0.06), 0, rear.y - 0.05, rear.z + 0.02); add(mats.leather, rb(xD * 2 - 0.1, 0.6, 0.17, 0.07), 0, rear.y + 0.26, rear.z - 0.26, -0.2); }
 
-    // ---- rear-view mirror (stalk, housing, reflective glass)
-    const mx = Math.max(0.08, S.x * 0.35), my = Math.min(roofY - 0.13, this.dims.eye.y + 0.17), mz = zR1 + 0.28, yawToDriver = Math.atan2(S.x - mx, mz - this.dims.eye.z) * 0.9;
-    add(mats.plastic, rb(0.03, 0.06, 0.03, 0.01), mx, my + 0.05, mz + 0.03);
-    add(mats.plastic, rb(0.25, 0.08, 0.03, 0.02), mx, my, mz, 0, Math.PI - yawToDriver, 0);
-    // painted fallback (also used for the side mirrors on low quality), and the shared live reflection
-    const [mc, mg] = canvas(256, 64); this.mirrorCtx = mg; this.mirrorTex = tex(mc, true); this.disposables.push(this.mirrorTex);
+    // ---- rear-view mirror: 20 deg right of and 10 deg above the eye's line of sight, half a metre away; its stalk climbs to the header
+    const ry0 = 20 * D2R, el = 10 * D2R, d = 0.52, R = V(E.x - d * Math.cos(el) * Math.sin(ry0), E.y + d * Math.sin(el), E.z + d * Math.cos(el) * Math.cos(ry0));
+    const rToEye = Math.atan2(E.x - R.x, E.z - R.z), rYaw = (rToEye + Math.PI * (rToEye >= 0 ? 1 : -1)) / 2 * 0.25 + rToEye * 0.75;
+    const stalkTop = Math.max(R.y + 0.08, T.y + 0.04);
+    add(mats.plastic, rb(0.02, stalkTop - R.y - 0.02, 0.02, 0.008), R.x, (stalkTop + R.y + 0.02) / 2, R.z + 0.02);
+    add(mats.gloss, rb(0.22, 0.066, 0.034, 0.022), R.x, R.y, R.z, 0, rYaw);
+    this.mirrorSpots.rear.copy(R);
+    const [mc, mg] = canvas(256, 64); const mirrorTex = tex(mc, true); this.disposables.push(mirrorTex);
+    mg.fillStyle = '#3a4048'; mg.fillRect(0, 0, 256, 32); mg.fillStyle = '#2a2a2c'; mg.fillRect(0, 32, 256, 32); mirrorTex.needsUpdate = true;
     this.mirror = new MirrorRT(quality); this.disposables.push(this.mirror);
     const liveMat = new THREE.MeshBasicMaterial({ map: this.mirror.texture, fog: false }); this.disposables.push(liveMat);
-    const paintMat = new THREE.MeshBasicMaterial({ map: this.mirrorTex, toneMapped: false, fog: false }); this.disposables.push(paintMat);
-    const glassAt = (mat: THREE.Material, w: number, h: number, crop: readonly [number, number, number, number], x: number, y: number, z: number, ry: number) => {
+    const paintMat = new THREE.MeshBasicMaterial({ map: mirrorTex, toneMapped: false, fog: false, color: 0x9aa4b0 }); this.disposables.push(paintMat);
+    const glassAt = (mat: THREE.Material, w: number, h: number, crop: readonly [number, number, number, number], p: THREE.Vector3, ry: number, out: number) => {
       const geo = new THREE.PlaneGeometry(w, h); cropUv(geo, crop); this.disposables.push(geo);
-      const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.position.set(x, y, z); m.rotation.set(0, ry, 0); this.group.add(m); return m;
+      const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.position.set(p.x + Math.sin(ry) * out, p.y, p.z + Math.cos(ry) * out); m.rotation.set(0, ry, 0); this.group.add(m); return m;
     };
-    const ry = Math.PI - yawToDriver;
-    glassAt(liveMat, 0.232, 0.066, CROP.rear, mx + Math.sin(ry) * 0.018, my, mz + Math.cos(ry) * 0.018, ry);
-    this.mirror.cam.position.set(mx, my, mz); this.group.add(this.mirror.cam);
-    // side mirrors: a plane just behind the body's mirror plates (the car body is drawn by the fleet; plates found in its mesh)
-    for (const pl of sideMirrorPlates(kind)) {
-      const live = sideMirrorsLive(quality), crop = pl.x > 0 ? CROP.left : CROP.right;
-      glassAt(live ? liveMat : paintMat, pl.w, pl.h, live ? crop : [0, 1, 0, 1], pl.x, pl.y, pl.z - 0.004, Math.PI);
+    glassAt(liveMat, 0.2, 0.051, CROP.rear, R, rYaw, 0.018);
+    this.mirror.cam.position.copy(R); this.group.add(this.mirror.cam);
+    for (const sm of sideMirrors) {
+      const live = sideMirrorsLive(quality), crop = sm.sx > 0 ? CROP.left : CROP.right;
+      glassAt(live ? liveMat : paintMat, 0.175, 0.092, live ? crop : [0, 1, 0, 1], sm.pos, sm.yaw, 0.039);
+      this.mirrorSpots.side.push(sm.pos.clone());
     }
-    this.applyPreset('#3874c8', '#bdd2e4', '#7a6e58', 1);
-    // sun visors folded up at the headliner
-    for (const sx of [1, -1]) add(mats.soft, rb(0.34, 0.015, 0.16, 0.007), sx * 0.36, roofY - 0.035, zR1 + 0.15);
 
     // merge every material bucket into one mesh
     for (const [m, parts] of buckets) {
-      const wantUv = bumpMats.has(m);
       const geos = parts.map(p => {
-        const g = p.geo.index ? p.geo.toNonIndexed() : p.geo, c = new THREE.BufferGeometry();
+        const g = p.index ? p.toNonIndexed() : p, c = new THREE.BufferGeometry();
         c.setAttribute('position', g.getAttribute('position')); c.setAttribute('normal', g.getAttribute('normal'));
-        if (wantUv) c.setAttribute('uv', g.getAttribute('uv') ?? new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+        c.setAttribute('uv', g.getAttribute('uv') ?? new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
         return c;
       });
       const merged = mergeGeometries(geos, false);
-      for (const p of parts) p.geo.dispose();
+      for (const p of parts) p.dispose();
       if (!merged) continue;
       this.disposables.push(merged);
       const mesh = new THREE.Mesh(merged, m); mesh.frustumCulled = false; this.group.add(mesh);
@@ -313,59 +243,73 @@ export class Cockpit {
     // ---- cluster face, needles, digital speed (basic materials so they glow regardless of exposure)
     const face = clusterFace(); this.disposables.push(face);
     const clusterMat = new THREE.MeshBasicMaterial({ map: face, toneMapped: false }); this.disposables.push(clusterMat);
-    const cluster = new THREE.Group(); cluster.position.set(S.x, clY, clZ - 0.022); cluster.rotation.set(0.22, Math.PI, 0, 'XYZ');
-    const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.128), clusterMat); facePlane.frustumCulled = false; cluster.add(facePlane);
+    const cluster = new THREE.Group(); cluster.position.set(S.x, clY, clZ); cluster.rotation.set(0, Math.PI, 0, 'YXZ'); cluster.rotateX(-clTilt);
+    const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(clW, clH), clusterMat); facePlane.frustumCulled = false; cluster.add(facePlane);
+    this.disposables.push(facePlane.geometry);
     const needleMat = new THREE.MeshBasicMaterial({ color: 0xff7a2a, toneMapped: false }); this.disposables.push(needleMat);
+    const k = clW / 720; // face is 720x256 px; dial centres at x = 176 / 544 px, y = 130 px
     const mkNeedle = (g: THREE.Group, x: number) => {
-      const len = 0.043, geo = new THREE.PlaneGeometry(0.0034, len).translate(0, len / 2 - 0.006, 0); this.disposables.push(geo);
+      const len = 92 * k, geo = new THREE.PlaneGeometry(7 * k, len).translate(0, len / 2 - 12 * k, 0); this.disposables.push(geo);
       const m = new THREE.Mesh(geo, needleMat); m.frustumCulled = false; m.position.z = 0.0008; g.add(m);
-      const hub = new THREE.Mesh(new THREE.CircleGeometry(0.0055, 12), needleMat); hub.position.z = 0.001; g.add(hub);
-      g.position.set(x, 0.128 * (0.5 - 130 / 256), 0.0009); cluster.add(g); g.rotation.z = needleAngle(0);
+      const hubG = new THREE.CircleGeometry(12 * k, 12); this.disposables.push(hubG);
+      const hub = new THREE.Mesh(hubG, needleMat); hub.position.z = 0.001; g.add(hub);
+      g.position.set(x, clH * (0.5 - 130 / 256), 0.0009); cluster.add(g); g.rotation.z = needleAngle(0);
     };
-    // face is 720x256 over 0.36x0.128 m: 2000 px per metre; dial centres at x=176 / 544 px, y=130 px
-    mkNeedle(this.needleRpm, (176 - 360) / 2000); mkNeedle(this.needleSpeed, (544 - 360) / 2000);
+    mkNeedle(this.needleRpm, (176 - 360) * k); mkNeedle(this.needleSpeed, (544 - 360) * k);
     const [dc, dg] = canvas(128, 56); const dt = tex(dc, true, 0, 4); this.disposables.push(dt);
     this.digital = { c: dc, g: dg, t: dt, mph: -1 };
     const dMat = new THREE.MeshBasicMaterial({ map: dt, transparent: true, toneMapped: false }); this.disposables.push(dMat);
-    const dPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 0.013), dMat); dPlane.position.set((544 - 360) / 2000, 0.128 * (0.5 - 130 / 256) - 0.016, 0.0007); dPlane.frustumCulled = false; cluster.add(dPlane);
+    const dGeo = new THREE.PlaneGeometry(64 * k, 28 * k); this.disposables.push(dGeo);
+    const dPlane = new THREE.Mesh(dGeo, dMat); dPlane.position.set((544 - 360) * k, clH * (0.5 - 130 / 256) - 34 * k, 0.0007); dPlane.frustumCulled = false; cluster.add(dPlane);
     const [tc, tg] = canvas(220, 64); this.tripCtx = tg; this.tripTex = tex(tc, true, 0, 4); this.disposables.push(this.tripTex);
     const tMat = new THREE.MeshBasicMaterial({ map: this.tripTex, transparent: true, toneMapped: false }); this.disposables.push(tMat);
-    const tPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.032), tMat); tPlane.position.set(0, 0.128 * (0.5 - 208 / 256), 0.0007); tPlane.frustumCulled = false; cluster.add(tPlane);
+    const tGeo = new THREE.PlaneGeometry(220 * k, 64 * k); this.disposables.push(tGeo);
+    const tPlane = new THREE.Mesh(tGeo, tMat); tPlane.position.set(0, clH * (0.5 - 208 / 256), 0.0007); tPlane.frustumCulled = false; cluster.add(tPlane);
     this.group.add(cluster);
     this.drawDigital(0);
 
-    // ---- infotainment screen in the centre stack (faces the driver)
+    // ---- infotainment screen in the fascia, turned toward the driver
     const [sc, sg] = canvas(640, 360); this.screenCtx = sg; const scr = tex(sc, true, 0, 8); this.screenTex = scr; this.disposables.push(scr);
     this.paintScreen();
-    const scrMat = new THREE.MeshBasicMaterial({ map: scr, toneMapped: false, color: 0xb0b8c0 }); this.disposables.push(scrMat);
-    const scrYaw = Math.atan2(S.x, zA - 0.3 - this.dims.eye.z) ;
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.23, 0.13), scrMat); screen.frustumCulled = false;
-    screen.position.set(0, yD + 0.02, zA - 0.355); screen.rotation.set(-0.22, Math.PI - scrYaw * 0.8, 0, 'YXZ');
-    const bezel = new THREE.Mesh(rb(0.25, 0.15, 0.025, 0.012), mats.gloss); bezel.position.copy(screen.position).add(new THREE.Vector3(0, 0, 0.028)); bezel.rotation.copy(screen.rotation); bezel.frustumCulled = false;
-    this.group.add(bezel, screen); this.disposables.push(bezel.geometry);
+    const scrMat = new THREE.MeshBasicMaterial({ map: scr, toneMapped: false, color: 0xa8b0b8 }); this.disposables.push(scrMat);
+    const sP = V(0, belt - 0.105, zBrow - 0.012), sYaw = Math.atan2(E.x - sP.x, E.z - sP.z) - Math.PI, sTilt = Math.atan2(E.y - sP.y, sP.z - E.z) * 0.6;
+    const scrGeo = new THREE.PlaneGeometry(0.24, 0.135); this.disposables.push(scrGeo);
+    const screen = new THREE.Mesh(scrGeo, scrMat); screen.frustumCulled = false;
+    screen.position.copy(sP); screen.rotation.set(0, Math.PI + sYaw * 0.3, 0, 'YXZ'); screen.rotateX(-sTilt);
+    const bezelGeo = rb(0.256, 0.15, 0.022, 0.01); this.disposables.push(bezelGeo);
+    const bezel = new THREE.Mesh(bezelGeo, mats.gloss); bezel.frustumCulled = false; bezel.position.copy(sP); bezel.rotation.copy(screen.rotation); bezel.translateZ(-0.0115);
+    this.group.add(bezel, screen);
 
     // ---- steering wheel: tilted column group; the spin group turns with the front wheels
-    const wheelTilt = 0.42, wy = yW, wr = 0.168;
-    const column = new THREE.Group(); column.position.set(S.x, wy, zW); column.rotation.x = wheelTilt; this.group.add(column);
+    const column = new THREE.Group(); column.position.copy(wc); column.rotation.x = WHEEL_TILT; this.group.add(column);
     column.add(this.wheelSpin);
-    const rimMat = std({ color: 0xffffff, map: leather, roughness: 0.5, metalness: 0, emissive: 0x0c0a09 });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(wr, 0.0175, 12, 48), rimMat); rim.frustumCulled = false; this.wheelSpin.add(rim);
-    const hubMat = mats.gloss;
+    const rimMat = std({ color: 0x9a9a9a, map: leather, roughness: 0.48, metalness: 0, emissive: 0x0a0908 });
+    const rimGeo = new THREE.TorusGeometry(WHEEL_R, 0.019, 14, 64); rimGeo.scale(1, 1, 1.15);
+    const rim = new THREE.Mesh(rimGeo, rimMat); rim.frustumCulled = false; this.wheelSpin.add(rim);
     const spokeGeos: THREE.BufferGeometry[] = [];
-    for (const a of [0, Math.PI, -Math.PI / 2]) {
-      const len = wr - 0.02, g = rb(len, 0.028, 0.012, 0.005); g.translate(len / 2, 0, 0); g.rotateZ(a); spokeGeos.push(g.toNonIndexed());
+    const plain = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g, c = new THREE.BufferGeometry(); c.setAttribute('position', n.getAttribute('position')); c.setAttribute('normal', n.getAttribute('normal')); return c; };
+    for (const a of [0, Math.PI]) {   // horizontal spokes (slightly below centre) and the lower twin spoke
+      const g = rb(WHEEL_R - 0.045, 0.034, 0.016, 0.008); g.translate((WHEEL_R - 0.045) / 2 + 0.04, -0.012, 0.012); g.rotateZ(a); spokeGeos.push(plain(g));
     }
-    const hubG = rb(0.085, 0.07, 0.03, 0.03).toNonIndexed(); spokeGeos.push(hubG);
-    const spokes = new THREE.Mesh(mergeGeometries(spokeGeos.map(g => { const c = new THREE.BufferGeometry(); c.setAttribute('position', g.getAttribute('position')); c.setAttribute('normal', g.getAttribute('normal')); return c; }), false), hubMat);
-    spokes.frustumCulled = false; this.wheelSpin.add(spokes);
-    const logo = new THREE.Mesh(new THREE.CircleGeometry(0.011, 16), new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.6, metalness: 0.6 })); logo.position.z = -0.016; logo.rotation.y = Math.PI; this.wheelSpin.add(logo);
-    this.disposables.push(rim.geometry, rimMat, spokes.geometry, logo.geometry, logo.material as THREE.Material);
-    // steering column shroud
-    const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.2, 14).rotateX(Math.PI / 2), mats.plastic); shroud.position.set(0, 0, 0.12); column.add(shroud); this.disposables.push(shroud.geometry);
+    for (const dx of [-0.022, 0.022]) { const g = rb(0.016, WHEEL_R - 0.05, 0.014, 0.006); g.translate(dx, -(WHEEL_R - 0.05) / 2 - 0.045, 0.014); spokeGeos.push(plain(g)); }
+    const hubG = new THREE.SphereGeometry(1, 24, 12); hubG.scale(0.072, 0.058, 0.03); hubG.translate(0, -0.006, 0.0); spokeGeos.push(plain(hubG));
+    const spokeGeo = mergeGeometries(spokeGeos, false)!;
+    const spokeMat = std({ color: 0x121315, roughness: 0.42, metalness: 0.1, emissive: 0x050506 });
+    const spokes = new THREE.Mesh(spokeGeo, spokeMat); spokes.frustumCulled = false; this.wheelSpin.add(spokes);
+    // satin accents on the spokes and the badge (one mesh)
+    const acc: THREE.BufferGeometry[] = [];
+    for (const sx of [1, -1]) { const g = rb(0.05, 0.004, 0.004, 0.0015); g.translate(sx * (WHEEL_R - 0.07), 0.002, -0.0035); acc.push(plain(g)); }
+    const badge = new THREE.CircleGeometry(0.011, 18).rotateY(Math.PI); badge.translate(0, -0.006, -0.0305); acc.push(plain(badge));
+    const accGeo = mergeGeometries(acc, false)!;
+    const accent = new THREE.Mesh(accGeo, mats.trim); accent.frustumCulled = false; this.wheelSpin.add(accent);
+    this.disposables.push(rimGeo, spokeGeo, accGeo);
+    // column shroud running into the dash
+    const shroudGeo = new THREE.CylinderGeometry(0.042, 0.055, 0.24, 16).rotateX(Math.PI / 2); this.disposables.push(shroudGeo);
+    const shroud = new THREE.Mesh(shroudGeo, mats.plastic); shroud.position.set(0, -0.0, 0.15); shroud.frustumCulled = false; column.add(shroud);
 
+    this.applyPreset(1);
     this.group.traverse(o => o.layers.set(1)); this.mirror.cam.layers.set(0); // cockpit = layer 1 (main camera only); the mirror camera sees layer 0
     this.group.matrixAutoUpdate = false; this.group.frustumCulled = false;
-    void VEHICLES;
   }
 
   /** Repaints the infotainment map / next-exit card and the cluster's trip readout from the current state. */
@@ -378,23 +322,12 @@ export class Cockpit {
   }
   private drawDigital(mph: number): void {
     const d = this.digital, g = d.g;
-    g.clearRect(0, 0, 128, 56); g.fillStyle = '#eaf4ff'; g.font = '700 46px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.clearRect(0, 0, 128, 56); g.fillStyle = '#eaf4ff'; g.font = `700 46px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(String(Math.round(mph)), 64, 30); d.t.needsUpdate = true; d.mph = Math.round(mph);
   }
-  /** Repaints the rear-view mirror (what is behind: sky, fog-tinted horizon, road with lane dashes) for the time of day. */
-  applyPreset(sky: string, horizon: string, ground: string, light: number): void {
-    const g = this.mirrorCtx, W = 256, H = 64, k = Math.min(1, 0.35 + light * 0.5);
-    const gr = g.createLinearGradient(0, 0, 0, H * 0.5); gr.addColorStop(0, sky); gr.addColorStop(1, horizon);
-    g.fillStyle = gr; g.fillRect(0, 0, W, H * 0.5);
-    g.fillStyle = ground; g.fillRect(0, H * 0.5, W, H * 0.5);
-    g.fillStyle = 'rgba(20,30,20,0.45)'; g.fillRect(0, H * 0.5, W, H * 0.5);
-    g.fillStyle = '#34363b'; g.beginPath(); g.moveTo(W * 0.5 - 6, H * 0.5); g.lineTo(W * 0.5 + 6, H * 0.5); g.lineTo(W * 0.92, H); g.lineTo(W * 0.08, H); g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(230,230,220,0.8)'; g.lineWidth = 2;
-    for (const f of [0.35, 0.65]) { g.beginPath(); g.moveTo(W * (0.5 + (f - 0.5) * 0.05), H * 0.5); g.lineTo(W * (0.5 + (f - 0.5) * 1.5), H); g.setLineDash([6, 8]); g.stroke(); }
-    g.setLineDash([]); g.fillStyle = '#1c2a22'; g.fillRect(0, H * 0.5 - 4, W * 0.4, 4); g.fillRect(W * 0.62, H * 0.5 - 3, W * 0.38, 3);
-    g.fillStyle = `rgba(0,0,0,${1 - k})`; g.fillRect(0, 0, W, H);
-    this.mirrorTex.needsUpdate = true;
-    for (const m of this.disposables) if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) (m as THREE.MeshStandardMaterial).emissiveIntensity = 1 + (1 - light) * 3; // a little cabin glow at night
+  /** Time of day: `light` 0 (night) .. 1 (day). At night the cabin trim picks up a faint glow from the screens. */
+  applyPreset(light: number): void {
+    for (const m of this.emissive) m.emissiveIntensity = 1 + (1 - light) * 3;
   }
   /** Rough 6-speed rpm from road speed (visual only). */
   static rpmFor(v: number): number {

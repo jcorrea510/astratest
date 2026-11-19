@@ -53,6 +53,8 @@ export class HeliArms {
     const hit = this.physics.ray(o.x, o.y, o.z, camDir.x, camDir.y, camDir.z, 400, groups(0xffff, G_STATIC | G_VEHICLE | G_PROP), null, heli.phys.body);
     return out.copy(o).addScaledVector(camDir, hit ? hit.toi : 400);
   }
+  /** Fires one missile from `from` along `dir` (also used by tests). */
+  launchMissile(shooter: Character, from: THREE.Vector3, dir: THREE.Vector3, spread = 0) { this.combat.launch(shooter, WEAPONS.rpg, from, dir, spread); }
   update(dt: number, heli: Helicopter, input: ArmsInput, camPos: THREE.Vector3, camDir: THREE.Vector3, shooter: Character): { gun: boolean; missile: boolean } {
     const ready = heli.armed && !heli.destroyed && heli.rotor > 0.9;
     const aim = this.aimPoint(camPos, camDir, heli);

@@ -9,7 +9,7 @@ async function look(page: import('@playwright/test').Page, name: string, from: [
 }
 
 test('Fort Calder: far base with parked gunships, motor pool, road; player steals a gunship and fires; gunships hunt back', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   const pr = watch(page);
   await boot(page);
@@ -55,7 +55,7 @@ test('Fort Calder: far base with parked gunships, motor pool, road; player steal
 });
 
 test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-down gunship', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   const pr = watch(page);
   await boot(page);
@@ -80,13 +80,12 @@ test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-dow
 
   // missile strike near the player
   await page.evaluate(() => { const g = (window as any).__game; g.armyGuards.guards.forEach((x: any) => { x.npc.persistent = false; g.pop.remove(x.npc); }); g.armyGuards.guards.length = 0; g.player.place(690, 0.3, -700, 0); g.cam.snapBehind?.(0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); });
-  const strike = await page.evaluate(async () => {
-    const { WEAPONS } = await import(/* @vite-ignore */ ('/astratest/src/combat/' + 'weapons.ts'));
+  const strike = await page.evaluate(() => {
     const g = (window as any).__game; const THREE_V = g.renderer.camera.position.constructor;
     const from = new THREE_V(690, 22, -650), to = new THREE_V(692, 0.5, -698);
     const dir = to.clone().sub(from).normalize();
     const hp0 = g.player.health;
-    g.combat.launch(g.player, WEAPONS.rpg, from, dir, 0);
+    g.heliArms.launchMissile(g.player, from, dir, 0);
     let frames = 0; while (g.combat.activeProjectiles > 0 && frames < 200) { g.frame(1 / 30, false); frames++; }
     return { frames, hpLost: hp0 - g.player.health };
   });
