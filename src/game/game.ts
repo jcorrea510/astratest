@@ -36,7 +36,8 @@ import { COP_LOOK } from './dispatch';
 import { getTemplate } from '../vehicles/models/build';
 import { HeliManager } from '../vehicles/helicopterManager';
 import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
-import { armyLayout } from '../world/armybase';
+import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
+import { ArmyGuards, guardsHostile } from './armyGuards';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -117,7 +118,7 @@ export class Game {
   carEntry!: CarEntry;
   helis!: HeliManager;
   playerHeli: Helicopter | null = null;
-  armyAir!: ArmyAir; heliArms!: HeliArms;
+  armyAir!: ArmyAir; heliArms!: HeliArms; armyGuards!: ArmyGuards; armyLod!: THREE.Mesh;
   private lampLights: THREE.PointLight[] = [];
   private lampBulbs!: THREE.InstancedMesh;
   private lampPools!: THREE.InstancedMesh;
@@ -227,6 +228,8 @@ export class Game {
       takeBaseHeli: () => this.helis.pads.find(p => /Fort Calder/.test(p.def.name) && p.heli && !p.heli.destroyed && !p.heli.driver && !p.heli.aiOwned && !p.heli.playerUsed)?.heli ?? null,
     });
     this.heliArms = new HeliArms(this.combat, this.physics);
+    this.armyLod = buildArmyBaseLod(); this.renderer.scene.add(this.armyLod); // far silhouette of Fort Calder
+    this.armyGuards = new ArmyGuards(this.pop); this.armyGuards.init();
     for (const m of armyLayout().motorPool) { const v = this.vehicles.spawn(m.kind, m.x, m.z, m.yaw, -1, 0.3); v.persistent = true; }
     for (const c of precinctCarSpots()) { const v = this.vehicles.spawn('police', c.x, c.z, c.yaw, -1, 0.3); v.persistent = true; } // parked patrol cars in the Precinct 4 lot (stealable)
     this.helis.onCrash = (h, imp) => { if (h === this.playerHeli) { this.cam.addShake(Math.min(0.9, imp / 14)); this.stats.crashes++; } };
@@ -244,6 +247,8 @@ export class Game {
       const missile = this.input.held('aim') || this.input.held('reload');
       this.heliArms.update(dt, ph, { fire: this.input.held('fire'), missile }, cam.position, dir, this.player);
     }
+    this.armyLod.visible = armyLodVisible(this.renderer.camera.position.x, this.renderer.camera.position.z);
+    this.armyGuards.update(dt, guardsHostile(this.police.heat, this.player.pos.x, this.player.pos.z, this.armyAir.trespassT) && this.player.alive, this.player.pos);
     const on = inArmyBase(this.player.pos.x, this.player.pos.z, 4) && this.player.alive && this.deathT < 0;
     this.armyAir.trespassT = on ? this.armyAir.trespassT + dt : Math.max(0, this.armyAir.trespassT - dt * 0.4);
     if (on && !this.trespassWarned) { this.trespassWarned = true; this.events.onToast('Fort Calder: restricted. Turn around.', 'warning'); }

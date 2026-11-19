@@ -53,3 +53,68 @@ test('Fort Calder: far base with parked gunships, motor pool, road; player steal
   await look(page, 'attack', [665, 45, -540], [665, 35, -600]);
   clean(pr);
 });
+
+test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-down gunship', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const pr = watch(page);
+  await boot(page);
+  await quietStreets(page);
+  // far silhouette shows from a distance and hides up close; guards exist and are in army kit
+  const lod = await page.evaluate(() => {
+    const g = (window as any).__game, B = { x: 665, z: -650 };
+    const vis = (x: number, z: number) => { g.renderer.camera.position.set(x, 30, z); g.frame(1 / 30, false); g.renderer.camera.position.set(x, 30, z); return g.armyLod.visible; };
+    g.player.place(B.x + 500, 0.5, B.z, 0); g.renderer.camera.position.set(B.x + 500, 30, B.z);
+    const far = vis(B.x + 500, B.z);
+    return { far, guards: g.armyGuards.guards.length, alive: g.armyGuards.guards.filter((n: any) => n.npc.alive).length };
+  });
+  expect(lod.guards).toBeGreaterThanOrEqual(8);
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(1180, 0.5, -650, 0); });
+  await look(page, 'base-far', [1160, 40, -650], [665, 10, -650]);
+  const near = await page.evaluate(() => { const g = (window as any).__game; g.player.place(770, 0.5, -650, 1.5); for (let i = 0; i < 30; i++) g.frame(1 / 30, false); return g.armyLod.visible; });
+  expect(near).toBe(false);
+  // trespass: guards turn hostile and one fires back at the player
+  const g1 = await page.evaluate(() => { const g = (window as any).__game; g.player.place(700, 0.3, -630, 0); g.player.health = g.player.maxHealth = 400; for (let i = 0; i < 30 * 8; i++) g.frame(1 / 30, false); return { hostile: g.armyGuards.guards.filter((x: any) => x.npc.hostile).length, tres: g.armyAir.trespassT }; });
+  expect(g1.tres).toBeGreaterThan(4); expect(g1.hostile).toBeGreaterThanOrEqual(4);
+  await look(page, 'guards', [690, 4, -600], [700, 1.5, -630]);
+
+  // missile strike near the player
+  await page.evaluate(() => { const g = (window as any).__game; g.armyGuards.guards.forEach((x: any) => { x.npc.persistent = false; g.pop.remove(x.npc); }); g.armyGuards.guards.length = 0; g.player.place(690, 0.3, -700, 0); g.cam.snapBehind?.(0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); });
+  const strike = await page.evaluate(async () => {
+    const { WEAPONS } = await import(/* @vite-ignore */ ('/astratest/src/combat/' + 'weapons.ts'));
+    const g = (window as any).__game; const THREE_V = g.renderer.camera.position.constructor;
+    const from = new THREE_V(690, 22, -650), to = new THREE_V(692, 0.5, -698);
+    const dir = to.clone().sub(from).normalize();
+    const hp0 = g.player.health;
+    g.combat.launch(g.player, WEAPONS.rpg, from, dir, 0);
+    let frames = 0; while (g.combat.activeProjectiles > 0 && frames < 200) { g.frame(1 / 30, false); frames++; }
+    return { frames, hpLost: hp0 - g.player.health };
+  });
+  expect(strike.frames).toBeLessThan(200);
+  await page.evaluate(() => { const g = (window as any).__game; g.frame(1 / 30, false); g.frame(1 / 30, true); g.frame(1 / 30, false); });
+  if (SHOT) await page.screenshot({ path: `${SHOT}/missile-strike.png` });
+
+  // a hostile gunship shot down: smoke, fall, crash explosion, wreck
+  const down = await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.police.setHeat(5, g.player.pos);
+    for (let i = 0; i < 30 * 30 && !(g.armyAir.units[0] && g.armyAir.units[0].state === 'attack'); i++) g.frame(1 / 30, false);
+    const u = g.armyAir.units[0]; if (!u) return { ok: false };
+    const h = u.heli; h.damage(h.maxHealth * 0.7, undefined, undefined, g.player);
+    return { ok: true, hp: h.health / h.maxHealth };
+  });
+  expect(down.ok).toBe(true);
+  const trackHeli = async (name: string, secs: number) => {
+    await page.evaluate((secs) => { const g = (window as any).__game; for (let i = 0; i < secs * 30; i++) g.frame(1 / 30, false); }, secs);
+    if (!SHOT) return;
+    await page.evaluate(() => { const g = (window as any).__game; const h = g.armyAir.units[0]?.heli ?? g.helis.list.find((x: any) => x.variant === 'army' && x.aiOwned); g.frame(1 / 30, true); const c = g.renderer.camera; const p = h.position; c.position.set(p.x - 30, p.y + 6, p.z - 30); c.lookAt(p.x, p.y, p.z); c.updateMatrixWorld(); g.renderer.render(); });
+    await page.screenshot({ path: `${SHOT}/${name}.png` });
+  };
+  await trackHeli('down-smoke', 1);
+  await page.evaluate(() => { const g = (window as any).__game; const h = g.armyAir.units[0].heli; h.damage(h.health + 5, undefined, undefined, g.player); });
+  await trackHeli('down-falling', 1.5);
+  const crashed = await page.evaluate(() => { const g = (window as any).__game; for (let i = 0; i < 30 * 10; i++) g.frame(1 / 30, false); const h = g.armyAir.units[0].heli; return { destroyed: h.destroyed, burn: h.burnTime }; });
+  expect(crashed.destroyed).toBe(true);
+  await trackHeli('down-wreck', 0.5);
+  clean(pr);
+});

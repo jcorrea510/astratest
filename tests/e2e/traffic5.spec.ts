@@ -110,7 +110,8 @@ test('drivers honk when cut off, tuck over for a siren, floor it when shot at, s
     out.sirenShift = minShift; out.sirenSpeed = minSpeed; out.yields = T.stats.yields;
     // 3. gunfire: a civilian nearby panics and drives away
     clear(); g.exitVehicle(true); g.vehicles.remove(cop);
-    const v3 = mkAi(80); const o3 = g.player.pos.clone(); o3.set(v3.v.position.x - 10, 1, v3.v.position.z - 10); T.gunfire(o3, g.player.pos);
+    const v3 = mkAi(80); const o3 = g.player.pos.clone(); o3.set(v3.v.position.x - 10, 1, v3.v.position.z - 10); T.gunfire(o3, g.player.pos); out.farMode = v3.mode; // 14 m from the muzzle, not hit: stays calm
+    T.gunfire(o3, g.player.pos, [{ target: v3.v, point: v3.v.position }]); // the car the bullets hit panics
     out.fleeMode = v3.mode;
     // 4. boxed in while panicking: the driver bails out on foot
     clear();
@@ -129,6 +130,7 @@ test('drivers honk when cut off, tuck over for a siren, floor it when shot at, s
   expect(r.honked).toBeGreaterThan(0);
   expect(r.sirenShift).toBeLessThan(-0.5);
   expect(r.sirenSpeed).toBeLessThan(6);
+  expect(r.farMode).toBe('cruise');
   expect(r.fleeMode).toBe('flee');
   expect(r.bailed).toBe(true);
   expect(r.crashSpeed).toBeLessThan(5); // slowed from 11 m/s (crawls to a stop short of the wreck)
@@ -163,4 +165,38 @@ test('player traffic violations are reported (speeding, wrong way, collision)', 
   expect(r.speeding).toBe(true);
   expect(r.wrongWay).toBe(true);
   expect(r.collision).toBe(true);
+});
+
+test('city buses: loop routes, stop at the kerb with door open and kneeling, drivable', async () => {
+  test.setTimeout(400_000);
+  const r = await page.evaluate(`(() => {
+    const g = window.__game; const B = g.buses; const out = { routes: B.routes.length };
+    g.trafficCap = 0; g.pedCap = 0;
+    for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
+    if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
+    const st = B.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 90, 0.4, st.z + st.dx * 6 + st.dz * 90, 0);
+    let spawned = false, opened = false, kneeled = false, left = false, atKerb = 99, stops0 = B.stats.stops, car = null;
+    for (let i = 0; i < 400 * 30 && !left; i++) {
+      g.frame(1 / 30, false);
+      if (!car) car = B.runs.find(r => r.car)?.car ?? null;
+      if (car) {
+        spawned = true; const di = car.v.doorIndex('right', 0);
+        const run = B.runs.find(r => r.car === car);
+        if (run && run.waiting) { if (car.v.doors[di].open > 0.5) opened = true; if (car.v.kneel > 0.5) kneeled = true; atKerb = Math.min(atKerb, Math.abs(car.v.speed)); }
+        else if (opened && run && !run.waiting) left = true;
+      }
+    }
+    out.spawned = spawned; out.opened = opened; out.kneeled = kneeled; out.left = left; out.stops = B.stats.stops - stops0; out.waitSpeed = atKerb;
+    // drivable / stealable: take the bus
+    if (car) { const v = car.v; g.traffic.release(v); g.seatPlayer(v); g.input.press('KeyW'); for (let i = 0; i < 150; i++) g.frame(1 / 30, false); g.input.release('KeyW'); out.driven = v.speed; out.kind = v.kind; }
+    return out;
+  })()`) as any;
+  console.log('buses', JSON.stringify(r));
+  expect(r.routes).toBeGreaterThanOrEqual(2);
+  expect(r.spawned).toBe(true);
+  expect(r.opened).toBe(true);
+  expect(r.kneeled).toBe(true);
+  expect(r.left).toBe(true);
+  expect(r.kind).toBe('bus');
+  expect(r.driven).toBeGreaterThan(3);
 });

@@ -5,6 +5,7 @@
  * facade builders) so the whole base costs a handful of draw calls.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ARMY_BASE } from './citymap';
 import { ROOF, T_METAL, T_STONE, T_PAINT, T_ROUGH, T_GLASS, T_NIGHTGLOW, type WallSpec, type Chunked, type TrimBuilder } from './builders';
 import { type BuildCtx, type Helipad, warehouse } from './buildings';
@@ -111,9 +112,24 @@ export function buildArmyBase(ctx: BuildCtx, trim: Chunked<TrimBuilder>, physics
   physics.addStaticBox(B.x1 - 20, 5.5, B.z0 + 40, 15, 5.5, 22); physics.addStaticBox(B.x1 - 20, 5.5, B.z0 + 82, 15, 5.5, 22);
 
   // ---- motor pool: open vehicle shed, fuel tanks, jerry-can stack
-  { const sx = B.x0 + 80, sz = B.z0 + 34, tb = t(sx, sz);
-    for (let k = 0; k <= 4; k++) for (const dx of [-5.5, 5.5]) tb.box(sx + dx, 2.2, sz - 20 + k * 10, 0.3, 4.4, 0.3, 0, C('#55584c'), T_METAL);
-    tb.box(sx, 4.5, sz, 12.5, 0.3, 42, 0, C('#6a6f5c'), T_METAL, 0, 0.04);
+  { const sx = B.x0 + 80, sz = B.z0 + 34, tb = t(sx, sz), steel = C('#55584c'), roof = C('#979e98'), rib = C('#7b827d');
+    for (let k = 0; k <= 4; k++) {
+      const z = sz - 20 + k * 10;
+      for (const dx of [-5.5, 5.5]) tb.box(sx + dx, 2.2, z, 0.3, 4.4, 0.3, 0, steel, T_METAL);
+      // roof truss: rafters up to the ridge, tie beam, king post, diagonal braces
+      tb.beam(sx - 6.4, 4.3, z, sx, 5.6, z, 0.18, 0.22, steel, T_METAL); tb.beam(sx + 6.4, 4.3, z, sx, 5.6, z, 0.18, 0.22, steel, T_METAL);
+      tb.beam(sx - 5.5, 4.2, z, sx + 5.5, 4.2, z, 0.14, 0.2, steel, T_METAL); tb.box(sx, 4.9, z, 0.14, 1.4, 0.14, 0, steel, T_METAL);
+      tb.beam(sx - 3, 4.2, z, sx, 5.4, z, 0.1, 0.1, steel, T_METAL); tb.beam(sx + 3, 4.2, z, sx, 5.4, z, 0.1, 0.1, steel, T_METAL);
+    }
+    // gable roof of corrugated sheet: two pitched panels (about 1 m overhang), ribs every 0.55 m, ridge cap, purlins
+    const slope = Math.atan2(1.3, 6.4), panelW = Math.hypot(6.4, 1.3) + 0.6;
+    for (const sg of [-1, 1]) {
+      const mx = sx + sg * 3.35, my = 4.97;
+      tb.box(mx, my, sz, panelW, 0.06, 44, 0, roof, T_METAL, 0, -sg * slope);
+      for (let k = 0; k < 80; k++) { const z = sz - 21.8 + k * 0.55; tb.box(mx, my + 0.06, z, panelW, 0.07, 0.12, 0, rib, T_METAL, 0, -sg * slope); }
+      tb.beam(sx + sg * 6.9, 4.1, sz - 22, sx + sg * 6.9, 4.1, sz + 22, 0.16, 0.12, steel, T_METAL); // eave beam
+    }
+    tb.box(sx, 5.68, sz, 0.7, 0.14, 44.2, 0, rib, T_METAL);
   }
   for (let k = 0; k < 3; k++) { const fx = B.x0 + 78 + k * 7, fz = B.z0 + 83, tb = t(fx, fz); tb.cyl(fx, 0, fz, 2.2, 2.2, 5.2, 14, C('#7d806d'), T_METAL); tb.cyl(fx, 5.2, fz, 1.9, 0.6, 1.1, 14, C('#7d806d'), T_METAL); physics.addStaticCylinder(fx, 2.6, fz, 2.6, 2.2); }
   for (let k = 0; k < 8; k++) t(B.x0 + 76, B.z0 + 96).box(B.x0 + 74 + (k % 4) * 0.7, 0.35 + Math.floor(k / 4) * 0.7, B.z0 + 96 + (k % 2) * 0.3, 0.55, 0.7, 0.3, 0.1 * k, C('#5b6644'), T_METAL);
@@ -136,4 +152,51 @@ export function buildArmyBase(ctx: BuildCtx, trim: Chunked<TrimBuilder>, physics
   bag(L.spineX + 6, B.z0 + 18, 5, 0, 1.1);
   // spine-side lamp posts
   for (let z = B.z0 + 24; z < B.z1 - 12; z += 26) { const tb = t(L.spineX, z); tb.cyl(L.spineX + 5, 0.1, z, 0.08, 0.06, 7.5, 8, C('#6d6f70'), T_METAL); tb.box(L.spineX + 4.3, 7.6, z, 1.4, 0.15, 0.4, 0, C('#fff6d8'), T_NIGHTGLOW(6)); }
+}
+
+/**
+ * Far silhouette of the whole base: a single merged, vertex-coloured mesh (one draw call, ~1.5k triangles) that stands in for the
+ * detailed chunks (which only draw within ~140-400 m). The game shows it while the camera is well outside the fence (see armyLodVisible).
+ */
+export function buildArmyBaseLod(): THREE.Mesh {
+  const B = ARMY_BASE, gz = B.gateZ, L = armyLayout();
+  const parts: THREE.BufferGeometry[] = [];
+  const add = (x: number, y: number, z: number, sx: number, sy: number, sz: number, yaw: number, hex: string) => {
+    const g = new THREE.BoxGeometry(sx, sy, sz).toNonIndexed(); g.deleteAttribute('uv');
+    g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), new THREE.Vector3(1, 1, 1)));
+    const c = new THREE.Color(hex).convertSRGBToLinear(), col = new Float32Array(g.attributes.position.count * 3);
+    for (let i = 0; i < g.attributes.position.count; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); parts.push(g);
+  };
+  const cx = (B.x0 + B.x1) / 2, cz = (B.z0 + B.z1) / 2;
+  add(cx, 0.06, cz, B.x1 - B.x0 - 2, 0.1, B.z1 - B.z0 - 2, 0, '#6f6a55'); // yard
+  add(L.spineX, 0.1, cz, 8, 0.1, B.z1 - B.z0 - 20, 0, '#3b3d40');
+  add(B.x0 + 105, 0.1, gz + 40, 62, 0.1, 66, 0, '#8e8b84'); // apron
+  // buildings (same footprints as the detailed ones, a hair smaller so the real facades win where both draw)
+  for (let k = 0; k < 3; k++) add(B.x0 + 38, 3.5, B.z0 + 22 + k * 25, 37.4, 7, 10.4, 0, '#aaa690');
+  add(B.x0 + 38, 3.5, B.z1 - 22, 37.4, 7, 10.4, 0, '#aaa690');
+  add(B.x0 + 38, 5.1, gz + 18, 25.4, 10.2, 13.4, 0, '#c2bba6');
+  for (const z of [B.z0 + 40, B.z0 + 82]) { add(B.x1 - 20, 5.4, z, 29.4, 10.8, 43.4, 0, '#646b52'); add(B.x1 - 20, 12, z, 29.4, 2.6, 43.4, 0, '#7d817f'); }
+  add(B.x0 + 80, 4.9, B.z0 + 34, 13, 0.5, 44, 0, '#979e98'); // motor pool shed roof
+  for (let k = 0; k < 3; k++) add(B.x0 + 78 + k * 7, 3, B.z0 + 83, 4.2, 6, 4.2, 0, '#7d806d'); // fuel tanks
+  // water tower
+  add(B.x0 + 12, 7, gz + 34, 3.5, 14, 3.5, 0, '#5a5e55'); add(B.x0 + 12, 16.3, gz + 34, 6.3, 4.6, 6.3, 0, '#8d958f');
+  // watch towers
+  const towers: [number, number][] = [[B.x0 + 5, B.z0 + 5], [B.x1 - 5, B.z0 + 5], [B.x0 + 5, B.z1 - 5], [B.x1 - 5, B.z1 - 5], [L.spineX, B.z0 + 5], [L.spineX, B.z1 - 5], [B.x1 - 5, gz - 30], [B.x1 - 5, gz + 30]];
+  for (const [x, z] of towers) { add(x, 4, z, 1.2, 8, 1.2, 0, '#5a5040'); add(x, 9.2, z, 3.8, 2.2, 3.8, 0, '#6b6b5a'); add(x, 10.5, z, 4.4, 0.4, 4.4, 0, '#4a4a40'); }
+  // perimeter fence (with a gap at the gate)
+  const fence = (x0: number, z0: number, x1: number, z1: number) => { const l = Math.hypot(x1 - x0, z1 - z0); add((x0 + x1) / 2, 1.5, (z0 + z1) / 2, x0 === x1 ? 0.35 : l, 3, x0 === x1 ? l : 0.35, 0, '#6d6f70'); };
+  fence(B.x0, B.z0, B.x1, B.z0); fence(B.x0, B.z1, B.x1, B.z1); fence(B.x0, B.z0, B.x0, B.z1);
+  fence(B.x1, B.z0, B.x1, gz - 6); fence(B.x1, gz + 6, B.x1, B.z1);
+  const geo = mergeGeometries(parts)!; parts.forEach(g => g.dispose());
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  mesh.name = 'armyBaseLod'; mesh.visible = false; mesh.frustumCulled = true;
+  return mesh;
+}
+/** True when the far silhouette should draw: camera more than 130 m outside the fence (the detailed chunks cover the rest). */
+export function armyLodVisible(camX: number, camZ: number) {
+  const B = ARMY_BASE, dx = Math.max(B.x0 - camX, 0, camX - B.x1), dz = Math.max(B.z0 - camZ, 0, camZ - B.z1);
+  const d = Math.hypot(dx, dz);
+  return d > 130 && d < 1500;
 }

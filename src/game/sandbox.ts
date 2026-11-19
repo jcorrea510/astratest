@@ -63,6 +63,7 @@ export class Sandbox {
       { id: 'unit', group: 'Police', label: 'Unit type', kind: 'select', value: this.unit, options: UNITS },
       { id: 'spawnUnit', group: 'Police', label: 'Spawn police unit', kind: 'button' },
       { id: 'heli', group: 'Police', label: 'Spawn helicopter', kind: 'button' },
+      { id: 'armyheli', group: 'Police', label: 'Spawn army gunship', kind: 'button' },
       { id: 'never', group: 'Police', label: 'Police ignore you', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
       { id: 'clock', group: 'World', label: 'Clock running', kind: 'toggle', value: this.clockRunning },
@@ -90,6 +91,7 @@ export class Sandbox {
       case 'unit': if (UNITS.some(u => u.value === v)) this.unit = v as UnitKind; break;
       case 'spawnUnit': g.police.callUnit(this.unit, g.playerVehicle ? g.playerVehicle.position : g.player.pos, g.renderer.camera); break;
       case 'heli': g.spawnHelicopter('civilian'); break;
+      case 'armyheli': g.spawnHelicopter('army'); break;
       case 'never': this.neverWanted = !!v; if (this.neverWanted) g.police.clear(); break;
       case 'hour': if (Number.isFinite(num)) g.hour = ((num % 24) + 24) % 24; break;
       case 'clock': this.clockRunning = !!v; g.clockRunning = this.clockRunning; break;
