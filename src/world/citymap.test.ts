@@ -143,4 +143,20 @@ describe('west extension + stores', () => {
   it('pedestrian graph stays connected with the west sidewalks', () => {
     expect(c.pedNodes.filter(n => n.blockId < 0).length).toBeGreaterThan(40);
   });
+  it('south extension: Anchor Row financial district, central park, waterfront highway, whole lane graph connected', () => {
+    expect(c.blocks.filter(b => b.district === 'financial').length).toBeGreaterThanOrEqual(12);
+    expect(c.blocks.filter(b => b.kind === 'park').length).toBeGreaterThanOrEqual(6);
+    expect(Math.max(...c.lots.map(l => l.height))).toBeGreaterThan(60);
+    expect(c.paths.filter(p => p.name === 'Harbor Drive').length).toBe(4);
+    expect(STORES.filter(s => s.z > 450).length).toBeGreaterThanOrEqual(8);
+    // every non-connector lane can reach every other (one strongly-connected component) except dead-end loops handled by next
+    const reach = (start: number, adj: (id: number) => number[]) => { const seen = new Set<number>(); const q = [start]; while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...adj(id)); } return seen; };
+    const out = (id: number) => { const l = c.lanes[id]; return [...l.next, ...(l.leftLane !== undefined ? [l.leftLane] : []), ...(l.rightLane !== undefined ? [l.rightLane] : [])]; };
+    const rev: number[][] = c.lanes.map(() => []); for (const l of c.lanes) for (const n of out(l.id)) rev[n].push(l.id);
+    const start = c.lanes.find(l => !l.connector && !l.ys)!.id;
+    const fwd = reach(start, out), back = reach(start, id => rev[id]);
+    for (const l of c.lanes) { expect(fwd.has(l.id), `fwd ${l.id}`).toBe(true); expect(back.has(l.id), `back ${l.id}`).toBe(true); }
+    expect(surfaceAt(c, 100, 800)).not.toBe('water'); // the grid reaches the new south coast
+    expect(surfaceAt(c, 100, 1100)).toBe('water');
+  });
 });

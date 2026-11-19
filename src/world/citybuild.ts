@@ -10,7 +10,7 @@ import { CHANNEL, pathHeightAt } from './citymap';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
-  type CityMap, type Lot, type Block, AVENUES, STREETS, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
+  type CityMap, type Lot, type Block, AVENUES, STREETS, lanesForStreet, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
 } from './citymap';
 import { ChunkInstancer, colorize, mergeColored } from './geometry';
 import {
@@ -265,7 +265,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const occ = merged.map(m => { const swap = Math.abs(Math.sin(m.rot)) > 0.7; return { x: m.x, z: m.z, hw: (swap ? m.d : m.w) / 2, hd: (swap ? m.w : m.d) / 2 }; });
   const occupied = (x: number, z: number) => occ.some(o => Math.abs(x - o.x) < o.hw && Math.abs(z - o.z) < o.hd);
   const ctx: BuildCtx = { fac, trim, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
-  const towerLots = merged.filter(l => l.kind === 'tower').sort((a, b) => b.height - a.height);
+  const towerLots = merged.filter(l => l.kind === 'tower' && l.blockId >= 0 && city.blocks[l.blockId].district === 'heights').sort((a, b) => b.height - a.height);
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
   const PS = POLICE_STATION;
   const policeLot = (l: Lot) => Math.abs(l.x - PS.x) < PS.w / 2 && Math.abs(l.z - PS.z) < 3;
@@ -549,8 +549,15 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const r = new Rng(b.id * 31 + 7);
     const ix0 = b.x0 + SIDEWALK, ix1 = b.x1 - SIDEWALK, iz0 = b.z0 + SIDEWALK, iz1 = b.z1 - SIDEWALK;
     if (b.kind === 'park') {
-      for (let i = 0; i < 46; i++) {
+      const lake = b.ix === 4 && b.iz === 1;
+      const lcx = (ix0 + ix1) / 2, lcz = (iz0 + iz1) / 2;
+      if (lake) { // the park lake: three overlapping pools, shore stones, a footbridge-width path skirting it
+        const wc = C('#2f6d7c');
+        for (const [dx, dz, rr] of [[0, 0, 24], [16, 12, 15], [-17, -9, 14]]) trim.at(lcx + dx, lcz + dz).cyl(lcx + dx, CURB_HEIGHT + 0.005, lcz + dz, rr, rr, 0.04, 28, wc, [0.1, 0, 0, 0]);
+      }
+      for (let i = 0; i < (lake ? 70 : 46); i++) {
         const x = r.range(ix0 + 3, ix1 - 3), z = r.range(iz0 + 3, iz1 - 3);
+        if (lake && Math.hypot(x - lcx, z - lcz) < 34) continue;
         if (Math.abs(x - (ix0 + ix1) / 2) < 5 || Math.abs(z - (iz0 + iz1) / 2) < 5) continue;
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(1.0, 1.5), r);
       }
@@ -608,6 +615,39 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     void tb;
     const tr = new Rng(77);
     for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; props.add(`tree${k}`, x, 0, z, 0, s); props.add(`leaf${k}`, x, 0, z, 0, s); }
+  }
+
+  // ---------- Elevated rail along Tidewell Ave (x=250) and subway entrances ----------
+  {
+    const RX = AVENUES[7], RY = 7.4, z0 = STREETS[3], z1 = STREETS[12];
+    const conc = C('#8b8984'), steelC = C('#4f5459'), railC2 = C('#2c2d2f');
+    const crossRoad = (z: number) => STREETS.some((sz, j) => Math.abs(z - sz) < halfWidth(lanesForStreet(j)) + 1.4);
+    for (let z = z0 + 6; z < z1; z += 30) {
+      const ze = Math.min(z + 30, z1), zm = (z + ze) / 2, tb = trim.at(RX, zm);
+      tb.box(RX, RY, zm, 8.4, 0.9, ze - z, 0, conc, T_STONE); // deck
+      tb.box(RX, RY - 0.65, zm, 1.4, 0.5, ze - z, 0, steelC, T_METAL);
+      for (const sg of [-1, 1]) { tb.box(RX + sg * 4, RY + 0.9, zm, 0.14, 1.1, ze - z, 0, steelC, T_METAL); tb.box(RX + sg * 0.72, RY + 0.55, zm, 0.12, 0.2, ze - z, 0, railC2, T_METAL); }
+      for (const sg of [-1, 1]) {
+        const cz = z + 6;
+        if (crossRoad(cz) || crossRoad(cz + 2)) continue;
+        const cx = RX + sg * (halfWidth(2) + 0.7);
+        tb.box(cx, RY / 2, cz, 0.9, RY, 0.9, 0, steelC, T_METAL);
+        tb.box((cx + RX) / 2, RY - 0.55, cz, Math.abs(cx - RX), 0.7, 0.7, 0, steelC, T_METAL);
+        physics.addStaticBox(cx, RY / 2, cz, 0.45, RY / 2, 0.45);
+      }
+    }
+    // subway entrances: green-lamp stair kiosks on corner sidewalks
+    const sr = new Rng(4242);
+    for (let i = 1; i < AVENUES.length - 1; i += 2) for (let j = 2; j < STREETS.length - 2; j += 3) {
+      const ex = AVENUES[i] + halfWidth(2) + 2.2, ez = STREETS[j] + halfWidth(lanesForStreet(j)) + 2.2;
+      if (sr.chance(0.35) || city.blocks.some(b => b.kind !== 'buildings' && ex > b.x0 && ex < b.x1 && ez > b.z0 && ez < b.z1)) continue;
+      if (Math.hypot(ex - POLICE_STATION.x, ez - POLICE_STATION.z) < 30) continue;
+      const tb = trim.at(ex, ez);
+      tb.box(ex, CURB_HEIGHT + 0.55, ez, 2.2, 1.1, 3.4, 0, steelC, T_METAL);
+      tb.box(ex, CURB_HEIGHT + 1.15, ez, 2.5, 0.1, 3.7, 0, conc, T_STONE);
+      for (const sg of [-1, 1]) { tb.cyl(ex + sg * 1.25, CURB_HEIGHT + 1.4, ez - 1.7, 0.05, 0.05, 2.8, 6, steelC, T_METAL); tb.sphere(ex + sg * 1.25, CURB_HEIGHT + 2.9, ez - 1.7, 0.2, C('#37d17a'), T_GLOW(2)); }
+      physics.addStaticBox(ex, CURB_HEIGHT + 0.6, ez, 1.2, 0.6, 1.8);
+    }
   }
 
   // ---------- Gas station forecourt ----------

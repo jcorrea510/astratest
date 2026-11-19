@@ -7,8 +7,9 @@ import { buildWestRoads, genWestLots, genWestPeds, WEST } from './westside';
 import { genStores } from './storegen';
 import { setGeneratedStores } from '../game/places';
 
-export type District = 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
+export type District = 'financial' | 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
 export const DISTRICT_INFO: Record<District, { name: string; color: string; pedDensity: number; trafficDensity: number }> = {
+  financial: { name: 'Anchor Row (Financial)', color: '#8a8f99', pedDensity: 1.1, trafficDensity: 0.9 },
   brickline: { name: 'Brickline', color: '#b8674d', pedDensity: 1, trafficDensity: 0.8 },
   heights: { name: 'Meridian Heights', color: '#4f7f8f', pedDensity: 1.2, trafficDensity: 1.2 },
   juniper: { name: 'Juniper Park', color: '#5f8f4f', pedDensity: 0.8, trafficDensity: 0.6 },
@@ -26,20 +27,20 @@ export const LANE_WIDTH = 3.6;
 export const SIDEWALK = 4.5;
 export const CURB_HEIGHT = 0.18;
 export const AVENUES = [-450, -350, -250, -150, -50, 50, 150, 250, 350, 450];
-export const STREETS = [-400, -300, -200, -100, 0, 100, 200, 300, 400];
+export const STREETS = [-400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 600, 700, 780, 850, 910];
 export const WATER_LEVEL = -1.2;
-export const COAST_Z = 452; // beach ends and the sea begins south of this line
-export const HARBOR_X = 492; // quay edge on the east side
+export const COAST_Z = 962; // beach ends and the sea begins south of this line
+export const HARBOR_X = 560; // quay edge on the east side
 export const SEABED_Y = -7; // open water south of the beach and east of the quay
-export const SEA_EDGE_Z = 640; // swimmable sea ends here (invisible wall)
+export const SEA_EDGE_Z = 1150; // swimmable sea ends here (invisible wall)
 export const SEA_EDGE_X = 660;
-export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 620 };
+export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 1100 };
 
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
-export const STREET_NAMES = ['North Crest St', '1st St', '2nd St', '3rd St', 'Sunset Blvd', '5th St', '6th St', 'Boardwalk St', 'Coastal Dr'];
+export const STREET_NAMES = ['North Crest St', '1st St', '2nd St', '3rd St', 'Sunset Blvd', '5th St', '6th St', 'Boardwalk St', 'Coastal Dr', 'Park Row', 'Bleecker Row', 'Union Row', 'Wharf St', 'Stone St', 'Battery Dr'];
 
 export function lanesForAvenue(_i: number): 1 | 2 { return 2; } // two lanes each way everywhere (Manhattan-style)
-export function lanesForStreet(_j: number): 1 | 2 { return 2; }
+export function lanesForStreet(j: number): 1 | 2 { return j >= 12 ? 1 : 2; } // the old Financial District streets are narrow
 export function halfWidth(lanes: number): number { return lanes * LANE_WIDTH + 0.8; }
 
 export interface V2 { x: number; z: number }
@@ -71,12 +72,13 @@ export interface CityMap {
 }
 
 export function districtFor(ix: number, iz: number): District {
-  if (iz >= 7) return 'strand';
+  if (iz >= 11) return ix === 8 ? 'cannery' : 'financial';
   if (ix === 8 && iz >= 3) return 'cannery';
-  if ((ix === 4 || ix === 5) && iz === 0) return 'juniper';
+  if ((ix === 4 || ix === 5) && iz <= 2) return 'juniper'; // the big central park (2 x 3 blocks)
   if (ix >= 7 && iz <= 2) return 'hillside';
-  if (ix >= 4 && ix <= 6 && iz >= 1 && iz <= 4) return 'heights';
+  if (ix >= 4 && ix <= 6 && iz >= 3 && iz <= 4) return 'heights';
   if (ix <= 3 && iz <= 3) return 'brickline';
+  if (iz >= 9 && ix <= 1) return 'oldtown';
   return 'midtown';
 }
 
@@ -162,7 +164,7 @@ export function generateCity(seed = 1977): CityMap {
     let kind: Block['kind'] = 'buildings';
     if (district === 'juniper') kind = 'park';
     else if (district === 'cannery') kind = 'docks';
-    else if ((i === 5 && j === 2) || (i === 2 && j === 5)) kind = 'plaza';
+    else if ((i === 3 && j === 1) || (i === 2 && j === 5) || (i === 6 && j === 7) || (i === 3 && j === 10)) kind = 'plaza';
     blocks.push({ id: blocks.length, ix: i, iz: j, x0, x1, z0, z1, district, kind });
   }
 
@@ -184,11 +186,12 @@ export function generateCity(seed = 1977): CityMap {
       }
       continue;
     }
-    const kind: LotKind = b.district === 'brickline' ? 'brownstone' : b.district === 'strand' || b.district === 'hillside' ? 'pastel' : rng.chance(0.5) ? 'midrise' : 'brownstone';
+    const kind: LotKind = b.district === 'brickline' || b.district === 'financial' ? 'brownstone' : b.district === 'strand' || b.district === 'hillside' ? 'pastel' : rng.chance(0.5) ? 'midrise' : 'brownstone';
     // Manhattan-style lots: varied frontages and depths, a height per lot, the odd tower, corner buildings first
     const WIDTHS = [6.5, 7.5, 7.5, 9, 10.5, 10.5, 12, 14, 17];
     const pickHeight = (lk: LotKind): number => {
       const d = b.district;
+      if (d === 'financial') return rng.chance(0.45) ? rng.range(52, 88) : rng.range(26, 46);
       if (d === 'strand' || d === 'seacliff') return rng.range(7, 14);
       if (d === 'hillside') return 0;
       if (d === 'brickline' || lk === 'brownstone') return rng.chance(0.12) ? rng.range(26, 34) : rng.range(14, 24);
@@ -212,6 +215,7 @@ export function generateCity(seed = 1977): CityMap {
         const z = s.ax === 'x' ? s.fixed + inward * depth / 2 : tc;
         let lk: LotKind = kind === 'midrise' && rng.chance(0.4) ? 'brownstone' : kind;
         let height = pickHeight(lk);
+        if (b.district === 'financial' && wdt >= 9 && height > 50) { lk = 'tower'; height = height / 1.45; }
         if (b.district === 'midtown' && wdt >= 12 && rng.chance(0.2)) { lk = 'tower'; height = rng.range(40, 78) / 1.45; }
         if (first) cornerDepth[name + 'a'] = depth;
         lastDepth = depth; first = false;
@@ -346,7 +350,7 @@ function nearestCoord(arr: number[], v: number): number {
 export type Surface = 'road' | 'sidewalk' | 'lot' | 'park' | 'beach' | 'water' | 'quay' | 'offmap';
 /** Classifies a point on the ground plane. */
 export function surfaceAt(city: CityMap, x: number, z: number): Surface {
-  if (z < STREETS[0] - 9 || x > CHANNEL.x0 || x < AVENUES[0] - 4) {
+  if (z < STREETS[0] - 9 || x > AVENUES[AVENUES.length - 1] + 9 || x < AVENUES[0] - 4) {
     for (const p of city.paths) { const h = pathHeightAt(p, x, z); if (h.d < p.half) return 'road'; }
     for (const i of city.intersections) {
       if (i.ix >= 0) continue;
@@ -564,6 +568,14 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
   add('Airfield Rd', 'service', JA, [0, 1], JS, [0, -1], [{ x: 760, y: 0, z: -330 }], 1, 0, 0, false, 10);
   // Old Town + Seacliff: curving streets, a roundabout and a winding coast road west of the grid
   buildWestRoads({ junction, add, grid: (i, j) => interGrid[i][j] });
+  // Harbor Drive: the waterfront highway along the quay (two lanes each way, ramps into the avenue ends)
+  {
+    const HW = 522, fwH = fwHalf, Y = 0.2;
+    const zs = [-20, 100, 400, 700, 880];
+    const J = zs.map((z, k) => junction(HW, z, k === 0 || k === zs.length - 1 ? rampHalf : fwH));
+    for (let k = 0; k < J.length - 1; k++) add('Harbor Drive', 'freeway', J[k], [0, 1], J[k + 1], [0, -1], [], 2, Y, Y, false, 10);
+    for (const [jz, k] of [[5, 1], [8, 2], [11, 3]] as const) add('Harbor Drive Ramp', 'ramp', interGrid[AVENUES.length - 1][jz], [1, 0], J[k], [-1, 0], [], 1, Y, Y, false, 8);
+  }
   return paths;
 }
 
@@ -574,8 +586,9 @@ function deadEndLoops(paths: PathRoad[], intersections: Intersection[], lanes: L
     const touching = paths.filter(p => p.from === inter.id || p.to === inter.id);
     if (touching.length !== 1) continue;
     const ins = laneEnds.get(`${inter.id}:in`) ?? [], outs = laneEnds.get(`${inter.id}:out`) ?? [];
-    for (const li of ins) {
-      const a = lanes[li]; const b = lanes[outs[0]]; if (!b) continue;
+    for (let ii = 0; ii < ins.length; ii++) {
+      const li = ins[ii];
+      const a = lanes[li]; const b = lanes[outs[ii % Math.max(1, outs.length)]]; if (!b) continue;
       const ae = a.points[a.points.length - 1], ap = a.points[a.points.length - 2], bs = b.points[0];
       const dx = Math.sign(ae.x - ap.x), dz = Math.sign(ae.z - ap.z);
       const cx = (ae.x + bs.x) / 2 + dx * 8, cz = (ae.z + bs.z) / 2 + dz * 8, R = 9;

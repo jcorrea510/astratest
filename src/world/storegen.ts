@@ -4,16 +4,16 @@ import type { Lot, Block } from './citymap';
 import { STORES, STORE_W, STORE_D, POLICE_STATION, GAS_STATION, type Store, type StoreKind } from '../game/places';
 
 const ROSTER: { kind: StoreKind; color: string; cash: [number, number]; names: string[] }[] = [
-  { kind: 'convenience', color: '#d1495b', cash: [250, 450], names: ['Night Owl Mart', 'Quick Harbor 24/7', 'Corner Moon Market', 'Dime Store 24', 'Brightside Mini Mart', 'Lantern Stop', 'Blue Heron Mart'] },
-  { kind: 'liquor', color: '#29335c', cash: [450, 700], names: ['Anchor Spirits', 'Velvet Cork Liquor', 'Salt & Barrel', 'Rooster Wine & Spirits'] },
+  { kind: 'convenience', color: '#d1495b', cash: [250, 450], names: ['Night Owl Mart', 'Quick Harbor 24/7', 'Corner Moon Market', 'Dime Store 24', 'Brightside Mini Mart', 'Lantern Stop', 'Blue Heron Mart', 'Anchor Row Mini Mart', 'Ferry Slip Convenience', 'Midnight Hydrant 24'] },
+  { kind: 'liquor', color: '#29335c', cash: [450, 700], names: ['Anchor Spirits', 'Velvet Cork Liquor', 'Salt & Barrel', 'Rooster Wine & Spirits', 'Brass Bell Spirits', 'Wharf Street Wines'] },
   { kind: 'gas', color: '#0f7b4f', cash: [300, 500], names: ['Dust Road Fuel', 'Coastline Petrol', 'Rust Belt Gas & Go', 'Mile Marker Fuel'] },
-  { kind: 'diner', color: '#8c1c22', cash: [350, 550], names: ['Blue Plate Diner', 'Sunny Side Griddle', 'Twin Anchors Cafe', 'Late Light Diner', 'Biscuit Barn'] },
-  { kind: 'pawn', color: '#141414', cash: [800, 1300], names: ['Second Chance Pawn', 'Gold Standard Pawn', 'Brass Key Jewelers'] },
-  { kind: 'pharmacy', color: '#1d8f6a', cash: [400, 600], names: ['Greenleaf Pharmacy', 'Tidewell Drug', 'Remedy Corner', 'Harbor Health Pharmacy', 'Willow Apothecary'] },
-  { kind: 'clothing', color: '#8a4f9e', cash: [350, 600], names: ['Threadbare', 'Loom & Lace', 'Salt Stripe Outfitters', 'Velour Boutique', 'Off-Cut Denim'] },
-  { kind: 'electronics', color: '#1f6fb5', cash: [700, 1000], names: ['Volt Hut', 'Circuit Alley', 'Pixel Depot', 'Static & Signal'] },
-  { kind: 'barber', color: '#b5322e', cash: [200, 350], names: ['Sharp Edge Barbers', 'Clip Joint', 'Old Town Barber', 'Fade Factory'] },
-  { kind: 'bank', color: '#1d3a5c', cash: [1800, 3000], names: ['Meridian Savings Branch', 'Anchor Trust Bank', 'Harbor Credit Union', 'Cobalt Savings'] },
+  { kind: 'diner', color: '#8c1c22', cash: [350, 550], names: ['Blue Plate Diner', 'Sunny Side Griddle', 'Twin Anchors Cafe', 'Late Light Diner', 'Biscuit Barn', 'Ticker Tape Diner', 'Pier Light Cafe'] },
+  { kind: 'pawn', color: '#141414', cash: [800, 1300], names: ['Second Chance Pawn', 'Gold Standard Pawn', 'Brass Key Jewelers', 'Mercantile Loan & Pawn'] },
+  { kind: 'pharmacy', color: '#1d8f6a', cash: [400, 600], names: ['Greenleaf Pharmacy', 'Tidewell Drug', 'Remedy Corner', 'Harbor Health Pharmacy', 'Willow Apothecary', 'Battery Drug', 'Counting House Pharmacy'] },
+  { kind: 'clothing', color: '#8a4f9e', cash: [350, 600], names: ['Threadbare', 'Loom & Lace', 'Salt Stripe Outfitters', 'Velour Boutique', 'Off-Cut Denim', 'Pinstripe Outfitters', 'Fifth Fold Tailors'] },
+  { kind: 'electronics', color: '#1f6fb5', cash: [700, 1000], names: ['Volt Hut', 'Circuit Alley', 'Pixel Depot', 'Static & Signal', 'Ticker Electronics'] },
+  { kind: 'barber', color: '#b5322e', cash: [200, 350], names: ['Sharp Edge Barbers', 'Clip Joint', 'Old Town Barber', 'Fade Factory', 'Wall Clock Barbers'] },
+  { kind: 'bank', color: '#1d3a5c', cash: [1800, 3000], names: ['Meridian Savings Branch', 'Anchor Trust Bank', 'Harbor Credit Union', 'Cobalt Savings', 'Anchor Row Savings', 'Exchange Place Trust'] },
 ];
 export const GENERATED_STORE_TARGET = ROSTER.reduce((n, r) => n + r.names.length, 0);
 

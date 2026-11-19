@@ -26,3 +26,18 @@ describe('GPS routing', () => {
     expect(r.slice(1, -1).every(onRoad)).toBe(true);
   });
 });
+
+describe('GPS routing in the south extension', () => {
+  it('routes from the centre down to the Anchor Row financial district over roads only', () => {
+    const r = gpsRoute(city, 0, 0, 90, 860)!;
+    expect(r).toBeDefined();
+    expect(r.length).toBeGreaterThan(10);
+    expect(r.slice(1, -1).every(onRoad)).toBe(true);
+    expect(Math.max(...r.map(p => p.z))).toBeGreaterThan(780);
+  });
+  it('routes onto the Harbor Drive waterfront highway', () => {
+    const r = gpsRoute(city, 100, 100, 522, 500)!;
+    expect(r).toBeDefined();
+    expect(r.slice(1, -1).every(onRoad)).toBe(true);
+  });
+});
