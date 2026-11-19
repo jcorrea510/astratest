@@ -11,3 +11,15 @@ describe('fall damage', () => {
   });
   it('a forward roll soaks up part of it', () => { expect(fallDamage(22, true)).toBeLessThan(fallDamage(22)); });
 });
+
+import { MOVE, fallImpactScale } from './player';
+describe('realistic gravity', () => {
+  it('a standing jump peaks near half a metre to three quarters and a 5 m drop still hurts', () => {
+    const g = MOVE.gravity, v = MOVE.jumpSpeed, band = 1.5;
+    const h = (v * v - band * band) / (2 * g) + (band * band) / (2 * g * MOVE.hangScale);
+    expect(h).toBeGreaterThan(0.45); expect(h).toBeLessThan(0.8);
+    const impact = Math.sqrt(2 * MOVE.gravity * MOVE.fallScale * 5);
+    expect(fallDamage(impact * fallImpactScale())).toBeGreaterThan(15);
+    expect(fallDamage(Math.sqrt(2 * MOVE.gravity * MOVE.fallScale * 2.5) * fallImpactScale())).toBe(0);
+  });
+});

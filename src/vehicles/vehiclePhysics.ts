@@ -19,6 +19,15 @@ const G = 20;
 /** Global grip multiplier (kept for tuning from the console). */
 export let GRIP = 1;
 export function setGripScale(g: number) { GRIP = g; }
+/** Driving assists: arcade (default, forgiving ~1.5 g grip) or realistic (~0.9 g sedans, strong weight transfer). */
+export let REALISTIC = false;
+export const REALISTIC_GRIP = 0.58;
+export function setRealisticDriving(on: boolean) { REALISTIC = on; GRIP = on ? REALISTIC_GRIP : 1; }
+/** Front-axle load factor from longitudinal acceleration (braking loads the front, throttle the rear). */
+export function loadTransfer(longAcc: number, front: boolean, comH = 0.55, wheelBase = 2.7): number {
+  const k = (comH / wheelBase) * (longAcc / 9.81);
+  return Math.max(0.55, Math.min(1.45, 1 + (front ? -k : k)));
+}
 const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 function rotate(q: { x: number; y: number; z: number; w: number }, v: V3, out: V3): V3 {
@@ -63,6 +72,7 @@ export class VehiclePhysics {
   prevPos = { x: 0, y: 0, z: 0 }; prevQuat = { x: 0, y: 0, z: 0, w: 1 };
   private wheelLocal: WheelDef[];
   private hb = 0; // smoothed handbrake 0..1
+  private prevFwd = 0; private longAcc = 0;
   private hbRelease = 0; // grip recovery after letting go of the handbrake
   private righting = 0;
   private driftDir = 0; private prevBeta = 0;
@@ -199,6 +209,7 @@ export class VehiclePhysics {
     }
     if (input.brake) brakeForce = Math.max(brakeForce, spec.mass * spec.brake * input.brake);
     const coasting = Math.abs(thr) <= 0.05;
+    if (dt > 0) { this.longAcc += ((fwdSpeed - this.prevFwd) / dt - this.longAcc) * Math.min(1, dt * 6); this.prevFwd = fwdSpeed; }
     const hold = coasting && absV < 1.2 && planar < 1.5; // parked / stopped: all wheels hold
 
     for (let i = 0; i < this.wheelLocal.length; i++) {
@@ -237,7 +248,7 @@ export class VehiclePhysics {
         const rear = !wd.front;
         const driven = spec.drive === 'all' || (spec.drive === 'front') === wd.front;
         // grip budget
-        const dfLoad = 1;
+        const dfLoad = REALISTIC ? loadTransfer(this.longAcc, wd.front) : 1;
         let muLat = (wd.front ? spec.grip : spec.rearGrip) * GRIP * dfLoad;
         if (rear) {
           const hbK = Math.max(this.hb, this.hbRelease * 0.55);

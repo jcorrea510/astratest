@@ -33,8 +33,12 @@ export const DEFAULT_BINDINGS: Record<Action, string[]> = {
 export interface Settings {
   quality: QualityName; sensitivity: number; invertY: boolean; fov: number;
   master: number; music: number; sfx: number; bindings: Record<Action, string[]>; showFps: boolean; cameraShake: number;
+  /** 'natural' = neutral filmic grade (default), 'stylised' = teal/apricot split-tone. */
+  look: 'natural' | 'stylised';
+  /** 'arcade' = forgiving grip (default); 'realistic' = ~0.9 g sedans, more weight transfer. */
+  driving: 'arcade' | 'realistic';
 }
-export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1 };
+export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade' };
 const KEY = 'meridian-afterglow.settings.v1';
 
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
@@ -48,6 +52,8 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     merged.sensitivity = clampNum(merged.sensitivity, 0.2, 3, 1);
     merged.master = clampNum(merged.master, 0, 1, 0.8); merged.music = clampNum(merged.music, 0, 1, 0.55); merged.sfx = clampNum(merged.sfx, 0, 1, 0.9);
     merged.fov = clampNum(merged.fov, 50, 80, 62); merged.cameraShake = clampNum(merged.cameraShake, 0, 1, 1);
+    if (merged.look !== 'natural' && merged.look !== 'stylised') merged.look = 'natural';
+    if (merged.driving !== 'arcade' && merged.driving !== 'realistic') merged.driving = 'arcade';
     for (const k of Object.keys(DEFAULT_BINDINGS) as Action[]) if (!Array.isArray(merged.bindings[k])) merged.bindings[k] = [...DEFAULT_BINDINGS[k]];
     return merged;
   } catch { return base; }

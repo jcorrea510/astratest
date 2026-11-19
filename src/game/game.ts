@@ -16,6 +16,8 @@ import { PlayerController } from './player';
 import { nightUniform, timeUniform, glowTexture } from '../render/materials';
 import { Particles, SkidMarks } from '../render/particles';
 import { VehicleManager } from './vehicles';
+import { pedImpact } from './impact';
+import { setRealisticDriving } from '../vehicles/vehiclePhysics';
 import { Vehicle } from '../vehicles/vehicle';
 import type { GameAudio, HudState, MinimapBlip } from '../ui/contracts';
 import { NullAudio } from './nullAudio';
@@ -122,7 +124,8 @@ export class Game {
 
   constructor(public canvas: HTMLCanvasElement, public settings: Settings, public assets: Assets, public audio: GameAudio = new NullAudio()) {
     this.renderer = new Renderer(canvas);
-    this.renderer.setQuality(settings.quality);
+    this.renderer.setQuality(settings.quality); this.renderer.setLook(settings.look);
+    setRealisticDriving(settings.driving === 'realistic');
     this.input = new Input(settings, canvas);
     this.city = generateCity();
   }
@@ -304,10 +307,14 @@ export class Game {
   }
   private hitByVehicle(v: Vehicle, sp: number) {
     if (this.playerVehicle || this.ghost || this.player.inVehicle) return;
-    const killed = this.player.damage(sp * 4, v.driver, this.time);
-    const vel = v.phys.body.linvel();
-    this.player.vel.set(vel.x * 0.7, 4, vel.z * 0.7); this.player.grounded = false; // let the knock-up happen
-    this.player.human.playOnce('Roll', 'full', 0.05);
+    const vel = v.phys.body.linvel(), hd = Math.hypot(vel.x, vel.z) || 1, hx = vel.x / hd, hz = vel.z / hd;
+    const lat = Math.max(-1, Math.min(1, ((this.player.pos.x - v.position.x) * Math.cos(v.yaw) - (this.player.pos.z - v.position.z) * Math.sin(v.yaw)) / (v.tpl.layout.half[0] + 0.35)));
+    const im = pedImpact(sp, lat, Math.random());
+    this.player.lastHit = { zone: 'torso', dx: hx, dz: hz, power: im.outcome === 'over' ? 3.5 : im.outcome === 'hood' ? 3 : 0.8, blast: im.outcome === 'over' };
+    const killed = this.player.damage(im.damage, v.driver, this.time);
+    this.player.vel.set(hx * im.carry - hz * im.side, Math.max(4, im.up), hz * im.carry + hx * im.side); this.player.grounded = false; // let the knock-up happen
+    if (!killed) this.player.human.playOnce('Roll', 'full', 0.05);
+    v.damage(im.carDamage, new THREE.Vector3(this.player.pos.x, this.player.pos.y + 0.7, this.player.pos.z), new THREE.Vector3(hx, 0, hz), v.driver);
     this.cam.addShake(0.5);
     this.audio.play('hitBody', { pos: this.player.pos });
     if (killed) this.playerDown('down');
@@ -565,6 +572,7 @@ export class Game {
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
+    this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updatePickups(dt);
@@ -605,7 +613,7 @@ export class Game {
   private buildLamps() {
     const heads = this.visuals.lampHeads;
     this.lampBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.6), toneMapped: false }), heads.length);
-    this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.72, 0.42), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
+    this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.62, 0.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
     const m = new THREE.Matrix4();
     heads.forEach((h, i) => { m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, 0.21, h.z); this.lampPools.setMatrixAt(i, m); });
     this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere();

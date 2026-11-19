@@ -1,4 +1,5 @@
 import './style.css';
+import { setRealisticDriving } from './vehicles/vehiclePhysics';
 import * as THREE from 'three';
 import { loadAssets, type Assets } from './world/assets';
 import { initPhysics } from './core/physics';
@@ -88,7 +89,7 @@ function applySettings(s: Settings) {
   Object.assign(settings, s);
   saveSettings(settings);
   audio?.setVolumes(settings.master, settings.music, settings.sfx);
-  if (game) { game.cam.shakeScale = settings.cameraShake; if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
+  if (game) { game.cam.shakeScale = settings.cameraShake; game.renderer.setLook(settings.look); setRealisticDriving(settings.driving === 'realistic'); if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
 }
 
 /** Loads assets and builds the whole city once; the title screen then flies a camera over it. */

@@ -124,6 +124,8 @@ export class Character {
       const ledge = this.findLedge(delta.x, delta.z, 0.42, 0.04, 0.1 + hs, [0.06, 0.14]);
       if (ledge && ledge.rise > 0.04) { delta.y = ledge.rise + 0.01; stepped = true; }
     }
+    // Rising (a jump): the ground snap would pull a slow take-off straight back down, so it only applies when not going up.
+    if (this.vel.y > 0.5) this.controller.disableSnapToGround(); else this.controller.enableSnapToGround(0.3);
     this.controller.computeColliderMovement(this.collider, delta, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(0xffff, G_STATIC | G_VEHICLE | G_CHAR));
     let cm = this.controller.computedMovement();
     // Standing inside another character (teleported onto the clerk, spawned on top of someone): the capsule solver would eject

@@ -15,6 +15,8 @@ import { clamp, wrapAngle } from '../core/rng';
 export type PlayerSound = 'jump' | 'land' | 'whoosh' | 'footstep' | 'splash';
 
 /** Health lost on touching down at `impact` m/s (vertical). Safe up to a ~3 m drop, painful at ~5 m, lethal from rooftop heights. */
+/** Old tuning fell at 25*1.38 m/s2; damage thresholds are expressed in that scale, so impacts are normalised to it. */
+export const fallImpactScale = () => Math.sqrt((25 * 1.38) / (MOVE.gravity * MOVE.fallScale));
 export function fallDamage(impact: number, rolled = false): number {
   const d = Math.max(0, (impact - 15) * 7.5);
   return Math.round(rolled ? d * 0.6 : d);
@@ -32,7 +34,7 @@ export const MOVE = {
   /** sharp reversals: plant (hard brake) then a quick pivot */
   pivotAngle: 2.25, pivotMinSpeed: 3.2, pivotDecel: 30, pivotTurnRate: 22,
   /** jump arc: take-off speed, base gravity, apex hang band/scale, fall and early-release multipliers */
-  jumpSpeed: 7.4, gravity: 25, hangBand: 1.5, hangScale: 0.55, fallScale: 1.38, cutScale: 2.6, minHold: 0.07, maxFall: 32,
+  jumpSpeed: 4.3, gravity: 16, hangBand: 1.5, hangScale: 0.55, fallScale: 1.3, cutScale: 2.6, minHold: 0.07, maxFall: 32,
   coyote: 0.12, buffer: 0.12,
   /** air control: acceleration, minimum steerable speed, drag with no input */
   airAccel: 7, airMinSpeed: 2.2, airDrag: 0.4,
@@ -266,8 +268,10 @@ export class PlayerController {
       if (this.takeoffSpeed < 2.5) h.playOnce('Jump_Start', 'full', 0.06, { from: 0.08, to: 0.55, rate: 1.3 });
       else if (h.oneShotName && !h.busy) h.stopOnce();
       this.onSound?.('jump', 0.7);
-    } else if (grounded) c.vel.y = -2;
-    else {
+    } else if (grounded) {
+      // a gentle take-off can stay 'grounded' for a frame or two on a rising slope: keep the lift instead of pinning to the floor
+      if (!(this.jumping && this.sinceJump < 0.12 && c.vel.y > 0)) c.vel.y = -2;
+    } else {
       let g = MOVE.gravity;
       const vy = c.vel.y;
       if (vy > 0) {
@@ -284,7 +288,7 @@ export class PlayerController {
     if (c.grounded) {
       if (this.airTime > 0.05 && !jumpNow) this.land();
       this.airTime = 0; this.coyoteT = MOVE.coyote;
-      if (this.sinceJump > 0.05) this.jumping = false;
+      if (this.sinceJump > 0.12) this.jumping = false;
       this.takeoffSpeed = c.speed; this.takeoffY = c.pos.y;
     } else {
       this.airTime += dt; this.coyoteT -= dt;
@@ -362,7 +366,7 @@ export class PlayerController {
     this.cam.landDip(clamp((impact - 3) * 0.03, 0, 0.4));
     if (this.jumping) { const k = MOVE.landKeep; c.vel.x *= k; c.vel.z *= k; }
     if (fromWater) return;
-    { const fd = fallDamage(impact, sp > 3 && !this.strafing); if (fd > 0) this.onFallDamage?.(fd); }
+    { const fd = fallDamage(impact * fallImpactScale(), sp > 3 && !this.strafing); if (fd > 0) this.onFallDamage?.(fd); }
     if (impact > MOVE.hardLanding) {
       this.cam.addShake(clamp((impact - 10) * 0.03, 0.08, 0.35));
       if (sp > 3 && !this.strafing) {

@@ -6,6 +6,7 @@
  * breaks the pane and carries on into the cabin, where it can hit the occupants (a killed driver slumps and the car
  * coasts). Launchers and throwables are simulated projectiles that explode (or burst into flames).
  */
+import { bulletDrop, flightTime, isShallow, muzzleVelocity, penetration, reflect, roundPower } from './ballistics';
 import * as THREE from 'three';
 import { RAPIER, type Physics, type ColliderTag, groups, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import type { Character } from '../actors/character';
@@ -18,13 +19,16 @@ import { WATER_LEVEL } from '../world/citymap';
 import { bodyCapsules, rayBody, zoneDamage, type Capsule, type Zone } from './hitzones';
 import { coneSample } from './aim';
 
-export interface HitInfo { point: THREE.Vector3; target: Character | Vehicle | null; kind: 'character' | 'vehicle' | 'static' | 'none'; headshot: boolean; killed: boolean; damage?: number; surface?: ImpactKind; zone?: Zone; throughGlass?: boolean }
+export interface HitInfo { point: THREE.Vector3; target: Character | Vehicle | null; kind: 'character' | 'vehicle' | 'static' | 'none'; headshot: boolean; killed: boolean; damage?: number; surface?: ImpactKind; zone?: Zone; throughGlass?: boolean; ricochet?: boolean }
 export interface ShotEvent { shooter: Character; weapon: WeaponDef; origin: THREE.Vector3; hits: HitInfo[] }
 /** Result of tracing one ray through the world and people. */
+/** A surface the round punched through on its way (vehicle panel, thin wall). */
+export interface PenHit { point: THREE.Vector3; normal: THREE.Vector3; surface: 'vehicle' | 'wood'; vehicle: Vehicle | null }
 export interface TraceHit {
   t: number; point: THREE.Vector3; normal: THREE.Vector3; kind: 'character' | 'vehicle' | 'static' | 'none';
   character: Character | null; zone: Zone | null; vehicle: Vehicle | null; collider: RAPIER.Collider | null; tag: ColliderTag | undefined;
   /** vehicles whose glass the ray went through (broken when not a dry run) */ glass: Vehicle[];
+  /** panels / thin walls the round penetrated, and the damage fraction it keeps after them */ pen: PenHit[]; damageMul: number;
 }
 /**
  * Optional vehicle glass API (implemented by the vehicles module): which pane is at a world point, and break it.
@@ -219,10 +223,11 @@ export class Combat {
    * `dry`), where they can hit occupants. `inflate` widens people's capsules (AI shots at the player).
    */
   private vProj = new THREE.Vector3();
-  trace(o: THREE.Vector3, d: THREE.Vector3, range: number, shooter: Character | null, opts: { dry?: boolean; inflate?: number; excludeVehicle?: Vehicle | null; solidGlass?: boolean } = {}): TraceHit {
-    const res: TraceHit = { t: range, point: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), kind: 'none', character: null, zone: null, vehicle: null, collider: null, tag: undefined, glass: [] };
+  trace(o: THREE.Vector3, d: THREE.Vector3, range: number, shooter: Character | null, opts: { dry?: boolean; inflate?: number; excludeVehicle?: Vehicle | null; solidGlass?: boolean; power?: number } = {}): TraceHit {
+    const res: TraceHit = { t: range, point: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), kind: 'none', character: null, zone: null, vehicle: null, collider: null, tag: undefined, glass: [], pen: [], damageMul: 1 };
+    const through = new Set<Vehicle>();
     let start = 0; let excludeRb = opts.excludeVehicle?.phys.body ?? null;
-    for (let seg = 0; seg < 3; seg++) {
+    for (let seg = 0; seg < 5; seg++) {
       const ox = o.x + d.x * start, oy = o.y + d.y * start, oz = o.z + d.z * start;
       const hit = this.physics.ray(ox, oy, oz, d.x, d.y, d.z, range - start, WORLD, shooter?.collider ?? null, excludeRb);
       const worldT = hit ? start + hit.toi : range;
@@ -230,7 +235,7 @@ export class Combat {
       let best: { t: number; zone: Zone; c: Character } | null = null;
       for (const c of this.targets()) {
         if (c === shooter || !c.alive) continue;
-        if (c.inVehicle && !res.glass.includes(c.inVehicle as Vehicle) && c.inVehicle !== opts.excludeVehicle) continue;
+        if (c.inVehicle && !res.glass.includes(c.inVehicle as Vehicle) && !through.has(c.inVehicle as Vehicle) && c.inVehicle !== opts.excludeVehicle) continue;
         const root = c.human.root; root.getWorldPosition(this.v1); this.v1.y += 0.9;
         // broad phase: ray vs bounding sphere
         const qx = this.v1.x - o.x, qy = this.v1.y - o.y, qz = this.v1.z - o.z; const along = qx * d.x + qy * d.y + qz * d.z;
@@ -256,8 +261,18 @@ export class Combat {
           if (!opts.dry) this.breakPane(v, pane, res.point);
           res.glass.push(v); start = worldT + 0.02; excludeRb = v.phys.body; continue;
         }
+        // bullet penetration: doors and body panels let strong rounds through at reduced damage
+        const pn = opts.power && !opts.dry ? penetration('vehicle', opts.power) : null;
+        if (pn?.pass && !through.has(v) && !v.destroyed) {
+          res.pen.push({ point: res.point.clone(), normal: res.normal.clone(), surface: 'vehicle', vehicle: v }); res.damageMul *= pn.mul;
+          through.add(v); start = worldT + pn.thickness; excludeRb = v.phys.body; res.kind = 'none'; res.vehicle = null; continue;
+        }
       } else {
         res.kind = 'static';
+        if (opts.power && !opts.dry && this.thinWall(hit.collider)) { // drywall / plywood / fences
+          const pn = penetration('wood', opts.power);
+          if (pn.pass) { res.pen.push({ point: res.point.clone(), normal: res.normal.clone(), surface: 'wood', vehicle: null }); res.damageMul *= pn.mul; start = worldT + pn.thickness; res.kind = 'none'; continue; }
+        }
         // WORLDGLASS hook: shop windows are real panes; a round breaks the pane and carries on
         if (this.worldGlass && !opts.solidGlass) {
           const gp = this.v2.copy(res.point).addScaledVector(d, 0.05), gid = this.worldGlass.glassAt?.(gp);
@@ -287,23 +302,41 @@ export class Combat {
     const rot = Math.random();
     let whizzed = false, impactSounds = 0;
     const d = new THREE.Vector3();
+    const strength0 = w.pellets > 1 ? 0.55 : 1;
     for (let p = 0; p < w.pellets; p++) {
       if (w.pellets > 1) {
         // shotgun: one pellet near the centre, the rest in a jittered ring (a readable, fair pattern)
         if (p === 0) coneSample(dir, spread * 0.15, Math.random(), Math.random(), d, 1);
         else coneSample(dir, spread, rot + (p - 1) / (w.pellets - 1) + (Math.random() - 0.5) * 0.08, 0.5 + 0.5 * Math.random(), d, 1);
       } else coneSample(dir, spread, Math.random(), Math.random(), d);
-      const tr = this.trace(origin, d, w.range, shooter, { excludeVehicle, inflate: isPlayer ? 0 : 0.07 });
+      const power = roundPower(w), v0 = muzzleVelocity(w);
+      let tr = this.trace(origin, d, w.range, shooter, { excludeVehicle, inflate: isPlayer ? 0 : 0.07, power });
+      if (v0 > 0 && tr.t > 60) { // gravity drop at range: re-aim the round at the point it will actually fall to
+        const L = tr.t, drop = bulletDrop(v0, L);
+        d.set(d.x * L, d.y * L - drop, d.z * L).normalize();
+        tr = this.trace(origin, d, w.range, shooter, { excludeVehicle, inflate: isPlayer ? 0 : 0.07, power });
+      }
+      const wHit = tr.damageMul < 1 ? { ...w, damage: w.damage * tr.damageMul, playerDamage: w.playerDamage * tr.damageMul } : w;
+      for (const ph of tr.pen) { // entry marks and damage on every panel the round went through
+        this.particles.impact(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, ph.surface === 'vehicle' ? 'metal' : 'wood', strength0);
+        if (ph.vehicle) { ph.vehicle.damage(w.damage * 0.2, ph.point, d, shooter); ph.vehicle.flashT = 0.05; this.particles.decal(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, 'metal', ph.vehicle.visual); this.onVehicleHit?.(ph.vehicle, shooter); }
+      }
       const end = tr.point.clone();
       const info: HitInfo = { point: end, target: null, kind: tr.kind, headshot: false, killed: false, throughGlass: tr.glass.length > 0 };
       const strength = w.pellets > 1 ? 0.55 : 1;
       const loud = impactSounds < (w.pellets > 1 ? 2 : 1);
       if (tr.kind === 'character' && tr.character) {
         const c = tr.character, zone = tr.zone!;
-        const res = this.hitPerson(c, shooter, w, zone, tr.t, d, end);
-        info.target = c; info.zone = zone; info.headshot = zone === 'head'; info.killed = res.killed; info.damage = res.damage; info.surface = 'body';
-        this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
-        if (loud) { this.sfx(IMPACT_SND.body, end, zone === 'head' ? 1.15 : 1, zone === 'head' ? 1.2 : 1); impactSounds++; }
+        const apply = () => {
+          const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
+          this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
+          return res;
+        };
+        const delay = tr.t > 100 ? flightTime(v0, tr.t) : 0; // long shots take time to arrive
+        info.target = c; info.zone = zone; info.headshot = zone === 'head'; info.surface = 'body';
+        if (delay > 0) this.pending.push({ at: this.time + delay, fn: () => { if (c.alive) apply(); } });
+        else { const res = apply(); info.killed = res.killed; info.damage = res.damage; }
+        if (loud && delay <= 0) { this.sfx(IMPACT_SND.body, end, zone === 'head' ? 1.15 : 1, zone === 'head' ? 1.2 : 1); impactSounds++; }
       } else if (tr.kind === 'vehicle' && tr.vehicle) {
         const v = tr.vehicle, n = tr.normal;
         v.damage(w.damage * 0.35 * w.pellets ** -0.3, end, d, shooter);
@@ -323,6 +356,12 @@ export class Combat {
           const s = info.surface = this.surfaceOf(tr.collider!, tr.tag, end, n);
           this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, s, strength);
           this.particles.decal(end.x, end.y, end.z, n.x, n.y, n.z, s);
+          if ((s === 'metal' || s === 'concrete') && isShallow(d.x, d.y, d.z, n.x, n.y, n.z)) { // ricochet: sparks and a skipping streak
+            reflect(d, n, this.v3); const r = this.v3.normalize();
+            this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, 'metal', 1.4);
+            this.tracers.add(end, this.v2.copy(end).addScaledVector(r, 7), 0.1, 0.5);
+            info.ricochet = true;
+          }
           if (loud) {
             const ric = s === 'metal' ? 0.4 : s === 'concrete' ? 0.18 : 0;
             if (Math.random() < ric) this.audio.play('ricochet', { pos: end, volume: 0.45 }); else this.sfx(IMPACT_SND[s], end);
@@ -363,12 +402,22 @@ export class Combat {
   }
 
   /** Material of a static surface: thin poles are metal, trunks wood, open ground from the map, everything else masonry. */
+  /** A thin vertical partition (interior wall, fence, plywood hoarding): a cuboid under 20 cm thick, 0.8-3.4 m tall (facade slabs are thicker or taller). */
+  private thinWall(col: RAPIER.Collider): boolean {
+    try {
+      const sh = col.shape;
+      if (sh.type !== RAPIER.ShapeType.Cuboid) return false;
+      const h = (sh as RAPIER.Cuboid).halfExtents;
+      return h.y > 0.4 && h.y < 1.7 && Math.min(h.x, h.z) * 2 < 0.2 && Math.max(h.x, h.z) > 0.4;
+    } catch { return false; }
+  }
   private surfaceOf(col: RAPIER.Collider, tag: ColliderTag | undefined, p: THREE.Vector3, n: { x: number; y: number; z: number }): ImpactKind {
     if (tag?.kind === 'water') return 'water';
     try {
       const sh = col.shape;
       if (sh.type === RAPIER.ShapeType.Cylinder) return (sh as RAPIER.Cylinder).radius < 0.2 ? 'metal' : 'wood';
     } catch { /* shape access is best-effort */ }
+    if (this.thinWall(col)) return 'wood';
     if (n.y > 0.7 && this.groundSurface) {
       const s = this.groundSurface(p.x, p.z);
       if (s === 'park' || s === 'beach' || s === 'offmap') return 'dirt';

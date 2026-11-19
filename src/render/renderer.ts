@@ -9,10 +9,10 @@ import { QUALITY, type QualityName, type QualityPreset } from '../core/settings'
 import { Sky, sampleSky, type SkyState } from './sky';
 
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.32 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 1.08 } },
+  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat; uniform vec3 uFlashColor; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit; uniform vec3 uFlashColor; varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
@@ -21,7 +21,7 @@ const GradeShader = {
       // split tone: teal shadows, apricot highlights
       vec3 shadowTint = mix(vec3(0.86, 1.0, 1.04), vec3(0.8, 0.95, 1.12), uNight);
       vec3 highTint = mix(vec3(1.06, 1.0, 0.92), vec3(1.04, 0.98, 0.94), uNight);
-      col *= mix(shadowTint, highTint, smoothstep(0.15, 0.75, l));
+      col *= mix(vec3(1.0), mix(shadowTint, highTint, smoothstep(0.15, 0.75, l)), uSplit);
       // gentle S-curve and saturation
       col = mix(vec3(l), col, uSat);
       col = col * (1.0 + 0.08 * (col - 0.5));
@@ -34,6 +34,12 @@ const GradeShader = {
       col += (hash(vUv * 1000.0 + uTime) - 0.5) * 0.018;
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
     }`,
+};
+
+/** Grade parameters per look; exposed so tests can assert the default is neutral. */
+export const LOOK = {
+  natural: { sat: 0.95, split: 0.2, vignette: 0.14, nightExposure: 0.84, shadowDesat: 0.35 },
+  stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
 export class Renderer {
@@ -49,6 +55,14 @@ export class Renderer {
   grade!: ShaderPass;
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
+  /** 'natural' = neutral photographic grade (default); 'stylised' = teal/apricot split-tone. */
+  look: 'natural' | 'stylised' = 'natural';
+  setLook(look: 'natural' | 'stylised') {
+    this.look = look;
+    if (!this.grade) return;
+    const u = this.grade.uniforms, n = look === 'natural';
+    u.uSat.value = n ? LOOK.natural.sat : LOOK.stylised.sat; u.uSplit.value = n ? LOOK.natural.split : 1; u.uVignette.value = n ? LOOK.natural.vignette : LOOK.stylised.vignette;
+  }
   private shadowTarget = new THREE.Vector3();
   private _fwd = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator;
@@ -130,10 +144,16 @@ export class Renderer {
     }
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.42, 0.4, s.night);
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
+    const L = LOOK[this.look];
     this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
+    if (L.shadowDesat > 0) { // softer, less saturated-blue fill so shadows read neutral grey
+      const g = this.hemi.color.r * 0.3 + this.hemi.color.g * 0.55 + this.hemi.color.b * 0.15;
+      this.hemi.color.r += (g - this.hemi.color.r) * L.shadowDesat; this.hemi.color.g += (g - this.hemi.color.g) * L.shadowDesat; this.hemi.color.b += (g - this.hemi.color.b) * L.shadowDesat;
+      this.hemi.intensity *= 1 + 0.12 * (1 - s.night);
+    }
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
     (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(150, 70, s.night);
-    this.renderer.toneMappingExposure = s.exposure;
+    this.renderer.toneMappingExposure = s.exposure * THREE.MathUtils.lerp(1, L.nightExposure, s.night);
     // Snap the shadow camera to texels to avoid shimmering.
     const range = (this.quality.shadowRange || 60) * 1.6, texel = (range * 2) / (this.quality.shadowMap || 1024);
     const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;
