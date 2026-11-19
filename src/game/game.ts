@@ -28,6 +28,7 @@ import { Population } from './population';
 import { Traffic } from './traffic';
 import { Crowd } from './crowd';
 import { BusService } from './buses';
+import { BENCHES } from '../world/benches';
 import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
@@ -83,6 +84,8 @@ export class Game {
   traffic!: Traffic;
   crowd!: Crowd;
   buses!: BusService;
+  /** every bench in the world (debug / tests) */
+  readonly benches = BENCHES;
   police!: Police;
   playerVehicle: Vehicle | null = null;
   /** the car the player last got out of (kept out of mission clean-ups) */

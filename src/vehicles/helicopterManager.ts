@@ -163,6 +163,15 @@ export class HeliManager {
         if (dist < 300) { this.particles.fire(p.x, p.y, p.z, 1.2); if (Math.random() < 0.5) this.particles.smoke(p.x, p.y + 0.6, p.z, 0.95, 1.5); }
         if ((h.agl < 0.6 && h.burnTime > 0.6) || h.burnTime > 7) { h.burnTime = -1; this.explode(h); }
       }
+      // the wreck smoulders for ~30 s: small fires, a thinning smoke column
+      if (h.destroyed && h.wreckT > 0) {
+        h.wreckT += dt;
+        if (h.wreckT < 30 && dist < 220) {
+          const k = 1 - h.wreckT / 30, q = h.group.localToWorld(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.5, -0.6 + Math.random() * 2));
+          if (Math.random() < 0.5 * k + 0.08) this.particles.fire(q.x, q.y, q.z, 0.35 + 0.4 * k);
+          if (Math.random() < 0.55 * k + 0.1) this.particles.smoke(q.x, q.y + 0.5, q.z, 0.9, 1.4);
+        }
+      }
       // tidy wrecks and choppers left far away
       if (h !== playerHeli && !h.driver && !h.aiOwned && h.position.distanceTo(focus) > 380 && !this.pads.some(s => s.heli === h)) this.remove(h);
     }
@@ -178,6 +187,7 @@ export class HeliManager {
   }
   explode(h: Helicopter) {
     const p = h.position.clone();
+    h.wreck(this.scene);
     this.particles.explosion(p.x, p.y + 0.5, p.z, 1.4);
     this.audio.play('explosion', { pos: p, volume: 1 });
     h.phys.body.applyImpulse({ x: 0, y: h.phys.body.mass() * 6, z: 0 }, true);

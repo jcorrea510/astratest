@@ -525,7 +525,7 @@ export class Combat {
   explode(at: THREE.Vector3, by: Character | null, scale = 1, w: WeaponDef = WEAPONS.grenade) {
     this.particles.explosion(at.x, at.y, at.z, scale);
     this.audio.play('explosion', { pos: at, volume: Math.min(1.5, scale) });
-    this.flash.position.copy(at).y += 1; this.flashT = FLASH_T * 3; this.flashPeak = 160 * scale;
+    this.flash.position.copy(at).y += 1; this.flashT = FLASH_T * 2.5; this.flashPeak = 26 * scale; // short (~0.15 s) flash; intensity = peak * (t/FLASH_T)^2, so ~160 at the first frame, gone fast (no white-out)
     const R = 8 * scale;
     for (const c of this.targets()) {
       if (!c.alive || !c.inVehicle) continue;

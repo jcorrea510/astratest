@@ -35,6 +35,8 @@ export class Helicopter {
   health = 1400; maxHealth = 1400;
   /** AI-flown (army / police air unit): never tidied away while far from the player */
   aiOwned = false;
+  /** seconds since the wreck burnt out its explosion (0 = not wrecked yet): drives lingering fires and smoke */
+  wreckT = 0; scorch: THREE.Mesh | null = null;
   /** world-space aim of the chin turret (army variant) */
   gunAim = { yaw: 0, pitch: 0 };
   destroyed = false; burnTime = 0; flashT = 0;
@@ -199,6 +201,21 @@ export class Helicopter {
     return false;
   }
 
+  /** The final blast has gone off: char the hull, bend it, stop and snap the rotor, leave a scorch mark (the collider stays). */
+  wreck(scene: THREE.Object3D) {
+    if (this.wreckT > 0) return;
+    this.wreckT = 0.001; this.rotor = 0;
+    const m = this.model;
+    m.paint.color.setScalar(0.07); m.paint.roughness = 0.95; m.paint.metalness = 0; m.paint.clearcoat = 0;
+    for (const mat of m.materials) { const mm = mat as THREE.MeshStandardMaterial; if (mm.color && mm !== m.paint && !(mm as unknown as THREE.MeshBasicMaterial).map) mm.color.multiplyScalar(0.25); }
+    m.mainRotor.rotation.set(0.0, this.rotorAngle, 0.35); m.blades.visible = true; (m.blades.material as THREE.MeshStandardMaterial).opacity = 1; m.disc.visible = m.tailDisc.visible = false;
+    m.tailRotor.visible = false; m.beacon.visible = false; for (const s of m.strobes) s.visible = false;
+    this.visual.rotation.z = (Math.random() < 0.5 ? -1 : 1) * 0.16; this.visual.scale.set(1.04, 0.86, 0.94); this.visual.position.y -= 0.1; // slumped, buckled hull
+    if (m.turret) m.turret.rotation.y = 1.1;
+    const g = new THREE.Mesh(new THREE.CircleGeometry(4.2, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#050505', transparent: true, opacity: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    const p = this.group.position; g.position.set(p.x, p.y + HELI_GROUND - this.agl + 0.06, p.z); scene.add(g); this.scorch = g;
+  }
+
   // ------------------------------------------------------------------------------------------- visuals
   update(dt: number, time: number, night: number) {
     this.syncTransform();
@@ -241,6 +258,7 @@ export class Helicopter {
     for (let i = 0; i < b.numColliders(); i++) this.phys.physics.untag(b.collider(i));
     this.phys.physics.world.removeRigidBody(b);
     this.group.removeFromParent();
+    if (this.scorch) { this.scorch.removeFromParent(); this.scorch.geometry.dispose(); (this.scorch.material as THREE.Material).dispose(); this.scorch = null; }
     this.model.root.traverse(o => { const mm = o as THREE.Mesh; if (mm.isMesh) mm.geometry.dispose(); });
     for (const m of this.model.materials) m.dispose();
     this.driver = null;

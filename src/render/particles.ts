@@ -169,6 +169,10 @@ export class Particles {
     for (let i = 0; i < 40; i++) { const a = Math.random() * Math.PI * 2, s = (4 + Math.random() * 8) * scale; this.add.emit(this.p(x, y, z, { vx: Math.cos(a) * s, vy: (2 + Math.random() * 8) * scale, vz: Math.sin(a) * s, max: 0.5 + Math.random() * 0.5, size: (1.4 + Math.random()) * scale, grow: 1.2, r: 1, g: 0.5 + Math.random() * 0.3, b: 0.15, a: 1, drag: 3 })); }
     for (let i = 0; i < 26; i++) this.normal.emit(this.p(x, y + 0.5, z, { vx: (Math.random() - 0.5) * 6, vy: 2 + Math.random() * 5, vz: (Math.random() - 0.5) * 6, max: 2.5 + Math.random() * 1.5, size: 1.6, grow: 2.5, r: 0.22, g: 0.21, b: 0.22, a: 0.65, drag: 1.4, grav: -0.4 }));
     this.sparks(x, y + 0.5, z, 30, 14);
+    // smoke column: slow, dark, rising for several seconds
+    for (let i = 0; i < 16; i++) this.normal.emit(this.p(x + (Math.random() - 0.5) * 1.2 * scale, y + 0.8 + i * 0.35 * scale, z + (Math.random() - 0.5) * 1.2 * scale, { vx: (Math.random() - 0.5) * 1.2, vy: (2.2 + Math.random() * 2.2) * scale, vz: (Math.random() - 0.5) * 1.2, max: 4 + Math.random() * 2.5, size: 1.5 * scale, grow: 2.2, r: 0.12, g: 0.115, b: 0.12, a: 0.6, drag: 0.5, grav: -0.5 }));
+    // flying debris chunks that tumble and land
+    for (let i = 0; i < 18; i++) { const a = Math.random() * Math.PI * 2, s = (3 + Math.random() * 9) * scale; this.debris.emit(this.p(x, y + 0.4, z, { vx: Math.cos(a) * s, vy: (4 + Math.random() * 9) * scale, vz: Math.sin(a) * s, max: 2.8, size: 0.07 + Math.random() * 0.07, r: 0.1, g: 0.1, b: 0.1, a: 1, drag: 0.3, grav: 12, hold: 0.9, floor: Math.min(y, 0.2), bounce: 0.3 })); }
   }
   splash(x: number, y: number, z: number, n = 14) { for (let i = 0; i < n; i++) this.normal.emit(this.p(x, y, z, { vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 4, vz: (Math.random() - 0.5) * 4, max: 0.8, size: 0.25, grow: 1, r: 0.9, g: 0.97, b: 1, a: 0.7, drag: 1, grav: 12 })); }
   get count() { return this.add.count + this.normal.count + this.debris.count; }

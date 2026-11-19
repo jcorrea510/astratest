@@ -103,10 +103,10 @@ test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-dow
     return { ok: true, hp: h.health / h.maxHealth };
   });
   expect(down.ok).toBe(true);
-  const trackHeli = async (name: string, secs: number) => {
+  const trackHeli = async (name: string, secs: number, d = 30) => {
     await page.evaluate((secs) => { const g = (window as any).__game; for (let i = 0; i < secs * 30; i++) g.frame(1 / 30, false); }, secs);
     if (!SHOT) return;
-    await page.evaluate(() => { const g = (window as any).__game; const h = g.armyAir.units[0]?.heli ?? g.helis.list.find((x: any) => x.variant === 'army' && x.aiOwned); g.frame(1 / 30, true); const c = g.renderer.camera; const p = h.position; c.position.set(p.x - 30, p.y + 6, p.z - 30); c.lookAt(p.x, p.y, p.z); c.updateMatrixWorld(); g.renderer.render(); });
+    await page.evaluate((d) => { const g = (window as any).__game; const h = g.armyAir.units[0]?.heli ?? g.helis.list.find((x: any) => x.variant === 'army' && x.aiOwned); g.frame(1 / 30, true); const c = g.renderer.camera; const p = h.position; c.position.set(p.x - d, p.y + d * 0.2, p.z - d); c.lookAt(p.x, p.y, p.z); c.updateMatrixWorld(); g.renderer.render(); }, d);
     await page.screenshot({ path: `${SHOT}/${name}.png` });
   };
   await trackHeli('down-smoke', 1);
@@ -114,6 +114,10 @@ test('Fort Calder: guards on foot, far silhouette, missile strike and a shot-dow
   await trackHeli('down-falling', 1.5);
   const crashed = await page.evaluate(() => { const g = (window as any).__game; for (let i = 0; i < 30 * 10; i++) g.frame(1 / 30, false); const h = g.armyAir.units[0].heli; return { destroyed: h.destroyed, burn: h.burnTime }; });
   expect(crashed.destroyed).toBe(true);
-  await trackHeli('down-wreck', 0.5);
+  // the wreck: charred, slumped, smouldering for ~30 s, still solid
+  await page.evaluate(() => { const g = (window as any).__game; for (let i = 0; i < 30 * 8; i++) g.frame(1 / 30, false); });
+  const wreck = await page.evaluate(() => { const g = (window as any).__game; const h = g.armyAir.units[0].heli; return { t: h.wreckT, scorch: !!h.scorch, solid: h.phys.body.numColliders() > 0, rotor: h.rotor }; });
+  expect(wreck.t).toBeGreaterThan(0); expect(wreck.scorch).toBe(true); expect(wreck.solid).toBe(true); expect(wreck.rotor).toBe(0);
+  await trackHeli('down-wreck', 1, 9);
   clean(pr);
 });
