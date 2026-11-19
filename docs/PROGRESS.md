@@ -6,13 +6,13 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [x] R4-A Driving (no steering retune done: owner still says hard to turn — retune keyboard steering in R4-R): car jitter fwd/back, curbs, easier turns+drift, stolen cop car siren J/K/L + lights key, windshield shatter, bridge camera stutter.
 - [x] R4-C City (26329e3; bigger-city extension NOT done — later wave): core grid far less boxy (realistic Manhattan blocks), two-lane roads each way, bigger, shootable store windows.
 - [x] R4-D Police (population.ts + actions.ts parts uncommitted, shared; police.spec 3/6 unconfirmed): realistic heat (stars harder, response delay, witnesses/911), army only from Fort Calder at 5 stars, perf with many cops (M1), better handcuffing, peds react to player-as-cop.
-- [ ] R4-E Player: gun held in aim pose while shooting (still broken), faster car entry, physical carjack throw (hands on victim), heli entry anim, better robbing (shoot clerk then rob till), shoppers react.
+- [x] R4-E Player (6697b61): gun held in aim pose while shooting (still broken), faster car entry, physical carjack throw (hands on victim), heli entry anim, better robbing (shoot clerk then rob till), shoppers react.
 - [x] R4-F Highway mode (title entry: infinite realistic highway, AI lane changes with signals, cut-offs, 1st/3rd person, high fps) + US units + fullscreen button.
 - [x] R4-B Density (game.ts/vehicle.ts hooks uncommitted, shared): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
 - [ ] R4-M Manhattan shape: grid 1.6x + FiDi + park + harbor hwy done (commit after C2). TODO after other agents finish: island outline with rivers both sides + bridges to mainland (army base/airfield), Broadway diagonal; map north rotated ~29deg.
 - [ ] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
 - [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
-Running: E a6e93bbda4a62f151, M island a7fe1ed47778cd8de (04:20). Resume stopped ones via SendMessage.
+Running: M island a7fe1ed47778cd8de (04:20), R realism a74b58603607f688d (05:10). Resume stopped ones via SendMessage.
 
 ## Done
 - Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
