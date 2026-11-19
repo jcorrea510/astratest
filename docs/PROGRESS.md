@@ -12,7 +12,7 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [ ] R4-M Manhattan shape: grid 1.6x + FiDi + park + harbor hwy done (commit after C2). TODO after other agents finish: island outline with rivers both sides + bridges to mainland (army base/airfield), Broadway diagonal; map north rotated ~29deg.
 - [ ] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
 - [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
-Running: E a6e93bbda4a62f151, Resume stopped ones via SendMessage.
+Running: E a6e93bbda4a62f151, M island a7fe1ed47778cd8de (04:20). Resume stopped ones via SendMessage.
 
 ## Done
 - Round 3 published 02:06 UTC 19 Nov (gh-pages b43553e). Round 2 (BRIEF2) 18 Nov.
