@@ -28,7 +28,13 @@ const LOD_FAR = 36;
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }
-export interface PaneState { id: number; name: string; broken: boolean; door: number }
+/** Police-style strobe: each side fires a quick triple flash, then the other side answers (red, blue). Returns 0/1 per side. */
+export function barStrobe(time: number): [number, number] {
+  const slot = Math.floor((time * 9) % 18); // 2 s cycle in 9 Hz slots: even slot = flash, odd = dark
+  const flash = slot % 2 === 0;
+  return [flash && slot < 6 ? 1 : 0, flash && slot >= 9 && slot < 15 ? 1 : 0];
+}
+export interface PaneState { id: number; name: string; broken: boolean; door: number; /** 0 intact, 1 star crack, 2 heavy web */ crack: number }
 
 const beamTex = (() => {
   if (typeof document === 'undefined') return null;
@@ -43,6 +49,7 @@ const POLICE_LIKE = new Set<VehicleKind>(['police', 'fbi', 'swat']);
 let VEH_ID = 0;
 export class Vehicle {
   /** Called when a pane breaks (VehicleManager hooks particles + sound). */
+  static onGlassCrack: ((v: Vehicle, paneId: number, at: THREE.Vector3) => void) | null = null;
   static onGlassBreak: ((v: Vehicle, pane: number, at: THREE.Vector3) => void) | null = null;
   id = VEH_ID++;
   phys: VehiclePhysics;
@@ -64,7 +71,16 @@ export class Vehicle {
   driver: Character | null = null;
   input: DriveInput = { throttle: 0, steer: 0, handbrake: false };
   headlights = false;
+  /** Emergency lights + sound driven by AI units (police dispatch sets this). */
   siren = false;
+  /** Player-controlled siren tone: 0 off, 1 wail, 2 yelp, 3 phaser. */
+  sirenTone = 0;
+  /** Light bar toggled by the driver (independent of the siren sound). */
+  lightBar = false;
+  /** True while this vehicle's siren is sounding (AI or player): the traffic/police code pulls over for it. */
+  get sirenOn(): boolean { return (this.siren || this.sirenTone > 0) && !this.destroyed; }
+  /** True while the light bar strobes. */
+  get barOn(): boolean { return (this.siren || this.lightBar || this.sirenTone > 0) && !this.destroyed; }
   lightsBroken = false;
   paint = new THREE.Color();
   parked = false;
@@ -82,6 +98,8 @@ export class Vehicle {
   lastDamagedBy: unknown = null;
   /** hazard lights (indicators blink) */
   hazard = false;
+  /** turn signal set by AI drivers: +1 = same side as steer>0, -1 = steer<0, 0 = off */
+  signal = 0;
   doors: DoorState[] = [];
   panes: PaneState[] = [];
   /** tank turret yaw / gun pitch (rad), animated towards the targets */
@@ -140,7 +158,7 @@ export class Vehicle {
     }
     this.baseDirt = Math.random() * 0.3;
     for (const d of t.doors) this.doors.push({ side: d.side, row: d.row, open: 0, amount: 0, vel: 0, hanging: false, bone: this.bones[d.bone] });
-    for (const p of t.panes) this.panes.push({ id: p.id, name: p.name, broken: false, door: t.doorBones.indexOf(p.bone) });
+    for (const p of t.panes) this.panes.push({ id: p.id, name: p.name, broken: false, door: t.doorBones.indexOf(p.bone), crack: 0 });
     if (beamTex && s.type !== 'tank') {
       this.beam = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 3.6), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
       this.beam.renderOrder = 2; this.visual.add(this.beam);
@@ -225,6 +243,24 @@ export class Vehicle {
     Vehicle.onGlassBreak?.(this, id, c);
     return true;
   }
+  /** A hit that does not shatter yet: the pane cracks (spiderweb at `at`), a second hit makes it a heavy web, a third shatters it. */
+  hitGlass(id: number, at?: THREE.Vector3, hits = 1): boolean {
+    const p = this.panes.find(x => x.id === id);
+    if (!p || p.broken) return false;
+    const next = p.crack + hits;
+    if (next >= 3) return this.breakGlass(id);
+    const tp = this.tpl.panes.find(x => x.id === id);
+    p.crack = next;
+    if (tp && this.glassMat && id < 8) {
+      this.group.updateMatrixWorld();
+      const lp = at ? _v.copy(at).applyMatrix4(this.boneMatrix(tp.bone, _m).invert()) : _v.set(0, 0, 0);
+      if (!at) { const n = tp.tris.length / 3; for (let i = 0; i < n; i++) { lp.x += tp.tris[i * 3]; lp.y += tp.tris[i * 3 + 1]; lp.z += tp.tris[i * 3 + 2]; } lp.multiplyScalar(1 / Math.max(1, n)); }
+      const slot = this.glassMat.userData.crack.value[id];
+      if (slot.w < 0.5 || !at) slot.set(lp.x, lp.y, lp.z, p.crack); else slot.w = p.crack; // keep the first impact as the web's centre
+    }
+    Vehicle.onGlassCrack?.(this, id, at ?? this.position);
+    return true;
+  }
   /** Pane whose glass is within `tol` metres of a world point (e.g. a bullet hit), or null. Broken panes are skipped. */
   glassAt(worldPoint: THREE.Vector3, tol = 0.12): number | null {
     let best: number | null = null, bd = tol;
@@ -245,10 +281,17 @@ export class Vehicle {
   setTurret(yaw: number, pitch: number) { this.turretTarget = yaw; this.gunTarget = THREE.MathUtils.clamp(pitch, -0.12, 0.35); }
 
   // ------------------------------------------------------------------------------------------- update
+  /** Fraction of a fixed physics step elapsed since the last one (set by the game loop); 1 = show the latest state. */
+  static renderAlpha = 1;
+  /** Places the mesh at the physics pose, blended from the previous fixed step so motion is smooth at any frame rate. */
   syncTransform() {
-    const p = this.phys.body.translation(), q = this.phys.body.rotation();
-    this.group.position.set(p.x, p.y, p.z); this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    const ph = this.phys, p = ph.body.translation(), q = ph.body.rotation(), a = Math.max(0, Math.min(1, Vehicle.renderAlpha));
+    if (a >= 1 || ph.body.isSleeping()) { this.group.position.set(p.x, p.y, p.z); this.group.quaternion.set(q.x, q.y, q.z, q.w); return; }
+    const o = ph.prevPos, r = ph.prevQuat;
+    this.group.position.set(o.x + (p.x - o.x) * a, o.y + (p.y - o.y) * a, o.z + (p.z - o.z) * a);
+    this.group.quaternion.set(r.x, r.y, r.z, r.w).slerp(this._q.set(q.x, q.y, q.z, q.w), a);
   }
+  private _q = new THREE.Quaternion();
   /** 0 = detailed, 1 = far (lighter body, no interior). */
   setLod(l: number) {
     if (l === this.lod || this.ownGeo) return;
@@ -322,11 +365,12 @@ export class Vehicle {
     u.uTail.value = this.destroyed ? 0 : braking && lit ? 3.5 : on ? 1.2 : 0;
     u.uRev.value = lit && this.input.throttle < -0.1 && this.speed < -0.3 ? 3 : 0;
     const blink = Math.floor(time * 2.6) % 2 ? 3.5 : 0;
-    const steerBlink = lit && !this.siren && !this.hazard && Math.abs(this.input.steer) > 0.6 && Math.abs(this.speed) < 12 && !!this.driver;
+    const steerBlink = lit && !this.barOn && !this.hazard && Math.abs(this.input.steer) > 0.6 && Math.abs(this.speed) < 12 && !!this.driver;
     const hz = !this.destroyed && (lit && this.hazard);
-    u.uInd.value.set(hz || (steerBlink && this.input.steer > 0) ? blink : 0, hz || (steerBlink && this.input.steer < 0) ? blink : 0);
-    const ph = Math.floor(time * 6) % 2, s = this.siren && !this.destroyed;
-    u.uBar.value.set(s && ph ? 6 : 0.15, s && !ph ? 7 : 0.15);
+    const sg = lit && this.signal !== 0;
+    u.uInd.value.set(hz || (sg && this.signal > 0) || (steerBlink && this.input.steer > 0) ? blink : 0, hz || (sg && this.signal < 0) || (steerBlink && this.input.steer < 0) ? blink : 0);
+    const bar = barStrobe(time);
+    u.uBar.value.set(this.barOn ? 0.15 + 5.85 * bar[0] : 0.15, this.barOn ? 0.15 + 6.85 * bar[1] : 0.15);
     u.uLight.value = this.destroyed ? 0 : Math.max(0.6, night * 2.5);
     u.uDirt.value = Math.min(1, this.baseDirt + (1 - this.health / spec.health) * 0.8);
     if (this.glassMesh) this.glassMesh.visible = !this.destroyed;
@@ -342,11 +386,12 @@ export class Vehicle {
       const sev = Math.min(1, amount / 300);
       this.deform(worldPoint, worldDir, sev);
       // hard hits shatter the nearest pane; a battered car's doors spring loose
-      if (sev > 0.35) {
+      if (sev > 0.1) {
         const lp = this.visual.worldToLocal(worldPoint.clone());
         let best = -1, bd = 1.6;
         for (const p of this.tpl.panes) { if (this.isGlassBroken(p.id)) continue; const d = distToTris(lp, p.tris); if (d < bd) { bd = d; best = p.id; } }
-        if (best >= 0 && Math.random() < sev) this.breakGlass(best);
+        if (best >= 0 && sev > 0.7) this.breakGlass(best); // big crash: it goes
+        else if (best >= 0 && Math.random() < sev * 2.5) this.hitGlass(best, worldPoint, sev > 0.45 ? 2 : 1); // otherwise cracks first
         if (this.health < this.spec.health * 0.35) {
           for (let i = 0; i < this.doors.length; i++) {
             const d = this.doors[i], dd = this.tpl.doors[i];
@@ -358,7 +403,7 @@ export class Vehicle {
     const frac = this.health / this.spec.health;
     this.phys.enginePower = frac < 0.25 ? 0.6 : 1;
     if (this.health <= 0) {
-      this.health = 0; this.destroyed = true; this.burnTime = 0.001; this.siren = false;
+      this.health = 0; this.destroyed = true; this.burnTime = 0.001; this.siren = false; this.sirenTone = 0; this.lightBar = false;
       const u = this.material.userData.u; u.uBurn.value = 0.85;
       for (const p of this.panes) this.breakGlass(p.id);
       return true;
@@ -402,7 +447,8 @@ export class Vehicle {
     this.lod = -1; this.setLod(0);
     this.lightsBroken = false;
     this.brokenMask = 0; for (const p of this.panes) p.broken = false;
-    if (this.glassMat) this.glassMat.userData.broken.value = 0;
+    if (this.glassMat) { this.glassMat.userData.broken.value = 0; for (const c of this.glassMat.userData.crack.value) c.w = 0; }
+    for (const p of this.panes) p.crack = 0;
     for (const d of this.doors) { d.hanging = false; d.open = 0; }
   }
   /** The dented copy shares most attributes with the template, whose CPU arrays were freed after upload: disposing them

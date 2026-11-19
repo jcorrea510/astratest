@@ -17,10 +17,30 @@ export class VehicleManager {
   private skidVoice: LoopVoice | null = null;
   private skidWas = false;
   private tmp = new THREE.Vector3();
+  private sirenVoice: LoopVoice | null = null;
+  /** Police-class vehicles that carry a light bar and siren. */
+  static hasSiren(v: Vehicle) { return v.kind === 'police' || v.kind === 'fbi' || v.kind === 'swat' || v.kind === 'army'; }
+  /** Driver controls: J/K/L pick wail/yelp/phaser (press the active one again to silence), U toggles the light bar. */
+  sirenKeys(pv: Vehicle, pressed: (a: 'sirenWail' | 'sirenYelp' | 'sirenPhaser' | 'lightBar') => boolean) {
+    if (!VehicleManager.hasSiren(pv) || pv.destroyed) return;
+    (['sirenWail', 'sirenYelp', 'sirenPhaser'] as const).forEach((a, i) => { if (pressed(a)) { pv.sirenTone = pv.sirenTone === i + 1 ? 0 : i + 1; if (pv.sirenTone) pv.lightBar = true; } });
+    if (pressed('lightBar')) { pv.lightBar = !pv.lightBar; if (!pv.lightBar) pv.sirenTone = 0; }
+  }
+  private updatePlayerSiren(pv: Vehicle | null) {
+    const on = !!pv && pv.sirenTone > 0 && !pv.destroyed;
+    if (on && pv) {
+      if (!this.sirenVoice) this.sirenVoice = this.audio.siren();
+      this.sirenVoice.tone = pv.sirenTone; this.sirenVoice.update(pv.position, 1);
+    } else if (this.sirenVoice) { this.sirenVoice.stop(); this.sirenVoice = null; }
+  }
 
   constructor(private scene: THREE.Scene, private physics: Physics, assets: Assets, private particles: Particles, private skids: SkidMarks, private audio: GameAudio) {
     void assets;
     // shattered windows: a burst of glass and the crunch
+    Vehicle.onGlassCrack = (_v, _pane, at) => {
+      this.particles.impact(at.x, at.y, at.z, 0, 0.1, 0, 'glass', 0.5);
+      this.audio.play('glass', { pos: at, volume: 0.35, pitch: 1.35 });
+    };
     Vehicle.onGlassBreak = (_v, _pane, at) => {
       this.particles.impact(at.x, at.y, at.z, 0, 0.6, 0, 'glass', 2.2);
       this.particles.impact(at.x, at.y - 0.2, at.z, 0, -0.3, 0, 'glass', 1.5);
@@ -66,6 +86,7 @@ export class VehicleManager {
   }
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
     this.updateSkidAudio(playerVehicle);
+    this.updatePlayerSiren(playerVehicle);
     for (const v of [...this.list]) {
       const braking = v.input.throttle < -0.1 && v.speed > 1;
       v.update(dt, night, time, braking || v.input.handbrake);
@@ -139,5 +160,5 @@ export class VehicleManager {
     }
     this.onExplode?.(v, p);
   }
-  stopAllSounds() { for (const e of this.engines.values()) e.stop(); this.engines.clear(); this.skidVoice?.stop(); this.skidVoice = null; }
+  stopAllSounds() { for (const e of this.engines.values()) e.stop(); this.engines.clear(); this.skidVoice?.stop(); this.skidVoice = null; this.sirenVoice?.stop(); this.sirenVoice = null; }
 }

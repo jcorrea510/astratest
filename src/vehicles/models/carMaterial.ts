@@ -212,24 +212,48 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
 }
 
 /** Glass: tinted, fresnel-bright, one material per vehicle so broken panes (bitmask) disappear. */
-export function glassMaterial(): THREE.MeshStandardMaterial & { userData: { broken: { value: number } } } {
+export type GlassUniforms = { broken: { value: number }; crack: { value: THREE.Vector4[] } };
+export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassUniforms } {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.03, metalness: 0.1, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 2.0 });
   const broken = { value: 0 };
-  m.userData.broken = broken;
+  // per pane id: xyz = impact point in the rest pose (body frame), w = crack level (0 intact, 1 star crack, 2 heavy web)
+  const crack = { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0)) };
+  m.userData.broken = broken; m.userData.crack = crack;
   m.onBeforeCompile = sh => {
-    sh.uniforms.uNight = nightUniform; sh.uniforms.uBroken = broken;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 color; uniform int uBroken; varying vec3 vObj; varying vec3 vTint;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vTint = color.rgb;')
+    sh.uniforms.uNight = nightUniform; sh.uniforms.uBroken = broken; sh.uniforms.uCrack = crack;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 color; uniform int uBroken; varying vec3 vObj; varying vec3 vTint; varying float vPane;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vTint = color.rgb; vPane = floor(color.a + 0.5);')
       .replace('#include <project_vertex>', '#include <project_vertex>\nif (((uBroken >> int(color.a + 0.5)) & 1) == 1) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying vec3 vTint; uniform float uNight;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying vec3 vTint; varying float vPane; uniform float uNight; uniform vec4 uCrack[8];')
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vTint;')
       .replace('#include <opaque_fragment>', `
         float fres = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 3.0);
         float dark = 1.0 - clamp(length(vTint) * 6.0, 0.0, 1.0);
         outgoingLight += vec3(0.55, 0.66, 0.75) * fres * 0.45 * (1.0 - uNight * 0.75);
         diffuseColor.a = clamp(0.28 + dark * 0.55 + fres * 0.5, 0.0, 0.96);
+        // spiderweb cracks: radial fractures + wobbly rings around the impact, denser and wider at level 2
+        vec4 ck = uCrack[int(clamp(vPane, 0.0, 7.0))];
+        if (ck.w > 0.5) {
+          vec3 r = vObj - ck.xyz; float d = length(r);
+          vec3 nn = normalize(cross(dFdx(vObj), dFdy(vObj)));
+          vec3 t1 = normalize(abs(nn.y) < 0.9 ? cross(nn, vec3(0.0, 1.0, 0.0)) : cross(nn, vec3(1.0, 0.0, 0.0)));
+          vec3 t2 = cross(nn, t1);
+          float ang = atan(dot(r, t2), dot(r, t1));
+          float lvl = ck.w, reach = lvl > 1.5 ? 0.85 : 0.5, nRay = lvl > 1.5 ? 17.0 : 9.0;
+          float wob = sin(d * 41.0 + ang * 3.0) * 0.08 + sin(ang * 5.0 + d * 13.0) * 0.12;
+          float rays = abs(fract((ang + wob * d) / 6.2831853 * nRay) - 0.5);
+          float ray = 1.0 - smoothstep(0.0, 0.035 + 0.05 * d, rays) ;
+          float rings = abs(fract(d * (lvl > 1.5 ? 11.0 : 7.0) + wob) - 0.5);
+          float ring = (1.0 - smoothstep(0.0, 0.05, rings)) * step(0.06, d) * 0.7;
+          float fade = 1.0 - smoothstep(reach * 0.55, reach, d);
+          float web = clamp(max(ray, ring) * fade, 0.0, 1.0);
+          float hole = 1.0 - smoothstep(0.0, 0.05, d); // pulverised impact point
+          web = max(web, hole * 0.9);
+          outgoingLight = mix(outgoingLight, vec3(0.82, 0.88, 0.92), web * 0.85);
+          diffuseColor.a = clamp(diffuseColor.a + web * 0.7 + (lvl > 1.5 ? 0.12 * fade : 0.04 * fade), 0.0, 0.98);
+        }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'car-glass-v3';
-  return m as THREE.MeshStandardMaterial & { userData: { broken: { value: number } } };
+  m.customProgramCacheKey = () => 'car-glass-v4';
+  return m as THREE.MeshStandardMaterial & { userData: GlassUniforms };
 }

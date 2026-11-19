@@ -57,6 +57,8 @@ export class VehiclePhysics {
   /** time since the wheels last touched the ground, reset on landing; landing impulse for camera/visual use */
   landing = 0;
   enginePower = 1;
+  /** Body pose at the start of the latest fixed step, for render interpolation (see Vehicle.syncTransform). */
+  prevPos = { x: 0, y: 0, z: 0 }; prevQuat = { x: 0, y: 0, z: 0, w: 1 };
   private wheelLocal: WheelDef[];
   private hb = 0; // smoothed handbrake 0..1
   private hbRelease = 0; // grip recovery after letting go of the handbrake
@@ -71,7 +73,9 @@ export class VehiclePhysics {
     const q = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
     this.body = w.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y, z).setRotation(q).setLinearDamping(0.05).setAngularDamping(0.6).setCcdEnabled(true).setCanSleep(true));
     const [hx, hy, hz] = layout.half;
-    const desc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(0, layout.centerY, layout.zCenter ?? 0).setFriction(0.3).setRestitution(0.05)
+    // rounded edges: the bumper corners ride up a curb instead of snagging on its vertical face
+    const rr = Math.min(0.16, hx * 0.3, hy * 0.5);
+    const desc = RAPIER.ColliderDesc.roundCuboid(hx - rr, hy - rr, hz - rr, rr).setTranslation(0, layout.centerY, layout.zCenter ?? 0).setFriction(0.3).setRestitution(0.05)
       .setCollisionGroups(groups(G_VEHICLE, G_STATIC | G_VEHICLE | G_PROP | G_PLAYER))
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(spec.mass * 2);
     // Mass with a lowered centre of mass for stability; inertia from a box (a bit more yaw inertia = weightier).
@@ -80,6 +84,7 @@ export class VehiclePhysics {
     this.comLocalY = layout.centerY + spec.comY;
     desc.setMassProperties(m, { x: 0, y: this.comLocalY, z: 0 }, { x: ix, y: iy, z: iz }, { x: 0, y: 0, z: 0, w: 1 });
     this.collider = w.createCollider(desc, this.body);
+    this.prevPos = { x, y, z }; this.prevQuat = { ...q };
     this.ctrl = w.createVehicleController(this.body);
     this.ctrl.indexUpAxis = 1;
     this.ctrl.setIndexForwardAxis = 2;
@@ -119,6 +124,12 @@ export class VehiclePhysics {
     return out;
   }
   get yaw() { const f = this.forward(); return Math.atan2(f.x, f.z); }
+  /** Remember the pose before the physics step so the renderer can blend between fixed steps. */
+  capturePrev() {
+    const p = this.body.translation(), q = this.body.rotation();
+    this.prevPos.x = p.x; this.prevPos.y = p.y; this.prevPos.z = p.z;
+    this.prevQuat.x = q.x; this.prevQuat.y = q.y; this.prevQuat.z = q.z; this.prevQuat.w = q.w;
+  }
   /** Maximum road-wheel angle at a given speed: generous when parking, calm on the highway. */
   steerLimit(absV: number) {
     const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(5, 42, absV);
@@ -129,6 +140,7 @@ export class VehiclePhysics {
 
   fixedUpdate(dt: number, input: DriveInput) {
     const spec = this.spec, c = this.ctrl, body = this.body;
+    this.capturePrev();
     const lv = body.linvel(), av = body.angvel(), rot = body.rotation();
     const f = this.forward(), up = this.upVec(), left = this.leftVec();
     const fwdSpeed = lv.x * f.x + lv.y * f.y + lv.z * f.z;
@@ -279,6 +291,7 @@ export class VehiclePhysics {
       }
     } else for (let i = 0; i < this.slip.length; i++) this.slip[i] = 0;
     for (let i = 0; i < this.wheelLocal.length; i++) if (!c.wheelIsInContact(i)) this.wheelRot[i] += (Math.max(-30, Math.min(30, fwdSpeed)) / this.layout.radius) * dt * 0.8;
+    this.curbAssist(dt, thr, lv);
     this.wheelspin += ((spinSum > 0 ? 1 : 0) - this.wheelspin) * Math.min(1, dt * 8);
 
     if (this.grounded) {
@@ -355,6 +368,33 @@ export class VehiclePhysics {
     const targetRpm = Math.min(1, 0.18 + ((absV - lo) / (hi - lo)) * 0.8 + Math.abs(thr) * 0.08 + this.wheelspin * 0.35 + (this.grounded ? 0 : Math.abs(thr) * 0.3));
     this.rpm += (targetRpm - this.rpm) * Math.min(1, dt * 8);
   }
+  private curbCool: number[] = [];
+  /**
+   * Ray-cast wheels cannot see a vertical kerb face, so a slow car pushing into a ~15-25 cm step would stall against it.
+   * Detect it with two short horizontal rays per wheel (low one blocked, high one free) and give that corner a lift.
+   */
+  private curbAssist(dt: number, thr: number, lv: V3) {
+    const planar = Math.hypot(lv.x, lv.z);
+    if (Math.abs(thr) < 0.05 || planar > 9 || !this.grounded && this.airTime > 0.3) return;
+    const sgn = thr > 0 ? 1 : -1, f = this.forward(this.t1);
+    // direction of travel: the velocity when rolling, else where the throttle pushes
+    let dx = f.x * sgn, dz = f.z * sgn;
+    if (planar > 0.6) { dx = lv.x / planar; dz = lv.z / planar; }
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    const r = this.layout.radius, reach = r + 0.14, mask = groups(0xffff, G_STATIC);
+    for (let i = 0; i < this.wheelLocal.length; i++) {
+      this.curbCool[i] = Math.max(0, (this.curbCool[i] ?? 0) - dt);
+      if (this.curbCool[i] > 0 || !this.ctrl.wheelIsInContact(i)) continue;
+      const P = this.ctrl.wheelContactPoint(i); if (!P) continue;
+      const lo = this.physics.ray(P.x, P.y + 0.06, P.z, dx, 0, dz, reach, mask);
+      if (!lo) continue;
+      const hi = this.physics.ray(P.x, P.y + 0.36, P.z, dx, 0, dz, reach, mask);
+      if (hi) continue; // a wall, not a kerb
+      const m = this.spec.mass / this.wheelLocal.length * 1.0;
+      this.body.applyImpulseAtPoint({ x: dx * m * 0.5, y: m * 2.4, z: dz * m * 0.5 }, { x: P.x, y: P.y, z: P.z }, true);
+      this.curbCool[i] = 0.22;
+    }
+  }
   /** Physically rolls the car back onto its wheels (used by the self-righting logic and by `flip()`). */
   private rollUpright(dt: number, f: V3, up: V3) {
     this.righting = Math.min(1, this.righting + dt);
@@ -400,6 +440,7 @@ export class VehiclePhysics {
     this.body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true); this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.upsideTime = 0; this.righting = 0; this.drift = 0;
+    this.capturePrev();
   }
   teleport(x: number, y: number, z: number, yaw: number) {
     this.body.setTranslation({ x, y, z }, true);
@@ -407,6 +448,7 @@ export class VehiclePhysics {
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true); this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.lastVel = { x: 0, y: 0, z: 0 };
     this.drift = 0; this.hb = 0; this.hbRelease = 0; this.steerIn = 0; this.steer = 0;
+    this.capturePrev();
   }
   dispose() {
     this.physics.world.removeVehicleController(this.ctrl);

@@ -102,7 +102,9 @@ interface SirenNodes { out: GainNode; panner: PannerNode; oscs: OscillatorNode[]
 /** Original wail/yelp siren: a triangle+square pair swept by an LFO, alternating patterns, with Doppler shift. */
 export class SirenVoice implements LoopVoice {
   private n: SirenNodes | null = null; private stopped = false;
-  private mode: 'wail' | 'yelp' = 'wail'; private modeUntil = 0; private lastD = -1; private lastT = 0; private cents = 0;
+  /** 0 = auto wail/yelp cycle (AI units), 1 wail, 2 yelp, 3 phaser (driver's choice) */
+  tone = 0;
+  private mode: 'wail' | 'yelp' | 'phaser' = 'wail'; private modeUntil = 0; private lastD = -1; private lastT = 0; private cents = 0;
   constructor(private core: CoreRef) {}
   update(pos: Vec3Like, volume: number): void {
     if (this.stopped) return; const c = this.core(); if (!c || !isFiniteVec(pos)) return;
@@ -111,7 +113,10 @@ export class SirenVoice implements LoopVoice {
     if (!this.n) this.build(c, pos);
     const n = this.n; if (!n) return; const now = c.ctx.currentTime;
     c.placePanner(n.panner, pos, 0.03);
-    if (now >= this.modeUntil) this.setMode(n, now, this.modeUntil === 0 ? 'wail' : this.mode === 'wail' ? 'yelp' : 'wail');
+    if (this.tone > 0) {
+      const want = this.tone === 1 ? 'wail' : this.tone === 2 ? 'yelp' : 'phaser';
+      if (want !== this.mode || this.modeUntil === 0) { this.setMode(n, now, want); this.modeUntil = Infinity; }
+    } else if (now >= this.modeUntil) this.setMode(n, now, this.modeUntil === 0 || this.mode === 'phaser' ? 'wail' : this.mode === 'wail' ? 'yelp' : 'wail');
     if (this.lastD >= 0 && now > this.lastT + 0.02) {
       const vr = (d - this.lastD) / (now - this.lastT);
       this.cents += (1200 * Math.log2(dopplerRatio(vr)) - this.cents) * 0.3;
@@ -121,12 +126,13 @@ export class SirenVoice implements LoopVoice {
     for (const o of n.oscs) o.detune.setTargetAtTime(det, now, 0.08);
     n.out.gain.setTargetAtTime(vol * 0.32, now, 0.05);
   }
-  private setMode(n: SirenNodes, now: number, mode: 'wail' | 'yelp'): void {
+  private setMode(n: SirenNodes, now: number, mode: 'wail' | 'yelp' | 'phaser'): void {
     this.mode = mode; this.modeUntil = now + (mode === 'wail' ? 7.2 : 2.6);
-    n.lfo.type = mode === 'wail' ? 'sine' : 'triangle';
-    n.lfo.frequency.setValueAtTime(mode === 'wail' ? 0.27 : 3.3, now);
-    n.depth.gain.setTargetAtTime(mode === 'wail' ? 340 : 260, now, 0.03);
-    for (const o of n.oscs) o.frequency.setTargetAtTime(mode === 'wail' ? 960 : 1060, now, 0.03);
+    // phaser: a fast saw-like down-sweep around 700 Hz (the electronic "whoop-whoop" of a modern bar)
+    n.lfo.type = mode === 'wail' ? 'sine' : mode === 'yelp' ? 'triangle' : 'sawtooth';
+    n.lfo.frequency.setValueAtTime(mode === 'wail' ? 0.27 : mode === 'yelp' ? 3.3 : 9.5, now);
+    n.depth.gain.setTargetAtTime(mode === 'wail' ? 340 : mode === 'yelp' ? 260 : 380, now, 0.03);
+    for (const o of n.oscs) o.frequency.setTargetAtTime(mode === 'wail' ? 960 : mode === 'yelp' ? 1060 : 760, now, 0.03);
   }
   private build(c: AudioCore, pos: Vec3Like): void {
     const ctx = c.ctx; const now = ctx.currentTime;

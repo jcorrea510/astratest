@@ -86,6 +86,7 @@ export interface DeathOpts { arrestAnimationDone?: (done: () => void) => void }
 export interface UICallbacks {
   onStart(continueGame: boolean): void; // title: New game / Continue
   onSandbox?(): void; // unused: the game is sandbox-only (the title's Play starts it)
+  onHighway?(): void; // title: the endless highway mode
   onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel
   onResume(): void;
   onQuitToTitle(): void;
@@ -105,7 +106,7 @@ export type SfxName =
   | 'heatUp' | 'heatLost' | 'purchase' | 'whoosh' | 'tireScreech' | 'engineStart' | 'shellCasing';
 export interface Vec3Like { x: number; y: number; z: number }
 export interface EngineVoice { update(opts: { rpm: number /*0..1*/; throttle: number /*0..1*/; pos: Vec3Like; kind: 'car' | 'bike' | 'truck'; damage: number /*0..1*/ }): void; stop(): void }
-export interface LoopVoice { update(pos: Vec3Like, volume: number): void; stop(): void }
+export interface LoopVoice { update(pos: Vec3Like, volume: number): void; stop(): void; /** sirens only: 0 = auto wail/yelp cycle, 1 wail, 2 yelp, 3 phaser */ tone?: number }
 export interface GameAudio {
   /** Must be called from a user gesture (click / key) before sound plays. Safe to call repeatedly. */
   resume(): Promise<void>;

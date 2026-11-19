@@ -8,13 +8,14 @@ export const ACTION_CONTEXT: Record<Action, ActionContext> = {
   sprint: 'foot', jump: 'foot', crouch: 'foot',
   enter: 'both', fire: 'both', aim: 'both', reload: 'both', wheel: 'both', nextWeapon: 'both', prevWeapon: 'both',
   handbrake: 'vehicle', horn: 'vehicle', lookBehind: 'vehicle', headlights: 'vehicle', radio: 'vehicle',
+  sirenWail: 'vehicle', sirenYelp: 'vehicle', sirenPhaser: 'vehicle', lightBar: 'vehicle',
   map: 'both', pause: 'both', interact: 'both', camera: 'both',
 };
 
 export const ACTION_GROUPS: { title: string; actions: Action[] }[] = [
   { title: 'On foot', actions: ['forward', 'back', 'left', 'right', 'sprint', 'jump', 'crouch', 'interact'] },
   { title: 'Combat', actions: ['fire', 'aim', 'reload', 'wheel', 'nextWeapon', 'prevWeapon'] },
-  { title: 'Driving', actions: ['enter', 'handbrake', 'horn', 'lookBehind', 'headlights', 'radio'] },
+  { title: 'Driving', actions: ['enter', 'handbrake', 'horn', 'lookBehind', 'headlights', 'radio', 'lightBar', 'sirenWail', 'sirenYelp', 'sirenPhaser'] },
   { title: 'General', actions: ['map', 'camera', 'pause'] },
 ];
 

@@ -17,6 +17,7 @@ export class CameraRig {
   private lastInput = 0;
   private sphere = new RAPIER.Ball(0.22);
   private initialized = false;
+  private clear = 4; private hasClear = false; private lastMode: CamMode = 'foot';
   shakeScale = 1;
   baseFov = 62;
   zoomLevel = 0;
@@ -96,9 +97,14 @@ export class CameraRig {
     // keep the shoulder offset itself out of walls
     const sideHit = this.cast(this.smoothPivot, right, this.shoulder, opts.exclude);
     if (sideHit !== null) { origin.copy(this.smoothPivot).addScaledVector(right, Math.max(0, sideHit - 0.05)); origin.y += bobY + this.dipY; }
-    let d = this.dist;
-    const hit = this.cast(origin, back, d, opts.exclude);
-    if (hit !== null) d = Math.max(0.35, hit - 0.08);
+    // Collision distance is smoothed: it tightens fast (never look through a wall) but eases back out slowly, so a rail,
+    // hanger or passing car flicking in and out of the ray no longer makes the view pop between two positions.
+    const hit = this.cast(origin, back, this.dist, opts.exclude);
+    const want = hit !== null ? Math.max(0.35, hit - 0.08) : this.dist;
+    if (!this.hasClear || mode !== this.lastMode) this.clear = want;
+    else this.clear = want < this.clear ? damp(this.clear, want, 38, dt) : damp(this.clear, want, 2.4, dt);
+    this.hasClear = true; this.lastMode = mode;
+    const d = Math.min(this.clear, this.dist);
     const pos = origin.clone().addScaledVector(back, d);
     // shake
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
