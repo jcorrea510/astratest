@@ -204,9 +204,14 @@ function applySave(s: SaveData) {
   sandbox!.applyCaps();
   sandbox!.loadTools(s.tools);
   // Old or hand-edited saves may sit on a roof, in water or off the map: resume on valid ground instead.
-  const p = safeSavePos(s.pos, (x, z) => surfaceAt(city, x, z), { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: PLACES.safehouse.yaw });
+  const p = safeSavePos(s.pos, deckAwareSurface, { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: PLACES.safehouse.yaw });
   g.player.place(p.x, ctx!.groundY(p.x, p.z, 0.2) + 0.05, p.z, p.yaw);
   g.cam.snapBehind(p.yaw + Math.PI);
+}
+/** Surface lookup for saves: water with a raised deck over it (the pier) counts as pavement. */
+function deckAwareSurface(x: number, z: number) {
+  const s = surfaceAt(city, x, z);
+  return s === 'water' && (ctx?.groundY(x, z, 0) ?? 0) > 0.8 ? 'sidewalk' : s;
 }
 function saveGame(): boolean {
   if (!game || !activities || !sandbox || !started || game.deathT >= 0) return false;
@@ -214,7 +219,7 @@ function saveGame(): boolean {
   const onFoot = !g.playerVehicle; // (in a car or swimming: wake up at the safehouse instead)
   const home = { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
   // Never save a roof, a lot or the water: store the nearest street / pavement / park spot (or the safehouse).
-  const pos = onFoot && !g.player.swimming ? safeSavePos({ x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw }, (x, z) => surfaceAt(city, x, z), home) : home;
+  const pos = onFoot && !g.player.swimming ? safeSavePos({ x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw }, deckAwareSurface, home) : home;
   return writeSave(storage, {
     version: 1, savedAt: Date.now(), money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,

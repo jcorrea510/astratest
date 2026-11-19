@@ -125,7 +125,7 @@ function landmark(o: WestCtx, lm: Landmark) {
     box(0, 9, 0, 16, 18, 26, stone); col(0, 9, 0, 8, 9, 13);
     box(0, 18.4, 0, 17, 0.8, 27, dark);
     // gabled roof as two pitched slabs
-    { const [x, z] = W(0, 0); tb.box(x - c * 4.2, 21.6, z + s * 4.2, 9.6, 0.5, 27.4, lm.yaw, C('#6f5a4a'), T_ROUGH, 0, 0.62); tb.box(x + c * 4.2, 21.6, z - s * 4.2, 9.6, 0.5, 27.4, lm.yaw, C('#6f5a4a'), T_ROUGH, 0, -0.62); }
+    { const [x, z] = W(0, 0); tb.box(x - c * 4.2, 21.6, z + s * 4.2, 9.6, 0.5, 27.4, lm.yaw, C('#6f5a4a'), T_ROUGH, 0, -0.62); tb.box(x + c * 4.2, 21.6, z - s * 4.2, 9.6, 0.5, 27.4, lm.yaw, C('#6f5a4a'), T_ROUGH, 0, 0.62); }
     for (const sx of [-1, 1]) {
       box(sx * 6.5, 15, 14, 5, 30, 5, stone); col(sx * 6.5, 15, 14, 2.5, 15, 2.5);
       box(sx * 6.5, 30.3, 14, 5.8, 0.8, 5.8, dark);
