@@ -13,6 +13,7 @@ import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
 import { buildQuay } from './quaybuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
+import { registerBench } from './benches';
 import { signalPosts } from './signals';
 import { buildPrecinct, precinctFootprint } from './precinct';
 import type { Physics } from '../core/physics';
@@ -517,7 +518,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         if (roll < 0.18) { const p = P(s, 0.7); props.add('hydrant', p.x, CURB_HEIGHT, p.z, yawRoad); physics.addStaticCylinder(p.x, 0.45, p.z, 0.45, 0.2); }
         else if (roll < 0.38 && (b.district === 'midtown' || b.district === 'brickline' || b.district === 'heights')) { for (let m = 0; m < 3; m++) { const ps = s + m * 6 - 6; if (ps < e.from + 8 || ps > e.to - 8) continue; const p = P(ps, 0.6); props.add('meter', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticCylinder(p.x, 0.7, p.z, 0.7, 0.08); } }
         else if (roll < 0.5) { const p = P(s, 1.2); props.add('bin', p.x, CURB_HEIGHT, p.z, r.range(0, 6)); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.3); }
-        else if (roll < 0.62) { const p = P(s, 2.0); props.add('bench', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.45, p.z, e.ax === 'x' ? 0.95 : 0.35, 0.45, e.ax === 'x' ? 0.35 : 0.95); }
+        else if (roll < 0.62) { const p = P(s, 2.0); props.add('bench', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); registerBench(p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.45, p.z, e.ax === 'x' ? 0.95 : 0.35, 0.45, e.ax === 'x' ? 0.35 : 0.95); }
         else if (roll < 0.72) { const p = P(s, 1.0); props.add(`news${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.5, p.z, e.ax === 'x' ? 0.85 : 0.25, 0.5, e.ax === 'x' ? 0.25 : 0.85); }
         else if (roll < 0.8) { const p = P(s, 1.0); props.add('phone', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticCylinder(p.x, 1, p.z, 1, 0.2); }
         else if (roll < 0.88) { const p = P(s, 1.0); props.add('mailbox', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.7, p.z, 0.3, 0.7, 0.3); }
@@ -592,7 +593,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         if (Math.abs(x - (ix0 + ix1) / 2) < 5 || Math.abs(z - (iz0 + iz1) / 2) < 5) continue;
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(1.0, 1.5), r);
       }
-      for (let i = 0; i < 10; i++) { const x = r.range(ix0 + 4, ix1 - 4); props.add('bench', x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, Math.PI); physics.addStaticBox(x, 0.45, (iz0 + iz1) / 2 + 3.6, 0.95, 0.45, 0.35); }
+      for (let i = 0; i < 10; i++) { const x = r.range(ix0 + 4, ix1 - 4); props.add('bench', x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, Math.PI); registerBench(x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, Math.PI); physics.addStaticBox(x, 0.45, (iz0 + iz1) / 2 + 3.6, 0.95, 0.45, 0.35); }
       for (let i = 0; i < 26; i++) props.add(`shrub${r.int(0, 1)}`, r.range(ix0 + 2, ix1 - 2), CURB_HEIGHT, r.range(iz0 + 2, iz1 - 2), r.range(0, 6), r.range(0.8, 1.5));
       // paths through the park
       const tb = trim.at((ix0 + ix1) / 2, (iz0 + iz1) / 2);

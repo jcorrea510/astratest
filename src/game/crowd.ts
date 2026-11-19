@@ -128,7 +128,7 @@ function makeInstanced(base: THREE.BufferGeometry, n: number, walk: boolean): { 
 interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
   bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
-interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
+interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; /** height on a bridge walkway */ y?: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
 /** Paint of a parked car: the same for the far instanced copy and the real car, so the swap is invisible. */
 const parkedPaint = (s: { kind: number; paint: number }) => { const p = VEHICLES[PARKED_MIX[s.kind % PARKED_MIX.length]].paints; return p[s.paint % p.length]; };
@@ -405,7 +405,7 @@ export class Crowd {
       const dx = b2.x - a2.x, dz = b2.z - a2.z, l = Math.hypot(dx, dz) || 1;
       const crossing = a2.edges.find(e => e.to === p.to)?.crossing;
       const off = crossing ? (lead ? p.off - lead.off : 0) : p.off;
-      p.x = a2.x + dx * p.t - dz / l * off; p.z = a2.z + dz * p.t + dx / l * off;
+      p.x = a2.x + dx * p.t - dz / l * off; p.z = a2.z + dz * p.t + dx / l * off; p.y = (a2.y ?? 0) + ((b2.y ?? 0) - (a2.y ?? 0)) * p.t;
       const yaw = Math.atan2(dx, dz); if (p.wait <= 0) p.yaw = yaw;
     }
     const mesh = this.pedMesh.mesh, geo = this.pedMesh.geo;
@@ -414,7 +414,7 @@ export class Crowd {
     const n = Math.min(peds.length, 900);
     for (let i = 0; i < n; i++) {
       const p = peds[i];
-      q.setFromAxisAngle(up, p.yaw); pos.set(p.x, 0.12, p.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
+      q.setFromAxisAngle(up, p.yaw); pos.set(p.x, 0.12 + (p.y ?? 0), p.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
       hex(p.tint, col); a1.setXYZ(i, col.r, col.g, col.b); hex(p.tint2, col); a2.setXYZ(i, col.r, col.g, col.b); hex(p.skin, col); a3.setXYZ(i, col.r, col.g, col.b);
       ph.setX(i, p.phase); amp.setX(i, p.wait > 0 ? 0 : 1);
     }

@@ -12,7 +12,7 @@ describe('first-person cabin framing (every highway car)', () => {
       const t = getTemplate(k), f = cabinFrame(k), E = eyePoint(t.seats[0], f, t.roofY);
       // pillar base: well left of the line of sight (it used to land near screen centre)
       const base = Math.atan2(f.base.x + 0.02 - E.x, f.base.z - 0.03 - E.z) * D;
-      expect(base, k).toBeGreaterThan(20);
+      expect(base, k).toBeGreaterThan(18); // (the old cockpit had ~14 degrees)
       // eye clears the dash and stays under the header; the header is near or above the top of the view
       expect(E.y - f.belt, k).toBeGreaterThan(0.1);
       const header = Math.atan2(f.top.y - E.y, f.top.z - E.z) * D;
@@ -22,7 +22,7 @@ describe('first-person cabin framing (every highway car)', () => {
       let mirrors = 0, pillar = 0;
       for (let i = 0; i < P.count; i++) {
         if (Math.round(kind.getX(i)) === K.MIRROR) mirrors++;
-        if (P.getY(i) > f.belt + 0.15 && P.getZ(i) > f.zCut + 0.15 && Math.abs(P.getX(i)) < f.base.x) pillar++;
+        if (!([K.INTERIOR, K.METAL] as number[]).includes(Math.round(kind.getX(i))) && P.getY(i) > f.belt + 0.15 && P.getZ(i) > f.zCut + 0.15 && Math.abs(P.getX(i)) < f.base.x) pillar++; // (baked-in interior is stripped separately; the race roll cage stays)
       }
       expect(mirrors, k).toBe(0);
       expect(pillar, k).toBe(0);

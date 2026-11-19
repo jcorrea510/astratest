@@ -122,7 +122,7 @@ export interface PathRoad {
   id: number; name: string; kind: 'freeway' | 'ramp' | 'hill' | 'service' | 'street'; pts: P3[]; half: number; lanes: 1 | 2;
   elevated: boolean; from: number; to: number;
 }
-export interface PedNode { id: number; x: number; z: number; blockId: number; edges: { to: number; crossing: null | { intersection: number; axis: 'x' | 'z' } }[] }
+export interface PedNode { id: number; x: number; z: number; /** surface height (bridge walkways); absent = street level */ y?: number; blockId: number; edges: { to: number; crossing: null | { intersection: number; axis: 'x' | 'z' } }[] }
 
 export interface CityMap {
   roads: Road[]; intersections: Intersection[]; blocks: Block[]; lots: Lot[]; lanes: Lane[]; pedNodes: PedNode[];
@@ -414,6 +414,7 @@ export function generateCity(seed = 1977): CityMap {
   genWestPeds(paths, pedNodes, SIDEWALK);
   lots.push(...genEastLots(paths, lots.length, new Rng(seed + 53), SIDEWALK));
   genWestPeds(paths, pedNodes, SIDEWALK, true);
+  addBridgeWalkways(paths, pedNodes);
   // ~50 walk-in stores: picked from the street-facing lots (grid and west), resized to the shop footprint
   snapHandmadeStores(lots);
   setGeneratedStores(genStores(lots, blocks, new Rng(seed + 77)));
@@ -583,6 +584,37 @@ function catmull(ctrl: P3[], step: number): P3[] {
   return out;
 }
 /** Height of a path centreline at the closest point to (x,z); returns distance too. */
+/**
+ * Pedestrian paths along the outboard walkways of the two East River suspension bridges (see eastbuild suspension()):
+ * a node every 20 m at the deck height, joined at each end to the nearest sidewalk node of its shore.
+ */
+function addBridgeWalkways(paths: PathRoad[], nodes: PedNode[]) {
+  const ground = nodes.length;
+  for (const bz of EAST_BRIDGE_ZS) {
+    const path = paths.find(p => p.kind === 'freeway' && p.pts[0].x > 500 && p.pts[0].x < 540 && Math.abs(p.pts[0].z - bz) < 2 && p.pts[p.pts.length - 1].x > 700);
+    if (!path) continue;
+    for (const sg of [-1, 1]) {
+      const z = bz + sg * (path.half + 5.1);
+      const ids: number[] = [];
+      for (let x = 535; x <= 735; x += 20) {
+        const id = nodes.length; nodes.push({ id, x, z, y: pathHeightAt(path, x, bz).y + 0.15, blockId: -1, edges: [] });
+        if (ids.length) { const p = ids[ids.length - 1]; nodes[p].edges.push({ to: id, crossing: null }); nodes[id].edges.push({ to: p, crossing: null }); }
+        ids.push(id);
+      }
+      // approach along the ramp side from the Harbor Way sidewalk (x = 439) up to the walkway
+      let prevId = ids[0];
+      for (let x = 510; x >= 460; x -= 25) {
+        const id = nodes.length; nodes.push({ id, x, z: z - sg * 3, blockId: -1, edges: [{ to: prevId, crossing: null }] }); nodes[prevId].edges.push({ to: id, crossing: null }); prevId = id;
+      }
+      ids.unshift(prevId);
+      for (const [end, west] of [[ids[0], true], [ids[ids.length - 1], false]] as [number, boolean][]) {
+        let best = -1, bd = west ? 40 : 90;
+        for (let k = 0; k < ground; k++) { const n = nodes[k]; if ((n.y ?? 0) > 0.3 || (west ? n.x > 600 : n.x < 600)) continue; const d = Math.hypot(n.x - nodes[end].x, n.z - nodes[end].z); if (d < bd) { bd = d; best = k; } }
+        if (best >= 0) { nodes[best].edges.push({ to: end, crossing: null }); nodes[end].edges.push({ to: best, crossing: null }); }
+      }
+    }
+  }
+}
 export function pathHeightAt(path: PathRoad, x: number, z: number): { y: number; d: number; t: number } {
   let best = { y: 0, d: Infinity, t: 0 };
   const p = path.pts;

@@ -9,6 +9,7 @@ import { type CityMap, EAST_BRIDGE_TOWERS, EAST_BRIDGE_ZS, EAST_DECK_Y, EAST_RIV
 import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH, T_PAINT } from './builders';
 import { Rng } from '../core/rng';
 import { EAST_PARK, EAST_PIERS, EAST_RIVERPARK } from './eastside';
+import { registerBench } from './benches';
 
 const C = (h: string) => new THREE.Color(h);
 export interface EastCtx {
@@ -90,7 +91,7 @@ function waterfront(o: EastCtx, nearRoad: (x: number, z: number, m: number) => b
     if (nearRoad(X + 4, z, 2) || pierAt(z, 9) || bridgeAt(z)) continue;
     const t = trim.at(X, z);
     t.cyl(X + 5.4, 0.0, z, 0.07, 0.05, 4.2, 8, lamp, T_METAL); t.beam(X + 5.4, 4.1, z, X + 4.4, 4.3, z, 0.05, 0.05, lamp, T_METAL); t.box(X + 4.3, 4.3, z, 0.7, 0.12, 0.3, 0, C('#202325'), T_METAL); t.box(X + 4.3, 4.23, z, 0.5, 0.03, 0.2, 0, warm, [0.4, 0, 3, 5]);
-    if (Math.round(z / 18) % 2 === 0) { t.box(X + 3.2, 0.45, z + 4, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); t.box(X + 3.0, 0.7, z + 4, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); t.box(X + 3.2, 0.2, z + 4, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
+    if (Math.round(z / 18) % 2 === 0) { registerBench(X + 3.2, 0, z + 4, Math.PI / 2); t.box(X + 3.2, 0.45, z + 4, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); t.box(X + 3.0, 0.7, z + 4, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); t.box(X + 3.2, 0.2, z + 4, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
     else if (!nearRoad(X + 8, z + 9, 6)) o.addTree(X + 8, -0.05, z + 9, r.range(0, 6.28), r.range(1.0, 1.4), r);
   }
   // pier sheds and container stacks (every other pier)
@@ -116,7 +117,7 @@ function waterfront(o: EastCtx, nearRoad: (x: number, z: number, m: number) => b
   t.box(cx, 0.045, cz, 4, 0.04, d - 4, 0, C('#cfc6b2'), T_STONE); t.box(cx, 0.047, cz, w - 4, 0.04, 4, 0, C('#cfc6b2'), T_STONE);
   for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2; t.box(cx + Math.cos(a) * 7, 0.045, cz + Math.sin(a) * 7, 4.5, 0.04, 1.8, -a + Math.PI / 2, C('#cfc6b2'), T_STONE); }
   for (let i = 0; i < 26; i++) { const x = r.range(P.x0 + 3, P.x1 - 3), z = r.range(P.z0 + 3, P.z1 - 3); if (Math.abs(x - cx) < 5 || Math.abs(z - cz) < 5) continue; o.addTree(x, -0.05, z, r.range(0, 6.28), r.range(1.0, 1.7), r); }
-  for (const [bx, bz] of [[-6, 6], [6, 6], [-6, -6], [6, -6]]) { t.box(cx + bx, 0.45, cz + bz, 1.8, 0.1, 0.55, 0, C('#6b4a32'), T_ROUGH); t.box(cx + bx, 0.2, cz + bz, 1.6, 0.4, 0.4, 0, C('#8f8a80'), T_STONE); }
+  for (const [bx, bz] of [[-6, 6], [6, 6], [-6, -6], [6, -6]]) { registerBench(cx + bx, 0, cz + bz, Math.atan2(-bx, -bz)); t.box(cx + bx, 0.45, cz + bz, 1.8, 0.1, 0.55, 0, C('#6b4a32'), T_ROUGH); t.box(cx + bx, 0.2, cz + bz, 1.6, 0.4, 0.4, 0, C('#8f8a80'), T_STONE); }
   // gazebo at the crossing
   t.cyl(cx, 0.05, cz, 3.8, 3.8, 0.35, 10, C('#c9c2b3'), T_STONE);
   for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; t.cyl(cx + Math.cos(a) * 3.3, 0.4, cz + Math.sin(a) * 3.3, 0.1, 0.1, 3.3, 6, C('#f0ece2'), T_PAINT); }

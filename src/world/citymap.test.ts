@@ -43,12 +43,17 @@ describe('city layout', () => {
     }
   });
   it('has a connected pedestrian network', () => {
-    // the island + west network is one component; Eastbank (across the East River) is its own, joined by no walkway
+    // the island + west network and Eastbank are joined by the bridge walkways
     const flood = (s: number) => { const seen = new Set([s]); const stack = [s]; while (stack.length) { const n = stack.pop()!; for (const e of city.pedNodes[n].edges) if (!seen.has(e.to)) { seen.add(e.to); stack.push(e.to); } } return seen; };
-    const main = city.pedNodes.filter(n => n.x < 600), east = city.pedNodes.filter(n => n.x > 600);
-    expect(flood(0).size).toBe(main.length);
+    const east = city.pedNodes.filter(n => n.x > 600);
     expect(east.length).toBeGreaterThan(30);
-    expect(flood(east[0].id).size).toBe(east.length);
+    expect(flood(0).size).toBe(city.pedNodes.length);
+  });
+  it('bridge walkways follow the deck and join both shores with gentle slopes', () => {
+    const bridge = city.pedNodes.filter(n => n.x >= 535 && n.x <= 735 && n.y !== undefined);
+    expect(bridge.length).toBeGreaterThanOrEqual(40);
+    expect(Math.max(...bridge.map(n => n.y!))).toBeGreaterThan(5);
+    for (const n of bridge) for (const e of n.edges) { const m = city.pedNodes[e.to]; const run = Math.hypot(m.x - n.x, m.z - n.z); if (run > 0.1) expect(Math.abs((m.y ?? 0) - (n.y ?? 0)) / run, `edge ${n.id}-${m.id}`).toBeLessThan(0.3); }
   });
   it('finds nearest lanes', () => {
     const r = nearestLane(city, -50, 37)!;

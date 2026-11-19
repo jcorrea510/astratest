@@ -11,6 +11,7 @@ import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH, T_PAINT, T_N
 import { type BuildCtx, warehouse, streetBuilding } from './buildings';
 import { distToPath } from './westside';
 import { RAMPS } from '../game/places';
+import { registerBench } from './benches';
 
 const C = (h: string) => new THREE.Color(h);
 const CRANES = [40, 150, 290, 470, 640, 800];
@@ -69,7 +70,7 @@ export function buildQuay(o: QuayCtx) {
     tb.cyl(edgeX - 2.2, CURB_HEIGHT, z, 0.07, 0.05, 4.2, 8, C('#2b2e31'), T_METAL); tb.sphere(edgeX - 2.2, CURB_HEIGHT + 4.3, z, 0.22, C('#fff1d6'), T_NIGHTGLOW(5));
     physics.addStaticCylinder(edgeX - 2.2, CURB_HEIGHT + 2.1, z, 2.1, 0.1);
     const k = Math.round(z / 9) % 4;
-    if (k === 1) { tb.box(edgeX - 4, CURB_HEIGHT + 0.45, z + 3, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); tb.box(edgeX - 4.2, CURB_HEIGHT + 0.7, z + 3, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); tb.box(edgeX - 4, CURB_HEIGHT + 0.2, z + 3, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
+    if (k === 1) { registerBench(edgeX - 4, CURB_HEIGHT, z + 3, Math.PI / 2); tb.box(edgeX - 4, CURB_HEIGHT + 0.45, z + 3, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); tb.box(edgeX - 4.2, CURB_HEIGHT + 0.7, z + 3, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); tb.box(edgeX - 4, CURB_HEIGHT + 0.2, z + 3, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
     else if (k === 3 && clear(edgeX - 7, z, 3)) o.addTree(edgeX - 7, CURB_HEIGHT - 0.05, z, r.range(0, 6.28), r.range(1.0, 1.4), r);
   }
   // waterfront row between the drive and the esplanade: loft mid-rises and harbour sheds side by side (fronts to the drive)

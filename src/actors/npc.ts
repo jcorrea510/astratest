@@ -1,4 +1,5 @@
 /** NPC brains: civilians wander and react, gang members and police fight intelligently. */
+import { type Bench, nearestFreeBench } from '../world/benches';
 import { holdOnHuman } from '../combat/gunRig';
 import * as THREE from 'three';
 import { Character } from './character';
@@ -15,8 +16,10 @@ export type Role = 'civilian' | 'gang' | 'police';
 export type Brain = 'inside' | 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger';
 
 /** Street-life activities of civilians (stand still doing something, walk to a shop, board a cab). */
-export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi';
-const ACT_ANIM: Partial<Record<Activity, string>> = { phone: 'phone', smoke: 'smoke', film: 'film', hail: 'hail', wait: 'talk' };
+export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi' | 'sit' | 'sitting' | 'board' | 'queue';
+const ACT_ANIM: Partial<Record<Activity, string>> = { phone: 'phone', smoke: 'smoke', film: 'film', hail: 'hail', wait: 'talk', sitting: 'sit', queue: 'phone' };
+/** Seated pose: how far behind the bench centre the hips sit, and the root height offset above the seat (tuned against the Sitting_Idle_Loop clip). */
+const SIT_BACK = 0.12, SIT_DY = 0.02;
 /** World clock for time-of-day behaviour (the game sets this each frame). */
 export const streetClock = { hour: 17 };
 
@@ -57,6 +60,8 @@ export class Npc {
   activity: Activity = ''; actOn = false; actDur = 0; actCool = Math.random() * 12; idleFace: number | null = null;
   buddy: Npc | null = null; jay = Math.random() < 0.08; disposed = false;
   destPt: THREE.Vector3 | null = null; destYaw = 0;
+  /** the bench this pedestrian is walking to / sitting on */
+  bench: Bench | null = null;
   /** delayed reaction to danger: seconds until it registers, and where from */
   alertT = 0; alertFrom = new THREE.Vector3(); alertFar = false;
   constructor(physics: Physics, tpl: HumanTemplate, look: Look, public role: Role, x: number, z: number, y = 0.2) {
@@ -72,7 +77,7 @@ export class Npc {
   }
   get alive() { return this.char.alive; }
   get pos() { return this.char.pos; }
-  dispose() { this.disposed = true; this.buddy = null; if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }
+  dispose() { this.disposed = true; this.buddy = null; if (this.bench) { this.bench.occupied = false; this.bench = null; } if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }
 }
 
 export interface NpcEnv {
@@ -336,9 +341,19 @@ export class NpcBrainRunner {
     n.brain = 'idle'; n.activity = a; n.actOn = false; n.actDur = dur; n.idleFace = face; n.stateT = 0;
     n.actCool = 18 + Math.random() * 25;
   }
+  /** Sits on the bench the pedestrian walked up to: hidden collision, seated clip, for a while. */
+  private sitDown(n: Npc) {
+    const b = n.bench; if (!b) { n.activity = ''; n.destPt = null; return; }
+    const c = n.char, sx = Math.sin(b.yaw), cz = Math.cos(b.yaw);
+    c.setCollision(false); c.place(b.x - sx * SIT_BACK, b.y + SIT_DY, b.z - cz * SIT_BACK, b.yaw);
+    n.brain = 'idle'; n.activity = 'sitting'; n.actOn = false; n.actDur = 25 + Math.random() * 70; n.idleFace = b.yaw; n.stateT = 0; n.destPt = null;
+  }
+  private freeBench(n: Npc) { if (n.bench) { n.bench.occupied = false; n.bench = null; } }
   endAct(n: Npc) {
     const a = ACT_ANIM[n.activity];
-    if (a && n.char.human.actionName === a) n.char.human.stopAction(a);
+    if (n.activity === 'sitting' && n.bench) { // get up in front of the bench and walk on
+      const b = n.bench; n.char.human.stopAction('sit'); n.char.place(b.x + Math.sin(b.yaw) * 0.9, b.y, b.z + Math.cos(b.yaw) * 0.9, b.yaw); n.char.setCollision(true); n.node = -1; this.freeBench(n);
+    } else if (a && n.char.human.actionName === a) n.char.human.stopAction(a);
     n.activity = ''; n.actOn = false; n.idleFace = null; n.actDur = 0; n.destPt = null;
     if (n.brain === 'idle') { n.brain = 'wander'; n.stateT = 0; }
   }
@@ -375,6 +390,10 @@ export class NpcBrainRunner {
   private maybeActivity(n: Npc): boolean {
     if (n.role !== 'civilian' || n.actCool > 0 || n.buddy || Math.random() > 0.16) return false;
     const away = this.awayFromRoad(n.pos.x, n.pos.z), hr = streetClock.hour, night = hr >= 22 || hr < 5;
+    if (!night && Math.random() < 0.35) { // sit down on a nearby bench
+      const b = nearestFreeBench(n.pos.x, n.pos.z, n.pos.y, 26);
+      if (b) { b.occupied = true; n.bench = b; n.activity = 'sit'; n.destPt = new THREE.Vector3(b.x + Math.sin(b.yaw) * 0.9, n.pos.y, b.z + Math.cos(b.yaw) * 0.9); n.stateT = 0; n.actCool = 40; return false; }
+    }
     const r = Math.random();
     if (r < (night ? 0.12 : 0.34)) { // pop into a shop
       let best: { x: number; z: number; yaw: number } | null = null, bd = 34 * 34;
@@ -401,10 +420,10 @@ export class NpcBrainRunner {
   private wander(n: Npc, dir: THREE.Vector3, dt: number): number {
     const city = this.env.city, nodes = city.pedNodes;
     // errand: walk straight to the shop door / the cab and go inside
-    if ((n.activity === 'shop' || n.activity === 'taxi') && n.destPt) {
+    if ((n.activity === 'shop' || n.activity === 'taxi' || n.activity === 'sit' || n.activity === 'board') && n.destPt) {
       tv.set(n.destPt.x - n.pos.x, 0, n.destPt.z - n.pos.z); const dd = tv.length();
-      if (dd < 1.1) { this.enterBuilding(n, n.activity === 'taxi' ? 30 : 10 + Math.random() * 28); return 0; }
-      if (n.stateT > 45 || (n.stuckT > 0.5 && dd < 4 && n.stateT > 5)) { n.activity = ''; n.destPt = null; n.node = -1; }
+      if (dd < (n.activity === 'sit' ? 0.5 : 1.1)) { if (n.activity === 'sit') this.sitDown(n); else this.enterBuilding(n, n.activity === 'taxi' ? 30 : n.activity === 'board' ? 9999 : 10 + Math.random() * 28); return 0; }
+      if (n.stateT > 45 || (n.stuckT > 0.5 && dd < 4 && n.stateT > 5)) { this.freeBench(n); n.activity = ''; n.destPt = null; n.node = -1; }
       else { dir.copy(tv.normalize()); return 1.5; }
     }
     // walking with a friend
@@ -423,7 +442,7 @@ export class NpcBrainRunner {
     }
     if (n.node < 0 || n.nextNode < 0) {
       let best = 0, bd = Infinity;
-      for (const nd of nodes) { const d = (nd.x - n.pos.x) ** 2 + (nd.z - n.pos.z) ** 2; if (d < bd) { bd = d; best = nd.id; } }
+      for (const nd of nodes) { if (Math.abs((nd.y ?? 0) - n.pos.y) > 2.5) continue; const d = (nd.x - n.pos.x) ** 2 + (nd.z - n.pos.z) ** 2; if (d < bd) { bd = d; best = nd.id; } }
       n.node = best; n.nextNode = best;
     }
     const target = nodes[n.nextNode];

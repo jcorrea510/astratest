@@ -9,6 +9,8 @@ import type { CityMap, Lane } from '../world/citymap';
 import { samplePath, routeField } from '../world/citymap';
 import type { Traffic, AiCar } from './traffic';
 import type { Population } from './population';
+import type { Npc } from '../actors/npc';
+import { registerBench } from '../world/benches';
 
 export interface BusStop { x: number; z: number; /** travel direction */ dx: number; dz: number; lane: number; s: number; /** shelter position on the pavement */ px: number; pz: number }
 export interface BusRoute { id: number; stops: BusStop[] }
@@ -80,12 +82,14 @@ interface BusRun { route: BusRoute; car: AiCar | null; idx: number; dwell: numbe
 export class BusService {
   routes: BusRoute[]; runs: BusRun[] = []; private scene: THREE.Scene; private meshes: THREE.Mesh[] = []; private spawnT = 0;
   /** stats for tests */
-  stats = { stops: 0, spawned: 0 };
+  stats = { stops: 0, spawned: 0, boarded: 0, queued: 0 };
+  private waiting = new Map<BusStop, Npc[]>(); private boarding: Npc[] = []; private waitT = 0;
   constructor(scene: THREE.Scene, private city: CityMap, private traffic: Traffic, private pop: Population, private time: () => number, count = 3) {
     this.scene = scene;
     this.routes = buildBusRoutes(city, count);
     for (const r of this.routes) { this.runs.push({ route: r, car: null, idx: 0, dwell: 0, waiting: false }); if (r.id === 0) this.runs.push({ route: r, car: null, idx: 2, dwell: 0, waiting: false }); }
     const all = this.routes.flatMap(r => r.stops), g = buildStopProps(all);
+    for (const s of all) registerBench(s.px - 0.3 * s.dz, 0.18, s.pz + 0.3 * s.dx, Math.atan2(s.dz, -s.dx)); // the shelter bench faces the road
     const metal = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.55, metalness: 0.6 });
     const glass = new THREE.MeshStandardMaterial({ color: 0x9fc4d4, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.28, depthWrite: false });
     const sign = new THREE.MeshStandardMaterial({ color: 0x1f5fb0, roughness: 0.5, emissive: 0x0a2550, emissiveIntensity: 0.5 });
@@ -104,6 +108,16 @@ export class BusService {
     const v = car.v; run.waiting = true; run.dwell = 7 + Math.random() * 5; car.maxSpeed = 0; this.stats.stops++;
     const di = v.doorIndex('right', 0); if (di >= 0) v.setDoor(di, 1);
     v.kneel = 1;
+    // waiting passengers (and a passer-by or two) walk to the door and get on
+    const stop = run.route.stops[run.idx % run.route.stops.length], dp = v.doorPoint(-1);
+    const riders = [...(this.waiting.get(stop) ?? [])];
+    this.waiting.set(stop, []);
+    for (const n of this.pop.npcs) if (riders.length < 4 && n.role === 'civilian' && n.alive && n.brain === 'wander' && !n.activity && !n.buddy && !riders.includes(n) && Math.hypot(n.pos.x - dp.x, n.pos.z - dp.z) < 22) riders.push(n);
+    for (const n of riders) {
+      if (n.disposed || !n.alive || n.brain === 'flee' || n.brain === 'cower') continue;
+      if (n.activity === 'queue') this.pop.runner.endAct(n);
+      n.activity = 'board'; n.brain = 'wander'; n.destPt = new THREE.Vector3(dp.x, n.pos.y, dp.z); n.stateT = 0; this.boarding.push(n);
+    }
     // a passenger gets off
     if (Math.random() < 0.8) {
       const p = v.doorPoint(-1), n = this.pop.spawn('civilian', p.x, p.z, Math.max(0.2, v.position.y), undefined);
@@ -114,7 +128,30 @@ export class BusService {
     const v = car.v; const di = v.doorIndex('right', 0); if (di >= 0) v.setDoor(di, 0);
     v.kneel = 0; run.idx = (run.idx + 1) % run.route.stops.length; this.head(run, car);
   }
+  /** Riders that reached the door vanish into the bus; each stop near the player keeps a couple of people waiting. */
+  private tendStops(dt: number, focus: THREE.Vector3) {
+    for (let i = this.boarding.length - 1; i >= 0; i--) {
+      const n = this.boarding[i];
+      if (n.disposed || !this.pop.npcs.includes(n) || n.activity !== 'board') { this.boarding.splice(i, 1); continue; }
+      if (n.brain === 'inside') { this.pop.remove(n); this.boarding.splice(i, 1); this.stats.boarded++; }
+    }
+    this.waitT -= dt; if (this.waitT > 0) return; this.waitT = 2;
+    for (const r of this.routes) for (const st of r.stops) {
+      const d = Math.hypot(st.x - focus.x, st.z - focus.z);
+      let list = (this.waiting.get(st) ?? []).filter(n => !n.disposed && this.pop.npcs.includes(n) && n.activity === 'queue');
+      if (d > 140) { for (const n of list) this.pop.remove(n); list = []; }
+      else if (d < 80 && d > 18 && list.length < 2 && Math.random() < 0.5) {
+        const rx = -st.dz, rz = st.dx, px = st.px - rx * 0.7 + (list.length ? st.dx * 1.1 : 0), pz = st.pz - rz * 0.7 + (list.length ? st.dz * 1.1 : 0);
+        if (!this.traffic.seen(new THREE.Vector3(px, 1, pz)) || d > 45) {
+          const n = this.pop.spawn('civilian', px, pz, 0.2);
+          this.pop.runner.startAct(n, 'queue', 1e6, Math.atan2(st.dz, -st.dx)); list.push(n); this.stats.queued++;
+        }
+      }
+      this.waiting.set(st, list);
+    }
+  }
   update(dt: number, focus: THREE.Vector3) {
+    this.tendStops(dt, focus);
     this.spawnT -= dt;
     for (const run of this.runs) {
       const car = run.car;

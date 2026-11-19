@@ -247,18 +247,18 @@ export class Population {
         const e = nd.edges[Math.floor(Math.random() * nd.edges.length)];
         if (e.crossing) continue;
         const to = nodes[e.to]; const t = Math.random();
-        const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2, nd.z + (to.z - nd.z) * t);
+        const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2 + (nd.y ?? 0) + ((to.y ?? 0) - (nd.y ?? 0)) * t, nd.z + (to.z - nd.z) * t);
         const d = p.distanceTo(focus);
         if (d < (this.prewarming ? 10 : 35) || d > 120) continue;
         const dist = districtAt(this.city, p.x, p.z), dens = DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour);
         if (Math.random() > dens) continue;
         if (!this.prewarming && d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
-        const n = this.spawn('civilian', p.x, p.z, 0.2);
+        const n = this.spawn('civilian', p.x, p.z, p.y);
         n.node = nd.id; n.nextNode = Math.random() < 0.5 ? e.to : nd.id;
         // walking with friends: a quarter of arrivals come as a pair or trio
         if (Math.random() < 0.26 && civ + 1 < this.maxCivilians) {
           for (let k = 0, cnt = Math.random() < 0.3 ? 2 : 1; k < cnt; k++) {
-            const m = this.spawn('civilian', p.x + (k + 1) * 0.8, p.z + 0.5, 0.2);
+            const m = this.spawn('civilian', p.x + (k + 1) * 0.8, p.z + 0.5, p.y);
             m.node = n.node; m.nextNode = n.nextNode; m.buddy = n; m.speedMul = 1;
           }
         }
