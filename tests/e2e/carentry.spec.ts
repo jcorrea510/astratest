@@ -138,7 +138,7 @@ test('helicopter: walk in through the door, spin up, take off, fly forward and l
   expect(pads.length).toBeGreaterThanOrEqual(2);
   expect(pads.every((s: any) => s.heli)).toBe(true);
   expect(pads.some((s: any) => s.y > 12)).toBe(true); // a rooftop pad
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-405, 0.25, -250, 0); (window as any).__h = g.spawnHelicopter('news', -400, -250, 0); });
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-415, 0.25, -55, 0); (window as any).__h = g.spawnHelicopter('news', -410, -55, 0); });
   await step(page, 0.5);
   const g0 = await page.evaluate(() => { const h = (window as any).__h; return { y: h.position.y, grounded: h.grounded }; });
   expect(g0.grounded).toBe(true);
