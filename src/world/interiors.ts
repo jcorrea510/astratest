@@ -3,6 +3,7 @@
  * products, fridges, counter with register, back shelf behind the clerk, roll-down shutter. Built per store in a
  * local frame (+z = street side, origin at the footprint centre on the pavement) and returned as one group.
  */
+import { worldGlass } from './glass';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
@@ -205,20 +206,28 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const fuv = floor.geometry.attributes.uv; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * (W - 0.4) / 2.4, fuv.getY(i) * (D - 0.3) / 2.4);
   floor.position.y = 0.02; floor.receiveShadow = true; root.add(floor);
   // glazing
-  const glass = new THREE.Group();
-  for (const [x0, x1] of [[-hw + 0.1, doorX - doorW / 2 - 0.1], [doorX + doorW / 2 + 0.1, hw - 0.1]]) { const g = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 2.7), glassMat); g.position.set((x0 + x1) / 2, 1.85, fz); glass.add(g); }
+  const glass = new THREE.Group(); const paneMeshes: THREE.Mesh[] = [];
+  for (const [x0, x1] of [[-hw + 0.1, doorX - doorW / 2 - 0.1], [doorX + doorW / 2 + 0.1, hw - 0.1]]) { const g = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, 2.7), glassMat); g.position.set((x0 + x1) / 2, 1.85, fz); glass.add(g); paneMeshes.push(g); }
   root.add(glass);
   // sliding door leaves (glass with frames)
   const doors: THREE.Object3D[] = [];
   for (const sx of [-1, 1]) {
     const leaf = new THREE.Group();
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(doorW / 2, 2.9), glassMat); pane.position.y = 1.45; leaf.add(pane);
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(doorW / 2, 2.9), glassMat); pane.position.y = 1.45; leaf.add(pane); paneMeshes.push(pane);
     const fr = new TrimBuilder();
     fr.box(0, 1.45, 0, doorW / 2, 2.9, 0.04, 0, C('#3a3a3a'), T_METAL);
     const frGeo = fr.build();
     const frame = new THREE.LineSegments(new THREE.EdgesGeometry(frGeo), new THREE.LineBasicMaterial({ color: '#2a2a2a' })); leaf.add(frame);
     leaf.position.set(doorX + sx * doorW / 4, 0, fz + 0.04); leaf.userData.closedX = doorX + sx * doorW / 4; leaf.userData.dir = sx;
     root.add(leaf); doors.push(leaf);
+  }
+  { // register every shopfront pane as breakable world glass (panes are shot where they currently are)
+    root.updateMatrixWorld(true);
+    for (const m of paneMeshes) {
+      const wp = new THREE.Vector3(); m.getWorldPosition(wp); const par = (m.geometry as THREE.PlaneGeometry).parameters as { width: number; height: number };
+      const id = worldGlass.add(wp.x, wp.y, wp.z, def.yaw, par.width, par.height, m);
+      m.userData.paneId = id;
+    }
   }
   // roll-down shutter over the whole front, hidden until the store closes
   const sh = new TrimBuilder();

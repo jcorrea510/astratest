@@ -4,6 +4,7 @@
  * and corrugated warehouses. Surfaces go into chunked FacadeBuilders (procedural facade shader), details into
  * chunked TrimBuilders (cornices, sills, awnings, fire escapes, rooftop plant), plus sign/billboard placements.
  */
+import { worldGlass } from './glass';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
@@ -59,10 +60,38 @@ export interface StreetBuildingSpec {
   roofItems: number; awning: boolean; brand: number; balconies: boolean; trimColor: THREE.Color;
   /** ground floor left open for a walk-in store built elsewhere */
   hollow?: boolean;
+  /** brownstone stoop: raised parlour door with a stair and railings */
+  stoop?: boolean;
 }
 
-/** Mid-block street building (walk-up, mid-rise, beach block). */
+/** Mid-block street building (walk-up, mid-rise, beach block). Tall ones step back in wedding-cake tiers. */
 export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
+  if (s.floors < 9 || s.hollow || s.w < 8.5) { streetBuildingBlock(ctx, s); return; }
+  const r = new Rng(s.seed + 91);
+  const cuts = s.floors >= 15 ? [Math.round(s.floors * 0.45), Math.round(s.floors * 0.75)] : [Math.round(s.floors * r.range(0.55, 0.7))];
+  let cur = { ...s };
+  let used = 0;
+  for (let t = 0; t <= cuts.length; t++) {
+    const end = t < cuts.length ? cuts[t] : s.floors;
+    const fl = end - used;
+    if (t === 0) streetBuildingBlock(ctx, { ...cur, floors: fl, roofItems: 0, fireEscape: s.fireEscape && fl >= 3, cornice: s.cornice === 'none' ? 'none' : 'simple' });
+    else streetBuildingBlock(ctx, { ...cur, floors: fl, groundH: 0, ground: 'blank', awning: false, balconies: false, fireEscape: false, stoop: false, roofItems: t === cuts.length ? s.roofItems : 0, cornice: t === cuts.length ? s.cornice : 'simple' });
+    used = end;
+    if (t < cuts.length) {
+      const fi = r.range(1.6, 3.2), ri = r.range(0.6, 1.6);
+      const sl = cur.exposed[3] ? r.range(1.2, 2.6) : 0, sr = cur.exposed[1] ? r.range(1.2, 2.6) : 0;
+      const nw = cur.w - sl - sr, nd = cur.d - fi - ri;
+      const Hcur = cur.base + cur.groundH + fl * cur.floorH;
+      if (nw < 5 || nd < 5) { streetBuildingBlock(ctx, { ...cur, floors: s.floors - used, groundH: 0, ground: 'blank', awning: false, balconies: false, fireEscape: false, stoop: false, roofItems: s.roofItems, base: Hcur }); return; }
+      const top = Hcur;
+      const ox = (sl - sr) / 2, oz = (ri - fi) / 2;
+      const c = Math.cos(cur.yaw), sn = Math.sin(cur.yaw);
+      cur = { ...cur, cx: cur.cx + ox * c + oz * sn, cz: cur.cz - ox * sn + oz * c, w: nw, d: nd, base: top, groundH: 0, ground: 'blank' };
+    }
+  }
+}
+
+function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
   const r = new Rng(s.seed);
   const fb = ctx.fac.at(s.cx, s.cz), tb = ctx.trim.at(s.cx, s.cz);
   const { L, c: cy, s: sy } = frame(s.cx, s.cz, s.yaw);
@@ -90,6 +119,7 @@ export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
   fb.flat(s.cx, s.cz, s.w, s.d, H, s.yaw, C('#5f5c58'), { ...ROOF, seed: s.seed % 997 });
   innerWalls(fb, s.cx, s.cz, s.w - 0.5, s.d - 0.5, H, top, s.yaw, s.color, solid);
   if (s.hollow) ctx.physics.addStaticBox(s.cx, (top + s.base + s.groundH) / 2, s.cz, hw, (top - s.base - s.groundH) / 2, hd, s.yaw);
+  else if (s.groundH === 0) ctx.physics.addStaticBox(s.cx, (top + s.base) / 2, s.cz, hw, (top - s.base) / 2, hd, s.yaw);
   else ctx.physics.addStaticBox(s.cx, top / 2, s.cz, hw, top / 2, hd, s.yaw);
 
   const tc = s.trimColor;
@@ -133,6 +163,10 @@ export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
     const p = L(0, hd + 0.1);
     ctx.signs.push({ x: p.x, y: s.base + s.groundH - 0.42, z: p.z, yaw: s.yaw, w: sw, h: sw * 0.25 > 0.75 ? 0.75 : sw * 0.25, idx: s.brand });
     pt(0, s.base + s.groundH - 0.42, hd + 0.05, sw + 0.2, 0.86, 0.08, C('#1e1e1e'), T_METAL);
+    { // real shop glass: one pane per bay (street side), shattered by bullets via worldGlass
+      const B = bays(s.w - 0.4, 2.6); const gy0 = s.base + 0.55, gy1 = s.base + s.groundH - 0.95;
+      for (let i = 0; i < B.n; i++) { const q = L(B.at(i), hd + 0.04); worldGlass.addOverlay(q.x, (gy0 + gy1) / 2, q.z, s.yaw, B.cw - 0.25, gy1 - gy0); }
+    }
     if (s.awning) {
       const ac = C(['#7a1f1f', '#1f4e3d', '#22305a', '#5a3a1f', '#6b1f4f', '#2b2b2b', '#a8551c'][r.int(0, 6)]);
       const aw = s.w - 0.6, depth = 1.5, y = s.base + s.groundH - 1.05;
@@ -147,6 +181,19 @@ export function streetBuilding(ctx: BuildCtx, s: StreetBuildingSpec) {
     pt(dx, s.base + 2.45, hd + 0.04, 1.15, 0.28, 0.06, C('#f3d9a0'), T_NIGHTGLOW(1.6));
     pt(dx, s.base + 2.75, hd + 0.3, 1.6, 0.12, 0.6, tc, T_STONE);
     pt(dx, s.base + 0.08, hd + 0.35, 1.6, 0.16, 0.7, C('#9a958c'), T_STONE);
+    if (s.stoop && s.ground === 'resi') {
+      // brownstone stoop: raised parlour door, stone stair with cheek walls and iron railings
+      const stone = C('#8f877b'), iron = C('#1f1f21');
+      pt(dx, s.base + 1.2 + 1.15, hd + 0.05, 1.15, 2.3, 0.08, C('#2a1d17'), [0.5, 0.1, 0, 0]);
+      pt(dx, s.base + 0.6, hd + 0.5, 1.9, 1.2, 1.0, stone, T_STONE);
+      for (let k = 0; k < 6; k++) pt(dx, s.base + (6 - k) * 0.1, hd + 1.0 + k * 0.3 + 0.15, 1.7, (6 - k) * 0.2, 0.3, stone, T_STONE);
+      for (const sx of [-0.88, 0.88]) {
+        const pa = L(dx + sx, hd + 1.0), pb = L(dx + sx, hd + 2.8);
+        tb.beam(pa.x, s.base + 2.15, pa.z, pb.x, s.base + 0.95, pb.z, 0.025, 0.025, iron, T_IRON);
+        tb.beam(pa.x, s.base + 1.2, pa.z, pa.x, s.base + 2.2, pa.z, 0.03, 0.03, iron, T_IRON);
+        tb.beam(pb.x, s.base + 0.0, pb.z, pb.x, s.base + 1.0, pb.z, 0.03, 0.03, iron, T_IRON);
+      }
+    }
     if (s.ground === 'lobby') ctx.signs.push({ ...(L(dx, hd + 0.62)), y: s.base + 3.1, yaw: s.yaw, w: 2.4, h: 0.4, idx: s.brand });
   }
   // fire escape on the front

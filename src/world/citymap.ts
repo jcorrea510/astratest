@@ -38,8 +38,8 @@ export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 620 };
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
 export const STREET_NAMES = ['North Crest St', '1st St', '2nd St', '3rd St', 'Sunset Blvd', '5th St', '6th St', 'Boardwalk St', 'Coastal Dr'];
 
-export function lanesForAvenue(i: number): 1 | 2 { return i === 4 || i === 9 ? 2 : 1; }
-export function lanesForStreet(j: number): 1 | 2 { return j === 4 || j === 8 ? 2 : 1; }
+export function lanesForAvenue(_i: number): 1 | 2 { return 2; } // two lanes each way everywhere (Manhattan-style)
+export function lanesForStreet(_j: number): 1 | 2 { return 2; }
 export function halfWidth(lanes: number): number { return lanes * LANE_WIDTH + 0.8; }
 
 export interface V2 { x: number; z: number }
@@ -51,6 +51,8 @@ export interface Lot { id: number; blockId: number; /** lots outside the grid (b
 export interface Lane {
   id: number; points: V2[]; length: number; cum: number[]; next: number[]; connector: boolean;
   intersection: number; axis: 'x' | 'z'; speed: number; lane: number; lanes: number; roadId: number;
+  /** same-direction neighbour lanes a driver may change into (road lanes only; lane 0 is nearest the centre line) */
+  leftLane?: number; rightLane?: number;
   /** surface height per point (absent = street level); freeway, ramps and hill roads carry it */
   ys?: number[];
 }
@@ -183,30 +185,47 @@ export function generateCity(seed = 1977): CityMap {
       continue;
     }
     const kind: LotKind = b.district === 'brickline' ? 'brownstone' : b.district === 'strand' || b.district === 'hillside' ? 'pastel' : rng.chance(0.5) ? 'midrise' : 'brownstone';
-    const frontage = 10.5;
-    // sides: north (faces -z), south (+z), west (-x), east (+x). rot = yaw so model front (+z) faces the street.
-    const sides: { ax: 'x' | 'z'; fixed: number; from: number; to: number; rot: number }[] = [
-      { ax: 'x', fixed: iz0, from: ix0, to: ix1, rot: Math.PI },
-      { ax: 'x', fixed: iz1, from: ix0, to: ix1, rot: 0 },
-      { ax: 'z', fixed: ix0, from: iz0 + 11, to: iz1 - 11, rot: -Math.PI / 2 },
-      { ax: 'z', fixed: ix1, from: iz0 + 11, to: iz1 - 11, rot: Math.PI / 2 },
-    ];
-    for (const s of sides) {
-      const len = s.to - s.from;
-      const n = Math.floor(len / frontage);
-      const pad = (len - n * frontage) / 2;
-      const gap = rng.int(0, n - 1); // one driveway / alley per side
-      for (let k = 0; k < n; k++) {
-        if (k === gap && n > 3) continue;
-        const t = s.from + pad + frontage * (k + 0.5);
-        const depth = 10;
-        const inward = s.ax === 'x' ? (s.rot === 0 ? -1 : 1) : (s.rot === Math.PI / 2 ? -1 : 1);
-        const x = s.ax === 'x' ? t : s.fixed + inward * depth / 2;
-        const z = s.ax === 'x' ? s.fixed + inward * depth / 2 : t;
-        const lk: LotKind = kind === 'midrise' && rng.chance(0.4) ? 'brownstone' : kind;
-        lots.push({ id: lots.length, blockId: b.id, x, z, w: frontage, d: depth, rot: s.rot, kind: lk, height: 0, seed: rng.int(0, 1e9) });
+    // Manhattan-style lots: varied frontages and depths, a height per lot, the odd tower, corner buildings first
+    const WIDTHS = [6.5, 7.5, 7.5, 9, 10.5, 10.5, 12, 14, 17];
+    const pickHeight = (lk: LotKind): number => {
+      const d = b.district;
+      if (d === 'strand' || d === 'seacliff') return rng.range(7, 14);
+      if (d === 'hillside') return 0;
+      if (d === 'brickline' || lk === 'brownstone') return rng.chance(0.12) ? rng.range(26, 34) : rng.range(14, 24);
+      if (d === 'oldtown') return rng.range(14, 28);
+      // midtown / other grid blocks: mid-rise slabs with taller landmark-ish buildings
+      return rng.chance(0.2) ? rng.range(46, 78) : rng.range(22, 42);
+    };
+    type Side = { ax: 'x' | 'z'; fixed: number; from: number; to: number; rot: number };
+    const cornerDepth: Record<string, number> = {};
+    const place = (s: Side, name: string) => {
+      const inward = s.ax === 'x' ? (s.rot === 0 ? -1 : 1) : (s.rot === Math.PI / 2 ? -1 : 1);
+      let t = s.from; let first = true; let lastDepth = 10;
+      while (s.to - t > 5.5) {
+        const rem = s.to - t;
+        let wdt = rng.pick(WIDTHS);
+        if (rem - wdt < 6.5) wdt = rem;
+        if (wdt > 20) wdt = rem / 2;
+        const depth = Math.min(rng.range(11, 17.5), wdt < 8 ? 14 : 17.5);
+        const tc = t + wdt / 2;
+        const x = s.ax === 'x' ? tc : s.fixed + inward * depth / 2;
+        const z = s.ax === 'x' ? s.fixed + inward * depth / 2 : tc;
+        let lk: LotKind = kind === 'midrise' && rng.chance(0.4) ? 'brownstone' : kind;
+        let height = pickHeight(lk);
+        if (b.district === 'midtown' && wdt >= 12 && rng.chance(0.2)) { lk = 'tower'; height = rng.range(40, 78) / 1.45; }
+        if (first) cornerDepth[name + 'a'] = depth;
+        lastDepth = depth; first = false;
+        lots.push({ id: lots.length, blockId: b.id, x, z, w: wdt, d: depth, rot: s.rot, kind: lk, height, seed: rng.int(0, 1e9) });
+        t += wdt;
+        if (rng.chance(0.06) && s.to - t > 14) t += 3; // a narrow alley
       }
-    }
+      cornerDepth[name + 'b'] = lastDepth;
+    };
+    // sides: north (faces -z), south (+z), west (-x), east (+x). rot = yaw so model front (+z) faces the street.
+    place({ ax: 'x', fixed: iz0, from: ix0, to: ix1, rot: Math.PI }, 'N');
+    place({ ax: 'x', fixed: iz1, from: ix0, to: ix1, rot: 0 }, 'S');
+    place({ ax: 'z', fixed: ix0, from: iz0 + cornerDepth.Na, to: iz1 - cornerDepth.Sa, rot: -Math.PI / 2 }, 'W');
+    place({ ax: 'z', fixed: ix1, from: iz0 + cornerDepth.Nb, to: iz1 - cornerDepth.Sb, rot: Math.PI / 2 }, 'E');
   }
 
   // Lanes: road lanes then intersection connectors
@@ -234,6 +253,7 @@ export function generateCity(seed = 1977): CityMap {
         lanes.push(lane);
         push(`${endInter.id}:in`, lane.id);
         push(`${startInter.id}:out`, lane.id);
+        if (k > 0) { lane.leftLane = lane.id - 1; lanes[lane.id - 1].rightLane = lane.id; }
       }
     }
   }
@@ -258,8 +278,9 @@ export function generateCity(seed = 1977): CityMap {
         const cross = adx * bdz - adz * bdx; // >0 -> b is to the right of a (x east, z south)
         if (relaxed) { if (b.lane !== (cross > 0 ? b.lanes - 1 : 0) && !straight) continue; }
         else if (straight) { if (b.lane !== Math.min(a.lane, b.lanes - 1) && !(inter.ix < 0 && a.lanes < b.lanes)) continue; }
-        else if (cross > 0) { if (a.lane !== a.lanes - 1 || (b.lane !== b.lanes - 1 && !(inter.ix < 0))) continue; }
-        else { if (a.lane !== 0 || (b.lane !== 0 && !(inter.ix < 0))) continue; }
+        else if (inter.ix >= 0) { if (b.lane !== Math.min(a.lane, b.lanes - 1)) continue; } // concentric turns from either lane (no crossing paths)
+        else if (cross > 0) { if (a.lane !== a.lanes - 1) continue; }
+        else { if (a.lane !== 0) continue; }
         const pts: V2[] = [];
         if (straight) pts.push(ae, bs);
         else {
@@ -337,7 +358,7 @@ export function surfaceAt(city: CityMap, x: number, z: number): Surface {
   if (x > HARBOR_X && z > -60 && x < SEA_EDGE_X + 40) return 'water';
   if (x > CHANNEL.x0 && x < CHANNEL.x1 && z <= -60) return 'water';
   if (x < WEST.x0 || z < STREETS[0] - 30 || x > SEA_EDGE_X + 40) return 'offmap';
-  if (x < AVENUES[0] - 5) {
+  if (x < AVENUES[0] - 9) {
     for (const p of city.paths) if (p.kind === 'street' && pathHeightAt(p, x, z).d < p.half + SIDEWALK) return 'sidewalk';
     return 'park';
   }

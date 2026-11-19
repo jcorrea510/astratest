@@ -72,7 +72,7 @@ describe('lane routing', () => {
         cur = city.lanes[best];
       }
       expect(reached, `reached ${t.x},${t.z}`).toBe(true);
-      expect(driven).toBeLessThan(500);
+      expect(driven, `to ${t.x},${t.z}`).toBeLessThan(500);
     }
   });
 });

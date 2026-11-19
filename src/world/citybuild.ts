@@ -1,4 +1,5 @@
 /** Builds Port Meridian's meshes and static colliders from the pure city layout. */
+import { worldGlass } from './glass';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
@@ -257,6 +258,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const marks = new THREE.Mesh(mk.build(), markMat); marks.receiveShadow = true; root.add(marks);
 
   // ---------- Buildings ----------
+  worldGlass.reset();
   const fac = new Chunked(250, () => new FacadeBuilder());
   const signs: SignSpec[] = [], billboards: BillboardSpec[] = [], helipads: Helipad[] = [];
   const merged = mergeLots(city);
@@ -273,7 +275,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     if (policeLot(lot)) continue;
     if (lot.kind === 'tower') {
       const rank = towerLots.indexOf(lot);
-      tower(ctx, { cx: lot.x, cz: lot.z, w: lot.w, d: lot.d, base: CURB_HEIGHT, height: lot.height * 1.45, seed: lot.seed, helipad: rank >= 0 && rank < 3 ? padNames[rank] : null });
+      tower(ctx, { cx: lot.x, cz: lot.z, w: lot.w, d: lot.d, base: CURB_HEIGHT, height: lot.height * 1.45, seed: lot.seed, helipad: rank >= 0 && rank < 3 ? padNames[rank] : null, yaw: lot.blockId >= 0 && city.blocks[lot.blockId].district !== 'heights' ? lot.rot + Math.PI : 0 });
       continue;
     }
     if (b.district === 'hillside') {
@@ -295,15 +297,15 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       continue;
     }
     if (beach) {
-      const floors = r.int(2, 4);
+      const floors = lot.height > 0 ? Math.max(2, Math.round((lot.height - 4) / 3.2)) : r.int(2, 4);
       streetBuilding(ctx, { ...common, floors, floorH: 3.2, groundH: 4.0, mat: 1, color: C(r.pick(PASTEL_COLORS)), ground: r.chance(0.6) ? 'shop' : 'lobby', winW: 1.6, winH: 1.6, sill: 0.9, cellW: 2.8, cornice: 'bands', fireEscape: false, lit: 0.4, roofItems: r.int(1, 3), awning: r.chance(0.6), balconies: r.chance(0.5), trimColor: C('#f4efe6') });
     } else if (brick) {
-      const floors = lot.w > 15 ? r.int(4, 6) : r.int(2, 5);
+      const floors = lot.height > 0 ? Math.max(2, Math.round((lot.height - 4.2) / 3.25)) : lot.w > 15 ? r.int(4, 6) : r.int(2, 5);
       const painted = r.chance(0.18);
-      streetBuilding(ctx, { ...common, floors, floorH: 3.25, groundH: 4.2, mat: painted ? 6 : 0, color: painted ? C(r.pick(PLASTER_COLORS)) : C(r.pick(BRICK_COLORS)), ground: r.chance(0.6) ? 'shop' : 'resi', winW: 1.15, winH: 1.85, sill: 0.8, cellW: 2.6, cornice: r.chance(0.75) ? 'heavy' : 'simple', fireEscape: r.chance(0.45), lit: 0.42, roofItems: r.int(1, 4), awning: r.chance(0.5), balconies: false, trimColor: C(r.pick(['#d9d2c3', '#c9c1b0', '#e8e2d4', '#8f8a80', '#3a3a3a'])) });
+      streetBuilding(ctx, { ...common, floors, floorH: 3.25, groundH: 4.2, mat: painted ? 6 : 0, color: painted ? C(r.pick(PLASTER_COLORS)) : C(r.pick(BRICK_COLORS)), ground: r.chance(0.6) ? 'shop' : 'resi', stoop: lot.w < 11 && r.chance(0.7), winW: 1.15, winH: 1.85, sill: 0.8, cellW: 2.6, cornice: r.chance(0.75) ? 'heavy' : 'simple', fireEscape: r.chance(0.45), lit: 0.42, roofItems: r.int(1, 4), awning: r.chance(0.5), balconies: false, trimColor: C(r.pick(['#d9d2c3', '#c9c1b0', '#e8e2d4', '#8f8a80', '#3a3a3a'])) });
     } else {
       const mat = r.pick([1, 2, 3, 3, 2, 7]);
-      const floors = r.int(5, 10);
+      const floors = lot.height > 0 ? Math.max(3, Math.round((lot.height - 4.6) / 3.4)) : r.int(5, 10);
       const color = C(mat === 1 ? r.pick(PLASTER_COLORS) : mat === 2 ? r.pick(CONCRETE_COLORS) : mat === 3 ? r.pick(STONE_COLORS) : r.pick(['#8a9298', '#6f7880', '#a7a29a']));
       streetBuilding(ctx, { ...common, floors, floorH: 3.4, groundH: 4.6, mat, color, ground: r.chance(0.7) ? 'shop' : 'lobby', winW: mat === 7 ? 2.2 : 1.5, winH: 2.0, sill: 0.85, cellW: mat === 7 ? 2.6 : 2.8, cornice: r.chance(0.5) ? 'simple' : 'bands', fireEscape: false, lit: 0.45, roofItems: r.int(2, 4), awning: r.chance(0.35), balconies: mat === 1 && r.chance(0.5), trimColor: C(r.pick(['#d5d0c6', '#9a958c', '#5a5c5e'])) });
     }
@@ -642,6 +644,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   if (bg.length) { const bm = new THREE.Mesh(mergeGeoms(bg), bbMat); root.add(bm); }
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
   void T_PAINT; void T_NIGHTGLOW;
+  root.add(worldGlass.finishOverlay());
   return { root, lampHeads, signalHeads, signalLamps, chunkMeshes, ferris, water, helipads };
 }
 
