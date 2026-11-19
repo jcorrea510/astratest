@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomLook, resolveLook, SKIN_TONES, PLAYER_DEFAULT_LOOK } from './look';
 import { ACTIONS, UAL_CLIPS, samplePose, sym } from './actions';
-import { Voices } from '../audio/voices';
 
 describe('people looks', () => {
   it('random pedestrians cover both sexes, realistic heights, all skin tones and many styles', () => {
@@ -39,16 +38,5 @@ describe('actions', () => {
     expect(sym({ armL: [10, 20, 30] }).armR).toEqual([10, -20, -30]);
     const out = samplePose([[0, { head: [0, 0, 0] }], [1, { head: [20, 0, 0] }]], 0.5, new Map());
     expect(out.get('head')![0]).toBeCloseTo(10);
-  });
-});
-
-describe('voices', () => {
-  it('stays silent without speech/audio (headless) and never throws', () => {
-    const v = new Voices();
-    const sp = { pos: { x: 0, y: 0, z: 0 }, sex: 'f' as const, voiceSeed: 1 };
-    expect(v.say(sp, 'hey')).toBe(false);
-    expect(v.say(sp, 'scream')).toBe(false);
-    v.attach(() => null, () => ({ x: 100, y: 0, z: 0 }));
-    expect(v.say(sp, 'help')).toBe(false); // too far
   });
 });

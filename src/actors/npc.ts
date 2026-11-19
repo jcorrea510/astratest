@@ -38,6 +38,10 @@ export class Npc {
   far = false;
   animAcc = 0;
   arrestT = 0;
+  /** smoothed steering for fighters (no jitter / instant direction flips) */
+  mdir = new THREE.Vector3(); mspeed = 0;
+  /** holding a covered position: kneels while waiting */
+  crouching = false;
   dropMoney = 0;
   constructor(physics: Physics, tpl: HumanTemplate, look: Look, public role: Role, x: number, z: number, y = 0.2) {
     this.char = new Character(physics, tpl, look, role === 'police' ? 'police' : role === 'gang' ? 'gang' : 'civilian', x, z, y);
@@ -141,7 +145,7 @@ export class NpcBrainRunner {
       case 'chase': {
         const tgt = n.target ?? env.player;
         tv.copy(n.lastSeen).sub(c.pos); tv.y = 0; const d = tv.length();
-        if (d > 1.2) { desired.copy(tv.normalize()); speed = n.role === 'police' ? 5.8 : 5.2; }
+        if (d > 1.2) { desired.copy(tv.normalize()); speed = n.role === 'police' ? (d > 25 ? 5.8 : d > 7 ? 4.4 : 2.2) : 5.2; }
         if (n.role === 'police' && !this.lethal() && tgt.alive && !tgt.inVehicle && c.pos.distanceTo(tgt.pos) < 1.8) {
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           if (tgt.speed < 2.5) { n.arrestT += dt; if (n.arrestT > 1.6) { n.arrestT = 0; env.onArrest(n); } } else n.arrestT = Math.max(0, n.arrestT - dt);
@@ -152,6 +156,8 @@ export class NpcBrainRunner {
       case 'combat': {
         const tgt = n.target ?? env.player;
         const d = c.pos.distanceTo(tgt.pos);
+        // officers use guns once force is lethal: nobody runs in to trade punches with an armed or shooting suspect
+        if (n.role === 'police' && n.weapon === 'fists' && this.lethal()) n.arm('pistol', env.scene);
         const w = WEAPONS[n.weapon];
         const seeing = t - n.seenTime < 0.6;
         const ideal = w.melee ? 1.2 : w.id === 'shotgun' ? 9 : w.id === 'rifle' ? 22 : 15;
@@ -162,9 +168,14 @@ export class NpcBrainRunner {
           if (w.melee) n.goal = tgt.pos.clone();
           else if (lowHealth && !n.coverPoint) { n.coverPoint = this.findCover(n, tgt.pos); n.goal = n.coverPoint ?? c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(6)); }
           else if (!seeing) n.goal = n.lastSeen.clone(); // push to last known position (flank)
-          else if (d > ideal * 1.4) n.goal = tgt.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(ideal));
-          else if (n.stateT > 2.5 && Math.random() < 0.35) { // strafe or take cover between bursts
-            const cover = Math.random() < 0.5 ? this.findCover(n, tgt.pos) : null;
+          else if (d > ideal * 1.4) { // close to firing range, each officer from a different angle (flanking)
+            const away = tv.copy(c.pos).sub(tgt.pos).setY(0).normalize();
+            const flank = ((n.id % 3) - 1) * 0.6;
+            const ca = Math.cos(flank), sa = Math.sin(flank);
+            n.goal = tgt.pos.clone().add(new THREE.Vector3(away.x * ca - away.z * sa, 0, away.x * sa + away.z * ca).multiplyScalar(ideal));
+          }
+          else if (n.stateT > 2.5 && Math.random() < (n.role === 'police' ? 0.5 : 0.35)) { // strafe or take cover between bursts
+            const cover = Math.random() < 0.6 ? this.findCover(n, tgt.pos) : null;
             if (cover && cover.distanceTo(tgt.pos) < ideal * 2) n.goal = cover;
             else { const side = tv.copy(tgt.pos).sub(c.pos).setY(0).normalize(); n.goal = c.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * this.rng.range(2, 5))); }
             n.stateT = 0;
@@ -173,8 +184,9 @@ export class NpcBrainRunner {
         }
         if (n.goal) {
           tv.copy(n.goal).sub(c.pos); tv.y = 0; const gd = tv.length();
-          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : seeing ? 3.2 : 4.6; } else n.goal = null;
+          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : gd > 14 ? 5 : seeing ? (gd > 4 ? 3.6 : 2) : 4.2; } else { if (n.goal === n.coverPoint || (n.role === 'police' && seeing)) n.crouching = true; n.goal = null; }
         }
+        if (speed > 0) n.crouching = false;
         if (w.melee) { if (d < 1.6) this.meleeAttack(n, tgt); faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); break; }
         // Shooting
         if (seeing && d < w.range) {
@@ -193,6 +205,13 @@ export class NpcBrainRunner {
       }
       case 'scripted': case 'passenger': case 'dead': break;
     }
+    // fighters ease their heading and speed (no jitter, no teleport-turns)
+    if (n.role !== 'civilian' && (n.brain === 'combat' || n.brain === 'chase')) {
+      const k = 1 - Math.exp(-dt * 5);
+      if (speed > 0) { if (n.mspeed < 0.2) n.mdir.copy(desired); else n.mdir.lerp(desired, k).normalize(); }
+      n.mspeed += (speed - n.mspeed) * (1 - Math.exp(-dt * 4));
+      if (n.mspeed < 0.15) { n.mspeed = 0; speed = 0; } else { desired.copy(n.mdir); speed = n.mspeed; }
+    } else n.mspeed = speed;
     // Movement with simple stuck recovery
     if (speed > 0) {
       if (n.sideT > 0) { n.sideT -= dt; const s = n.sideDir; desired.set(desired.x * 0.3 - desired.z * s, 0, desired.z * 0.3 + desired.x * s).normalize(); }
@@ -212,7 +231,8 @@ export class NpcBrainRunner {
     if (yaw !== null) c.faceTowards(yaw, aiming ? 10 : 7, dt);
     c.twist = 0;
     const h = c.human;
-    if (n.brain !== 'cower' && n.brain !== 'scripted' && (h.currentState === 'crouch' || h.currentState === 'cower')) h.setState('loco');
+    if (n.crouching && n.brain === 'combat' && speed === 0 && n.role === 'police') { if (h.currentState !== 'crouch') h.setState('crouch'); }
+    else if (n.brain !== 'cower' && n.brain !== 'scripted' && (h.currentState === 'crouch' || h.currentState === 'cower')) h.setState('loco');
     // panicked running: arms up for the first seconds of a flight
     if (n.role === 'civilian') {
       const panicking = n.brain === 'flee' && n.stateT < 3.5 && c.speed > 2.5;

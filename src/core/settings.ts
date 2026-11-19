@@ -5,9 +5,9 @@ export interface QualityPreset {
   drawDistance: number; pedestrians: number; traffic: number; pointLights: number; particles: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 14, traffic: 12, pointLights: 0, particles: 300 },
-  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 22, traffic: 18, pointLights: 4, particles: 700 },
-  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 30, traffic: 24, pointLights: 8, particles: 1200 },
+  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 45, traffic: 18, pointLights: 0, particles: 300 },
+  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 90, traffic: 32, pointLights: 4, particles: 700 },
+  high: { pixelRatio: 1.5, shadowMap: 4096, shadowRange: 52, bloom: true, msaa: 4, drawDistance: 420, pedestrians: 130, traffic: 44, pointLights: 8, particles: 1200 },
 };
 
 export type Action =

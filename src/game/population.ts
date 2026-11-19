@@ -8,7 +8,6 @@ import type { Character } from '../actors/character';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
-import { VOICES, type VoiceBus } from '../audio/voices';
 
 let LOOK_SEED = 1000;
 export class Population {
@@ -23,8 +22,6 @@ export class Population {
   onKilled: ((n: Npc, by: Character | null, how: 'shot' | 'melee' | 'vehicle' | 'explosion') => void) | null = null;
   constructor(private scene: THREE.Scene, private tpl: HumanTemplate, private city: CityMap, private env: NpcEnv, private audio: GameAudio) {
     this.runner = new NpcBrainRunner(env);
-    const a = audio as GameAudio & { voiceBus?: () => VoiceBus | null };
-    VOICES.attach(() => a.voiceBus?.() ?? null, () => env.player.pos);
   }
   /** Where the player is pointing a gun (set by the game each frame; null when not aiming). */
   aimProvider: (() => { from: THREE.Vector3; dir: THREE.Vector3 } | null) | null = null;
@@ -39,11 +36,10 @@ export class Population {
       if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.far) continue;
       const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
       if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender') {
-        // shoulder-checked: stumble, glare, complain
+        // shoulder-checked: stumble, glare
         if (d < 0.8 && p.speed > 5 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
         else c.yaw = Math.atan2(-dx, -dz);
-        VOICES.say(c, Math.random() < 0.5 ? 'watch' : 'hey');
-      } else if (n.role === 'gang' && d < 1.2 && p.speed > 3.2) VOICES.say(c, 'gang');
+      }
       if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower') {
         const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
         const along = cx * aim.dir.x + cy * aim.dir.y + cz * aim.dir.z;
@@ -51,7 +47,6 @@ export class Population {
           const off = Math.hypot(cx - aim.dir.x * along, cy - aim.dir.y * along, cz - aim.dir.z * along);
           if (off < 0.9 + along * 0.02) {
             if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
-            VOICES.say(c, Math.random() < 0.75 ? 'dontShoot' : 'what', true);
           }
         }
       }
@@ -77,8 +72,6 @@ export class Population {
         n.brain = Math.random() < 0.25 && d > 8 ? 'cower' : 'flee'; n.stateT = 0;
         n.fleeFrom.copy(source ? source.pos : at);
         if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
-        const r = Math.random();
-        VOICES.say(n.char, d < radius * 0.5 && r < 0.45 ? 'scream' : r < 0.6 ? 'help' : r < 0.75 ? 'what' : 'panic');
       } else if (n.brain === 'flee') { n.fleeFrom.copy(source ? source.pos : at); n.stateT = Math.min(n.stateT, 2); }
     }
   }
@@ -100,7 +93,6 @@ export class Population {
         if (!test(n.char)) continue;
         const vel = v.phys.body.linvel();
         n.char.knockT = 1;
-        VOICES.say(n.char, sp > 8 ? 'scream' : 'oof', true);
         if (sp > 8) {
           n.char.damage(sp * 9, v.driver, this.env.time());
           n.char.vel.set(vel.x * 0.6, 3, vel.z * 0.6);
@@ -131,7 +123,6 @@ export class Population {
         if (Math.abs(lat) > 2.2) continue;
         if (n.brain !== 'flee') {
           n.brain = 'flee'; n.stateT = 4; // short dash
-          VOICES.say(n.char, Math.random() < 0.6 ? 'whoa' : 'scream');
           n.fleeFrom.set(n.pos.x - f.z * Math.sign(lat || 1) * 5, 0, n.pos.z + f.x * Math.sign(lat || 1) * 5);
           if (Math.random() < 0.4 && !n.char.human.busy) n.char.human.playOnce('Roll', 'full', 0.05);
         }
@@ -151,7 +142,6 @@ export class Population {
     }
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, quality: number) {
-    VOICES.update(dt);
     this.maxCivilians = quality;
     // Visuals (throttled animation far away). The skinned meshes are not frustum-culled by three (their bounds are the bind
     // pose), so people outside the view are hidden here: that saves two draw calls (plus shadows) per person behind the camera.
@@ -170,8 +160,8 @@ export class Population {
       h.root.visible = d < 160;
       if (!h.root.visible) continue;
       n.animAcc += dt;
-      const every = d > 90 ? 0.12 : d > 45 ? 0.05 : 0;
-      if (n.animAcc >= every) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
+      const every = d > 90 ? 0.2 : d > 60 ? 0.1 : d > 32 ? 0.05 : 0;
+      if (n.animAcc >= every || !c.alive) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 40;
       const inView = d < 6 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 2.4));
@@ -188,10 +178,10 @@ export class Population {
     this.spawnT -= dt;
     const civ = this.npcs.filter(n => n.role === 'civilian' && !n.persistent).length;
     if (this.spawnT <= 0 && civ < this.maxCivilians) {
-      this.spawnT = 0.15;
+      this.spawnT = 0.05;
       this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
       const nodes = this.city.pedNodes;
-      for (let tries = 0; tries < 8; tries++) {
+      for (let tries = 0; tries < 14; tries++) {
         const nd = nodes[Math.floor(Math.random() * nodes.length)];
         const e = nd.edges[Math.floor(Math.random() * nd.edges.length)];
         if (e.crossing) continue;

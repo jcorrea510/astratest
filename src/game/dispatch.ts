@@ -13,7 +13,6 @@ import type { Combat } from '../combat/combat';
 import type { CameraRig } from './camera';
 import type { Helicopter } from '../vehicles/helicopter';
 import type { Vehicle } from '../vehicles/vehicle';
-import { VOICES } from '../audio/voices';
 
 export type UnitKind = 'police' | 'fbi' | 'swat' | 'army' | 'tank';
 export const UNIT_KINDS: UnitKind[] = ['police', 'fbi', 'swat', 'army', 'tank'];
@@ -79,9 +78,10 @@ export class Dispatch {
 
   kindOf(car: AiCar): UnitKind { return this.kinds.get(car) ?? 'police'; }
   /** The unit kind that is missing for this wanted level, or null. */
-  nextNeeded(units: AiCar[], heat: number): UnitKind | null {
+  nextNeeded(units: AiCar[], heat: number, extra = 0): UnitKind | null {
     const want = wantedUnits(heat);
-    if (units.length >= 8) return null;
+    want.police += extra;
+    if (units.length >= 8 + extra) return null;
     // most serious first so the tank and the SWAT van are not starved by cruisers
     for (const k of ['tank', 'army', 'swat', 'fbi', 'police'] as UnitKind[]) if (units.filter(u => this.kindOf(u) === k).length < want[k]) return k;
     return null;
@@ -166,7 +166,7 @@ export class Dispatch {
   }
 
   // ------------------------------------------------------------------------------------------------ helicopter
-  updateHeli(dt: number, player: Character, heat: number, active: boolean) {
+  updateHeli(dt: number, player: Character, heat: number, active: boolean, vsHeli = false) {
     const h = this.hooks; if (!h) return;
     if (this.heli && (this.heli.destroyed || !this.pop || !active)) {
       if (!active || this.heli.destroyed) { this.dropHeli(); }
@@ -184,7 +184,7 @@ export class Dispatch {
     const err = wrap(Math.atan2(dx, dz) - b.yaw);
     b.input.yaw = THREE.MathUtils.clamp(err * 1.6, -1, 1);
     b.input.pitch = d > 28 && Math.abs(err) < 0.9 ? THREE.MathUtils.clamp((d - 28) / 50, 0.1, 1) : (d < 14 ? -0.25 : 0);
-    b.input.lift = THREE.MathUtils.clamp((pp.y + 42 - pos.y) * 0.25, -1, 1);
+    b.input.lift = THREE.MathUtils.clamp((pp.y + (vsHeli ? 10 : 42) - pos.y) * 0.25, -1, 1);
     // searchlight
     const night = h.night();
     if (this.light && this.beam) {
@@ -196,19 +196,69 @@ export class Dispatch {
         const dir = pp.clone().sub(from), len = dir.length(); dir.normalize();
         this.beam.position.copy(from).addScaledVector(dir, len / 2);
         this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-        this.beam.scale.set(len * 0.12, len, len * 0.12);
-        (this.beam.material as THREE.MeshBasicMaterial).opacity = 0.16 * Math.min(1, night * 1.5);
+        this.beam.scale.set(len * 0.05, len, len * 0.05);
+        (this.beam.material as THREE.MeshBasicMaterial).opacity = 0.045 * Math.min(1, night * 1.5);
       }
     }
     void dt; void heat;
   }
+  private footFireT = new Map<Npc, number>();
+  private heliBurst = 0; private heliGunT = 2; private heliRocketT = 7;
+  private tmpC = new THREE.Vector3(); private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
+  /**
+   * The player stole a helicopter: officers on the ground and the police helicopter shoot it down (real hit-scan bullets
+   * and rockets through combat, so the damage -> smoke -> crash chain of Helicopter applies).
+   */
+  attackHeli(dt: number, ph: Helicopter, foot: Npc[], heat: number) {
+    const h = this.hooks; if (!h || ph.destroyed) return;
+    const aim = this.tmpA.copy(ph.position);
+    for (const n of foot) {
+      if (!n.alive || n.weapon === 'fists' || n.char.inVehicle) continue;
+      let t = (this.footFireT.get(n) ?? Math.random() * 1.5) - dt;
+      if (t <= 0) {
+        const w = WEAPONS[n.weapon];
+        t = (w.auto ? 0.45 : 1.0) + Math.random() * 0.9;
+        const from = this.tmpB.set(n.pos.x, n.pos.y + 1.4, n.pos.z);
+        const dist = from.distanceTo(aim);
+        if (dist < 100 && dist > 6 && this.pop.runner.hasLOS(from, this.tmpC.copy(aim).sub(from).multiplyScalar(1 - 5 / dist).add(from))) { // stop short: the helicopter's own collider would block the ray
+          const dir = aim.clone().sub(from).normalize();
+          const e = 0.01 + dist * 0.0012;
+          dir.x += (Math.random() - 0.5) * e; dir.y += (Math.random() - 0.5) * e; dir.z += (Math.random() - 0.5) * e; dir.normalize();
+          n.char.yaw = Math.atan2(dir.x, dir.z);
+          h.combat.shoot(n.char, w, from, dir, w.aimSpread);
+          // tracer bullets alone rarely connect with a moving target: a share of shots count as hits
+          if (Math.random() < 0.2) ph.damage(w.damage * 0.8, aim.clone(), dir, n.char);
+        }
+      }
+      this.footFireT.set(n, t);
+    }
+    const heli = this.heli;
+    if (heli && !heli.destroyed) {
+      const shooter = foot.find(n => n.alive)?.char ?? this.pop.npcs.find(n => n.alive && n.role === 'police')?.char;
+      if (shooter) {
+        const from = heli.position.clone(); from.y -= 1;
+        const dir = aim.clone().sub(from); const dist = dir.length(); dir.normalize();
+        this.heliGunT -= dt;
+        if (this.heliBurst <= 0 && this.heliGunT <= 0 && dist < 130) { this.heliBurst = 6; this.heliGunT = 1.8; }
+        if (this.heliBurst > 0 && (this.heliBurst -= dt * 9) > 0) {
+          dir.x += (Math.random() - 0.5) * 0.03; dir.y += (Math.random() - 0.5) * 0.03; dir.z += (Math.random() - 0.5) * 0.03; dir.normalize();
+          h.combat.shoot(shooter, WEAPONS.rifle, from, dir, WEAPONS.rifle.aimSpread);
+        }
+        this.heliRocketT -= dt;
+        if (heat >= 4 && this.heliRocketT <= 0 && dist < 140 && dist > 20) {
+          this.heliRocketT = 9;
+          h.combat.launch(shooter, WEAPONS.rpg, from, dir, 0.01);
+        }
+      }
+    }
+  }
   private ensureLight() {
     if (this.light) return;
-    const l = new THREE.SpotLight('#eaf4ff', 900, 140, 0.16, 0.5, 1.4);
+    const l = new THREE.SpotLight('#eaf4ff', 170, 120, 0.075, 0.85, 1.6);
     l.castShadow = false; l.target = this.lightTarget; l.visible = false;
     this.scene.add(l, this.lightTarget);
     const g = new THREE.CylinderGeometry(0.12, 1, 1, 18, 1, true);
-    const m = new THREE.MeshBasicMaterial({ color: '#dfeeff', transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const m = new THREE.MeshBasicMaterial({ color: '#dfeeff', transparent: true, opacity: 0.04, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
     const beam = new THREE.Mesh(g, m); beam.frustumCulled = false; beam.visible = false; this.scene.add(beam);
     this.light = l; this.beam = beam;
   }
@@ -218,7 +268,7 @@ export class Dispatch {
   }
 
   // ------------------------------------------------------------------------------------------------ foot orders
-  shout(n: Npc, line: 'cop' = 'cop') { VOICES.say(n.char, line); }
+  shout(_n: Npc, _line: 'cop' = 'cop') { /* NPC voices removed */ }
 
   // ------------------------------------------------------------------------------------------------ arrest
   get arresting() { return this.arrest !== null; }
@@ -273,7 +323,7 @@ export class Dispatch {
 
   /** Despawns everything the dispatch owns. */
   standDown() {
-    this.kinds.clear(); this.crew.clear(); this.tankCd.clear();
+    this.kinds.clear(); this.crew.clear(); this.tankCd.clear(); this.footFireT.clear();
     this.dropHeli();
     if (!this.arrest) { this.pendingArrest = null; this.dragT = 0; }
   }

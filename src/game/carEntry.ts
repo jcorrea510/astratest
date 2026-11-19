@@ -16,7 +16,6 @@ import type { RAPIER } from '../core/physics';
 import { groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import type { Character } from '../actors/character';
 import type { Npc } from '../actors/npc';
-import { VOICES } from '../audio/voices';
 import { wrapAngle } from '../core/rng';
 import { Vehicle } from '../vehicles/vehicle';
 import type { Game } from './game';
@@ -246,7 +245,7 @@ export class CarEntry {
     // somebody nearby shouts (the owner?)
     let best: Npc | null = null, bd = 25;
     for (const n of g.pop.npcs) { if (!n.alive || n.char.inVehicle || n.role !== 'civilian') continue; const d = n.pos.distanceTo(v.position); if (d < bd) { bd = d; best = n; } }
-    if (best) { VOICES.say(best.char, 'myCar', true); best.char.human.playAction('point'); }
+    if (best) { best.char.human.playAction('point'); }
     v.doorsLocked = false;
   }
 
@@ -330,7 +329,6 @@ export class CarEntry {
     victim.human.playAction('pulled_out');
     const from = victim.human.root.position.clone();
     this.victims.push({ char: victim, npc, v, door, f, t: 0, dur: 0.75, from, to: pts.throwTo.clone(), yaw0: 0, yaw1: -f.sg * HALF_PI, thrown: true, puller });
-    VOICES.say(victim, Math.random() < 0.5 ? 'scream' : 'oof', true);
   }
   /** Passengers of a jacked car get out on their own side and run. */
   private passengersFlee(v: Enterable) {
@@ -347,7 +345,6 @@ export class CarEntry {
       const from = n.char.human.root.position.clone();
       const to = doorPoints(f, from).out;
       this.victims.push({ char: n.char, npc: n, v, door, f, t: 0, dur: 0.7, from, to, yaw0: 0, yaw1: f.sg * HALF_PI, thrown: false, puller: null });
-      VOICES.say(n.char, 'help', true);
     }
   }
 
@@ -622,11 +619,9 @@ export class CarEntry {
       if (vi.thrown && (n.role === 'gang' || (n.role === 'civilian' && Math.random() < 0.18))) {
         // some get up swinging
         n.hostile = true; n.brain = 'combat'; n.target = this.player; n.seenTime = this.game.time; n.lastSeen.copy(this.player.pos);
-        setTimeout(() => VOICES.say(c, n.role === 'gang' ? 'gang' : 'myCar', true), 1600);
       } else if (n.role === 'police') { n.brain = 'combat'; n.target = this.player; }
       else {
         n.brain = 'flee'; n.fleeFrom.copy(v.position);
-        if (vi.thrown) setTimeout(() => { if (c.alive) VOICES.say(c, Math.random() < 0.6 ? 'myCar' : 'help', true); }, 1700);
       }
     }
   }
