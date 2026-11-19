@@ -155,9 +155,10 @@ export function sideMirrorPlates(kind: VehicleKind): { x: number; y: number; z: 
   const g = getTemplate(kind).lods[0].body, P = g.getAttribute('position'), A = g.getAttribute('aKind'), out: { x: number; y: number; z: number; w: number; h: number }[] = [];
   if (!P || !A) return out;
   for (const side of [1, -1]) {
-    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; let n = 0;
-    for (let i = 0; i < P.count; i++) {
-      if (Math.round(A.getX(i)) !== K.MIRROR || Math.sign(P.getX(i)) !== side) continue;
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; let n = 0, zMin = Infinity;
+    for (let i = 0; i < P.count; i++) if (Math.round(A.getX(i)) === K.MIRROR && Math.sign(P.getX(i)) === side) zMin = Math.min(zMin, P.getZ(i));
+    for (let i = 0; i < P.count; i++) {   // the rear-facing face only (not the arm that joins it to the door)
+      if (Math.round(A.getX(i)) !== K.MIRROR || Math.sign(P.getX(i)) !== side || P.getZ(i) > zMin + 0.03) continue;
       n++; for (let c = 0; c < 3; c++) { const v = c === 0 ? P.getX(i) : c === 1 ? P.getY(i) : P.getZ(i); lo[c] = Math.min(lo[c], v); hi[c] = Math.max(hi[c], v); }
     }
     if (n) out.push({ x: (lo[0] + hi[0]) / 2, y: (lo[1] + hi[1]) / 2, z: lo[2], w: (hi[0] - lo[0]) * 0.88, h: (hi[1] - lo[1]) * 0.86 });
@@ -267,7 +268,7 @@ export class Cockpit {
     if (rear) { addUv(mats.leather, rb(hwI * 2 - 0.1, 0.14, 0.52, 0.06), 0, rear.y - 0.05, rear.z + 0.02); addUv(mats.leather, rb(hwI * 2 - 0.1, 0.6, 0.17, 0.07), 0, rear.y + 0.26, rear.z - 0.26, -0.2); }
 
     // ---- rear-view mirror (stalk, housing, reflective glass)
-    const mx = Math.max(0.08, S.x * 0.35), my = roofY - 0.16, mz = zR1 + 0.28, yawToDriver = Math.atan2(S.x - mx, mz - this.dims.eye.z) * 0.9;
+    const mx = Math.max(0.08, S.x * 0.35), my = Math.min(roofY - 0.13, this.dims.eye.y + 0.17), mz = zR1 + 0.28, yawToDriver = Math.atan2(S.x - mx, mz - this.dims.eye.z) * 0.9;
     add(mats.plastic, rb(0.03, 0.06, 0.03, 0.01), mx, my + 0.05, mz + 0.03);
     add(mats.plastic, rb(0.25, 0.08, 0.03, 0.02), mx, my, mz, 0, Math.PI - yawToDriver, 0);
     // painted fallback (also used for the side mirrors on low quality), and the shared live reflection

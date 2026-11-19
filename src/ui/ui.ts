@@ -889,7 +889,7 @@ export class UI implements GameUI {
   private keyAction(e: KeyboardEvent, layer: Layer): NavAction | null {
     const c = e.code;
     if (layer.id === 'pause' && this.settings.bindings.pause.includes(c)) return 'back';
-    if (layer.id === 'map' && this.settings.bindings.map.includes(c)) return 'back';
+    if (layer.id === 'map' && (this.settings.bindings.map.includes(c) || this.settings.bindings.pause.includes(c))) return 'back'; // pausing opens on the map: the pause key closes it again
     switch (c) {
       case 'ArrowUp': case 'KeyW': return 'up';
       case 'ArrowDown': case 'KeyS': return 'down';

@@ -30,7 +30,7 @@ import {
   BRICK_COLORS, PLASTER_COLORS, PASTEL_COLORS, CONCRETE_COLORS, STONE_COLORS,
 } from './buildings';
 import {
-  LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
+  LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, SIGNAL_LENS_DY, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
   powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
@@ -193,7 +193,23 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   }
   // promenade along the coast and the dock quay
   const tipX = AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14; // west end of the south tip
-  slab(walks, tipX, maxZ, maxX, maxZ + 7, 0, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6);
+  slab(walks, tipX, maxZ, maxX, maxZ + 7, CURB_HEIGHT, CURB_HEIGHT, C('#f2e4cc'), C('#c8c4bb'), 6); // flat, kerbed like every other sidewalk (it used to ramp up from road level)
+  {
+    // proper kerb, painted road edge, and a planter/lamp/bollard buffer so the promenade does not start right at the asphalt
+    const stoneC = C('#bdb8ac'), potC = C('#6c6a64'), lampC = C('#2b2e31');
+    for (let x0 = tipX; x0 < maxX; x0 += 60) {
+      const l = Math.min(60, maxX - x0), cx = x0 + l / 2, tb = trim.at(cx, maxZ);
+      tb.box(cx, CURB_HEIGHT / 2, maxZ + 0.17, l, CURB_HEIGHT, 0.34, 0, stoneC, T_STONE);
+      tb.box(cx, 0.012, maxZ - 0.55, l, 0.01, 0.14, 0, C('#f2f0e6'), T_PAINT);
+    }
+    for (let x = tipX + 8; x < maxX - 6; x += 15) {
+      const tb = trim.at(x, maxZ + 1.7);
+      if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 12 && x < r.x + 82) || (x + 9 > -68 && x - 3 < -32)) continue; // keep the pier approach (x -50, 16 wide) and ramps clear
+      tb.box(x, CURB_HEIGHT + 0.4, maxZ + 1.9, 1.5, 0.8, 0.9, 0, potC, T_STONE); tb.sphere(x, CURB_HEIGHT + 1.0, maxZ + 1.9, 0.55, C('#3d6a3c'), [0.9, 0, 1, 0], 0.8);
+      tb.cyl(x + 7.5, CURB_HEIGHT, maxZ + 1.5, 0.07, 0.05, 4.2, 8, lampC, T_METAL); tb.sphere(x + 7.5, CURB_HEIGHT + 4.3, maxZ + 1.5, 0.22, C('#fff1d6'), T_NIGHTGLOW(5));
+      physics.addStaticCylinder(x + 7.5, CURB_HEIGHT + 2, maxZ + 1.5, 2, 0.1);
+    }
+  }
   physics.addStaticBox((tipX + maxX) / 2, CURB_HEIGHT / 2, maxZ + 3.5, (maxX - tipX) / 2, CURB_HEIGHT / 2, 3.5);
   slab(walks, maxX, -62, HARBOR_X, maxZ + 7, -3, CURB_HEIGHT, C('#c4beb4'), C('#8d8780'), 6);
   physics.addStaticBox((maxX + HARBOR_X) / 2, (CURB_HEIGHT - 3) / 2, (maxZ + 7 - 62) / 2, (HARBOR_X - maxX) / 2, (CURB_HEIGHT + 3) / 2, (maxZ + 7 + 62) / 2);
@@ -535,7 +551,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       const head: SignalHead = { inter: sp.inter, axis: sp.axis, lamps: [0, 0, 0] };
       for (let k = 0; k < 3; k++) {
         head.lamps[k] = lampPositions.length;
-        const lx = hp.x, ly = hp.y + 0.5 - k * 0.5, lz = hp.z + 0.1;
+        const lx = hp.x, ly = hp.y + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY, lz = hp.z + 0.1;
         lampPositions.push({ p: new THREE.Vector3(x + lx * c + lz * s, CURB_HEIGHT + ly, z - lx * s + lz * c), f: new THREE.Vector3(-sp.dx, 0, -sp.dz) });
       }
       signalHeads.push(head);

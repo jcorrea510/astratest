@@ -1,7 +1,7 @@
 /** Ambient traffic and police driving: lane following, signals, spacing, reactions, parked cars, pursuit. */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, routeField, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, nearestLane, routeField, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
@@ -54,6 +54,8 @@ export class Traffic {
   private frustum = new THREE.Frustum(); private m4 = new THREE.Matrix4();
   private rng = new Rng(7);
   private crashes: CrashSite[] = [];
+  /** positions / headings of siren vehicles this step (read by Crowd so far cars pull over too) */
+  sirenSources: { x: number; z: number; fx: number; fz: number; speed: number }[] = [];
   private violationCbs: ((v: Violation) => void)[] = [];
   private monitor = new ViolationMonitor(v => { for (const cb of this.violationCbs) cb(v); }, (x, z) => new THREE.Vector3(x, 0, z));
   private monT = 0; private lastProbe: LaneProbe | null = null;
@@ -145,13 +147,19 @@ export class Traffic {
     return true;
   }
   panic(v: Vehicle) { const c = this.carOf(v); if (c && c.mode === 'cruise') { c.mode = 'flee'; c.maxSpeed = undefined; c.stopPlan = null; c.stopT = 0; } }
-  /** Somebody opens fire: drivers close by floor it (or bail out on foot if they are boxed in, see fixedUpdate). */
-  gunfire(origin: THREE.Vector3, shooter?: THREE.Vector3, radius = 24) {
+  /**
+   * Somebody opens fire: the driver of a car the bullets hit always panics, so do cars within 15 m of an impact;
+   * other cars only react close to the muzzle (10 m). Panicked drivers floor it, or bail out on foot if boxed in (see fixedUpdate).
+   */
+  gunfire(origin: THREE.Vector3, shooter?: THREE.Vector3, hits: { target: unknown; point: THREE.Vector3 }[] = [], muzzleRadius = 10) {
+    const t = this.time();
     for (const c of this.cars) {
       if (c.persistent || c.mode !== 'cruise' || c.driver.role !== 'civilian' || c.v.destroyed) continue;
-      if (c.v.position.distanceTo(origin) > radius && !(shooter && c.v.position.distanceTo(shooter) < radius * 0.6)) continue;
+      const p = c.v.position;
+      const hitMe = hits.some(h => h.target === c.v || (h.point && h.point.distanceTo(p) < 15));
+      if (!hitMe && p.distanceTo(origin) > muzzleRadius && !(shooter && p.distanceTo(shooter) < muzzleRadius)) continue;
       this.panic(c.v);
-      if (this.time() - (c.lastHonk ?? -99) > 3) { c.lastHonk = this.time(); this.audio.play('horn', { pos: c.v.position, volume: 0.6 }); this.stats.honks++; }
+      if (t - (c.lastHonk ?? -99) > 3) { c.lastHonk = t; this.audio.play('horn', { pos: p, volume: 0.6 }); this.stats.honks++; }
     }
   }
   private honk(car: AiCar, t: number, vol = 0.65, gap = 4) { if (t - (car.lastHonk ?? -99) < gap) return; car.lastHonk = t; this.stats.honks++; this.audio.play('horn', { pos: car.v.position, volume: vol, pitch: 0.9 + this.rng.next() * 0.25 }); }
@@ -164,6 +172,8 @@ export class Traffic {
     const sirens: Vehicle[] = [];
     if (playerVehicle?.sirenOn) sirens.push(playerVehicle);
     for (const c of this.cars) if (c.v.sirenOn && !c.persistent) sirens.push(c.v);
+    this.sirenSources.length = 0;
+    for (const sv of sirens) { const sf = sv.phys.forward(); this.sirenSources.push({ x: sv.position.x, z: sv.position.z, fx: sf.x, fz: sf.z, speed: sv.speed }); }
     for (const car of [...this.cars]) {
       const v = car.v;
       if (v.destroyed || !car.driver.alive || v.driver !== car.driver.char) {
@@ -555,7 +565,10 @@ export class Traffic {
         for (let i = 0; i < n; i++) {
           const x = ix0 + 4 + (i % 5) * ((ix1 - ix0 - 8) / 4.5), z = r.chance(0.5) ? iz0 + 5 : iz1 - 5;
           if (this.vehicles.list.some(o => Math.hypot(o.position.x - x, o.position.z - z) < 5)) continue;
-          const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, z < cz ? 0 : Math.PI, r.int(0, 11), CURB_HEIGHT + 0.25);
+          // parked along the drive aisle: nose with the traffic of the nearest street
+          const nl = nearestLane(this.city, x, z); let yaw = z < cz ? 0 : Math.PI;
+          if (nl) { samplePath(nl.lane, nl.s, sp); yaw = Math.atan2(sp.dx, sp.dz); }
+          const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, yaw, r.int(0, 11), CURB_HEIGHT + 0.25);
           v.settleParked(CURB_HEIGHT); // settled and asleep: no drop, trucks stay upright
           v.parked = true; v.doorsLocked = r.chance(0.7); v.ignition = false; list.push(v);
         }

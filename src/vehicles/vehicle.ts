@@ -108,6 +108,8 @@ export class Vehicle {
   private bones: THREE.Bone[] = [];
   private beam: THREE.Mesh | null = null;
   private ownGeo = false;
+  /** 0..1: a city bus kneels at the kerb (body lowered and leaning to the pavement) */
+  kneel = 0;
   private roll = 0; private pitch = 0; private rollV = 0; private pitchV = 0; private heave = 0; private heaveV = 0;
   private baseDirt = 0;
   private lastVel = new THREE.Vector3();
@@ -147,7 +149,7 @@ export class Vehicle {
     // second colour: liveries and two-tone bodies
     if (kind === 'muscle') u.uPaint2.value.set(this.paint.getHSL({ h: 0, s: 0, l: 0 }).l > 0.35 ? '#141416' : '#f2f2f0').convertSRGBToLinear();
     else if (kind === 'race') u.uPaint2.value.set(['#f4f2ee', '#141416', '#f2c230'][Math.floor(Math.random() * 3)]).convertSRGBToLinear();
-    else if (kind === 'van') u.uPaint2.value.set('#f3f1ea').convertSRGBToLinear();
+    else if (kind === 'van' || kind === 'bus') u.uPaint2.value.set('#f3f1ea').convertSRGBToLinear();
     this.bodyMesh = new THREE.SkinnedMesh(t.lods[0].body, this.material);
     this.setupSkinned(this.bodyMesh, t);
     this.bodyMesh.castShadow = true; this.bodyMesh.receiveShadow = true;
@@ -352,11 +354,11 @@ export class Vehicle {
       this.lastVel.set(v.x, v.y, v.z);
       const g = this.phys.grounded ? 1 : 0.2;
       const soft = t.shape.type === 'tank' ? 0.3 : 1;
-      const tRoll = THREE.MathUtils.clamp(lat * 0.0085, -0.085, 0.085) * g * soft, tPitch = THREE.MathUtils.clamp(-lon * 0.0065, -0.06, 0.06) * g * soft;
+      const tRoll = THREE.MathUtils.clamp(lat * 0.0085, -0.085, 0.085) * g * soft - this.kneel * 0.022, tPitch = THREE.MathUtils.clamp(-lon * 0.0065, -0.06, 0.06) * g * soft;
       const k = 70, cc = 9, h = Math.min(dt, 1 / 30);
       this.rollV += ((tRoll - this.roll) * k - this.rollV * cc) * h; this.roll += this.rollV * h;
       this.pitchV += ((tPitch - this.pitch) * k - this.pitchV * cc) * h; this.pitch += this.pitchV * h;
-      const tHeave = this.phys.grounded ? THREE.MathUtils.clamp(-ay * 0.004, -0.08, 0.05) : 0;
+      const tHeave = (this.phys.grounded ? THREE.MathUtils.clamp(-ay * 0.004, -0.08, 0.05) : 0) - this.kneel * 0.07;
       this.heaveV += ((tHeave - this.heave) * 90 - this.heaveV * 10) * h; this.heave += this.heaveV * h;
       this.visual.rotation.set(this.pitch, 0, this.roll);
       this.visual.position.y = this.heave;

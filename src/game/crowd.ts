@@ -12,6 +12,7 @@ import type { Traffic } from './traffic';
 import type { Population } from './population';
 import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX, VEHICLES } from '../vehicles/specs';
+import { yieldsToSiren } from './trafficRules';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
@@ -126,7 +127,7 @@ function makeInstanced(base: THREE.BufferGeometry, n: number, walk: boolean): { 
 
 interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
-  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number }
+  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
 interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
 /** Paint of a parked car: the same for the far instanced copy and the real car, so the swap is invisible. */
@@ -139,6 +140,8 @@ const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vect
 const NEAR_KILL = 9, PROMOTE_R = 60;
 export class Crowd {
   readonly cars: GCar[] = []; readonly peds: GPed[] = [];
+  /** siren vehicles (set by the game from Traffic.sirenSources): far cars pull over for them */
+  sirens: { x: number; z: number; fx: number; fz: number; speed: number }[] = [];
   caps: CrowdCaps = { farCars: 0, farPeds: 0, parked: 0 };
   hour = 17; busCount = 0;
   private lightMesh: THREE.InstancedMesh; private busMesh: ReturnType<typeof makeInstanced>;
@@ -285,6 +288,10 @@ export class Crowd {
           if (st !== 'green' && !(st === 'yellow' && dStop < c.v * 0.45)) target = Math.min(target, Math.max(0, dStop) * 0.9);
         }
       } else target = Math.min(target, 8);
+      // kerb lane: hold clear of kerbside parked cars; a siren behind / oncoming: tuck to the kerb and slow down
+      let wantKs = !lane.connector && lane.lane === lane.lanes - 1 ? 0.45 : 0;
+      for (const sv of this.sirens) if (yieldsToSiren(c.x, c.z, Math.sin(c.yaw), Math.cos(c.yaw), sv.x, sv.z, sv.fx, sv.fz, sv.speed)) { wantKs = -1.3; target = Math.min(target, 3); break; }
+      c.ks = (c.ks ?? 0) + (wantKs - (c.ks ?? 0)) * Math.min(1, dt * 2.5);
       const same = byLane.get(lane.id);
       let lead: GCar | null = null, leadGap = 99;
       if (same && same.length > 1) for (const o of same) {
@@ -316,7 +323,7 @@ export class Crowd {
         if (c.s > c.lane.length) c.s = 0;
       }
       samplePath(c.lane, c.s, sp);
-      c.x = sp.x + c.ox; c.z = sp.z + c.oz; const yaw = Math.atan2(sp.dx, sp.dz); c.yaw = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 8);
+      const ks = c.ks ?? 0; c.x = sp.x + c.ox + sp.dz * ks; c.z = sp.z + c.oz - sp.dx * ks; const yaw = Math.atan2(sp.dx, sp.dz); c.yaw = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 8);
     }
     const mesh = this.carMesh.mesh, geo = this.carMesh.geo;
     const tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;

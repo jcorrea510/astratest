@@ -1,7 +1,7 @@
 /** Vehicle definitions: every model drives differently. Makes and models are original (fictional 2000s cars). */
 export type VehicleKind =
   | 'hatch' | 'sedan' | 'fullsize' | 'luxury' | 'wagon' | 'coupe' | 'muscle' | 'super' | 'convertible'
-  | 'pickup' | 'suv' | 'minivan' | 'van' | 'race' | 'taxi' | 'police' | 'fbi' | 'swat' | 'army' | 'tank';
+  | 'pickup' | 'suv' | 'minivan' | 'van' | 'race' | 'taxi' | 'police' | 'fbi' | 'swat' | 'army' | 'tank' | 'bus';
 export type VehicleClass = 'compact' | 'sedan' | 'luxury' | 'sports' | 'muscle' | 'super' | 'utility' | 'service' | 'emergency' | 'military';
 export interface VehicleSpec {
   name: string; cls: VehicleClass;
@@ -60,6 +60,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
   fbi: spec('Outrider Federal', 'emergency', t({ ...truckT, mass: 2300, engine: 17500, brake: 11, topSpeed: 53, grip: 0.84, rearGrip: 0.84, drive: 'all', health: 1900 }), ['#0c0d0f']),
   swat: spec('Dray Bastion', 'emergency', t({ ...truckT, mass: 4200, engine: 23000, brake: 9, topSpeed: 40, reverseSpeed: 7, maxSteer: 0.58, grip: 0.78, rearGrip: 0.78, stability: 0.85, suspRest: 0.42, stiffness: 30, comY: -0.35, drive: 'all', health: 3800 }), ['#1d2430']),
   army: spec('Gorman Mule 6x6', 'military', t({ ...truckT, mass: 6200, engine: 30000, brake: 8, topSpeed: 30, reverseSpeed: 6, maxSteer: 0.56, highSteer: 0.14, grip: 0.8, rearGrip: 0.8, stability: 0.9, suspRest: 0.45, suspTravel: 0.32, stiffness: 30, comY: -0.4, drive: 'all', health: 4200 }), ['#6a7050']),
+  bus: spec('Meridian Metroliner', 'service', t({ ...truckT, mass: 11000, engine: 36000, brake: 8, topSpeed: 25, reverseSpeed: 5, maxSteer: 0.5, highSteer: 0.12, grip: 0.8, rearGrip: 0.8, traction: 0.9, stability: 0.9, suspRest: 0.44, suspTravel: 0.3, stiffness: 24, comY: -0.55, drive: 'rear', health: 3400 }), ['#2a5f9e', '#3d7a4a', '#c9a227']),
   tank: spec('Gorman Bulwark', 'military', t({ ...truckT, mass: 14000, engine: 70000, brake: 9, topSpeed: 17, reverseSpeed: 6, maxSteer: 0.8, highSteer: 0.4, grip: 0.95, rearGrip: 0.95, traction: 1.0, peakSlip: 0.2, slide: 0.85, handbrakeGrip: 0.6, driftGrip: 0.9, tc: true, stability: 1, suspRest: 0.4, suspTravel: 0.2, stiffness: 40, compression: 3.5, relaxation: 3.5, comY: -0.6, downforce: 0, drive: 'all', health: 9000 }), ['#6d7352']),
 };
 /**

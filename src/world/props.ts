@@ -24,35 +24,36 @@ export function streetLightGeo(): THREE.BufferGeometry {
   return t.build();
 }
 /** Lens radius of the signal lamps (12-inch-plus lenses, readable from far away). */
-export const SIGNAL_LENS_R = 0.19;
+export const SIGNAL_LENS_R = 0.25;
+/** Vertical spacing of the three lenses (red, amber, green from the top). */
+export const SIGNAL_LENS_DY = 0.6;
 /** Mast-arm traffic signal: pole at origin, arm along local -x of length `arm`, heads facing local +z (one per approach lane). */
 export function signalGeo(arm: number): { geo: THREE.BufferGeometry; heads: THREE.Vector3[] } {
   const t = new TrimBuilder(); const pole = C('#8c9094'), dark = C('#101112'), yellow = C('#e8c21a');
   t.cyl(0, 0, 0, 0.3, 0.26, 0.5, 10, C('#6e706f'), T_METAL);
-  t.cyl(0, 0.5, 0, 0.17, 0.12, 6.4, 10, pole, T_METAL);
-  t.beam(0, 6.5, 0, -arm, 6.7, 0, 0.1, 0.13, pole, T_METAL);
-  t.beam(0, 5.7, 0, -arm * 0.5, 6.62, 0, 0.05, 0.05, pole, T_METAL);
+  t.cyl(0, 0.5, 0, 0.17, 0.12, 6.9, 10, pole, T_METAL);
+  t.beam(0, 6.9, 0, -arm, 7.1, 0, 0.1, 0.13, pole, T_METAL);
+  t.beam(0, 6.0, 0, -arm * 0.5, 7.0, 0, 0.05, 0.05, pole, T_METAL);
   const heads: THREE.Vector3[] = [];
-  const hy = 5.3; // head centre; bottom of backplate stays above 4.4 m
-  const xs = arm >= 6 ? [-arm + 0.7, -arm + 0.7 + 3.6] : [-arm + 0.7];
+  const hy = 5.65; // head centre; bottom of backplate stays above 4.3 m
+  const xs = arm >= 6 ? [-arm + 0.8, -arm + 0.8 + 3.6] : [-arm + 0.8];
   for (const hx of xs) {
     // signal housing (three sections), black backplate with a yellow retroreflective border
-    t.box(hx, hy, 0, 0.52, 1.64, 0.3, 0, dark, T_PLASTIC);
-    t.box(hx, hy, -0.17, 1.0, 2.2, 0.04, 0, yellow, T_PAINT);
-    t.box(hx, hy, -0.15, 0.9, 2.1, 0.04, 0, dark, T_PLASTIC);
-    t.box(hx, hy, -0.2, 1.02, 2.22, 0.03, 0, dark, T_PLASTIC);
+    t.box(hx, hy, 0, 0.68, 2.0, 0.3, 0, dark, T_PLASTIC);
+    t.box(hx, hy, -0.17, 1.22, 2.6, 0.04, 0, yellow, T_PAINT);
+    t.box(hx, hy, -0.15, 1.1, 2.48, 0.04, 0, dark, T_PLASTIC);
+    t.box(hx, hy, -0.2, 1.24, 2.62, 0.03, 0, dark, T_PLASTIC);
     for (let k = 0; k < 3; k++) {
-      t.box(hx, hy + 0.5 - k * 0.5, 0.2, 0.42, 0.07, 0.22, 0, dark, T_PLASTIC, -0.45); // visor hood
-      t.box(hx, hy + 0.5 - k * 0.5 + 0.11, 0.26, 0.42, 0.04, 0.2, 0, dark, T_PLASTIC);
+      t.box(hx, hy + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY + 0.27, 0.24, 0.6, 0.05, 0.26, 0, dark, T_PLASTIC, -0.45); // visor hood
     }
-    t.beam(hx, hy + 0.82, 0, hx, 6.62, 0, 0.05, 0.05, dark, T_METAL);
+    t.beam(hx, hy + 1.0, 0, hx, 7.0, 0, 0.05, 0.05, dark, T_METAL);
     heads.push(new THREE.Vector3(hx, hy, 0.16));
   }
   // pedestrian head and push button on the pole
   t.box(-0.26, 2.8, 0, 0.34, 0.36, 0.28, Math.PI / 2, dark, T_PLASTIC);
   t.box(0, 1.15, 0.2, 0.12, 0.18, 0.06, 0, C('#d8c25a'), T_PAINT);
   // street-name blade
-  t.box(-arm * 0.45, 7.0, 0, 1.6, 0.3, 0.04, 0, C('#1f6b3a'), T_PAINT);
+  t.box(-arm * 0.45, 7.45, 0, 1.6, 0.3, 0.04, 0, C('#1f6b3a'), T_PAINT);
   return { geo: t.build(), heads };
 }
 export function hydrantGeo(): THREE.BufferGeometry {

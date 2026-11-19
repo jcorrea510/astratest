@@ -200,7 +200,8 @@ export function generateCity(seed = 1977): CityMap {
       const inter: Intersection = {
         id: intersections.length, ix: i, iz: j, x: AVENUES[i], z: STREETS[j],
         halfX: halfWidth(lanesForAvenue(i)), halfZ: halfWidth(lanesForStreet(j)),
-        offset: (i * 5.3 + j * 9.1) % SIGNAL_PERIOD,
+        // green wave: a driver doing ~13 m/s meets green at each light, in +z on avenues and +x on streets
+        offset: (((18 - (AVENUES[i] + STREETS[j]) / 13) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD,
         signalized: !((i === 0 || i === nx - 1) && (j === 0 || j === nz - 1)),
       };
       intersections.push(inter); interGrid[i][j] = inter;

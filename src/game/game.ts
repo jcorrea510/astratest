@@ -192,7 +192,7 @@ export class Game {
   private wireEvents() {
     this.combat.onShot = e => {
       this.pop.danger(e.origin, e.weapon.id === 'shotgun' ? 45 : 35, e.shooter);
-      if (e.shooter === this.player) this.traffic.gunfire(e.origin, this.player.pos); // drivers nearby floor it
+      if (e.shooter === this.player) this.traffic.gunfire(e.origin, this.player.pos, e.hits); // drivers nearby floor it
       if (e.shooter === this.player) this.police.report('shooting', this.player.pos);
     };
     this.combat.onHit = (target, _dmg, from, _head, killed) => {
@@ -608,6 +608,7 @@ export class Game {
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
     this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
+    this.crowd.sirens = this.traffic.sirenSources;
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);
@@ -678,7 +679,7 @@ export class Game {
     this.signalTimer -= 1;
     if (this.signalTimer > 0) return; this.signalTimer = 8;
     const lamps = this.visuals.signalLamps;
-    const cols = { red: new THREE.Color(9, 0.5, 0.4), yellow: new THREE.Color(9, 5.2, 0.5), green: new THREE.Color(0.8, 9, 3.6) };
+    const cols = { red: new THREE.Color(14, 0.6, 0.5), yellow: new THREE.Color(14, 8, 0.6), green: new THREE.Color(1, 14, 5.5) };
     const off = new THREE.Color(0.06, 0.06, 0.06);
     for (const h of this.visuals.signalHeads) {
       const st = signalState(this.city.intersections[h.inter], h.axis, this.time);

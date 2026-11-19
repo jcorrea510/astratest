@@ -237,6 +237,13 @@ function extras(kit: BodyKit, seats: SeatDef[], lod: number): Soup {
     out.append(rbox(0.012, h - 0.12, 0.006, 0.002, { kind: K.SEAM }, at(0, yc, c.z0 - 0.001)));
     out.append(rbox(c.hw * 2 - 0.1, 0.03, 0.02, 0.01, chrome, at(0, c.y0 + 0.12, c.z0 - 0.01)));
     for (const sg of [1, -1]) for (const t of [0.25, 0.5, 0.75]) out.append(rbox(0.012, h - 0.1, 0.03, 0.005, kind(s) === 'van' ? { kind: K.PAINT2 } : paint, at(sg * (c.hw + 0.004), yc, c.z0 + len * t)));
+    if (ex('busglass')) { // city bus: tinted window band down both sides, rear window, white roof cap and a destination sign
+      const win: Paint = { kind: K.MIRROR, color: '#10161c' }, band = (c.y0 + 1.45 + c.y1 - 0.5) / 2;
+      for (const sg of [1, -1]) for (let z = c.z0 + 1.0; z < c.z1 - 0.7; z += 1.5) out.append(rbox(0.01, 1.0, 1.2, 0.04, win, at(sg * (c.hw + 0.004), band, z)));
+      out.append(rbox(c.hw * 2 - 0.5, 0.9, 0.01, 0.04, win, at(0, band, c.z0 - 0.003)));
+      out.append(rbox(c.hw * 2 - 0.2, 0.06, len, 0.02, { kind: K.PAINT2 }, at(0, c.y1 + 0.01, zc)));
+      for (const sg of [1, -1]) out.append(rbox(0.012, 0.22, len - 0.4, 0.01, { kind: K.PAINT2 }, at(sg * (c.hw + 0.005), c.y0 + 0.9, zc)));
+    }
     if (ex('slits')) for (const sg of [1, -1]) for (const t of [0.3, 0.65]) out.append(rbox(0.01, 0.1, 0.5, 0.02, { kind: K.MIRROR, color: '#0a0b0c' }, at(sg * (c.hw + 0.003), c.y1 - 0.55, c.z0 + len * t)));
     if (ex('slits')) for (const x of [0.4, -0.4]) out.append(rbox(0.36, 0.1, 0.01, 0.02, { kind: K.MIRROR, color: '#0a0b0c' }, at(x, c.y1 - 0.6, c.z0 - 0.003)));
   }

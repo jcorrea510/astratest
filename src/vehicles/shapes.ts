@@ -188,6 +188,15 @@ export const SHAPES: Record<VehicleKind, CarShape> = {
     extras: ['wipers', 'handles', 'canvas', 'spare'], metallic: 0, tint: 0.2, livery: 6,
     cargo: { z0: -3.4, z1: 0.55, y0: 1.42, y1: 3.15, hw: 1.22 },
   }, { zA: 1.62, zC: 0.62, zR1: 1.5, zR2: 0.66, roof: 2.72, roofW: 1.08, zB: 0.65, bw: 0.02, winEnd: 0.7, wsAngle: 70, rearAngle: 170, pB: 12, pR: 12, glassTop: 0.86, inset: 0.03 }),
+  bus: sh({
+    type: 'boxvan', L: 11.6, W: 2.55, zOff: -0.3, wb: 6.4, R: 0.5, tw: 0.3, rim: 'truck', rimColor: '#cfd2d4', plan: 14, noseIn: 0.05, tailIn: 0, clear: 0.42, endRise: 0.03, rs: 0.05, tumble: 0.01,
+    top: [[-6.08, 1.2], [-1.0, 1.2], [3.0, 1.22], [4.5, 1.25], [5.2, 1.2], [5.5, 1.1]],
+    doors: [[3.4, 4.9]], seatRows: 1, interior: '#3a3a3c',
+    head: [{ x: 0.95, y: 0.82, w: 0.2, h: 0.1, p: 6 }], tail: [{ x: 1.1, y: 1.0, w: 0.07, h: 0.2, p: 8 }],
+    grille: { x: 0, y: 0.7, w: 0.5, h: 0.12, p: 8, style: 0 }, bumper: 'black', bumperF: [0.4, 0.7], bumperR: [0.42, 0.7],
+    extras: ['wipers', 'handles', 'mudflaps', 'busglass'], metallic: 0, tint: 0.35,
+    cargo: { z0: -6.08, z1: 3.0, y0: 0.6, y1: 3.05, hw: 1.26 },
+  }, { zA: 5.3, zC: 3.0, zR1: 5.15, zR2: 3.1, roof: 3.05, roofW: 1.15, zB: 3.35, bw: 0.02, winEnd: 3.5, wsAngle: 82, rearAngle: 170, pB: 14, pR: 14, glassTop: 0.92 }),
   tank: sh({
     type: 'tank', L: 7.0, W: 2.5, zOff: 0, wb: 4.2, R: 0.42, tw: 0.62, rim: 'steel', rimColor: '#4b5236', plan: 14, noseIn: 0.75, tailIn: 0.25, rs: 0.05, rb: 0.03, tumble: 0, bulge: 0, clear: 0.48, endRise: 0.15,
     top: [[-3.5, 1.55], [-3.0, 1.72], [2.4, 1.72], [3.5, 1.3]],
