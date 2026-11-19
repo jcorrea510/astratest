@@ -1,7 +1,7 @@
 /** Controls help: keyboard & mouse (from live bindings) and gamepad columns. */
 import { ACTION_LABELS, keyLabel, type Settings } from '../core/settings';
 import { ACTION_GROUPS } from './bindings';
-import { button, h } from './dom';
+import { backButton, button, h } from './dom';
 
 /** Gamepad layout as implemented by src/core/input.ts (standard mapping). */
 export const PAD_HELP: { label: string; buttons: string[] }[] = [
@@ -35,6 +35,7 @@ export class ControlsPanel {
     this.el.setAttribute('aria-label', 'Controls');
     const panel = h('div', 'ma-panel ma-panel-wide');
     const head = h('div', 'ma-panel-head');
+    head.appendChild(backButton(() => { this.sound('back'); this.onBack(); }));
     head.appendChild(h('div', 'ma-panel-title', 'Controls'));
     panel.appendChild(head);
     this.scroller = h('div', 'ma-panel-body ma-controls-body');

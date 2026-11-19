@@ -39,7 +39,7 @@ const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', sandbox: 'sandb
 const DOCKABLE = new Set<LayerId>(['map', 'sandbox', 'settings', 'controls']);
 export const GAME_VERSION = 'v0.3.0';
 const TITLE_ITEMS: Record<string, string> = {
-  play: 'Start fresh in Port Meridian: a pistol, a little cash and a whole city. Sandbox tools are in the pause menu.',
+  play: 'Sandbox: a pistol, some cash and a whole city. Spawn cars, set the wanted level or time, teleport: Esc, then the Sandbox tab.',
   continue: 'Pick up where you left off: your cash, guns, spot in the city and the time of day.',
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
@@ -227,6 +227,9 @@ export class UI implements GameUI {
     el.appendChild(h('div', 'ma-title-bars'));
     const content = h('div', 'ma-title-content');
     content.appendChild(logo('ma-logo-title'));
+    const tag = h('div', 'ma-title-mode');
+    tag.append(h('span', 'ma-title-mode-badge', 'Sandbox'), h('span', 'ma-title-mode-text', 'Open-world sandbox'));
+    content.appendChild(tag);
     const menu = h('div', 'ma-menu ma-title-menu');
     content.appendChild(menu);
     this.titleDesc = h('div', 'ma-title-desc');
@@ -902,7 +905,8 @@ export class UI implements GameUI {
     switch (act) {
       case 'back': {
         const under = this.layers[this.layers.length - 2];
-        if (DOCKABLE.has(layer.id) && under?.id === 'pause') { if (layer.id === 'sandbox') { this.sandbox.hide(); const cb = this.sandboxClose; this.sandboxClose = () => {}; this.popLayer('sandbox', false, true); cb(); } under.back(); return; }
+        // One level: Settings / Controls / Sandbox return to the pause menu; the map (the view pausing opens on) and the pause menu resume.
+        if (layer.id === 'map' && under?.id === 'pause') { under.back(); return; }
         layer.back(); return;
       }
       case 'select':

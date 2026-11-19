@@ -39,3 +39,24 @@ export function writeSave(storage: Pick<Storage, 'setItem'> | null, d: SaveData)
   try { storage?.setItem(SAVE_KEY, serialize(d)); return !!storage; } catch { return false; }
 }
 export function clearSave(storage: Pick<Storage, 'removeItem'> | null) { try { storage?.removeItem(SAVE_KEY); } catch { /* ignore */ } }
+
+/** Ground kinds a player may be saved on / loaded onto (everything else: roofs and building lots, water, off-map). */
+const SAFE_SURFACES = new Set(['road', 'sidewalk', 'park', 'beach']);
+export interface SafePos { x: number; z: number; yaw: number; moved: boolean }
+/**
+ * A save position that is valid ground: the spot itself when it is street / pavement / park, else the nearest such spot found by
+ * searching outward in rings (so a game saved on a roof or inside a lot resumes on the pavement outside), else `fallback`
+ * (the safehouse). `surface` is the city's surface lookup. Pure, so it is unit tested.
+ */
+export function safeSavePos(pos: { x: number; z: number; yaw: number }, surface: (x: number, z: number) => string, fallback: { x: number; z: number; yaw: number }, maxR = 160): SafePos {
+  const ok = (x: number, z: number) => Number.isFinite(x) && Number.isFinite(z) && SAFE_SURFACES.has(surface(x, z));
+  if (ok(pos.x, pos.z)) return { ...pos, moved: false };
+  for (let r = 3; r <= maxR; r += 3) {
+    const n = Math.max(12, Math.round(r / 1.5));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, x = pos.x + Math.cos(a) * r, z = pos.z + Math.sin(a) * r;
+      if (ok(x, z) && surface(x, z) !== 'beach') return { x, z, yaw: pos.yaw, moved: true };
+    }
+  }
+  return { x: fallback.x, z: fallback.z, yaw: fallback.yaw, moved: true };
+}

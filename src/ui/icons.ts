@@ -1,5 +1,8 @@
 /** Hand-drawn SVG icons for weapons, items, heat flares and map legend. All original artwork. */
+import * as THREE from 'three';
 import type { MinimapBlip, WeaponIcon } from './contracts';
+import type { WeaponId } from '../combat/weapons';
+import { weaponMesh } from '../combat/weaponModels';
 
 /** Rounded rectangle as an SVG path (corner radius r). */
 function rr(x: number, y: number, w: number, hgt: number, r: number): string {
@@ -55,7 +58,12 @@ export const WEAPON_PATHS: Record<WeaponIcon, string> = {
     'M31.4 10h1.2v18.5h-1.2zM19 18h26v1.2H19z',
 };
 
+/** Pre-rendered shaded side profiles of the real 3D weapon models (data URLs), filled by renderWeaponIcons(). */
+const RENDERED = new Map<WeaponIcon, string>();
+export function weaponIconUrl(icon: WeaponIcon): string | null { return RENDERED.get(icon) ?? null; }
 export function weaponSvg(icon: WeaponIcon, cls = 'ma-icon'): string {
+  const url = RENDERED.get(icon);
+  if (url) return `<img class="${cls} ma-wicon" src="${url}" alt="" draggable="false">`;
   const d = WEAPON_PATHS[icon] ?? WEAPON_PATHS.fists;
   return `<svg class="${cls}" viewBox="0 0 64 32" aria-hidden="true"><path fill-rule="evenodd" fill="currentColor" d="${d}"/></svg>`;
 }
@@ -88,3 +96,57 @@ export const BLIP_LABELS: Record<MinimapBlip['kind'], string> = {
   mission: 'Job', target: 'Target', checkpoint: 'Checkpoint', waypoint: 'Waypoint', safehouse: 'Safehouse', shop: 'Store',
   arms: 'Arms dealer', garage: 'Garage', vehicle: 'Vehicle', collectible: 'Postcard', enemy: 'Hostile', police: 'Patrol',
 };
+
+/** Weapon whose model stands in for each icon (fists / medkit / armor keep their drawn glyphs). */
+export const ICON_MODEL: Partial<Record<WeaponIcon, WeaponId>> = {
+  pistol: 'pistol', revolver: 'revolver', smg: 'smg', shotgun: 'shotgun', rifle: 'rifle', sniper: 'sniper', lmg: 'lmg',
+  launcher: 'grenadeLauncher', rpg: 'rpg', grenade: 'grenade', molotov: 'molotov', knife: 'knife', bat: 'bat',
+};
+/**
+ * Renders each weapon's 3D model once, side-on, into a small transparent image. Call once at startup; HUD, wheel and shop
+ * pick the images up through weaponSvg() / weaponIconUrl(). Returns the number of icons made (0 when WebGL is missing).
+ */
+export function renderWeaponIcons(w = 384, hgt = 160): number {
+  if (RENDERED.size || typeof document === 'undefined') return RENDERED.size;
+  let renderer: THREE.WebGLRenderer | null = null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = hgt;
+    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(w, hgt, false);
+    renderer.setClearColor(0x000000, 0);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xeef3fa, 0x5a554e, 1.9));
+    const key = new THREE.DirectionalLight(0xfff2dc, 2.6); key.position.set(-3, 4, -2); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fc4ff, 1.4); rim.position.set(3, 1, 3); scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.8); fill.position.set(-2, -1, 3); scene.add(fill);
+    const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 50);
+    const lifted = new Map<THREE.Material, { metalness: number; roughness: number; color: THREE.Color }>();
+    const pale = new THREE.Color('#c9ced6');
+    for (const [icon, id] of Object.entries(ICON_MODEL) as [WeaponIcon, WeaponId][]) {
+      const m = weaponMesh(id);
+      // Metals look black without an environment map: soften them so the lights read the form.
+      m.traverse(o => {
+        const mesh = o as THREE.Mesh;
+        const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+        if (mat && 'metalness' in mat && !lifted.has(mat)) { lifted.set(mat, { metalness: mat.metalness, roughness: mat.roughness, color: mat.color.clone() }); mat.metalness = Math.min(mat.metalness, 0.2); mat.roughness = Math.max(mat.roughness, 0.45); mat.color.lerp(pale, 0.5); }
+      });
+      scene.add(m);
+      const box = new THREE.Box3().setFromObject(m);
+      const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+      const spanX = Math.max(sz.z, 0.001) * 1.06, spanY = Math.max(sz.y, 0.001) * 1.06;
+      const aspect = w / hgt;
+      let hw = spanX / 2, hh = hw / aspect;
+      if (hh < spanY / 2) { hh = spanY / 2; hw = hh * aspect; }
+      cam.left = -hw; cam.right = hw; cam.top = hh; cam.bottom = -hh; cam.updateProjectionMatrix();
+      cam.position.set(c.x - 5, c.y, c.z); cam.up.set(0, 1, 0); cam.lookAt(c);
+      renderer.render(scene, cam);
+      RENDERED.set(icon, canvas.toDataURL('image/png'));
+      scene.remove(m);
+    }
+    for (const [mat, v] of lifted) { (mat as THREE.MeshStandardMaterial).metalness = v.metalness; (mat as THREE.MeshStandardMaterial).roughness = v.roughness; (mat as THREE.MeshStandardMaterial).color.copy(v.color); }
+  } catch { /* no WebGL: the drawn glyphs stay */ }
+  finally { renderer?.dispose(); renderer?.forceContextLoss(); }
+  return RENDERED.size;
+}

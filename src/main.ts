@@ -4,8 +4,9 @@ import { loadAssets, type Assets } from './world/assets';
 import { initPhysics } from './core/physics';
 import { loadSettings, saveSettings, safeStorage, type Settings } from './core/settings';
 import { Game, PLAYER_LOOK } from './game/game';
-import { generateCity } from './world/citymap';
+import { generateCity, surfaceAt } from './world/citymap';
 import { UI } from './ui/ui';
+import { renderWeaponIcons } from './ui/icons';
 import { Audio } from './audio/audio';
 import type { GameAudio, WheelSlot } from './ui/contracts';
 import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } from './combat/wheelSlots';
@@ -14,9 +15,9 @@ import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } f
 import { MissionCtx } from './game/missions';
 import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
-import { readSave, writeSave, type SaveData } from './game/save';
+import { readSave, writeSave, safeSavePos, type SaveData } from './game/save';
 import { PLACES } from './game/places';
-import { AVENUES, STREETS } from './world/citymap';
+import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 
 declare global { interface Window { __meridian?: unknown; __game?: Game } }
@@ -32,6 +33,8 @@ const settings: Settings = loadSettings();
 if (params.get('quality') === 'low' || params.get('quality') === 'medium' || params.get('quality') === 'high') settings.quality = params.get('quality') as Settings['quality'];
 const storage = safeStorage();
 const ui = new UI();
+// Realistic weapon icons: render the 3D models once, off the critical path (HUD, wheel and shop read the cache).
+setTimeout(() => { renderWeaponIcons(); }, 0);
 const city = generateCity();
 let game: Game | null = null;
 let ctx: MissionCtx | null = null;
@@ -158,7 +161,9 @@ async function play(cont: boolean) {
     wireGame(g);
     const save = cont ? readSave(storage) : null;
     g.police.clear();
-    if (save) applySave(save); else newGameSetup();
+    let loaded = false;
+    if (save) { try { applySave(save); loaded = true; } catch (e) { console.error('save could not be applied', e); } }
+    if (!loaded) newGameSetup(); // a broken save falls back to a fresh start instead of a dead game
     activities.spawnCards();
     g.cam.update(0.016, g.player.pos, 'foot');
     ui.showLoading(0.85, 'Waking up the city');
@@ -171,7 +176,7 @@ async function play(cont: boolean) {
     g.onFrame = dt => frame(dt);
     g.start();
     g.input.requestLock();
-    if (!save) {
+    if (!loaded) {
       ui.missionCard('Port Meridian', 'Golden hour. The city is yours.', 'start');
       setTimeout(() => ui.showControlsHint(`WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools (spawn cars, set the clock, wanted level, teleport) and saving.`, 10), 3200);
     } else ui.toast('Welcome back to Port Meridian', 'info');
@@ -198,14 +203,18 @@ function applySave(s: SaveData) {
   g.stats = { ...s.stats };
   sandbox!.applyCaps();
   sandbox!.loadTools(s.tools);
-  g.player.place(s.pos.x, ctx!.groundY(s.pos.x, s.pos.z, 0.2) + 0.05, s.pos.z, s.pos.yaw);
-  g.cam.snapBehind(s.pos.yaw + Math.PI);
+  // Old or hand-edited saves may sit on a roof, in water or off the map: resume on valid ground instead.
+  const p = safeSavePos(s.pos, (x, z) => surfaceAt(city, x, z), { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: PLACES.safehouse.yaw });
+  g.player.place(p.x, ctx!.groundY(p.x, p.z, 0.2) + 0.05, p.z, p.yaw);
+  g.cam.snapBehind(p.yaw + Math.PI);
 }
 function saveGame(): boolean {
   if (!game || !activities || !sandbox || !started || game.deathT >= 0) return false;
   const g = game;
   const onFoot = !g.playerVehicle; // (in a car or swimming: wake up at the safehouse instead)
-  const pos = onFoot && !g.player.swimming ? { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw } : { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
+  const home = { x: PLACES.safehouse.x, z: PLACES.safehouse.z, yaw: Math.PI / 2 };
+  // Never save a roof, a lot or the water: store the nearest street / pavement / park spot (or the safehouse).
+  const pos = onFoot && !g.player.swimming ? safeSavePos({ x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw }, (x, z) => surfaceAt(city, x, z), home) : home;
   return writeSave(storage, {
     version: 1, savedAt: Date.now(), money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
@@ -317,6 +326,7 @@ function frame(raw: number) {
   ui.updateHud(hud);
   ui.updateMinimap(minimapState());
 }
+let gps: GpsRouter | null = null;
 function minimapState() {
   const g = game!;
   const yaw = g.playerVehicle ? g.playerVehicle.yaw : g.cam.yaw + Math.PI;
@@ -324,15 +334,12 @@ function minimapState() {
   const heading = Math.atan2(Math.sin(yaw), -Math.cos(yaw));
   const blips = [...g.baseBlips(), ...activities!.blips()];
   const heat = g.police.heat > 0 && !g.police.state.seen ? { x: g.police.state.lastSeen.x, z: g.police.state.lastSeen.z, r: g.police.state.searchRadius() } : null;
-  // GPS: follow the street grid (every grid line is a road) to the waypoint
+  // GPS: follow the lane graph (roads, ramps, bridges) to the waypoint
   const goal = blips.find(b => b.kind === 'waypoint');
   let route: { x: number; z: number }[] | undefined;
   if (goal && Math.hypot(goal.x - g.player.pos.x, goal.z - g.player.pos.z) > 30) {
-    const snap = (v: number, arr: number[]) => arr.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
-    const px = snap(g.player.pos.x, AVENUES), pz = snap(g.player.pos.z, STREETS), tx = snap(goal.x, AVENUES), tz = snap(goal.z, STREETS);
-    const viaX = Math.abs(g.player.pos.x - px) < Math.abs(g.player.pos.z - pz);
-    route = viaX ? [{ x: g.player.pos.x, z: g.player.pos.z }, { x: px, z: g.player.pos.z }, { x: px, z: tz }, { x: tx, z: tz }, { x: goal.x, z: goal.z }]
-      : [{ x: g.player.pos.x, z: g.player.pos.z }, { x: g.player.pos.x, z: pz }, { x: tx, z: pz }, { x: tx, z: tz }, { x: goal.x, z: goal.z }];
+    gps ??= new GpsRouter(g.city);
+    route = gps.get(performance.now() / 1000, g.player.pos.x, g.player.pos.z, goal.x, goal.z);
   }
   return { x: g.player.pos.x, z: g.player.pos.z, heading, zoom: g.playerVehicle ? 1 + Math.min(1, Math.abs(g.playerVehicle.speed) / 30) : 1, blips, heatRadius: heat, route };
 }
@@ -343,6 +350,8 @@ function exposeApi() {
     game, activities, sandbox, ui, settings, PLAYER_LOOK, ctx,
     save: () => saveGame(), read: () => readSave(storage),
     pause, resume, openWheel, closeWheel, quit: quitToTitle,
+    /** the GPS route the minimap would draw for the current waypoint (null when none) */
+    gps: () => minimapState().route ?? null,
   };
 }
 

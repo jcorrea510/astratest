@@ -23,6 +23,14 @@ export function button(cls: string, label: string, opts: { nav?: boolean; onClic
   return b;
 }
 
+/** A clearly visible "Back" button for sub-panels (always shown, even when docked under the pause header). */
+export function backButton(onClick: () => void): HTMLButtonElement {
+  const b = button('ma-btn ma-btn-ghost ma-back', '‹  Back', { nav: false, onClick });
+  b.dataset.back = '';
+  b.setAttribute('aria-label', 'Back');
+  return b;
+}
+
 /** Writes text only when it changed. */
 export class TextSlot {
   private last: string | null = null;

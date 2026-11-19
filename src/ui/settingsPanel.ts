@@ -1,7 +1,7 @@
 /** Settings panel: display, input, audio and full key rebinding with conflict highlighting. */
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, type Action, type QualityName, type Settings } from '../core/settings';
 import { ACTION_GROUPS, conflictSlots, defaultBindings, findConflicts, withBinding } from './bindings';
-import { button, h } from './dom';
+import { backButton, button, h } from './dom';
 
 export type SettingsTab = 'display' | 'input' | 'audio' | 'keys';
 const TABS: { id: SettingsTab; label: string }[] = [
@@ -39,6 +39,7 @@ export class SettingsPanel {
     this.el.setAttribute('aria-label', 'Settings');
     const panel = h('div', 'ma-panel ma-panel-wide');
     const head = h('div', 'ma-panel-head');
+    head.appendChild(backButton(() => { this.deps.sound('back'); this.deps.onBack(); }));
     head.appendChild(h('div', 'ma-panel-title', 'Settings'));
     const tabs = h('div', 'ma-tabs');
     tabs.dataset.navRow = '';

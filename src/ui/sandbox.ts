@@ -1,6 +1,6 @@
 /** Sandbox tools: a generic side panel rendering SandboxAction controls grouped by `group`. */
 import type { SandboxAction } from './contracts';
-import { button, h } from './dom';
+import { backButton, button, h } from './dom';
 
 type Value = number | string | boolean | undefined;
 
@@ -19,7 +19,7 @@ export class SandboxPanel {
     const panel = h('div', 'ma-sb-panel');
     const head = h('div', 'ma-sb-head');
     head.appendChild(h('div', 'ma-sb-title', 'Sandbox tools'));
-    head.appendChild(button('ma-btn ma-btn-ghost ma-sb-close', 'Close', { nav: false, onClick: () => this.onBack() }));
+    head.appendChild(backButton(() => this.onBack()));
     panel.appendChild(head);
     this.body = h('div', 'ma-sb-body');
     panel.appendChild(this.body);
