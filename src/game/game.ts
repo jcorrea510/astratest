@@ -6,6 +6,7 @@ import { Input } from '../core/input';
 import type { Settings } from '../core/settings';
 import { distToPath } from '../world/westside';
 import { generateCity, type CityMap, signalState, districtAt, surfaceAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
+import { precinctCarSpots } from '../world/precinct';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import { worldGlass } from '../world/glass';
 import type { Assets } from '../world/assets';
@@ -227,6 +228,7 @@ export class Game {
     });
     this.heliArms = new HeliArms(this.combat, this.physics);
     for (const m of armyLayout().motorPool) { const v = this.vehicles.spawn(m.kind, m.x, m.z, m.yaw, -1, 0.3); v.persistent = true; }
+    for (const c of precinctCarSpots()) { const v = this.vehicles.spawn('police', c.x, c.z, c.yaw, -1, 0.3); v.persistent = true; } // parked patrol cars in the Precinct 4 lot (stealable)
     this.helis.onCrash = (h, imp) => { if (h === this.playerHeli) { this.cam.addShake(Math.min(0.9, imp / 14)); this.stats.crashes++; } };
   }
   private onNpcKilled(n: Npc, by: Character | null) {

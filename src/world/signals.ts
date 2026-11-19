@@ -13,10 +13,23 @@ export function signalPosts(city: CityMap): SignalPost[] {
   const out: SignalPost[] = [];
   for (const inter of city.intersections) {
     if (!inter.signalized) continue;
-    const approaches: { axis: 'x' | 'z'; dx: number; dz: number }[] = [{ axis: 'z', dx: 0, dz: -1 }, { axis: 'z', dx: 0, dz: 1 }, { axis: 'x', dx: 1, dz: 0 }, { axis: 'x', dx: -1, dz: 0 }];
+    let approaches: { axis: 'x' | 'z'; dx: number; dz: number }[];
+    if (inter.ix >= 0) {
+      const all: { axis: 'x' | 'z'; dx: number; dz: number }[] = [{ axis: 'z', dx: 0, dz: -1 }, { axis: 'z', dx: 0, dz: 1 }, { axis: 'x', dx: 1, dz: 0 }, { axis: 'x', dx: -1, dz: 0 }];
+      approaches = all.filter(ap => !!(ap.axis === 'z' ? city.intersectionAt(inter.ix, inter.iz - ap.dz) : city.intersectionAt(inter.ix - ap.dx, inter.iz)));
+    } else {
+      // free-form junctions (Eastbank): an approach exists wherever a path ends here; its travel direction is the last segment toward the junction
+      approaches = [];
+      for (const p of city.paths) {
+        if (p.kind === 'ramp' || p.kind === 'hill') continue;
+        const end = p.to === inter.id, start = p.from === inter.id; if (!end && !start) continue;
+        const a = end ? p.pts[p.pts.length - 2] : p.pts[1], b = end ? p.pts[p.pts.length - 1] : p.pts[0];
+        const dx = Math.sign(Math.round(b.x - a.x)), dz = Math.sign(Math.round(b.z - a.z));
+        if ((dx === 0) === (dz === 0)) continue;
+        if (!approaches.some(q => q.dx === dx && q.dz === dz)) approaches.push({ axis: dx !== 0 ? 'x' : 'z', dx, dz });
+      }
+    }
     for (const ap of approaches) {
-      const exists = ap.axis === 'z' ? city.intersectionAt(inter.ix, inter.iz - ap.dz) : city.intersectionAt(inter.ix - ap.dx, inter.iz);
-      if (!exists) continue;
       const rx = -ap.dz, rz = ap.dx;
       const along = ap.axis === 'z' ? inter.halfZ : inter.halfX;
       const across = ap.axis === 'z' ? inter.halfX : inter.halfZ;

@@ -201,7 +201,15 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     for (let x0 = tipX; x0 < maxX; x0 += 60) {
       const l = Math.min(60, maxX - x0), cx = x0 + l / 2, tb = trim.at(cx, maxZ);
       tb.box(cx, CURB_HEIGHT / 2, maxZ + 0.17, l, CURB_HEIGHT, 0.34, 0, stoneC, T_STONE);
-      tb.box(cx, 0.012, maxZ - 0.55, l, 0.01, 0.14, 0, C('#f2f0e6'), T_PAINT);
+    }
+    // the last street is a single lane each way, but the asphalt slab underneath runs on to the promenade: cover that bare 4 m strip with a kerbed sidewalk between the avenue stubs
+    const roadEdge = STREETS[STREETS.length - 1] + halfWidth(lanesForStreet(STREETS.length - 1));
+    const i0 = ISLAND_LEFT[ISLAND_LEFT.length - 1];
+    for (let i = i0; i < AVENUES.length - 1; i++) {
+      const x0 = AVENUES[i] + halfWidth(2), x1 = AVENUES[i + 1] - halfWidth(2); if (x1 <= x0) continue;
+      slab(walks, x0, roadEdge, x1, maxZ + 0.1, 0, CURB_HEIGHT, C('#d6d2c8'), C('#c8c4bb'), 6);
+      physics.addStaticBox((x0 + x1) / 2, CURB_HEIGHT / 2, (roadEdge + maxZ) / 2, (x1 - x0) / 2, CURB_HEIGHT / 2, (maxZ - roadEdge) / 2);
+      const tb = trim.at((x0 + x1) / 2, roadEdge); tb.box((x0 + x1) / 2, CURB_HEIGHT / 2 + 0.02, roadEdge + 0.15, x1 - x0, CURB_HEIGHT + 0.04, 0.3, 0, stoneC, T_STONE);
     }
     for (let x = tipX + 8; x < maxX - 6; x += 15) {
       const tb = trim.at(x, maxZ + 1.7);

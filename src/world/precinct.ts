@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
-import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_PAINT, T_PLASTIC, T_GLASS, T_GLOW, T_ROUGH } from './builders';
+import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_PAINT, T_GLASS, T_GLOW, T_ROUGH } from './builders';
 import { helipadPad } from './expansion';
 import { POLICE_STATION as PS } from '../game/places';
 
@@ -76,21 +76,11 @@ function lotTexture(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 
-/** Static patrol car: black body, white doors, blue/red light bar. Centre (x,z), heading yaw (nose along +z rotated by yaw). */
-function patrolCar(tb: TrimBuilder, physics: Physics, x: number, z: number, yaw: number, y0: number) {
-  const k = [C('#14171c'), C('#f0f2f4'), C('#1a2430'), C('#2a73ff'), C('#ff3a2a'), C('#0b0b0c')];
-  const c = Math.cos(yaw), s = Math.sin(yaw);
-  const at = (lx: number, lz: number): [number, number] => [x + lx * c + lz * s, z - lx * s + lz * c];
-  const b = (lx: number, ly: number, lz: number, sx: number, sy: number, sz: number, col: THREE.Color, t = T_PAINT) => { const [px, pz] = at(lx, lz); tb.box(px, y0 + ly, pz, sx, sy, sz, yaw, col, t); };
-  b(0, 0.55, 0, 1.85, 0.55, 4.9, k[0]); // lower body
-  b(0, 0.55, -0.2, 1.87, 0.5, 2.2, k[1]); // white door panel band
-  b(0, 1.05, -0.15, 1.7, 0.45, 2.5, k[2], T_GLASS); // cabin glass
-  b(0, 1.32, -0.15, 1.6, 0.06, 2.3, k[0]); // roof
-  b(0, 0.85, 1.4, 1.8, 0.04, 1.5, k[0]); b(0, 0.82, -1.9, 1.8, 0.04, 1.0, k[0]); // hood / deck
-  b(-0.32, 1.42, -0.15, 0.62, 0.12, 0.3, k[3], T_GLOW(2.2)); b(0.32, 1.42, -0.15, 0.62, 0.12, 0.3, k[4], T_GLOW(2.2)); // light bar
-  b(0, 0.35, 2.5, 1.7, 0.18, 0.12, k[5], T_METAL); // push bar
-  for (const sx of [-1, 1]) for (const sz of [-1.5, 1.5]) { const [px, pz] = at(sx * 0.92, sz); tb.cyl(px, y0 + 0.02, pz, 0.34, 0.34, 0.26, 10, k[5], T_PLASTIC, yaw, 0, Math.PI / 2); }
-  physics.addStaticBox(x, y0 + 0.75, z, 0.95, 0.75, 2.4, yaw);
+/** Spots for the real parked patrol cars (spawned by the game as persistent, stealable police vehicles): nose to the building in the angled stalls. */
+export function precinctCarSpots(): { x: number; z: number; yaw: number }[] {
+  const lx0 = PS.x - 22, lz0 = PS.z - PS.d / 2 - 13.5 + 0.02, out: { x: number; z: number; yaw: number }[] = [];
+  for (let k = 0; k < 8; k++) { if (k === 5) continue; out.push({ x: lx0 + 5 + 1.3 + k * 3.8 + 1.1, z: lz0 + 3.6, yaw: 0.46 }); }
+  return out;
 }
 
 export function buildPrecinct(o: { root: THREE.Object3D; physics: Physics; trim: Chunked<TrimBuilder>; helipads: Helipads; curb: number; nightUniform: { value: number } }) {
@@ -153,13 +143,6 @@ export function buildPrecinct(o: { root: THREE.Object3D; physics: Physics; trim:
   const lx0 = cx - 22, lz0 = PS.z - PS.d / 2 - 13.5 + 0.02;
   const lm = new THREE.MeshStandardMaterial({ map: lotTexture(), roughness: 0.92 });
   const lot = new THREE.Mesh(new THREE.PlaneGeometry(44, 13.5).rotateX(-Math.PI / 2), lm); lot.position.set(lx0 + 22, y0 + 0.012, lz0 + 6.75); lot.receiveShadow = true; root.add(lot);
-  // 7 patrol cars + 1 unmarked, nosed into the angled stalls (60 deg)
-  const lotTb = trim.at(cx, lz0 + 3);
-  for (let k = 0; k < 8; k++) {
-    if (k === 5) continue;
-    const px = lx0 + 5 + 1.3 + k * 3.8 + 1.1, pz = lz0 + 3.6;
-    patrolCar(lotTb, physics, px, pz, Math.PI + 0.52 * 1, y0 + 0.01);
-  }
   // roof: antenna masts, dish, HVAC boxes, red aircraft light (helipad stays on the east half)
   const ry = y0 + H + 0.6;
   for (const [ax, az, hgt] of [[-9, 2.5, 14], [-12, -2.5, 9]]) {

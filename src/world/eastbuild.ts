@@ -148,6 +148,34 @@ function suspension(o: EastCtx, bz: number) {
     for (const y of [EAST_DECK_Y + 11, EAST_DECK_Y + 21]) for (const sg of [-1, 1]) tb.beam(tx, y - 1.0, bz + sg * (legZ - 1.6), tx, y - 4.5, bz + sg * (legZ * 0.45), 1.0, 1.0, graniteDark, T_STONE);
     tb.sphere(tx, topY + 1.8, bz, 0.35, C('#ff3020'), [0.4, 0, 4, 3]);
   }
+  // pedestrian walkways on both outboard sides of the deck (outside the tower legs), with railings and brackets; they follow the deck profile
+  {
+    const step = 10, steel2 = C('#59626a'), walk2 = C('#cfc9bc'), rail = C('#aeb4b8');
+    for (const sg of [-1, 1]) {
+      const zIn = path.half + 3.9, zOut = path.half + 6.3, zc = bz + sg * (zIn + zOut) / 2;
+      let prev: { x: number; y: number } | null = null;
+      for (let x = 535; x <= 735; x += step) {
+        const y = deckAt(x) + 0.15;
+        if (prev) {
+          const a = prev, b = { x, y }, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, len = Math.hypot(b.x - a.x, b.y - a.y), pitch = Math.atan2(b.y - a.y, b.x - a.x);
+          if (Math.max(a.y, b.y) > 0.45) {
+            const tb = trim.at(mx, zc);
+            tb.beam(a.x, a.y - 0.25, zc, b.x, b.y - 0.25, zc, zOut - zIn, 0.5, walk2, T_STONE);
+            for (const zr of [bz + sg * (zIn + 0.08), bz + sg * (zOut - 0.08)]) {
+              tb.beam(a.x, a.y + 1.1, zr, b.x, b.y + 1.1, zr, 0.1, 0.1, rail, T_METAL);
+              tb.beam(a.x, a.y + 0.55, zr, b.x, b.y + 0.55, zr, 0.05, 0.05, rail, T_METAL);
+              for (let k = 0; k <= 4; k++) { const t = k / 4, px = a.x + (b.x - a.x) * t, py = a.y + (b.y - a.y) * t; tb.box(px, py + 0.55, zr, 0.08, 1.1, 0.08, 0, rail, T_METAL); }
+              const rc = physics.addStaticBox(mx, my + 0.55, zr, len / 2, 0.55, 0.06); rc.setRotation({ x: 0, y: 0, z: Math.sin(pitch / 2), w: Math.cos(pitch / 2) });
+            }
+            const wc = physics.addStaticBox(mx, my - 0.25, zc, len / 2, 0.25, (zOut - zIn) / 2); wc.setRotation({ x: 0, y: 0, z: Math.sin(pitch / 2), w: Math.cos(pitch / 2) });
+            // bracket back to the deck edge
+            tb.beam(mx, my - 0.5, bz + sg * (zIn + 0.4), mx, my - 2.1, bz + sg * (path.half + 0.7), 0.2, 0.2, steel2, T_METAL);
+          }
+        }
+        prev = { x, y };
+      }
+    }
+  }
   // main cables: side spans straight to the anchorages, main span sagging between the towers
   const anchorW = 541, anchorE = 740;
   for (const sg of [-1, 1]) {

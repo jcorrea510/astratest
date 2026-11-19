@@ -681,6 +681,8 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
     const colNames = ['Shore Road', 'Foundry Row'], rowNames = ['Mill St', 'Brookhaven Way', 'Rope Walk', 'Eastgate Way', 'Cooperage St', 'Dockside Ave', 'Tanner Quay'];
     EAST_GRID.xs.forEach((_x, c) => { for (let r = 0; r < EAST_GRID.zs.length - 1; r++) add(colNames[c], 'street', E[c][r], [0, 1], E[c][r + 1], [0, -1], [], 1, 0, 0, false, 10); });
     EAST_GRID.zs.forEach((_z, r) => add(rowNames[r], 'street', E[0][r], [1, 0], E[1][r], [-1, 0], [], 1, 0, 0, false, 10));
+    // signals at the Eastbank grid junctions that meet three or more streets (phases come from signalState like downtown)
+    E.forEach((col, c) => col.forEach((j, r) => { if (paths.filter(p => p.from === j.id || p.to === j.id).length >= 3) { j.signalized = true; j.offset = (c * 5.3 + r * 9.1) % SIGNAL_PERIOD; } }));
     add('Fort Calder Rd', 'service', JS, [0, 1], E[0][0], [0, -1], [], 1, 0, 0, false, 10);
   }
   return paths;

@@ -9,7 +9,7 @@ Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Ow
 - [ ] R5-C Police: see traffic violations, stolen cop car always pursued on sight, shot cop car -> cops exit+pursue, heli chase holds heat.
 - [x] R5-E Player (E2 queued: broken-pane collider removal so you can walk through, NPC guns use gunHold IK, finger curl): shot store glass clears + shoot-through, correct two-hand gun hold, store shoppers move/browse.
 - [x] R5-W World (W2 running: pier shoulder exact, denser quay, re-shoots, real precinct cars, bridge walkways, Eastbank signals): visible traffic lights, no posts in crosswalks/cross streets, pier road shoulder, East River volume, bridge top glitch, roof flicker from air, Precinct 4 looks like a precinct.
-- [ ] R5-A Army: base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
+- [x] R5-A Army (A2 running: base far LOD, guards, shed roof, sandbox entry, strike visuals): base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
 - [ ] R5-M Map: 3D-looking map (extruded buildings, shading) for full map + minimap.
 - [ ] R5-G Gaps (fix, don't report): highway cockpit polish (thick A-pillar, small wheel, check all 12 cars, live infotainment clock/map, real mirror views); city buses + bus stops; peds sit on benches; bridge walkways with peds; Eastbank signals; run soak.
 - [ ] R5-Z Gate + publish (soak included).

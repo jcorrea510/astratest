@@ -4,7 +4,7 @@ import { boot, step, watch, clean, quietStreets } from './helpers';
 const SHOT = process.env.SHOT_DIR; // set to also write inspection screenshots
 async function look(page: import('@playwright/test').Page, name: string, from: [number, number, number], at: [number, number, number]) {
   if (!SHOT) return;
-  await page.evaluate(({ from, at }) => { const g = (window as any).__game; g.frame(1 / 30, true); const c = g.renderer.camera; c.position.set(...from); c.lookAt(...at); c.updateMatrixWorld(); g.renderer.render(); }, { from, at });
+  await page.evaluate(({ from, at }) => { const g = (window as any).__game; if (!g.playerHeli) g.player.place(at[0], Math.max(0.3, at[1]), at[2], 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); g.frame(1 / 30, true); const c = g.renderer.camera; c.position.set(...from); c.lookAt(...at); c.updateMatrixWorld(); g.renderer.render(); }, { from, at });
   await page.screenshot({ path: `${SHOT}/${name}.png` });
 }
 

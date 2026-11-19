@@ -281,3 +281,16 @@ describe('east river waterfront', () => {
     for (const l of row) expect(surfaceAt(city, l.x, l.z), `lot ${l.id}`).not.toBe('road');
   });
 });
+
+describe('Eastbank signals', () => {
+  it('has signalized junctions with posts, driven by the same signalState', async () => {
+    const { signalPosts } = await import('./signals');
+    const east = city.intersections.filter(i => i.ix < 0 && i.signalized && i.x > 700);
+    expect(east.length).toBeGreaterThanOrEqual(6);
+    const posts = signalPosts(city).filter(p => city.intersections[p.inter].x > 700);
+    expect(posts.length).toBeGreaterThanOrEqual(18);
+    const i0 = east[0]; let seenRed = false;
+    for (let t = 0; t < SIGNAL_PERIOD; t += 0.5) if (signalState(i0, 'x', t) === 'red') seenRed = true;
+    expect(seenRed).toBe(true);
+  });
+});

@@ -8,12 +8,12 @@ import type { Physics } from '../core/physics';
 import { Rng } from '../core/rng';
 import { type CityMap, AVENUES, CURB_HEIGHT, HARBOR_X, SIDEWALK } from './citymap';
 import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH, T_PAINT, T_NIGHTGLOW } from './builders';
-import { type BuildCtx, warehouse } from './buildings';
+import { type BuildCtx, warehouse, streetBuilding } from './buildings';
 import { distToPath } from './westside';
 import { RAMPS } from '../game/places';
 
 const C = (h: string) => new THREE.Color(h);
-const CRANES = [40, 150, 290];
+const CRANES = [40, 150, 290, 470, 640, 800];
 export interface QuayCtx { ctx: BuildCtx; physics: Physics; city: CityMap; trim: Chunked<TrimBuilder>; addTree: (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => void }
 
 /** Z extent of the quay and the drive's x. */
@@ -36,7 +36,7 @@ export function buildQuay(o: QuayCtx) {
   // ---- warehouses west of the drive (front doors face the drive, east)
   for (let z = QUAY.z0; z < QUAY.z1 - 40;) {
     const w = r.range(30, 46), d = r.range(20, 26), cx = 480 + d / 2 + r.range(0, 4), cz = z + w / 2;
-    z += w + r.range(8, 16);
+    z += w + r.range(3, 7);
     if (nearRamp(cz, w / 2) || !clear(cx, cz, 2) || !clear(cx, cz - w * 0.45, 2) || !clear(cx, cz + w * 0.45, 2) || !clear(cx - d / 2, cz, 2) || !clear(cx + d / 2, cz, 2) || !free(cx, cz, d / 2, w / 2)) continue;
     warehouse(ctx, { cx, cz, w, d, base: CURB_HEIGHT, h: r.range(8.5, 11.5), seed: r.int(0, 1e9), yaw: Math.PI / 2 });
     placed.push({ x: cx, z: cz, hw: d / 2, hd: w / 2 });
@@ -72,11 +72,43 @@ export function buildQuay(o: QuayCtx) {
     if (k === 1) { tb.box(edgeX - 4, CURB_HEIGHT + 0.45, z + 3, 0.55, 0.1, 1.8, 0, C('#6b4a32'), T_ROUGH); tb.box(edgeX - 4.2, CURB_HEIGHT + 0.7, z + 3, 0.08, 0.5, 1.8, 0, C('#6b4a32'), T_ROUGH, 0.2); tb.box(edgeX - 4, CURB_HEIGHT + 0.2, z + 3, 0.4, 0.4, 1.6, 0, C('#8f8a80'), T_STONE); }
     else if (k === 3 && clear(edgeX - 7, z, 3)) o.addTree(edgeX - 7, CURB_HEIGHT - 0.05, z, r.range(0, 6.28), r.range(1.0, 1.4), r);
   }
-  // pavilions and harbour sheds (depth 12, between the drive and the esplanade)
-  for (let z = QUAY.z0 + 20; z < QUAY.z1 - 40; z += r.range(55, 90)) {
-    const w = r.range(18, 26), d = 11, cx = 546, cz = z;
-    if (nearRamp(cz, w / 2) || !clear(cx, cz, 3) || !clear(cx, cz - w / 2, 3) || !clear(cx, cz + w / 2, 3)) continue;
-    warehouse(ctx, { cx, cz, w, d, base: CURB_HEIGHT, h: r.range(5.5, 7.5), seed: r.int(0, 1e9), yaw: Math.PI / 2 });
+  // waterfront row between the drive and the esplanade: loft mid-rises and harbour sheds side by side (fronts to the drive)
+  const pierZ: number[] = []; for (let z = QUAY.z0 + 60; z < QUAY.z1 - 60; z += 150) pierZ.push(z);
+  for (let z = QUAY.z0 + 4; z < QUAY.z1 - 30;) {
+    const loft = r.chance(0.55), w = loft ? r.range(18, 28) : r.range(20, 30), d = loft ? 13 : 11, cx = 543.5, cz = z + w / 2;
+    z += w + r.range(2.5, 5);
+    if (nearRamp(cz, w / 2) || pierZ.some(pz => Math.abs(pz - cz) < w / 2 + 7) || !clear(cx, cz, 3) || !clear(cx, cz - w / 2, 3) || !clear(cx, cz + w / 2, 3)) continue;
+    if (loft) {
+      const floors = r.int(4, 8), seed = r.int(0, 1e9);
+      streetBuilding(ctx, { cx, cz, yaw: Math.PI / 2, w, d, base: CURB_HEIGHT, floors, floorH: 3.5, groundH: 4.4, mat: r.int(0, 3), color: C(r.pick(['#8a5a45', '#7a6a58', '#6d7076', '#8f7f66'])), seed, ground: 'lobby', winW: 1.5, winH: 2.1, sill: 0.8, cellW: 3.2, cornice: 'simple', fireEscape: r.chance(0.4), lit: 0.7, exposed: [true, true, true, true], roofItems: 2, awning: false, brand: seed % 32, balconies: false, trimColor: C('#c9c3b4') });
+    } else warehouse(ctx, { cx, cz, w, d, base: CURB_HEIGHT, h: r.range(6, 8.5), seed: r.int(0, 1e9), yaw: Math.PI / 2 });
+  }
+  // static parked box trucks and flatbeds along the drive's west verge and in the yards, plus chain-link fences round the container yards
+  const truckCols = ['#b8452f', '#f0f0ea', '#2f5d8a', '#e0b030', '#4c7a52'].map(c => C(c));
+  for (let z = QUAY.z0 + 30; z < QUAY.z1 - 30; z += r.range(26, 44)) {
+    const x = r.chance(0.5) ? 509.5 : 477.5;
+    if (!clear(x, z, 3) || nearRamp(z, 6) || !free(x, z, 1.6, 4.5)) continue;
+    const tb = trim.at(x, z), col = r.pick(truckCols), y = CURB_HEIGHT;
+    tb.box(x, y + 1.7, z - 1.2, 2.5, 2.7, 5.6, 0, col, T_PAINT); tb.box(x, y + 1.15, z + 2.9, 2.3, 1.9, 1.9, 0, C('#2b3238'), T_PAINT); tb.box(x, y + 1.6, z + 3.5, 2.1, 0.8, 0.7, 0, C('#1a2630'), T_METAL);
+    tb.box(x, y + 0.55, z, 2.4, 0.3, 8.6, 0, C('#1d1f21'), T_METAL);
+    for (const sx of [-1, 1]) for (const sz of [-2.4, 0.6, 3.1]) tb.cyl(x + sx * 1.2, y + 0.5, z + sz, 0.5, 0.5, 0.35, 10, C('#121314'), T_METAL, 0, 0, Math.PI / 2);
+    physics.addStaticBox(x, y + 1.4, z, 1.3, 1.4, 4.3);
+    placed.push({ x, z, hw: 1.6, hd: 4.5 });
+  }
+  for (let z0 = QUAY.z0 + 10; z0 < QUAY.z1 - 60; z0 += 90) {
+    const z1 = z0 + 56; if ([z0, (z0 + z1) / 2, z1].some(zz => nearRamp(zz, 4) || !clear(465, zz, 0.5))) continue;
+    const tb = trim.at(470, (z0 + z1) / 2), fc = C('#9aa0a4');
+    for (const fx of [464.5, 478.5]) { tb.box(fx, CURB_HEIGHT + 1.1, (z0 + z1) / 2, 0.05, 2.2, z1 - z0, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]); for (let zz = z0; zz <= z1; zz += 4) tb.cyl(fx, CURB_HEIGHT, zz, 0.05, 0.05, 2.3, 6, fc, T_METAL); }
+    for (const zz of [z0, z1]) tb.box(471.5, CURB_HEIGHT + 1.1, zz, 14, 2.2, 0.05, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]);
+  }
+  // more gantry cranes down the quay (the first three are in citybuild)
+  for (const cz of [470, 640, 800]) {
+    if (nearRamp(cz, 12)) continue;
+    const tb = trim.at(476, cz), col = C('#c9622a'), x = 476;
+    for (const dx of [-7, 7]) for (const dz of [-6, 6]) { tb.box(x + dx, 17.1, cz + dz, 1.2, 34, 1.2, 0, col, T_PAINT); physics.addStaticBox(x + dx, 17, cz + dz, 0.6, 17, 0.6); }
+    for (const dz of [-6, 6]) for (let y = 6; y < 32; y += 6.5) tb.beam(x - 7, y, cz + dz, x + 7, y + 6, cz + dz, 0.3, 0.3, col, T_PAINT);
+    tb.box(x, 33.5, cz, 16, 3, 13.5, 0, col, T_PAINT); tb.box(x + 22, 34, cz, 66, 2.4, 2.4, 0, col, T_PAINT); tb.box(x - 2, 37, cz, 6, 4, 5, 0, C('#e8e2d0'), T_PAINT);
+    tb.sphere(x + 55, 35.4, cz, 0.25, C('#ff3020'), [0.4, 0, 4, 3]);
   }
   // timber piers into the river with a lamp pair, moored crates and bollards
   const wood = C('#6a4d37'), piles = C('#3f2f22');
