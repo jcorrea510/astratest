@@ -38,7 +38,8 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
   vehicles (manager), traffic, population, police (heat 0-5), robbery (store hold-ups), activities (shops, garage, postcards, jumps),
   places (named spots, HELIPADS), sandbox (tools panel; the game is sandbox-only), save, missions (story — disabled, kept for later).
 - ui/: ui.ts (screens/menus), attract (menu flyover), hud, minimap/mapdraw/fullmap, wheel, shop, settingsPanel, sandbox panel, contracts.
-- audio/: core/sfx/gunsynth (layered gunshots)/voices (speech + screams)/loops/music/ambience.
+- audio/: core/sfx/gunsynth (layered gunshots)/loops (engines, sirens)/music/ambience. (NPC voices removed.)
+- highway/: separate Highway game mode (streamed road, IDM/MOBIL traffic). core/units.ts = US units, core/fullscreen.ts.
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).
 
 ## Conventions

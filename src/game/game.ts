@@ -7,6 +7,7 @@ import type { Settings } from '../core/settings';
 import { distToPath } from '../world/westside';
 import { generateCity, type CityMap, signalState, districtAt, surfaceAt, WATER_LEVEL, DISTRICT_INFO, AVENUES, STREETS, AVENUE_NAMES, STREET_NAMES } from '../world/citymap';
 import { buildCity, type CityVisuals } from '../world/citybuild';
+import { worldGlass } from '../world/glass';
 import type { Assets } from '../world/assets';
 import { loadHumanTemplate, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
 import { Character } from '../actors/character';
@@ -15,13 +16,14 @@ import { PlayerController } from './player';
 import { nightUniform, timeUniform, glowTexture } from '../render/materials';
 import { Particles, SkidMarks } from '../render/particles';
 import { VehicleManager } from './vehicles';
-import type { Vehicle } from '../vehicles/vehicle';
+import { Vehicle } from '../vehicles/vehicle';
 import type { GameAudio, HudState, MinimapBlip } from '../ui/contracts';
 import { NullAudio } from './nullAudio';
 import { Combat } from '../combat/combat';
 import { PlayerCombat } from './playerCombat';
 import { Population } from './population';
 import { Traffic } from './traffic';
+import { Crowd } from './crowd';
 import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
@@ -30,6 +32,7 @@ import { COP_LOOK } from './dispatch';
 import { getTemplate } from '../vehicles/models/build';
 import { HeliManager } from '../vehicles/helicopterManager';
 import { Helicopter } from '../vehicles/helicopter';
+import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
@@ -71,6 +74,7 @@ export class Game {
   pcombat!: PlayerCombat;
   pop!: Population;
   traffic!: Traffic;
+  crowd!: Crowd;
   police!: Police;
   playerVehicle: Vehicle | null = null;
   /** the car the player last got out of (kept out of mission clean-ups) */
@@ -146,6 +150,7 @@ export class Game {
     this.helis.init();
     this.carEntry = new CarEntry(this);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
+    this.combat.worldGlass = worldGlass;
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
@@ -155,6 +160,7 @@ export class Game {
     }, this.audio);
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
+    this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
     this.police.setHooks({
       combat: this.combat, cam: this.cam, night: () => this.renderer.skyState.night,
@@ -251,6 +257,7 @@ export class Game {
       while (this.acc >= step && n < 4) { this.fixedUpdate(step); this.acc -= step; n++; }
       if (n === 4) this.acc = 0;
     }
+    Vehicle.renderAlpha = this.paused ? 1 : Math.min(1, this.acc * 60);
     this.update(dt, raw);
     this.onFrame?.(raw);
     if (render) this.renderer.render();
@@ -304,15 +311,21 @@ export class Game {
     this.audio.play('hitBody', { pos: this.player.pos });
     if (killed) this.playerDown('down');
   }
+  /** Far-crowd caps: the quality preset scaled by the sandbox traffic/pedestrian sliders. */
+  crowdCaps() {
+    const q = this.renderer.quality, tc = this.trafficCap === null ? 1 : this.trafficCap / q.traffic, pc = this.pedCap === null ? 1 : this.pedCap / q.pedestrians;
+    return { farCars: Math.round(q.farCars * tc), farPeds: Math.round(q.farPeds * pc), parked: Math.round(q.parked * Math.min(1, tc)) };
+  }
   /** Fills the streets around the player before the first frame (so the city never starts empty). */
   prewarm() {
     this.renderer.camera.updateMatrixWorld(true);
-    this.pop.prewarming = this.traffic.prewarming = true;
+    this.pop.prewarming = this.traffic.prewarming = this.crowd.prewarming = true;
     for (let i = 0; i < 70; i++) {
       this.traffic.update(0.4, this.renderer.camera, this.player.pos, this.renderer.quality.traffic);
       this.pop.update(0.2, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
     }
-    this.pop.prewarming = this.traffic.prewarming = false;
+    this.crowd.update(0.1, this.player.pos, this.crowdCaps());
+    this.pop.prewarming = this.traffic.prewarming = this.crowd.prewarming = false;
     // compile the cop/gun shader variants now (off to the side, one frame) so the first fight doesn't hitch
     try {
       const p = this.player.pos, cop = this.pop.spawn('police', p.x + 2, p.z + 2, p.y, COP_LOOK);
@@ -536,6 +549,7 @@ export class Game {
       if (!blocked) {
         if (this.input.justPressed('horn')) { this.audio.play('horn', { pos: pv.position }); this.pop.danger(pv.position, 10, null); }
         if (this.input.justPressed('headlights')) pv.headlights = !pv.headlights;
+        this.vehicles.sirenKeys(pv, a => this.input.justPressed(a));
         if (this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 3;
         if (this.input.justPressed('radio')) { const st = this.audio.radioNext(); this.events.onToast(st ? `Radio  ${st}` : 'Radio off', 'info'); }
       }
@@ -550,6 +564,7 @@ export class Game {
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
+    this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updatePickups(dt);
     this.particles.update(dt, this.renderer.renderer.domElement.height);
@@ -654,14 +669,13 @@ export class Game {
   }
   hudState(objective: string | null, timer: number | null): HudState {
     const pv = this.playerVehicle ?? this.playerHeli, inv = this.pcombat.inv, def = inv.def; // CAR-ENTRY: helicopters too
-    const h = Math.floor(this.hour), mi = Math.floor((this.hour % 1) * 60);
     return {
       health: this.player.health, maxHealth: this.player.maxHealth, armor: this.player.armor, money: this.money,
       heat: this.police.heat, heatMax: 5, heatFlash: this.police.heat > 0 && !this.police.state.seen,
       weaponName: def.name, weaponIcon: def.icon, reloading: inv.reloading,
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
-      clock: `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`,
+      clock: fmtClock12(this.hour),
       ...this.pcombat.hud(), ...(pv || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
       interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
       fps: this.settings.showFps ? Math.round(this.fps) : null,

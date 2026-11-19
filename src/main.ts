@@ -19,8 +19,11 @@ import { readSave, writeSave, safeSavePos, type SaveData } from './game/save';
 import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
+import { installFullscreenShortcut } from './core/fullscreen';
 
-declare global { interface Window { __meridian?: unknown; __game?: Game } }
+installFullscreenShortcut();
+
+declare global { interface Window { __meridian?: unknown; __game?: Game; __highway?: unknown } }
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = '';
@@ -61,6 +64,7 @@ function webglOk(): boolean {
 ui.init({
   city, settings, callbacks: {
     onStart: cont => { void play(cont); },
+    onHighway: () => { void openHighway(); },
     onOpenSandbox: () => { if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
     onQuitToTitle: () => quitToTitle(),
@@ -360,11 +364,35 @@ function exposeApi() {
   };
 }
 
+// ---------------- Highway mode (endless traffic driving; shares the renderer, never loads the city) ----------------
+async function openHighway(auto?: { kind?: string; time?: string; density?: number }) {
+  const hw = await import('./highway/hud');
+  const start = async (c: { kind: import('./vehicles/specs').VehicleKind; time: 'night' | 'dusk' | 'day'; density: number }) => {
+    const { HighwayGame } = await import('./highway');
+    void audio?.resume();
+    // reuse the city renderer when the title flyover is running (its geometry already lives on that GL context)
+    const shared = game ? game.renderer.renderer : null;
+    game?.stop();
+    ui.setHudVisible(false);
+    const renderer = shared ?? new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    if (!shared) { renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; }
+    started = true; attract = null;
+    const g = new HighwayGame({ renderer, model: c.kind, time: c.time, density: c.density, onQuit: () => { location.href = location.pathname; } });
+    window.__highway = g;
+    g.start();
+  };
+  if (auto) { await start({ kind: (auto.kind ?? 'sedan') as never, time: (auto.time ?? 'night') as never, density: auto.density ?? 1 }); return; }
+  hw.showHighwayMenu(c => { void start(c); }, () => { ui.showTitle(!!readSave(storage)); });
+}
+
 // ---------------- Boot ----------------
 if (!webglOk()) {
   ui.showMobileGate();
 } else if (isMobile()) {
   ui.showMobileGate();
+} else if (params.get('highway') === '1') {
+  // direct boot into the highway (no city): ?highway=1&car=coupe&time=night&traffic=1
+  void openHighway({ kind: params.get('car') ?? undefined, time: params.get('time') ?? undefined, density: Number(params.get('traffic') ?? '1') });
 } else if (params.get('autostart') === '1') {
   void play(params.get('continue') === '1');
 } else {

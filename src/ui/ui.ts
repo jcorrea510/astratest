@@ -25,6 +25,8 @@ import { ControlsPanel } from './controlsPanel';
 import { SandboxPanel } from './sandbox';
 import { buildCard, buildCredits, buildDeath, buildLoading, buildMobileGate, logo, titleArtSvg, DEATH_TIMING, deathGrade } from './screens';
 import { formatMoney } from './geometry';
+import { fmtDistance, MPS_TO_MPH } from '../core/units';
+import { toggleFullscreen } from '../core/fullscreen';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
 type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'sandbox' | 'credits';
@@ -43,6 +45,8 @@ const TITLE_ITEMS: Record<string, string> = {
   continue: 'Pick up where you left off: your cash, guns, spot in the city and the time of day.',
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
+  highway: 'Endless multi-lane highway at speed: weave through traffic, pass close for points. Pick your car and the time of day.',
+  fullscreen: 'Fill the whole screen (Alt+Enter anywhere).',
   credits: 'Who made this, and the open assets and fonts it uses.',
 };
 
@@ -281,12 +285,13 @@ export class UI implements GameUI {
       if (this.hasSave) this.confirm('Start a new game? Your saved game will be replaced the next time you save.', 'Start new game', () => start(false));
       else start(false);
     }, false, 'play');
-    const items = [play];
+    const items = [play, this.menuItem('Highway', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onHighway?.(); }, false, 'highway')];
     let cont: HTMLButtonElement | null = null;
     if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue'); items.unshift(cont); }
     items.push(
       this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'),
       this.menuItem('Controls', () => { this.sound('click'); this.openControls(); }, false, 'controls'),
+      this.menuItem('Fullscreen', () => { this.sound('click'); toggleFullscreen(); }, false, 'fullscreen'),
       this.menuItem('Credits', () => { this.sound('click'); this.openCredits(); }, false, 'credits'),
     );
     this.titleMenu.append(...items);
@@ -459,6 +464,7 @@ export class UI implements GameUI {
     this.pausePanes.set('quit', pane);
     const menu = h('div', 'ma-menu ma-pause-menu');
     menu.appendChild(this.menuItem('Resume', () => { this.sound('click'); this.resume(); }));
+    menu.appendChild(this.menuItem('Fullscreen', () => { this.sound('click'); toggleFullscreen(); }, false, 'fullscreen'));
     this.saveItem = this.menuItem('Save game', () => {
       const ok = this.callbacks.onSaveGame?.() ?? false;
       this.sound(ok ? 'click' : 'back');
@@ -565,8 +571,8 @@ export class UI implements GameUI {
     tile('Time on the streets', mins >= 60 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : `${mins}m ${String(Math.floor(S.time % 60)).padStart(2, '0')}s`);
     tile('Money earned', formatMoney(S.earned));
     tile('Money spent', formatMoney(S.spent));
-    tile('Distance driven', S.distance >= 1000 ? `${(S.distance / 1000).toFixed(1)} km` : `${Math.round(S.distance)} m`);
-    tile('Top speed', `${Math.round(S.topSpeed)} km/h`);
+    tile('Distance driven', fmtDistance(S.distance));
+    tile('Top speed', `${Math.round(S.topSpeed / 3.6 * MPS_TO_MPH)} mph`);
     tile('Highest wanted level', S.maxHeat > 0 ? `${S.maxHeat} / 5` : 'Clean');
     if (S.postcards) tile('Postcards found', S.postcards);
     pane.appendChild(grid);

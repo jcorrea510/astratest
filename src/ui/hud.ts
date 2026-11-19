@@ -1,5 +1,6 @@
 /** In-game HUD. update() runs every frame and only touches the DOM when a value changes. */
 import type { CityMap } from '../world/citymap';
+import { MPS_TO_MPH } from '../core/units';
 import type { HudState, WeaponIcon } from './contracts';
 import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
 import { formatMoney, formatTimer } from './geometry';
@@ -166,7 +167,7 @@ export class Hud {
     const sp = h('div', 'ma-speed');
     const spv = h('span', 'ma-speed-value');
     this.speed = new TextSlot(spv);
-    sp.append(spv, h('span', 'ma-speed-unit', 'km/h'));
+    sp.append(spv, h('span', 'ma-speed-unit', 'mph'));
     const sbar = h('div', 'ma-speed-bar');
     this.speedBar = h('div', 'ma-speed-bar-fill');
     sbar.appendChild(this.speedBar);
@@ -380,10 +381,10 @@ export class Hud {
     setClass(this.speedoEl, 'is-visible', inVeh);
     setClass(this.el, 'in-vehicle', inVeh);
     if (inVeh) {
-      const kmh = Math.max(0, Math.round(s.vehicleSpeedKmh ?? 0));
+      const kmh = Math.max(0, Math.round((s.vehicleSpeedKmh ?? 0) / 3.6 * MPS_TO_MPH)); // (field keeps its name; shown in mph)
       if (this.changed('kmh', kmh)) {
         this.speed.set(String(kmh));
-        this.speedBar.style.transform = `scaleX(${Math.min(1, kmh / 200).toFixed(3)})`;
+        this.speedBar.style.transform = `scaleX(${Math.min(1, kmh / 125).toFixed(3)})`;
       }
       const vhp = Math.max(0, Math.min(1, s.vehicleHealth ?? 1));
       if (this.changed('vhp', Math.round(vhp * 200))) {

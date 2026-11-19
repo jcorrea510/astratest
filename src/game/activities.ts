@@ -181,7 +181,7 @@ export class Activities {
             const first = !this.jumpsDone.has(a.ramp);
             const reward = first ? 300 : 50;
             this.jumpsDone.add(a.ramp); g.addMoney(reward);
-            this.ui.toast(`${RAMPS[a.ramp].name}: ${dist.toFixed(0)} m, ${a.t.toFixed(1)} s air  ·  +$${reward}`, 'money');
+            this.ui.toast(`${RAMPS[a.ramp].name}: ${Math.round(dist * 3.28084)} ft, ${a.t.toFixed(1)} s air  ·  +$${reward}`, 'money');
             g.audio.play('checkpoint');
           }
         }

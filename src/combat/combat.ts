@@ -30,7 +30,7 @@ export interface TraceHit {
  * Optional vehicle glass API (implemented by the vehicles module): which pane is at a world point, and break it.
  * Without it, combat falls back to a height/normal heuristic and remembers broken panes itself.
  */
-export interface GlassApi { glassAt?(worldPoint: THREE.Vector3): string | number | null; breakGlass?(paneId: string | number): void; isGlassBroken?(paneId: string | number): boolean }
+export interface GlassApi { glassAt?(worldPoint: THREE.Vector3): string | number | null; breakGlass?(paneId: string | number): void; hitGlass?(paneId: number, at?: THREE.Vector3, hits?: number): boolean; isGlassBroken?(paneId: string | number): boolean }
 
 const TRACER_SPEED = 900; // m/s (visual)
 export const TRACER_LIFE = 0.18; // s: a streak is always gone by then
@@ -123,6 +123,8 @@ export class Combat {
   private pending: { at: number; fn: () => void }[] = [];
   private projectiles: Projectile[] = [];
   private fires: FireZone[] = [];
+  /** world shop-glass registry (set by Game; see world/glass.ts) */
+  worldGlass: GlassApi | null = null;
   /** fallback broken-pane memory when vehicles don't implement GlassApi */
   private brokenPanes = new WeakMap<object, Set<string | number>>();
   private caps: Capsule[] = [];
@@ -206,6 +208,7 @@ export class Combat {
   private breakPane(v: Vehicle, pane: string | number, at: THREE.Vector3) {
     if (this.paneBroken(v, pane)) return;
     const api = v as unknown as GlassApi;
+    if (typeof api.hitGlass === 'function' && typeof pane === 'number') { api.hitGlass(pane, at); return; } // first hits crack, later ones shatter
     if (typeof api.breakGlass === 'function' && typeof pane === 'number') { api.breakGlass(pane); return; } // the vehicle plays its own shatter (Vehicle.onGlassBreak)
     let set = this.brokenPanes.get(v); if (!set) this.brokenPanes.set(v, set = new Set()); set.add(pane);
     this.extra('glassShatter', at, 0.9, 0.95 + Math.random() * 0.1, 'glass');
@@ -253,7 +256,17 @@ export class Combat {
           if (!opts.dry) this.breakPane(v, pane, res.point);
           res.glass.push(v); start = worldT + 0.02; excludeRb = v.phys.body; continue;
         }
-      } else res.kind = 'static';
+      } else {
+        res.kind = 'static';
+        // WORLDGLASS hook: shop windows are real panes; a round breaks the pane and carries on
+        if (this.worldGlass && !opts.solidGlass) {
+          const gp = this.v2.copy(res.point).addScaledVector(d, 0.05), gid = this.worldGlass.glassAt?.(gp);
+          if (gid !== null && gid !== undefined && !this.worldGlass.isGlassBroken?.(gid)) {
+            if (!opts.dry) { this.worldGlass.breakGlass?.(gid); this.extra('glassShatter', gp, 1, 0.9 + Math.random() * 0.2, 'glass'); for (let i = 0; i < 4; i++) this.particles.impact(gp.x, gp.y - i * 0.15, gp.z, 0, 0.3, 0, 'glass', 1); }
+            start = worldT + 0.05; continue;
+          }
+        }
+      }
       return res;
     }
     return res;

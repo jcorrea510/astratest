@@ -20,8 +20,8 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   // no save: no Continue, no story entries
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
   await expect(page.getByText('New game')).toHaveCount(0);
-  // keyboard navigation: down to Credits, open, back out with Esc
-  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  // keyboard navigation: down to Credits (Play, Highway, Settings, Controls, Fullscreen, Credits), open, back out with Esc
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
   await expect(page.locator('.ma-title-menu .ma-menu-item:focus')).toHaveText('Credits');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Open assets (CC0)')).toBeVisible();

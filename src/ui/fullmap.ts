@@ -5,6 +5,7 @@ import { mapScreenToWorld, mapWorldToScreen, type MapView } from './geometry';
 import { BLIP_KINDS, BLIP_LABELS } from './icons';
 import { CityPainter, drawBlip, drawPlayerArrow, nearestStreets } from './mapdraw';
 import { h, backButton } from './dom';
+import { fmtDistance } from '../core/units';
 
 export class FullMap {
   readonly el: HTMLDivElement;
@@ -282,7 +283,8 @@ export class FullMap {
     }
     if (focus) {
       const w = mapScreenToWorld(v, focus.x, focus.y);
-      this.readout.textContent = `${DISTRICT_INFO[districtAt(this.city, w.x, w.z)].name} · ${nearestStreets(w.x, w.z, AVENUE_NAMES, STREET_NAMES)}`;
+      const away = s ? Math.hypot(w.x - s.x, w.z - s.z) : 0;
+      this.readout.textContent = `${DISTRICT_INFO[districtAt(this.city, w.x, w.z)].name} · ${nearestStreets(w.x, w.z, AVENUE_NAMES, STREET_NAMES)} · ${fmtDistance(away)}`;
     } else this.readout.textContent = '';
   }
 }

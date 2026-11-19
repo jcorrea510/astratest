@@ -52,6 +52,22 @@ export class Population {
       }
     }
   }
+  private sirenT = 0; private tick = 0;
+  /** The player drives a police car with the light bar on: pedestrians stop, step back from the road edge and watch it go by. */
+  private reactToSiren(dt: number) {
+    this.sirenT -= dt; if (this.sirenT > 0) return;
+    this.sirenT = 0.25;
+    const pv = this.env.player.inVehicle as { position: THREE.Vector3; siren?: boolean; sirenOn?: boolean; kind?: string } | null;
+    if (!pv || !(pv.sirenOn ?? pv.siren) || !['police', 'fbi', 'swat', 'army'].includes(pv.kind ?? '')) return;
+    const vp = pv.position;
+    for (const n of this.npcs) {
+      if (!n.alive || n.role !== 'civilian' || n.far || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender') continue;
+      const c = n.char, dx = c.pos.x - vp.x, dz = c.pos.z - vp.z, d = Math.hypot(dx, dz);
+      if (d > 16) continue;
+      if (n.brain === 'wander') { n.brain = 'idle'; n.stateT = 2; }
+      if (n.brain === 'idle') { c.yaw = Math.atan2(-dx, -dz); if (d < 4 && d > 0.01) c.move(new THREE.Vector3(dx / d * 1.8, 0, dz / d * 1.8), 0.25, false); }
+    }
+  }
   spawn(role: Role, x: number, z: number, y = 0.2, look?: Look, weapon: WeaponId = 'fists'): Npc {
     const n = new Npc(this.env.physics, this.tpl, look ?? randomLook(LOOK_SEED++), role, x, z, y);
     this.scene.add(n.char.human.root);
@@ -130,14 +146,26 @@ export class Population {
     }
   }
   fixedUpdate(dt: number, focus: THREE.Vector3) {
-    this.reactToPlayer(dt);
+    this.reactToPlayer(dt); this.reactToSiren(dt);
+    this.runner.beginTick();
+    this.tick++;
     for (const n of this.npcs) {
-      n.far = n.pos.distanceTo(focus) > 75 && n.role === 'civilian' && n.brain === 'wander';
+      const fd = n.pos.distanceTo(focus);
+      n.far = fd > 75 && n.role === 'civilian' && n.brain === 'wander';
       if (n.char.inVehicle) continue;
       if (n.char.knockT > 0) {
         n.char.knockT -= dt;
         if (!n.alive || n.char.knockT > 0.4) { n.char.vel.multiplyScalar(Math.exp(-dt * 3)); n.char.move(n.char.vel.clone().setY(0), dt, false); continue; }
       }
+      // distance LOD for officers and gang members: far fighters think every 2nd/4th tick with the accumulated dt
+      if (n.role !== 'civilian' && fd > 55 && n.brain !== 'scripted' && n.brain !== 'passenger') {
+        n.accDt += dt;
+        if ((this.tick + n.id) % (fd > 110 ? 4 : 2) !== 0) continue;
+        const step = n.accDt; n.accDt = 0;
+        this.runner.update(n, step);
+        continue;
+      }
+      n.accDt = 0;
       this.runner.update(n, dt);
     }
   }
