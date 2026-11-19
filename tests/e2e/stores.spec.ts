@@ -75,9 +75,10 @@ test('GPS routes over the bridge (road lanes), never across the water', async ({
   });
   expect(r).not.toBeNull();
   expect(r!.length).toBeGreaterThan(10);
-  // the straight line from the docks to the airfield crosses the channel (x 492..560) around z=-80..-200; the route must use the freeway bridge at z=-480
-  const channel = r!.filter(q => q.x > 495 && q.x < 558);
-  expect(channel.length).toBeGreaterThan(0);
-  for (const q of channel) expect(Math.abs(q.z + 480)).toBeLessThan(12);
+  // the straight line from the docks to the airfield crosses the water (channel x 492..560 north of z=-62, East River x 560..690 south of it):
+  // the route must stay on a bridge: the freeway at z=-480 or the East River bridges at z=100 / 400
+  const water = r!.filter(q => (q.x > 495 && q.x < 558 && q.z < -100) || (q.x > 565 && q.x < 685));
+  expect(water.length).toBeGreaterThan(0);
+  for (const q of water) expect([-480, 100, 400].some(z => Math.abs(q.z - z) < 12), `${q.x},${q.z}`).toBe(true);
   clean(p);
 });

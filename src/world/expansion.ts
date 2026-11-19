@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { RAPIER, groups, G_STATIC, ALL, type Physics } from '../core/physics';
-import { type CityMap, type P3, pathHeightAt, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
+import { type CityMap, type P3, pathHeightAt, CHANNEL, EAST_RIVER, AIRFIELD, ARMY_BASE, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
 import { Chunked, FacadeBuilder, TrimBuilder, SOLID, ROOF, type WallSpec, T_METAL, T_STONE, T_PAINT, T_IRON, T_ROUGH, T_GLASS, T_NIGHTGLOW, T_GLOW } from './builders';
 import { type BuildCtx, type Helipad, house, warehouse } from './buildings';
 import type { ChunkInstancer } from './geometry';
@@ -90,7 +90,7 @@ export function buildExpansion(
   const trim = ctx.trim;
   const road: Ribbon = { pos: [], nor: [], uv: [], col: [] }, mk: Ribbon = { pos: [], nor: [], uv: [], col: [] };
   const white = C('#e4e1d6'), yellow = C('#e2b043'), conc = C('#a7a39b'), concDark = C('#8f8b84');
-  const groundAt = (x: number, z: number) => (x > CHANNEL.x0 && x < CHANNEL.x1 && z > -700) ? -7 : ground(x, z);
+  const groundAt = (x: number, z: number) => ((x > CHANNEL.x0 && x < CHANNEL.x1 && z > -700) || (x > EAST_RIVER.x0 + 1 && x < EAST_RIVER.x1 - 1 && z > EAST_RIVER.z0)) ? -7 : ground(x, z);
 
   for (const p of city.paths) {
     const lift = p.elevated ? 0.0 : 0.03;

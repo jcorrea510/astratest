@@ -43,9 +43,12 @@ describe('city layout', () => {
     }
   });
   it('has a connected pedestrian network', () => {
-    const seen = new Set([0]); const stack = [0];
-    while (stack.length) { const n = stack.pop()!; for (const e of city.pedNodes[n].edges) if (!seen.has(e.to)) { seen.add(e.to); stack.push(e.to); } }
-    expect(seen.size).toBe(city.pedNodes.length);
+    // the island + west network is one component; Eastbank (across the East River) is its own, joined by no walkway
+    const flood = (s: number) => { const seen = new Set([s]); const stack = [s]; while (stack.length) { const n = stack.pop()!; for (const e of city.pedNodes[n].edges) if (!seen.has(e.to)) { seen.add(e.to); stack.push(e.to); } } return seen; };
+    const main = city.pedNodes.filter(n => n.x < 600), east = city.pedNodes.filter(n => n.x > 600);
+    expect(flood(0).size).toBe(main.length);
+    expect(east.length).toBeGreaterThan(30);
+    expect(flood(east[0].id).size).toBe(east.length);
   });
   it('finds nearest lanes', () => {
     const r = nearestLane(city, -50, 37)!;
@@ -137,6 +140,9 @@ describe('west extension + stores', () => {
     // a single store lot is never part of a merged run, and shops are >= 40 m apart
     for (let i = 0; i < STORES.length; i++) for (let j = i + 1; j < STORES.length; j++) expect(Math.hypot(STORES[i].x - STORES[j].x, STORES[i].z - STORES[j].z)).toBeGreaterThan(25);
   });
+  it('every walk-in store (hand-placed ones included) stands on a lot of its own', () => {
+    for (const st of STORES.filter(x => !x.standalone)) expect(city.lots.some(l => Math.hypot(l.x - st.x, l.z - st.z) < 1 && Math.abs(l.w - 10.5) < 0.2), st.name).toBe(true);
+  });
   it('regenerating the city does not duplicate stores', () => {
     const n = STORES.length; generateCity(); generateCity(); expect(STORES.length).toBe(n);
   });
@@ -188,6 +194,30 @@ describe('Manhattan island shape', () => {
       for (const q of over) expect(surfaceAt(city, q.x, q.z), `bridge ${p.name} at ${q.x},${q.z}`).toBe('road');
     }
     expect(bridges).toBeGreaterThanOrEqual(3);
+  });
+  it('the East River is water, Eastbank is land with streets and lots, and two suspension bridges cross it', () => {
+    expect(surfaceAt(city, 620, 250)).toBe('water');
+    expect(surfaceAt(city, 640, 800)).toBe('water');
+    expect(surfaceAt(city, 1100, 400)).toBe('water'); // sea beyond the shore
+    expect(surfaceAt(city, 800, 985)).toBe('water');
+    expect(surfaceAt(city, 850, 330)).not.toBe('water'); // Eastbank Green
+    const bridges = city.paths.filter(p => p.name.endsWith('Bridge'));
+    expect(bridges.length).toBe(2);
+    for (const b of bridges) {
+      expect(b.lanes).toBe(2);
+      expect(Math.max(...b.pts.map(q => q.y))).toBeGreaterThan(5);
+      for (const q of b.pts.filter(q => q.x > 565 && q.x < 685)) expect(surfaceAt(city, q.x, q.z), `${b.name} ${q.x}`).toBe('road');
+    }
+    expect(city.lots.filter(l => l.district === 'eastbank').length).toBeGreaterThan(40);
+    for (const l of city.lots.filter(l => l.district === 'eastbank')) expect(surfaceAt(city, l.x, l.z), `eastbank lot ${l.id}`).not.toBe('road');
+    expect(districtAt(city, 800, 200)).toBe('eastbank');
+  });
+  it('a car can drive from the island over the East River bridges to Eastbank and the airfield, and back', () => {
+    const shore = nearestLane(city, 930, 500)!, isl = nearestLane(city, 0, 200)!, air = nearestLane(city, 760, -300)!;
+    expect(Number.isFinite(routeField(city, 930, 500)[isl.lane.id])).toBe(true);
+    expect(Number.isFinite(routeField(city, 0, 200)[shore.lane.id])).toBe(true);
+    expect(Number.isFinite(routeField(city, 760, -300)[isl.lane.id])).toBe(true); // Fort Calder side reaches the island over a bridge
+    expect(Number.isFinite(routeField(city, 0, 200)[air.lane.id])).toBe(true);
   });
   it('no building, store or named spot stands in the water', () => {
     for (const l of city.lots) expect(surfaceAt(city, l.x, l.z), `lot ${l.id} at ${l.x},${l.z}`).not.toBe('water');

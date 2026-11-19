@@ -1,5 +1,5 @@
 /** Canvas painting of Port Meridian for the minimap and the full map, plus blip glyphs. */
-import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS, WEST_RIVER, MAINLAND_Z1, ISLAND_LEFT, islandShore } from '../world/citymap';
+import { AVENUES, COAST_Z, DISTRICT_INFO, HARBOR_X, type CityMap, type District, CHANNEL, AIRFIELD, ARMY_BASE, LOOKOUT, STREETS, WEST_RIVER, MAINLAND_Z1, ISLAND_LEFT, islandShore, EAST_RIVER, EAST_SHORE } from '../world/citymap';
 import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 import { WEST, WEST_PLAZAS } from '../world/westside';
@@ -28,7 +28,7 @@ export class CityPainter {
   readonly majorRoads: Path2D;
   readonly coastline: Path2D;
   readonly districtLabels: { name: string; x: number; z: number }[] = [];
-  readonly bounds = { minX: WEST.x0 - 30, maxX: AIRFIELD.x1 + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
+  readonly bounds = { minX: WEST.x0 - 30, maxX: Math.max(AIRFIELD.x1, EAST_SHORE.x1) + 40, minZ: LOOKOUT.z - 60, maxZ: COAST_Z + 70 };
 
   constructor(city: CityMap) {
     const big = 4000;
@@ -36,7 +36,8 @@ export class CityPainter {
     land.rect(-big, -big, big * 2, big * 2);
     const water = new Path2D();
     water.rect(-big, COAST_Z, big * 2, big);
-    water.rect(HARBOR_X, -60, big, big);
+    water.rect(EAST_RIVER.x0, -60, EAST_RIVER.x1 - EAST_RIVER.x0, big); // the East River
+    water.rect(EAST_SHORE.x1, -60, big, big); // sea beyond Eastbank
     water.rect(CHANNEL.x0, -700, CHANNEL.x1 - CHANNEL.x0, 700 - 60); // CITY: the Cannery Channel (land east of it)
     water.rect(WEST_RIVER.x0, WEST_RIVER.z0, WEST_RIVER.x1 - WEST_RIVER.x0, COAST_Z - WEST_RIVER.z0); // the western river
     water.rect(-big, MAINLAND_Z1, WEST_RIVER.x1 + big, COAST_Z - MAINLAND_Z1); // sea south of the mainland
@@ -63,6 +64,8 @@ export class CityPainter {
     this.coastline = new Path2D();
     this.coastline.moveTo(tipX, COAST_Z); this.coastline.lineTo(HARBOR_X, COAST_Z);
     this.coastline.lineTo(HARBOR_X, -700);
+    this.coastline.moveTo(EAST_RIVER.x1, EAST_RIVER.z0); this.coastline.lineTo(EAST_RIVER.x1, COAST_Z); this.coastline.lineTo(EAST_SHORE.x1, COAST_Z); this.coastline.lineTo(EAST_SHORE.x1, EAST_RIVER.z0);
+    this.coastline.moveTo(HARBOR_X, EAST_RIVER.z0); this.coastline.lineTo(EAST_RIVER.x1, EAST_RIVER.z0);
     for (const sg of islandShore(STREETS[0] - 8, STREETS[STREETS.length - 1] + 8)) { this.coastline.moveTo(sg.x0, sg.z0); this.coastline.lineTo(sg.x1, sg.z1); }
     this.coastline.moveTo(WEST_RIVER.x0, WEST_RIVER.z0); this.coastline.lineTo(WEST_RIVER.x0, MAINLAND_Z1); this.coastline.lineTo(-big, MAINLAND_Z1); this.coastline.moveTo(CHANNEL.x1, -700); this.coastline.lineTo(CHANNEL.x1, -60); this.coastline.lineTo(big, -60);
 
@@ -118,7 +121,7 @@ export class CityPainter {
       }
     }
     for (const [d, s] of dsum) this.districtLabels.push({ name: DISTRICT_INFO[d].name, x: s.x / s.n, z: s.z / s.n });
-    this.districtLabels.push({ name: 'Old Town', x: -850, z: -60 }, { name: 'Seacliff', x: -820, z: 300 }, { name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
+    this.districtLabels.push({ name: 'Old Town', x: -850, z: -60 }, { name: 'East River', x: 625, z: 250 }, { name: 'Eastbank', x: 850, z: 450 }, { name: 'Seacliff', x: -820, z: 300 }, { name: 'Vista Hills', x: -60, z: -700 }, { name: 'Meridian Airfield', x: AIRFIELD.apronX, z: -500 }, { name: ARMY_BASE.name, x: (ARMY_BASE.x0 + ARMY_BASE.x1) / 2, z: (ARMY_BASE.z0 + ARMY_BASE.z1) / 2 });
   }
 
   /** Paints in world coordinates; the caller sets the transform. */

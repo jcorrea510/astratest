@@ -24,6 +24,9 @@ export const WEST_LANDMARKS: Landmark[] = [
   { kind: 'watertower', x: -990, z: -330, yaw: 0, name: 'Old Quarter water tower' },
 ];
 
+/** Streets of the eastern shore (they have their own lots and pedestrian network, separate from the west extension). */
+export const isEastPath = (pp: PathRoad) => pp.kind === 'street' && pp.pts[0].x > 600;
+
 export interface WestApi {
   junction(x: number, z: number, half: number): Intersection;
   add(name: string, kind: PathRoad['kind'], from: Intersection, fromDir: [number, number], to: Intersection, toDir: [number, number], ctrl: P3[], lanes: 1 | 2, y0: number, y1: number, elevated: boolean, step?: number): PathRoad;
@@ -76,7 +79,7 @@ export function distToPath(path: PathRoad, x: number, z: number): number {
 
 /** Lots along the curved frontages plus a second row of infill, rotated to face the street. */
 export function genWestLots(paths: PathRoad[], startId: number, rng: Rng, sidewalk: number): Lot[] {
-  const west = paths.filter(pp => pp.kind === 'street');
+  const west = paths.filter(pp => pp.kind === 'street' && !isEastPath(pp));
   const out: Lot[] = [];
   const placed: Rect[] = [];
   const inRegion = (x: number, z: number) => x > WEST.x0 + 12 && x < WEST.x1 - 6 && z > WEST.z0 + 10 && z < WEST.z1 - 12;
@@ -145,8 +148,8 @@ export function genWestLots(paths: PathRoad[], startId: number, rng: Rng, sidewa
 }
 
 /** Sidewalk pedestrian nodes along both sides of every west street, joined into the existing graph. */
-export function genWestPeds(paths: PathRoad[], nodes: PedNode[], sidewalk: number) {
-  const west = paths.filter(pp => pp.kind === 'street');
+export function genWestPeds(paths: PathRoad[], nodes: PedNode[], sidewalk: number, east = false) {
+  const west = paths.filter(pp => pp.kind === 'street' && isEastPath(pp) === east);
   const firstWest = nodes.length;
   const chains: number[][] = [];
   const link = (a: number, b: number) => { nodes[a].edges.push({ to: b, crossing: null }); nodes[b].edges.push({ to: a, crossing: null }); };
@@ -168,6 +171,7 @@ export function genWestPeds(paths: PathRoad[], nodes: PedNode[], sidewalk: numbe
     const dd = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z);
     if (dd < (j >= firstWest ? 26 : 34) && !nodes[i].edges.some(e => e.to === j)) link(i, j);
   }
+  if (east) return; // the eastern shore is its own pedestrian network (no walkway crosses the river)
   // any stragglers: connect to the nearest node of the main component
   const comp = new Int32Array(nodes.length).fill(-1);
   const flood = (s: number, c: number) => { const st = [s]; comp[s] = c; while (st.length) { const n = st.pop()!; for (const e of nodes[n].edges) if (comp[e.to] < 0) { comp[e.to] = c; st.push(e.to); } } };

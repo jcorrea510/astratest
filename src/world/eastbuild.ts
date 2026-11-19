@@ -1,0 +1,126 @@
+/**
+ * Visuals + colliders for the East River side: stone sea walls and a river esplanade along Eastbank, wooden piers,
+ * Eastbank Green, and the two suspension bridges (granite-style towers, main cables, hangers) that stand on the
+ * deck paths built in buildExpansion. Everything goes into the chunked trim builders (a handful of draw calls).
+ */
+import * as THREE from 'three';
+import type { Physics } from '../core/physics';
+import { type CityMap, EAST_BRIDGE_TOWERS, EAST_BRIDGE_ZS, EAST_DECK_Y, EAST_RIVER, EAST_SHORE, HARBOR_X, pathHeightAt, SIDEWALK } from './citymap';
+import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_ROUGH } from './builders';
+import { Rng } from '../core/rng';
+import { EAST_PARK, EAST_PIERS } from './eastside';
+
+const C = (h: string) => new THREE.Color(h);
+export interface EastCtx {
+  root: THREE.Object3D; physics: Physics; city: CityMap; trim: Chunked<TrimBuilder>;
+  paveMat: THREE.Material; grassMat: THREE.Material;
+  addTree: (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => void;
+  addPalm: (x: number, y: number, z: number, yaw: number, rr: Rng, collide?: boolean) => void;
+}
+
+export function buildEast(o: EastCtx) {
+  const { physics, city, trim } = o;
+  const stone = C('#6f6b64'), cap = C('#a9a498'), walk = C('#d3cec2'), steel = C('#4b5258'), wood = C('#6a4d37');
+  const nearRoad = (x: number, z: number, m: number) => city.paths.some(p => p.pts.some(q => Math.hypot(q.x - x, q.z - z) < p.half + SIDEWALK + m));
+
+  // ---- sea walls (the wall box sits on the land side of the edge line) and the river esplanade
+  const wallZ = (x: number, z0: number, z1: number, face: 1 | -1, esplanade: boolean) => {
+    for (let z = z0; z < z1; z += 40) {
+      const l = Math.min(40, z1 - z), c = z + l / 2, t = trim.at(x, c);
+      t.box(x + face * 0.4, -1.6, c, 0.8, 3.2, l, 0, stone, T_STONE); t.box(x + face * 0.25, 0.1, c, 1.4, 0.3, l, 0, cap, T_STONE);
+      if (esplanade) t.box(x + face * 3, 0.0, c, 6, 0.1, l, 0, walk, T_STONE);
+    }
+    for (let z = z0 + 3; z < z1; z += 6) if (!nearRoad(x, z, 4)) { const t = trim.at(x, z); t.box(x + face * 0.3, 0.55, z, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + face * 0.3, 1.0, z + 3, 0.1, 0.1, 6, 0, steel, T_METAL); }
+  };
+  const wallX = (z: number, x0: number, x1: number, face: 1 | -1) => {
+    for (let x = x0; x < x1; x += 40) { const l = Math.min(40, x1 - x), c = x + l / 2, t = trim.at(c, z); t.box(c, -1.6, z + face * 0.4, l, 3.2, 0.8, 0, stone, T_STONE); t.box(c, 0.1, z + face * 0.25, l, 0.3, 1.4, 0, cap, T_STONE); }
+    for (let x = x0 + 3; x < x1; x += 6) if (!nearRoad(x, z, 4)) { const t = trim.at(x, z); t.box(x, 0.55, z + face * 0.3, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + 3, 1.0, z + face * 0.3, 6, 0.1, 0.1, 0, steel, T_METAL); }
+  };
+  wallZ(EAST_SHORE.x0, EAST_SHORE.z0, EAST_SHORE.z1, 1, true); // river bank
+  wallZ(EAST_SHORE.x1, EAST_SHORE.z0, EAST_SHORE.z1, -1, false); // far (sea) edge
+  wallX(EAST_SHORE.z1, EAST_SHORE.x0, EAST_SHORE.x1, -1); // south coast
+  wallX(EAST_RIVER.z0, HARBOR_X, EAST_SHORE.x0, -1); // north bank of the widened river (Fort Calder side)
+
+  // ---- piers into the river
+  EAST_PIERS.forEach((z, k) => {
+    const len = 38, w = 10, x0 = EAST_SHORE.x0 + 2, cx = x0 - len / 2;
+    if (z < EAST_SHORE.z0 + 20) return;
+    const t = trim.at(cx, z);
+    t.box(cx, -0.25, z, len, 0.4, w, 0, wood, [0.9, 0, 2, 0]);
+    physics.addStaticBox(cx, -0.25, z, len / 2, 0.25, w / 2);
+    for (let x = x0 - 4; x > x0 - len; x -= 8) for (const dz of [-w / 2 + 0.5, w / 2 - 0.5]) t.cyl(x, -6, z + dz, 0.3, 0.3, 5.7, 8, C('#3f2f22'), T_ROUGH);
+    t.box(x0 - len + 0.2, 0.55, z, 0.12, 1.1, w, 0, steel, T_METAL);
+    // a few crates and bollards on the pier
+    if (k % 2 === 0) { t.box(cx + 4, 0.7, z - 2, 2.2, 1.4, 2.2, 0.3, C('#8a5a32'), T_ROUGH); physics.addStaticBox(cx + 4, 0.7, z - 2, 1.1, 0.7, 1.1, 0.3); }
+    for (const dz of [-w / 2 + 0.6, w / 2 - 0.6]) t.cyl(x0 - len + 1.5, 0.05, z + dz, 0.22, 0.28, 0.6, 8, C('#2f3236'), T_METAL);
+  });
+
+  // ---- Eastbank Green
+  {
+    const r = new Rng(4410), P = EAST_PARK, cx = (P.x0 + P.x1) / 2, cz = (P.z0 + P.z1) / 2, t = trim.at(cx, cz);
+    t.box(cx, 0.02, cz, P.x1 - P.x0, 0.06, 4.2, 0, C('#b7ab95'), T_STONE);
+    t.box(cx, 0.02, cz, 4.2, 0.06, P.z1 - P.z0, 0, C('#b7ab95'), T_STONE);
+    for (let i = 0; i < 40; i++) {
+      const x = r.range(P.x0 + 3, P.x1 - 3), z = r.range(P.z0 + 3, P.z1 - 3);
+      if (Math.abs(x - cx) < 5 || Math.abs(z - cz) < 5) continue;
+      o.addTree(x, -0.05, z, r.range(0, 6.28), r.range(1.0, 1.6), r);
+    }
+    for (const [dx, dz] of [[-12, 3.2], [12, 3.2], [-12, -3.2], [12, -3.2]]) { t.box(cx + dx, 0.45, cz + dz, 1.8, 0.1, 0.55, 0, C('#6b4a32'), T_ROUGH); t.box(cx + dx, 0.2, cz + dz, 1.6, 0.4, 0.4, 0, C('#8f8a80'), T_STONE); }
+    // a fountain at the crossing
+    t.cyl(cx, 0.05, cz, 3.4, 3.4, 0.6, 20, C('#b9b2a4'), T_STONE); t.cyl(cx, 0.5, cz, 2.9, 2.9, 0.2, 20, C('#2f8aa0'), [0.06, 0.2, 0, 0]);
+    physics.addStaticCylinder(cx, 0.4, cz, 0.5, 3.4);
+    // promenade trees along the river esplanade
+    for (let z = EAST_SHORE.z0 + 30; z < EAST_SHORE.z1 - 20; z += 26) if (!nearRoad(EAST_SHORE.x0 + 7, z, 6) && !EAST_PIERS.some(pz => Math.abs(pz - z) < 9)) o.addTree(EAST_SHORE.x0 + 7, -0.05, z, r.range(0, 6.28), r.range(0.9, 1.3), r);
+  }
+
+  // ---- suspension bridges
+  for (const bz of EAST_BRIDGE_ZS) suspension(o, bz);
+}
+
+function suspension(o: EastCtx, bz: number) {
+  const { physics, city, trim } = o;
+  const path = city.paths.find(p => p.kind === 'freeway' && p.pts[0].x > 500 && p.pts[0].x < 540 && Math.abs(p.pts[0].z - bz) < 2 && p.pts[p.pts.length - 1].x > 700);
+  if (!path) return;
+  const deckAt = (x: number) => pathHeightAt(path, x, bz).y;
+  const granite = C('#8c8780'), graniteDark = C('#6d6963'), cable = C('#3c3f43'), tie = C('#5a5f64');
+  const [t0, t1] = EAST_BRIDGE_TOWERS;
+  const legZ = path.half + 1.9, topY = EAST_DECK_Y + 32, baseY = -7, hgt = topY - baseY;
+  // towers: two granite legs, portal cross-beams, caps and an aircraft light
+  for (const tx of [t0, t1]) {
+    const tb = trim.at(tx, bz);
+    for (const sg of [-1, 1]) {
+      const z = bz + sg * legZ;
+      tb.box(tx, baseY + hgt / 2, z, 3.0, hgt, 3.6, 0, granite, T_STONE);
+      tb.box(tx, topY + 0.6, z, 3.6, 1.2, 4.2, 0, graniteDark, T_STONE);
+      tb.box(tx, -0.5, z, 5.6, 1.4, 6.4, 0, graniteDark, T_STONE); // pile cap / fender at the waterline
+      physics.addStaticBox(tx, baseY + hgt / 2, z, 1.5, hgt / 2, 1.8);
+    }
+    for (const y of [EAST_DECK_Y + 11, EAST_DECK_Y + 21, topY - 1.2]) tb.box(tx, y, bz, 2.4, 1.7, legZ * 2 - 2.6, 0, granite, T_STONE);
+    // gothic-ish portal: a diagonal brace under each cross-beam
+    for (const y of [EAST_DECK_Y + 11, EAST_DECK_Y + 21]) for (const sg of [-1, 1]) tb.beam(tx, y - 1.0, bz + sg * (legZ - 1.6), tx, y - 4.5, bz + sg * (legZ * 0.45), 1.0, 1.0, graniteDark, T_STONE);
+    tb.sphere(tx, topY + 1.8, bz, 0.35, C('#ff3020'), [0.4, 0, 4, 3]);
+  }
+  // main cables: side spans straight to the anchorages, main span sagging between the towers
+  const anchorW = 541, anchorE = 740;
+  for (const sg of [-1, 1]) {
+    const z = bz + sg * legZ, tb = trim.at((t0 + t1) / 2, z);
+    const pts: { x: number; y: number }[] = [];
+    pts.push({ x: anchorW, y: deckAt(anchorW) + 1.4 });
+    for (let k = 1; k <= 4; k++) { const t = k / 5; pts.push({ x: anchorW + (t0 - anchorW) * t, y: (deckAt(anchorW) + 1.4) + (topY + 0.2 - deckAt(anchorW) - 1.4) * Math.pow(t, 1.15) }); }
+    const mid = (t0 + t1) / 2, span = (t1 - t0) / 2, low = EAST_DECK_Y + 3.2;
+    for (let k = 0; k <= 16; k++) { const x = t0 + (t1 - t0) * k / 16, u = (x - mid) / span; pts.push({ x, y: low + (topY + 0.2 - low) * u * u }); }
+    for (let k = 1; k <= 4; k++) { const t = k / 5, ye = deckAt(anchorE) + 1.4; pts.push({ x: t1 + (anchorE - t1) * t, y: topY + 0.2 + (ye - topY - 0.2) * Math.pow(t, 1.15) }); }
+    pts.push({ x: anchorE, y: deckAt(anchorE) + 1.4 });
+    for (let i = 1; i < pts.length; i++) tb.beam(pts[i - 1].x, pts[i - 1].y, z, pts[i].x, pts[i].y, z, 0.55, 0.55, cable, T_METAL);
+    // hangers from the cable down to the deck edge
+    const yAt = (x: number) => { for (let i = 1; i < pts.length; i++) if (x <= pts[i].x) { const t = (x - pts[i - 1].x) / (pts[i].x - pts[i - 1].x || 1); return pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t; } return pts[pts.length - 1].y; };
+    for (let x = anchorW + 6; x < anchorE - 4; x += 5) {
+      if (Math.abs(x - t0) < 3 || Math.abs(x - t1) < 3) continue;
+      const yc = yAt(x), yd = deckAt(x) + 0.9;
+      if (yc - yd < 1) continue;
+      tb.beam(x, yc, z, x, yd, z, 0.1, 0.1, tie, T_METAL);
+    }
+    // anchorage blocks
+    for (const ax of [anchorW, anchorE]) { tb.box(ax, 1.2, z, 5, 2.4, 3.2, 0, graniteDark, T_STONE); physics.addStaticBox(ax, 1.2, z, 2.5, 1.2, 1.6); }
+  }
+}

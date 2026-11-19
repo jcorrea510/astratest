@@ -15,10 +15,10 @@ describe('GPS routing', () => {
     // every interior point (not the player / waypoint ends) is on tarmac
     const bad = r.slice(1, -1).filter(p => !onRoad(p));
     expect(bad.length, JSON.stringify(bad.slice(0, 3))).toBe(0);
-    // it crosses the channel only where the bridge is (freeway z = -480), never over open water
-    const crossing = r.slice(1, -1).filter(p => p.x > 495 && p.x < 558);
+    // it crosses the water only on a bridge (freeway z = -480 over the channel, or the East River bridges at z = 100 / 400)
+    const crossing = r.slice(1, -1).filter(p => p.x > 565 && p.x < 685 || (p.x > 495 && p.x < 558 && p.z < -100));
     expect(crossing.length).toBeGreaterThan(0);
-    for (const p of crossing) expect(Math.abs(p.z - -480)).toBeLessThan(12);
+    for (const p of crossing) expect([-480, 100, 400].some(z => Math.abs(p.z - z) < 12), `${p.x},${p.z}`).toBe(true);
   });
   it('routes to a waypoint in the sea by ending at the shore road', () => {
     const r = gpsRoute(city, -100, 0, 100, 560)!;
@@ -48,5 +48,21 @@ describe('GPS across the western river', () => {
     expect(r).toBeDefined();
     expect(r.slice(1, -1).every(onRoad)).toBe(true);
     expect(r.some(p => p.x > -526 && p.x < -464)).toBe(true);
+  });
+});
+
+describe('GPS across the East River', () => {
+  it('routes from the island to Eastbank over one of the two suspension bridges', () => {
+    const r = gpsRoute(city, 300, 300, 960, 600)!;
+    expect(r).toBeDefined();
+    expect(r.slice(1, -1).every(onRoad)).toBe(true);
+    const over = r.filter(p => p.x > 575 && p.x < 680);
+    expect(over.length).toBeGreaterThan(3);
+    expect(over.every(p => Math.abs(p.z - 100) < 12 || Math.abs(p.z - 400) < 12)).toBe(true);
+  });
+  it('routes back from Eastbank to the island', () => {
+    const r = gpsRoute(city, 900, 700, 100, 100)!;
+    expect(r).toBeDefined();
+    expect(r.slice(1, -1).every(onRoad)).toBe(true);
   });
 });

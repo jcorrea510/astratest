@@ -57,3 +57,26 @@ export function genStores(lots: Lot[], blocks: Block[], rng: Rng): Store[] {
   }
   return out;
 }
+
+/**
+ * The hand-placed stores must stand on a street-facing lot. When the lot generator no longer puts one under a store
+ * (any change to the grid shifts the lots), move the store onto the nearest suitable lot and shrink the lot to the shop footprint.
+ */
+export function snapHandmadeStores(lots: Lot[]) {
+  for (const s of STORES) {
+    if (s.generated || s.standalone) continue;
+    if (lots.some(l => Math.hypot(l.x - s.x, l.z - s.z) < 1)) continue;
+    let best: Lot | undefined, bd = 40;
+    for (const l of lots) {
+      if (l.kind !== 'brownstone' && l.kind !== 'midrise' && l.kind !== 'pastel') continue;
+      if (l.street === false || l.w < 8.5 || l.d < 9.5) continue;
+      if (Math.abs(Math.atan2(Math.sin(l.rot - s.yaw), Math.cos(l.rot - s.yaw))) > 0.2) continue;
+      const d = Math.hypot(l.x - s.x, l.z - s.z);
+      if (d < bd) { bd = d; best = l; }
+    }
+    if (!best) continue;
+    const fx = Math.sin(best.rot), fz = Math.cos(best.rot), dd = (best.d - STORE_D) / 2;
+    best.x += fx * dd; best.z += fz * dd; best.w = STORE_W + 0.1; best.d = STORE_D; best.kind = 'brownstone';
+    s.x = best.x; s.z = best.z; s.yaw = best.rot;
+  }
+}

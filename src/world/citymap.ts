@@ -4,11 +4,12 @@
  */
 import { Rng } from '../core/rng';
 import { buildWestRoads, genWestLots, genWestPeds, WEST } from './westside';
-import { genStores } from './storegen';
+import { genEastLots } from './eastside';
+import { genStores, snapHandmadeStores } from './storegen';
 import { isDiagBlock, clearChannel, broadwayLots, addBroadwayLanes, diagConnectors, bwDist, BROADWAY } from './broadway';
 import { setGeneratedStores } from '../game/places';
 
-export type District = 'financial' | 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
+export type District = 'eastbank' | 'financial' | 'brickline' | 'heights' | 'juniper' | 'hillside' | 'cannery' | 'strand' | 'midtown' | 'vista' | 'airfield' | 'oldtown' | 'seacliff';
 export const DISTRICT_INFO: Record<District, { name: string; color: string; pedDensity: number; trafficDensity: number }> = {
   financial: { name: 'Anchor Row (Financial)', color: '#8a8f99', pedDensity: 1.1, trafficDensity: 0.9 },
   brickline: { name: 'Brickline', color: '#b8674d', pedDensity: 1, trafficDensity: 0.8 },
@@ -21,6 +22,7 @@ export const DISTRICT_INFO: Record<District, { name: string; color: string; pedD
   vista: { name: 'Vista Hills', color: '#6f8a4f', pedDensity: 0.1, trafficDensity: 0.4 },
   oldtown: { name: 'Old Town', color: '#a07a5a', pedDensity: 1.1, trafficDensity: 0.8 },
   seacliff: { name: 'Seacliff', color: '#d79a8a', pedDensity: 0.9, trafficDensity: 0.7 },
+  eastbank: { name: 'Eastbank', color: '#9a8a6e', pedDensity: 0.7, trafficDensity: 0.7 },
   airfield: { name: 'Meridian Airfield', color: '#8a8a86', pedDensity: 0.05, trafficDensity: 0.3 },
 };
 
@@ -34,7 +36,16 @@ export const COAST_Z = 962; // beach ends and the sea begins south of this line
 export const HARBOR_X = 560; // quay edge on the east side
 export const SEABED_Y = -7; // open water south of the beach and east of the quay
 export const SEA_EDGE_Z = 1150; // swimmable sea ends here (invisible wall)
-export const SEA_EDGE_X = 660;
+export const SEA_EDGE_X = 1075;
+/** The East River between the island's quay (HARBOR_X) and the eastern shore, crossed by two suspension bridges. */
+export const EAST_RIVER = { x0: HARBOR_X, x1: 690, z0: -62 };
+/** The eastern shore strip (low-rise Eastbank): streets, lots, piers and a park; joined north to Fort Calder and the airfield. */
+export const EAST_SHORE = { x0: 690, x1: 1060, z0: -62, z1: COAST_Z };
+export const EAST_BRIDGE_ZS = [100, 400];
+export const EAST_GRID = { xs: [760, 930], zs: [-20, 100, 250, 400, 550, 700, 850] };
+/** Suspension towers (x) and deck height of the two East River bridges. */
+export const EAST_BRIDGE_TOWERS = [585, 665];
+export const EAST_DECK_Y = 5.5;
 /**
  * Manhattan-style island: per block row (between STREETS[j] and STREETS[j+1]) the first kept avenue column. The grid
  * tapers toward the south tip (Financial District); everything west of it is the Hudson-like river, and the old
@@ -76,9 +87,11 @@ export function islandWater(x: number, z: number): boolean {
   if (x > WEST_RIVER.x0 && x < WEST_RIVER.x1 && z > WEST_RIVER.z0) return true;
   if (x <= WEST_RIVER.x0 && z > MAINLAND_Z1) return true;
   if (x >= WEST_RIVER.x1 && z > STREETS[0] - 10 && x < AVENUES[AVENUES.length - 1] && x < islandLeftEdge(z)) return true;
+  if (z > EAST_RIVER.z0 && x > EAST_RIVER.x0 && x < EAST_RIVER.x1) return true; // the East River
+  if (x >= EAST_SHORE.x0 && (z > EAST_SHORE.z1 || x > EAST_SHORE.x1) && z > EAST_RIVER.z0) return true; // sea around the eastern shore
   return false;
 }
-export const MAP_BOUNDS = { minX: -1080, maxX: 620, minZ: -470, maxZ: 1100 };
+export const MAP_BOUNDS = { minX: -1080, maxX: 1110, minZ: -470, maxZ: 1100 };
 
 export const AVENUE_NAMES = ['Ridge Ave', 'Lantern Ave', 'Cooper Ave', 'Marrow Ave', 'Meridian Blvd', 'Solace Ave', 'Fennel Ave', 'Tidewell Ave', 'Ashby Ave', 'Harbor Way'];
 export const STREET_NAMES = ['North Crest St', '1st St', '2nd St', '3rd St', 'Sunset Blvd', '5th St', '6th St', 'Boardwalk St', 'Coastal Dr', 'Park Row', 'Bleecker Row', 'Union Row', 'Wharf St', 'Stone St', 'Battery Dr'];
@@ -398,7 +411,10 @@ export function generateCity(seed = 1977): CityMap {
     return !(l.x + r > WEST_RIVER.x0 && l.x - r < WEST_RIVER.x1) && l.z + r < MAINLAND_Z1;
   }).map((l, k) => ({ ...l, id: lots.length + k })));
   genWestPeds(paths, pedNodes, SIDEWALK);
+  lots.push(...genEastLots(paths, lots.length, new Rng(seed + 53), SIDEWALK));
+  genWestPeds(paths, pedNodes, SIDEWALK, true);
   // ~50 walk-in stores: picked from the street-facing lots (grid and west), resized to the shop footprint
+  snapHandmadeStores(lots);
   setGeneratedStores(genStores(lots, blocks, new Rng(seed + 77)));
 
   return { roads, intersections, blocks, lots, lanes, pedNodes, paths, intersectionAt: (ix, iz) => interGrid[ix]?.[iz] };
@@ -426,6 +442,10 @@ export function surfaceAt(city: CityMap, x: number, z: number): Surface {
     return 'water';
   }
   if (z > COAST_Z) return 'water';
+  if (x >= EAST_SHORE.x0 && x <= EAST_SHORE.x1 && z > EAST_SHORE.z0 && z <= EAST_SHORE.z1) {
+    for (const p of city.paths) if (p.kind === 'street' && pathHeightAt(p, x, z).d < p.half + SIDEWALK) return 'sidewalk';
+    return 'lot';
+  }
   if (x > HARBOR_X && z > -60 && x < SEA_EDGE_X + 40) return 'water';
   if (x > CHANNEL.x0 && x < CHANNEL.x1 && z <= -60) return 'water';
   if (x < WEST.x0 || z < STREETS[0] - 30 || x > SEA_EDGE_X + 40) return 'offmap';
@@ -452,6 +472,7 @@ export function districtAt(city: CityMap, x: number, z: number): District {
   const b = blockAt(city, x, z);
   if (b) return b.district;
   if (x > CHANNEL.x1 && z < -62) return 'airfield';
+  if (x >= EAST_SHORE.x0 - 30 && x <= EAST_SHORE.x1 && z >= EAST_SHORE.z0 && z <= EAST_SHORE.z1) return 'eastbank';
   if (z < STREETS[0] - 20) return 'vista';
   if (z > STREETS[STREETS.length - 1]) return 'strand';
   if (x < AVENUES[0] - 4) return z > 150 ? 'seacliff' : 'oldtown';
@@ -643,6 +664,18 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
     const J = zs.map((z, k) => junction(HW, z, k === 0 || k === zs.length - 1 ? rampHalf : fwH));
     for (let k = 0; k < J.length - 1; k++) add('Harbor Drive', 'freeway', J[k], [0, 1], J[k + 1], [0, -1], [], 2, Y, Y, false, 10);
     for (const [jz, k] of [[5, 1], [8, 2], [11, 3]] as const) add('Harbor Drive Ramp', 'ramp', interGrid[AVENUES.length - 1][jz], [1, 0], J[k], [-1, 0], [], 1, Y, Y, false, 8);
+    // East River: two suspension bridges carry Harbor Drive over to Eastbank, whose street grid also joins Airfield Road
+    const H = rampHalf;
+    const E = EAST_GRID.xs.map(x => EAST_GRID.zs.map(z => junction(x, z, x === EAST_GRID.xs[0] && EAST_BRIDGE_ZS.includes(z) ? fwHalf : H)));
+    const bridgeNames = ['Brookhaven Bridge', 'Eastgate Bridge'];
+    EAST_BRIDGE_ZS.forEach((bz, k) => {
+      const hz = J[zs.indexOf(bz)], ez = E[0][EAST_GRID.zs.indexOf(bz)];
+      add(bridgeNames[k], 'freeway', hz, [1, 0], ez, [-1, 0], [{ x: EAST_BRIDGE_TOWERS[0], y: EAST_DECK_Y, z: bz }, { x: EAST_BRIDGE_TOWERS[1], y: EAST_DECK_Y, z: bz }], 2, Y, 0, true, 10);
+    });
+    const colNames = ['Shore Road', 'Foundry Row'], rowNames = ['Mill St', 'Brookhaven Way', 'Rope Walk', 'Eastgate Way', 'Cooperage St', 'Dockside Ave', 'Tanner Quay'];
+    EAST_GRID.xs.forEach((_x, c) => { for (let r = 0; r < EAST_GRID.zs.length - 1; r++) add(colNames[c], 'street', E[c][r], [0, 1], E[c][r + 1], [0, -1], [], 1, 0, 0, false, 10); });
+    EAST_GRID.zs.forEach((_z, r) => add(rowNames[r], 'street', E[0][r], [1, 0], E[1][r], [-1, 0], [], 1, 0, 0, false, 10));
+    add('Fort Calder Rd', 'service', JS, [0, 1], E[0][0], [0, -1], [], 1, 0, 0, false, 10);
   }
   return paths;
 }

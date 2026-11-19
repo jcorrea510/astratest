@@ -10,7 +10,8 @@ import { RAPIER, groups, G_STATIC, ALL } from '../core/physics';
 import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
 import { buildExpansion, expansionPads, helipadPad } from './expansion';
 import { buildWest } from './westbuild';
-import { CHANNEL, pathHeightAt } from './citymap';
+import { buildEast } from './eastbuild';
+import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
@@ -96,6 +97,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   for (let j = 0; j < ISLAND_LEFT.length; j++) strips.push([AVENUES[ISLAND_LEFT[j]] - 14, j === 0 ? NORTH_EDGE : STREETS[j] - 8, maxX + 2, STREETS[j + 1] + 8]);
   strips.push([-1400, NORTH_EDGE, WEST_RIVER.x0, MAINLAND_Z1]);
   strips.push([maxX, NORTH_EDGE, CHANNEL.x0, -62], [CHANNEL.x1, NORTH_EDGE, 1400, -62], [-1400, -1400, -1104, NORTH_EDGE]);
+  strips.push([EAST_SHORE.x0, EAST_SHORE.z0, EAST_SHORE.x1, EAST_SHORE.z1]); // Eastbank across the East River
   for (const [x0, z0, x1, z1] of strips) slab(land, x0, z0, x1, z1, -0.05, -0.05, wht, wht, 7);
   const landMesh = new THREE.Mesh(land.build(), grassMat); landMesh.receiveShadow = true; root.add(landMesh);
   // Ground as 200 m tiles: one huge box loses contact precision for the character controller.
@@ -106,15 +108,15 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       physics.addStaticBox((gx + ex) / 2, top - 0.5, (gz + ez) / 2, (ex - gx) / 2, 0.5, (ez - gz) / 2);
     }
   };
-  for (const [x0, z0, x1, z1] of strips.slice(0, ISLAND_LEFT.length + 3)) tileRect(Math.max(x0, -1500), z0, x1, z1, -0.05);
+  for (const [x0, z0, x1, z1] of [...strips.slice(0, ISLAND_LEFT.length + 3), strips[strips.length - 1]]) tileRect(Math.max(x0, -1500), z0, x1, z1, -0.05);
   tileRect(CHANNEL.x0, -1500, CHANNEL.x1, -62, SEABED_Y); // channel bed
   tileRect(WEST_RIVER.x0, -700, WEST_RIVER.x1, NORTH_EDGE, SEABED_Y); // river bed up the carved valley
   // outer limits beyond the terrain
   physics.addStaticBox(-1090, 20, -850, 2, 60, 460); physics.addStaticBox(1090, 20, -700, 2, 60, 640); physics.addStaticBox(0, 20, -1290, 1100, 60, 2);
   tileRect(-1500, NORTH_EDGE, maxX + 2, SEA_EDGE_Z, SEABED_Y); // seabed under the island, the river and the sea
-  tileRect(maxX + 2, -62, SEA_EDGE_X, maxZ + 7, SEABED_Y); // harbor floor
+  tileRect(maxX + 2, -62, SEA_EDGE_X, SEA_EDGE_Z, SEABED_Y); // harbor, East River and sea floor
   physics.addStaticBox(0, -2, SEA_EDGE_Z, 1500, 8, 1);
-  physics.addStaticBox(SEA_EDGE_X, -2, (SEA_EDGE_Z - 62) / 2, 1, 8, (SEA_EDGE_Z + 62) / 2);
+  physics.addStaticBox(SEA_EDGE_X, 6, (SEA_EDGE_Z - 62) / 2, 1, 14, (SEA_EDGE_Z + 62) / 2);
 
   const asphaltS = asphaltSurface();
   const asphaltMat = surfaceMat(asphaltS, 1, {}, 0.2, 'asphalt');
@@ -307,6 +309,10 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       tower(ctx, { cx: lot.x, cz: lot.z, w: lot.w, d: lot.d, base: CURB_HEIGHT, height: lot.height * 1.45, seed: lot.seed, helipad: rank >= 0 && rank < 3 ? padNames[rank] : null, yaw: lot.blockId >= 0 && city.blocks[lot.blockId].district !== 'heights' ? lot.rot + Math.PI : 0 });
       continue;
     }
+    if (lot.kind === 'warehouse') {
+      warehouse(ctx, { cx: lot.x, cz: lot.z, w: lot.w - 0.5, d: lot.d, base: CURB_HEIGHT, h: lot.height || 9, seed: lot.seed, yaw: lot.rot });
+      continue;
+    }
     if (b.district === 'hillside') {
       const c = Math.cos(lot.rot), s = Math.sin(lot.rot);
       const off = -0.9;
@@ -317,7 +323,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const hw = lot.w / 2, hd = lot.d / 2;
     const faceOut = (lx: number, lz: number) => ctx.exposed(lot.x + lx * c + lz * s, lot.z - lx * s + lz * c);
     const exposed: [boolean, boolean, boolean, boolean] = [true, faceOut(hw + 1.2, 0), faceOut(0, -hd - 1.2), faceOut(-hw - 1.2, 0)];
-    const brick = b.district === 'brickline' || b.district === 'oldtown' || (lot.kind === 'brownstone' && b.district === 'midtown');
+    const brick = b.district === 'brickline' || b.district === 'oldtown' || b.district === 'eastbank' || (lot.kind === 'brownstone' && b.district === 'midtown');
     const beach = b.district === 'strand' || b.district === 'seacliff';
     const store = storeAt(lot.x, lot.z);
     const common = { cx: lot.x, cz: lot.z, yaw: lot.rot, w: lot.w - 0.06, d: lot.d, base: CURB_HEIGHT, seed: lot.seed, exposed, brand: r.int(0, BRANDS.length - 1), hollow: !!store };
@@ -635,6 +641,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   buildWest({ root, physics, city, trim, props, paveMat, grassMat, addTree, addPalm });
   buildFlatiron(ctx);
   buildIsland({ physics, city, trim, northEdge: NORTH_EDGE, southEdge: maxZ + 8 });
+  buildEast({ root, physics, city, trim, paveMat, grassMat, addTree, addPalm });
 
   // Visible city edge: guardrail along the boundary walls with a tree line beyond.
   {
