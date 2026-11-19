@@ -9,7 +9,8 @@ Resume: read CLAUDE.md, docs/BRIEF4.md, this file. Continue unfinished items. Ow
 - [ ] R4-E Player: gun held in aim pose while shooting (still broken), faster car entry, physical carjack throw (hands on victim), heli entry anim, better robbing (shoot clerk then rob till), shoppers react.
 - [ ] R4-F Highway mode (title entry: infinite realistic highway, AI lane changes with signals, cut-offs, 1st/3rd person, high fps) + US units + fullscreen button.
 - [ ] R4-B Density (after C): Manhattan-level traffic and pedestrians, perf on M1 (instancing/LOD).
-- [ ] R4-R Realism audit: agent screenshots/plays, lists what's still cartoony, fix waves.
+- [ ] R4-M Scaled-down Manhattan shape (island outline, rivers, tilted grid, Central Park, Broadway, FiDi tip) — given to C2 agent.
+- [ ] R4-R Realism audit (mechanics/backend ultra-realistic too): agent screenshots/plays, lists what's still cartoony, fix waves.
 - [ ] R4-Z Full gate, publish (gh-pages), final report by 12:00 UTC.
 Running: B a011bd4d59ef90a5a (03:05), C2 bigger-city a9be57d1a87fe3b67 (03:30), D a904aed365e2d86ce, E a6e93bbda4a62f151, F a917c3bc3de1d6808. Resume stopped ones via SendMessage.
 

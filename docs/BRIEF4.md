@@ -26,3 +26,6 @@ Make a gamemode on the front that is highway driving. This gamemode will be real
 Make the handcuff animation much better and real
 Make the getting into a car animation happen quicker and when you throw someone out i want my actual arms to be on them while i am throwing them out so i am physically throwing them
 The street on the bridge thing is constantly glitching between two views stuttering something is glitched with that.
+
+## Addendum (03:35 UTC, verbatim)
+You're at about 50% of the usage limit, resetting at 2:40 AM EST. After the subagents are done I want you to take the rest of the night making it amazing. Copy the shape of manhattan for a scaled down manhattan too. I want the backend, the mechanics, to be ultra realistic. Goodluck and goodnight.
