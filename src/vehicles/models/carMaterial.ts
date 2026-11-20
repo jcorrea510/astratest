@@ -211,6 +211,27 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
   return m as THREE.MeshPhysicalMaterial & { userData: { u: CarUniforms } };
 }
 
+/**
+ * Far-crowd variant for instanced, rigid far models: the paint comes from a per-instance `aPaint` attribute and the merged
+ * glass (aKind FAR_GLASS = 60) is drawn opaque as dark, clear-coated reflective glass. One per vehicle kind (livery, grille
+ * and body uniforms differ by kind); the program is shared.
+ */
+export function farCarMaterial(): ReturnType<typeof carMaterial> {
+  const m = carMaterial(), inner = m.onBeforeCompile;
+  m.side = THREE.FrontSide; // closed far bodies: no interior to see through windows
+  m.onBeforeCompile = (sh, r) => {
+    inner.call(m, sh, r);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aPaint; varying vec3 vPaint;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaint = aPaint;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPaint;')
+      .replace('col = isK(K_PAINT2) ? uPaint2 : uPaint;', 'col = isK(K_PAINT2) ? uPaint2 : vPaint;')
+      .replace('        // grime low on the body', `        if (abs(vKind - 60.0) < 0.5) { col = vec3(0.022, 0.026, 0.03); gRough = 0.04; gMetal = 0.0; gCoat = 1.0; gEmis = vec3(0.0); }
+        // grime low on the body`);
+  };
+  m.customProgramCacheKey = () => 'car-far-v1';
+  return m;
+}
+
 /** Glass: tinted, fresnel-bright, one material per vehicle so broken panes (bitmask) disappear. */
 export type GlassUniforms = { broken: { value: number }; crack: { value: THREE.Vector4[] } };
 export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassUniforms } {

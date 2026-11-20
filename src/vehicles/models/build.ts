@@ -23,9 +23,34 @@ export interface CarTemplate {
   doors: DoorDef[]; panes: PaneDef[];
   bbox: THREE.Box3; sphere: THREE.Sphere; front: number; rear: number; hood: THREE.Vector3; roofY: number;
   /** track loop length (tank tread scroll) */ trackLen: number;
+  /** Rigid far model for instanced crowds: the lod-2 body with its glass merged in as aKind FAR_GLASS (no skinning, rest pose). */
+  far: THREE.BufferGeometry;
+}
+/** aKind of the far model's (opaque, reflective) glass. */
+export const FAR_GLASS = 60;
+/** Merges a body and its glass into one plain geometry (position, normal, uv, color, aKind) for instancing. */
+function farGeometry(body: THREE.BufferGeometry, glass: THREE.BufferGeometry | null): THREE.BufferGeometry {
+  const parts = glass ? [body, glass] : [body], n = parts.reduce((a, g) => a + g.attributes.position.count, 0);
+  const P = new Float32Array(n * 3), N = new Float32Array(n * 3), U = new Float32Array(n * 2), C = new Float32Array(n * 4), Kd = new Float32Array(n);
+  let o = 0;
+  for (const g of parts) {
+    const c = g.attributes.position.count, isGlass = g === glass;
+    P.set(g.attributes.position.array as Float32Array, o * 3); N.set(g.attributes.normal.array as Float32Array, o * 3);
+    if (g.attributes.uv) U.set(g.attributes.uv.array as Float32Array, o * 2);
+    if (g.attributes.color) { const ca = g.attributes.color, sz = ca.itemSize; for (let i = 0; i < c; i++) for (let k = 0; k < 4; k++) C[(o + i) * 4 + k] = k < sz ? (ca.array as Float32Array)[i * sz + k] : 1; }
+    if (isGlass) Kd.fill(FAR_GLASS, o, o + c); else Kd.set(g.attributes.aKind.array as Float32Array, o);
+    o += c;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3)); out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2)); out.setAttribute('color', new THREE.BufferAttribute(C, 4)); out.setAttribute('aKind', new THREE.BufferAttribute(Kd, 1));
+  out.computeBoundingSphere();
+  return out;
 }
 
 const cache = new Map<VehicleKind, CarTemplate>();
+/** Triangle budget of the far model (lod 2, also the far-crowd impostor). */
+export const FAR_TRIS = 1300;
 export function getTemplate(kind: VehicleKind): CarTemplate {
   let t = cache.get(kind);
   if (!t) { t = buildTemplate(kind); cache.set(kind, t); }
@@ -53,8 +78,9 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
   const doorBone = (row: number, side: 1 | -1) => bl.doorBones[row * 2 + (side === 1 ? 0 : 1)];
   const lods: CarTemplate['lods'] = [];
   let doors: DoorDef[] = [], panes: PaneDef[] = [], bbox = new THREE.Box3(), trackLen = 1;
+  let far = new THREE.BufferGeometry();
   const hood = new THREE.Vector3();
-  for (const lod of [0, 1]) {
+  for (const lod of [0, 1, 2]) {
     const kit = bodyKit(s, lod);
     const lower = cutLower(kit, lod, doorBone);
     const body = new Soup().append(lower.body);
@@ -71,11 +97,14 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     });
     if (s.type === 'tank') trackLen = tankParts(kit, body, lod, bl);
     body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0);
-    // lod 0 = full model (~35k tris); lod 1 (~3k) and lod 2 (~600) are clustered down from the simple model, wheels/doors stay on their bones
+    // lod 0 = full model (~35k tris); lod 1 (~3k) is clustered down from the simple model; lod 2 (~1.2k) is built natively coarse
+    // (clustering a body down to a few hundred triangles tears it into spiky blobs) and only lightly clustered.
     const bake = (b: Soup, g: Soup | null) => ({ body: b.toGeometry(), glass: g && g.tris ? g.toGeometry() : null });
-    const entries = lod === 0 ? [bake(body, glass)] : [bake(body.decimateTo(s.type === 'tank' ? 2200 : 3000), glass?.decimateTo(220) ?? null), bake(body.decimateTo(s.type === 'tank' ? 900 : 600), glass?.decimateTo(40) ?? null)];
+    const entries = lod === 0 ? [bake(body, glass)] : lod === 1 ? [bake(body.decimateTo(s.type === 'tank' ? 2200 : 3000), glass?.decimateTo(220) ?? null)]
+      : [bake(body.decimateTo(s.type === 'tank' ? 1100 : FAR_TRIS), glass?.decimateTo(90) ?? null)];
     for (const e of entries) {
       lods.push(e);
+      if (lods.length === 3) far = farGeometry(e.body, e.glass);
       // CPU copies are dead weight once uploaded (~7 MB per kind); only the lod-0 body keeps what dent deformation reads.
       freeAfterUpload(e.body, lods.length === 1 ? ['position', 'normal', 'skinIndex'] : []); if (e.glass) freeAfterUpload(e.glass);
     }
@@ -94,12 +123,12 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
       });
       const hz = s.type === 'car' && kind === 'super' ? kit.zr + 0.9 : kit.zf - 0.9;
       hood.set(0, GROUND + kit.yT(hz) - 0.05, hz);
-    } else if (gh) {
+    } else if (gh && lod === 1) {
       panes = gh.panes.map(p => { const sp = p.soup.clone().translate(0, GROUND, 0); const tris = new Float32Array(sp.verts * 3); for (let i = 0; i < sp.verts; i++) { tris[i * 3] = sp.d[i * 14]; tris[i * 3 + 1] = sp.d[i * 14 + 1]; tris[i * 3 + 2] = sp.d[i * 14 + 2]; } return { id: p.id, name: p.name, bone: p.bone, tris }; });
     }
   }
   const sphere = new THREE.Sphere(); bbox.getBoundingSphere(sphere); sphere.radius += 1.2;
-  return { kind, shape: s, layout: layoutFor(kind), seats, lods, ...bl, doors, panes, bbox, sphere, front: bbox.max.z, rear: bbox.min.z, hood, roofY: bbox.max.y, trackLen };
+  return { kind, shape: s, layout: layoutFor(kind), seats, lods, ...bl, doors, panes, bbox, sphere, front: bbox.max.z, rear: bbox.min.z, hood, roofY: bbox.max.y, trackLen, far };
 }
 
 /** Bones are rest-posed at the origin while building; skinning needs every vertex relative to its bone at rest, which is the identity here. */

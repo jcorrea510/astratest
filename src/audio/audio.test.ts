@@ -183,7 +183,7 @@ describe('sfx table & limiter curve', () => {
   it('every SfxName has a recipe and metadata', () => {
     const names = Object.keys(SFX_META).sort();
     expect(Object.keys(RECIPES).sort()).toEqual(names);
-    expect(names.length).toBe(42);
+    expect(names.length).toBe(43);
   });
   it('ceiling curve is transparent at low level and never exceeds the ceiling', () => {
     const c = ceilingCurve(0.72, 0.95, 4, 8193);

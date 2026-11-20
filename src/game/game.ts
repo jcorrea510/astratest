@@ -762,7 +762,7 @@ export class Game {
     if (!v) return null;
     const name = (v as { name?: string }).name ?? 'vehicle';
     if (v.driver) return `${key}  Take the ${name}`;
-    if (v.doorsLocked && !v.playerUsed) return `${key}  Break into the ${name}`;
+    if (v.doorsLocked && !v.playerUsed) return v.isGlassBroken(v.paneOfDoor(0)) ? `${key}  Reach in and open the ${name}` : `${key}  Break into the ${name}`;
     return `${key}  Enter ${name}`;
   }
   baseBlips(): MinimapBlip[] {

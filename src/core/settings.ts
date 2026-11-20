@@ -7,9 +7,9 @@ export interface QualityPreset {
   farCars: number; farPeds: number; parked: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, particles: 300, farCars: 150, farPeds: 140, parked: 180 },
-  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, particles: 700, farCars: 300, farPeds: 340, parked: 450 },
-  high: { pixelRatio: 1.25, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, particles: 1200, farCars: 400, farPeds: 520, parked: 700 },
+  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, particles: 300, farCars: 220, farPeds: 140, parked: 180 },
+  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, particles: 700, farCars: 420, farPeds: 340, parked: 450 },
+  high: { pixelRatio: 1.25, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, particles: 1200, farCars: 560, farPeds: 520, parked: 700 },
 };
 
 export type Action =

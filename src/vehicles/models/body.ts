@@ -72,11 +72,11 @@ export function bodyKit(s: CarShape, lod: number): BodyKit {
     else y = yB(z) + s.rb + yv * (yT(z) - s.rs - yB(z) - s.rb);
     out[0] = x; out[1] = y; out[2] = z;
   };
-  const na = lod ? 44 : 84;
+  const na = lod > 1 ? 30 : lod ? 44 : 84; // lod 2 = the far model: a clean coarse surface instead of a clustered one
   const as = arcSamples(plan, 0, Math.PI * 2, na);
   const tb = [...lin(0, T1, lod ? 2 : 3)];
   const deckF = lod ? [0.08, 0.22, 0.4, 0.62, 1] : [0.03, 0.09, 0.18, 0.3, 0.45, 0.62, 0.8, 1];
-  const ts = [...lin(T1, T2, lod ? 2 : 3), ...lin(T2, T3, lod ? 3 : 7).slice(1), ...lin(T3, T4, lod ? 2 : 5).slice(1), ...deckF.map(f => T4 + (1 - T4) * f)];
+  const ts = [...lin(T1, T2, lod ? 2 : 3), ...lin(T2, T3, lod > 1 ? 2 : lod ? 3 : 7).slice(1), ...lin(T3, T4, lod ? 2 : 5).slice(1), ...(lod > 1 ? [0.22, 0.62, 1] : deckF).map(f => T4 + (1 - T4) * f)];
   const ref = (x: number, y: number, z: number): [number, number, number] => [x, y - (s.clear + 0.45), (z - zc) * 0.5];
   const shell = dropDegenerate(gridSurface(lower, as, tb, { kind: K.UNDER, color: '#1b1b1c' }, ref)).append(dropDegenerate(gridSurface(lower, as, ts, { kind: K.PAINT }, ref)));
   const probe = shell.clone();
@@ -312,7 +312,7 @@ export function greenhouse(kit: BodyKit, lod: number, doorBone: (row: number, si
   const panes: Pane[] = [];
   const ref = (x: number, y: number, z: number): [number, number, number] => [x, y - (gh.roof - 0.6), (z - G.zcB) * 0.6];
   const na = (a0: number, a1: number, per: number) => Math.max(2, Math.round(Math.abs(a1 - a0) * per));
-  const perA = lod ? 14 : 26;
+  const perA = lod > 1 ? 9 : lod ? 14 : 26;
   const tsOf = (t0: number, t1: number, n: number) => lin(t0, t1, Math.max(1, lod ? Math.ceil(n / 2) : n));
   const patch = (a0: number, a1: number, t0: number, t1: number, nt: number, paint: { kind: number; color?: string; bone?: number; extra?: number }) =>
     dropDegenerate(gridSurface(fn, arcSamples(base, a0, a1, na(a0, a1, perA)), tsOf(t0, t1, nt), paint, ref));

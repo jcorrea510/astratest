@@ -138,6 +138,8 @@ const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vect
 
 /** Cheap crowd members are only removed this close to the player (behind the camera lens); real ones take over from PROMOTE_R. */
 const NEAR_KILL = 9, PROMOTE_R = 60;
+/** Instance capacity of the far-car meshes (R6-T: raised from 400 for denser city traffic). */
+const MAX_FAR_CARS = 600;
 export class Crowd {
   readonly cars: GCar[] = []; readonly peds: GPed[] = [];
   /** siren vehicles (set by the game from Traffic.sirenSources): far cars pull over for them */
@@ -174,11 +176,11 @@ export class Crowd {
     };
   }
   constructor(scene: THREE.Scene, private city: CityMap, private vehicles: VehicleManager, private time: () => number) {
-    this.carMesh = makeInstanced(carGeometry(), 400, false); this.parkMesh = makeInstanced(carGeometry(), 1200, false);
+    this.carMesh = makeInstanced(carGeometry(), MAX_FAR_CARS, false); this.parkMesh = makeInstanced(carGeometry(), 1200, false);
     this.pedMesh = makeInstanced(pedGeometry(), 900, true);
     this.busMesh = makeInstanced(busGeometry(), 16, false);
     const lg = carLightGeometry(), lm = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    this.lightMesh = new THREE.InstancedMesh(lg, lm, 400); this.lightMesh.instanceMatrix = this.carMesh.mesh.instanceMatrix;
+    this.lightMesh = new THREE.InstancedMesh(lg, lm, MAX_FAR_CARS); this.lightMesh.instanceMatrix = this.carMesh.mesh.instanceMatrix;
     this.lightMesh.frustumCulled = false; this.lightMesh.castShadow = false; this.lightMesh.count = 0; this.lightMesh.visible = false;
     scene.add(this.carMesh.mesh, this.parkMesh.mesh, this.pedMesh.mesh, this.busMesh.mesh, this.lightMesh);
     this.carLaneIdx = city.lanes.filter(l => !l.connector && l.length > 30).map(l => l.id);
@@ -249,7 +251,7 @@ export class Crowd {
     return false;
   }
   private updateCars(dt: number, t: number, focus: THREE.Vector3) {
-    const cars = this.cars, cap = Math.min(this.caps.farCars, 400);
+    const cars = this.cars, cap = Math.min(this.caps.farCars, MAX_FAR_CARS);
     // recycle: too close (the real traffic takes over), too far, or on top of a real vehicle
     this.slowT -= dt;
     const checkReal = this.slowT <= 0; if (checkReal) this.slowT = 0.4;
@@ -265,7 +267,7 @@ export class Crowd {
     // a few city buses on the long avenue lanes
     this.busCount = 0; for (const c of cars) if (c.bus) this.busCount++;
     const busCap = Math.min(14, Math.round(cap / 28));
-    if (this.busCount < busCap && cars.length < 399 && (this.prewarming || Math.random() < 0.08)) for (let k = 0; k < (this.prewarming ? 6 : 1); k++) if (this.spawnCar(focus, true)) this.busCount++;
+    if (this.busCount < busCap && cars.length < MAX_FAR_CARS - 1 && (this.prewarming || Math.random() < 0.08)) for (let k = 0; k < (this.prewarming ? 6 : 1); k++) if (this.spawnCar(focus, true)) this.busCount++;
     // per-lane ordering for leader lookup
     const byLane = new Map<number, GCar[]>();
     for (const c of cars) { const l = byLane.get(c.lane.id); if (l) l.push(c); else byLane.set(c.lane.id, [c]); }
@@ -337,7 +339,7 @@ export class Crowd {
     const tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;
     const bm = this.busMesh.mesh, btint = this.busMesh.geo.attributes.aTint as THREE.InstancedBufferAttribute;
     let n = 0, nb = 0;
-    for (let i = 0; i < cars.length && n < 400; i++) {
+    for (let i = 0; i < cars.length && n < MAX_FAR_CARS; i++) {
       const c = cars[i];
       if (c.bus && nb >= 16) continue;
       samplePath(c.lane, c.s, sp); const y = c.lane.ys ? (sp.y ?? 0) : 0;

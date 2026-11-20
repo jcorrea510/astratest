@@ -229,13 +229,22 @@ export class Vehicle {
   }
 
   // ------------------------------------------------------------------------------------------- glass
+  /** Side windows wound down (drive-by): hidden like a broken pane but not 'broken' (no shards, no unlock). */
+  private rolledMask = 0;
+  rollWindow(pane: number, down: boolean) {
+    if (pane < 0 || pane > 30) return;
+    const nm = down ? this.rolledMask | (1 << pane) : this.rolledMask & ~(1 << pane);
+    if (nm === this.rolledMask) return;
+    this.rolledMask = nm;
+    if (this.glassMat) this.glassMat.userData.broken.value = this.brokenMask | this.rolledMask;
+  }
   isGlassBroken(id: number) { return (this.brokenMask >> id & 1) === 1; }
   /** Shatters a pane (particles + sound through Vehicle.onGlassBreak). Returns false if it was already gone. */
   breakGlass(id: number): boolean {
     const p = this.panes.find(x => x.id === id);
     if (!p || p.broken) return false;
     p.broken = true; this.brokenMask |= 1 << id;
-    if (this.glassMat) this.glassMat.userData.broken.value = this.brokenMask;
+    if (this.glassMat) this.glassMat.userData.broken.value = this.brokenMask | this.rolledMask;
     const tp = this.tpl.panes.find(x => x.id === id)!;
     // centre of the pane in the world
     const c = new THREE.Vector3(); const n = tp.tris.length / 3;
@@ -459,7 +468,7 @@ export class Vehicle {
     this.lod = -1; this.setLod(0);
     this.lightsBroken = false;
     this.brokenMask = 0; for (const p of this.panes) p.broken = false;
-    if (this.glassMat) { this.glassMat.userData.broken.value = 0; for (const c of this.glassMat.userData.crack.value) c.w = 0; }
+    if (this.glassMat) { this.rolledMask = 0; this.glassMat.userData.broken.value = 0; for (const c of this.glassMat.userData.crack.value) c.w = 0; }
     for (const p of this.panes) p.crack = 0;
     for (const d of this.doors) { d.hanging = false; d.open = 0; }
   }

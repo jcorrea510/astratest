@@ -39,6 +39,7 @@ const RELOAD_STEPS: Record<string, [number, ExtraSfx, boolean][]> = {
   single: [[0.1, 'magOut', false], [0.7, 'magIn', false]],
 };
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _axis = new THREE.Vector3();
+const _wn = new THREE.Vector3(), _gr = new THREE.Vector3();
 const _sr = new THREE.Vector3(), _sl = new THREE.Vector3(), _lo = new THREE.Vector3(), _dir = new THREE.Vector3(), _a1 = new THREE.Vector3(), _a2 = new THREE.Vector3(), _qr = new THREE.Quaternion();
 /** Rotates a bone about a world-space axis (applied after the animation mixer, so it never accumulates). */
 function rotateBoneWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
@@ -96,7 +97,34 @@ export class PlayerCombat {
   get aiming() { return this.ctl.aiming || this.hipAimT > 0 || this.driveAim; }
   /** R6-K drive-by: holding aim inside a car with a one-handed gun puts it out the window; fire then shoots along the camera aim point. */
   driveAim = false;
-  private wasDriveAim = false;
+  private wasDriveAim = false; private wasMode = 'none';
+  private rolled: { v: Vehicle; pane: number } | null = null;
+  /** Side of the car (+1 left / -1 right) the camera aim point lies on. */
+  private driveSide(v: Vehicle) {
+    const dx = this.aimPoint.x - v.position.x, dz = this.aimPoint.z - v.position.z;
+    return dx * Math.cos(v.yaw) - dz * Math.sin(v.yaw) >= 0 ? 1 : -1;
+  }
+  /** Winds down the window on the aimed side while a drive-by aim is held, and winds it back up afterwards. */
+  private driveWindow(v: Vehicle | null) {
+    let want: { v: Vehicle; pane: number } | null = null;
+    if (v && this.driveAim) { const d = v.doorIndex(this.driveSide(v) === 1 ? 'left' : 'right', 0); const pane = d >= 0 ? v.paneOfDoor(d) : -1; if (pane >= 0) want = { v, pane }; }
+    const r = this.rolled;
+    if (r && (!want || want.v !== r.v || want.pane !== r.pane)) { r.v.rollWindow(r.pane, false); this.rolled = null; }
+    if (want) { want.v.rollWindow(want.pane, true); this.rolled = want; }
+  }
+  /** Drive-by hold: moves the gun so its grip sits in the open window (barrel out), within reach of the shoulder. */
+  private driveHold(H: ReturnType<typeof makeHoldOut>, an: ReturnType<typeof weaponAnchors>, shoulder: THREE.Vector3, armLen: number) {
+    const v = this.player.inVehicle as Vehicle; const side = this.driveSide(v);
+    const di = v.doorIndex(side === 1 ? 'left' : 'right', 0); if (di < 0) return;
+    const f = v.doorFrame(di);
+    _wn.set(f.sg * (f.outX + 0.12), f.belt + 0.06, (f.z0 + f.z1) / 2);
+    v.visual.updateMatrixWorld(); v.visual.localToWorld(_wn);
+    _gr.copy(an.grip).applyQuaternion(H.quat).add(H.pos);
+    H.pos.add(_wn.sub(_gr));
+    _gr.copy(an.grip).applyQuaternion(H.quat).add(H.pos); // new grip position
+    const dist = _gr.distanceTo(shoulder), maxR = armLen * (an.butt ? 1.15 : 0.97);
+    if (dist > maxR) H.pos.addScaledVector(_gr.sub(shoulder).normalize(), -(dist - maxR)); // far-side aim: the arm stretches over the dash
+  }
   /** Aiming down a scope right now. */
   get scoped() { return this.ctl.aiming && this.inv.def.scope > 0 && !this.inv.reloading && this.player.alive && !this.player.inVehicle; }
   /** Vertical FOV of the scope (degrees) for the current zoom step. */
@@ -149,9 +177,11 @@ export class PlayerCombat {
     const veh = c.inVehicle as Vehicle | null;
     const inCar = c.alive && !!veh && typeof veh.kind === 'string' && veh.kind !== 'tank';
     const def0 = inv.def;
-    this.driveAim = inCar && !blocked && this.input.held('aim') && !def0.melee && def0.cat !== 'throw' && !def0.twoHanded;
-    if (inCar && this.driveAim !== this.wasDriveAim) h.setUpperMode(this.driveAim ? 'pistol' : 'none');
-    this.wasDriveAim = this.driveAim;
+    this.driveAim = inCar && !blocked && this.input.held('aim') && !def0.melee && def0.cat !== 'heavy';
+    const mode = this.driveAim ? (def0.cat === 'pistol' || def0.cat === 'smg' ? 'pistol' : def0.cat === 'throw' ? 'none' : 'rifle') : 'none';
+    if (inCar && (this.driveAim !== this.wasDriveAim || mode !== this.wasMode)) h.setUpperMode(mode);
+    this.wasDriveAim = this.driveAim; this.wasMode = mode;
+    this.driveWindow(inCar ? veh : null);
     if (this.driveAim && this.input.justPressed('reload')) inv.startReload();
     // Gun up from the hip (fire without the aim button): the body must keep facing the camera line, not the run direction.
     this.ctl.hipRaised = onFoot && this.armed && this.hipAimT > 0 && !inv.def.melee && inv.def.cat !== 'throw';
@@ -269,7 +299,7 @@ export class PlayerCombat {
       this.cookT += dt;
       const release = !this.input.held('fire') || (def.id === 'grenade' && this.cookT > 3);
       if (release && inv.fire()) {
-        if (!this.ctl.aiming) { this.hipAimT = 0.5; c.yaw = this.cam.yaw + Math.PI; }
+        if (!this.ctl.aiming && !this.driveAim) { this.hipAimT = 0.5; c.yaw = this.cam.yaw + Math.PI; }
         const power = 0.7 + Math.min(0.6, this.cookT * 0.6);
         const hand = c.human.rightHand.getWorldPosition(new THREE.Vector3()); hand.y += 0.25;
         const dir = this.aimPoint.clone().sub(hand).normalize(); if (dir.lengthSq() < 0.5) dir.copy(this.tmpD);
@@ -414,7 +444,9 @@ export class PlayerCombat {
       _dir.copy(this.aimPoint).sub(_sr); if (_dir.lengthSq() < 1.2) _dir.copy(this.tmpD); _dir.normalize();
       _dir.lerp(_lo, 1 - smooth(0, 1, this.raiseT)).normalize();
       c.human.rightHand.parent!.getWorldPosition(_a1); c.human.rightHand.getWorldPosition(_a2);
-      solveHold({ shR: _sr, shL: _sl, armLen: _sr.distanceTo(_a1) + _a1.distanceTo(_a2), dir: _dir, anchors: an, supportHand: this.raiseT > 0.4, raise: this.raiseT }, H);
+      const oneHand = this.driveAim && (def.cat === 'pistol' || def.cat === 'smg');
+      solveHold({ shR: _sr, shL: _sl, armLen: _sr.distanceTo(_a1) + _a1.distanceTo(_a2), dir: _dir, anchors: oneHand ? { ...an, butt: null, support: null } : an, supportHand: !oneHand && this.raiseT > 0.4, raise: this.raiseT }, H);
+      if (this.driveAim) this.driveHold(H, an, _sr, _sr.distanceTo(_a1) + _a1.distanceTo(_a2));
       const w = this.holdW;
       m.position.lerp(H.pos, w); m.quaternion.slerp(H.quat, w);
     }

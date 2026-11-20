@@ -5,9 +5,9 @@ Resume: read CLAUDE.md, docs/BRIEF6.md, this file. Continue unfinished items. Ow
 ## Round 6 (BRIEF6 quality pass; started 12:15 UTC 20 Nov; work until done, then publish + owner summary)
 Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Waves of <=4 agents. Ports: own 52xx per agent.
 - [ ] R6-V (Opus) vanishing + LOD + perf: near peds/cars/bus never vanish, no boxy cars/Minecraft peds up close, high playable, car shadow lag/shadow glitch. Uses R5-P2 WIP 975ebd9.
-- [ ] R6-K car entry: parked/curb theft drivable, no feet through floor, shot-out window = no re-break, hold RMB in car = aim/shoot held weapon.
+- [x] R6-K (+follow-up: all guns drive-by, window roll-down, reach-in prompt) car entry: parked/curb theft drivable, no feet through floor, shot-out window = no re-break, hold RMB in car = aim/shoot held weapon.
 - [ ] R6-T traffic AI: obey lights/signs, no stopping mid-road, all cars drive regardless of distance to player, more moving than parked, realistic flow.
-- [ ] R6-C police/air: taser arrest (no shooting own arrest, no killing arresting cop), react to drawn gun, 3-star always pursue, no SWAT/heli spawning on top (arrive from distance), police heli = spotter only, army heli realistic accuracy, sandbox ignore-police at army base.
+- [x] R6-C police/air: taser arrest (no shooting own arrest, no killing arresting cop), react to drawn gun, 3-star always pursue, no SWAT/heli spawning on top (arrive from distance), police heli = spotter only, army heli realistic accuracy, sandbox ignore-police at army base.
 - [ ] R6-P peds (wave 2): crosswalk walk signals, no jaywalking, no phantom collision/stumble anims, fight back when punched, hands-up pose natural + flee after shots.
 - [ ] R6-M modes (wave 2): Regular (earn money, no cheats; death = medical bill + lose inventory; buy guns/cars) vs Sandbox; no spawn holding gun; purpose loop (net worth, car showroom/garage goals).
 - [ ] R6-D driving feel (wave 2): city steering quicker at speed, drift less endless, highway lane change fast.
