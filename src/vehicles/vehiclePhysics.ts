@@ -146,7 +146,7 @@ export class VehiclePhysics {
   steerLimit(absV: number) {
     const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(9, 46, absV); // full-ish lock stays available through city speeds
     // never ask the front tyres for much more slip than their peak: full lock = best possible turn, not a plough
-    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 2.0;
+    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * (2.0 - 1.0 * smooth(10, 13, absV)) /* R6-D: above ~25 mph the fronts sit at their peak slip, no plough scrub */;
     return Math.min(geo, grip);
   }
 
@@ -296,6 +296,9 @@ export class VehiclePhysics {
           if (spinning || locked) { const latLeft = Math.sqrt(Math.max(0, circle * circle - Fx * Fx)) * (spinning ? 0.6 : 0.8); Fy = clamp(Fy, -latLeft, latLeft); }
           else { const longLeft = Math.sqrt(Math.max(0, circle * circle - Fy * Fy)); Fx = clamp(Fx, -longLeft, longLeft); }
         }
+        // R6-D: cornering scrub. A steered front tyre's side force has a backwards component (Fy sin(steer)); give most of it back
+        // while cornering at speed (not in a deliberate drift) so a lift-off corner loses ~20% speed, not 40%.
+        if (wd.front && !drifting && absV > 6 && fwdSpeed > 0) Fx += Math.abs(Fy) * Math.abs(Math.sin(a)) * 0.8;
         // apply at the contact point raised towards the centre of mass (limits body roll / pitch)
         // (lever capped so tall vehicles do not trip over their own tyres)
         const px = P.x, py = Math.max(P.y + (com.y - P.y) * 0.55, com.y - 0.3), pz = P.z;

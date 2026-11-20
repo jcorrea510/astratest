@@ -92,7 +92,7 @@ describe('steering feel', () => {
       process.stdout.write(`FEEL ${kind} 90deg@35mph lift-off t=${t90.toFixed(2)}s maxBeta ${mb.toFixed(2)} v ${car.speed.toFixed(1)}\n`);
       expect(t90).toBeGreaterThan(0); expect(t90).toBeLessThan(1.9);
       expect(mb).toBeLessThan(0.25);
-      expect(car.speed).toBeGreaterThan(6);
+      expect(car.speed).toBeGreaterThan(v0 * 0.72); // R6-D: cornering scrub <= ~25% (was ~40%)
     });
   }
 });

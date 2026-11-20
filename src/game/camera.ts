@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { RAPIER, type Physics, G_STATIC, G_VEHICLE, groups } from '../core/physics';
 import { clamp, damp, dampAngle, wrapAngle } from '../core/rng';
 
+/** Chase-camera yaw follow rate (1/s): time constant ~0.18 s, so the view swings with a turning car instead of trailing it (was 2.2 = 0.45 s). */
+export const CHASE_YAW_RATE = 5.5;
+
 export type CamMode = 'foot' | 'aim' | 'vehicle' | 'dead' | 'cinematic';
 
 export class CameraRig {
@@ -59,7 +62,7 @@ export class CameraRig {
       fovT = clamp(sp * 0.35, 0, 14);
       // Auto-align behind the car when the player is not steering the camera.
       if (this.lastInput > 1.2 && sp > 3 && opts.vehicleYaw !== undefined && !opts.free) {
-        this.yaw = dampAngle(this.yaw, opts.vehicleYaw, 2.2, dt);
+        this.yaw = dampAngle(this.yaw, opts.vehicleYaw, CHASE_YAW_RATE, dt);
         this.pitch = damp(this.pitch, -0.16, 2, dt);
       }
     } else if (mode === 'dead') { targetDist = 6; height = 1.0; }
