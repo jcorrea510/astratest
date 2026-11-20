@@ -173,7 +173,8 @@ export class Crowd {
   }
   /** The person a far pedestrian is (built on first use and kept, so they look the same when they turn real). */
   private lookOf(p: GPed): FullLook {
-    if (!p.lk) { p.lk = randomLook(p.seed ?? LOOK_SEED++); p.data = this.people?.pack(p.lk); }
+    if (!p.lk) p.lk = randomLook(p.seed ?? LOOK_SEED++);
+    if (!p.data) p.data = this.people?.pack(p.lk);
     return p.lk;
   }
   /** Kind for a new far car: the traffic mix, restricted to kinds whose model is already built (never a build hitch). */
