@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 import { boot, quietStreets } from './helpers';
 const OUT = '/tmp/claude-0/-home-user-astratest/d1ebd1cb-1eba-5496-ba2a-bb23f33ded71/scratchpad/shots';
 const TAG = process.env.SHOT_TAG ?? 'peds';
@@ -8,7 +9,7 @@ test('ped lods', async ({ page }) => {
   await quietStreets(page);
   for (const [dist, fov, hour] of [[9, 40, 13], [9, 40, 13.002], [40, 62, 13], [30, 62, 21]] as const) {
     await page.evaluate(({ dist, fov, hour }) => {
-      const g = (window as any).__game, cam = g.renderer.camera;
+      const g = (window as any).__game, cam = g.renderer.camera; g.stop();
       g.renderer.setQuality('high'); g.clockRunning = false; g.hour = hour;
       for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); }
       for (const v of [...g.vehicles.list]) if (v.position.distanceTo(g.player.pos) < 300) g.vehicles.remove(v);
@@ -28,8 +29,9 @@ test('ped lods', async ({ page }) => {
       for (const n of [a0, a1, a2, b]) { n.char.human.setBodyLod?.(n.__lod); n.char.human.setDetail(true); n.char.human.mesh.visible = true; }
       cam.position.set(ox, 1.3, oz + 0.7); cam.lookAt(ox + dist, 1.0, oz + 0.7); cam.fov = fov; cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
       g.renderer.render(); g.renderer.render();
+      const url = (g.renderer.renderer.domElement as HTMLCanvasElement).toDataURL('image/png');
       cam.fov = 62; cam.updateProjectionMatrix();
-    }, { dist, fov, hour });
-    await page.screenshot({ path: `${OUT}/${TAG}-${dist}-${hour}.png` });
+      return url;
+    }, { dist, fov, hour }).then(u => writeFileSync(`${OUT}/${TAG}-${dist}-${hour}.png`, Buffer.from(u.split(',')[1], 'base64')));
   }
 });

@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist','--no-sandbox'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+await p.addInitScript(() => { try { localStorage.setItem('meridian-afterglow.save.v1', JSON.stringify({ version: 2, savedAt: Date.now() - 300000, mode: 'regular', money: 12345, health: 100, armor: 0, weapons: {}, current: 'fists', medkits: 0, missions: [], collectibles: [], jumps: [], pos: { x: -300, z: -106, yaw: 1 }, hour: 18, stats: { kills: 0, distance: 0, crashes: 0 }, cars: [], milestones: [], robberies: 0 })); } catch {} });
 const out = '/tmp/claude-0/shots/';
 await p.goto('http://127.0.0.1:5206/astratest/');
 await p.waitForFunction(() => !!window.__title, null, { timeout: 240000 });

@@ -22,6 +22,30 @@ export type { Look, FullLook, HairStyle, HatStyle, TopStyle, BottomStyle, ShoeSt
 export { ACTIONS, UAL_CLIPS } from './actions';
 
 const LOW_BODY = new Map<string, THREE.BufferGeometry>(), BODY_IDS = new WeakMap<THREE.BufferGeometry, number>(); let bodyIdN = 0;
+/**
+ * Per-vertex cluster-size factor from the thickness of the vertex's main bone: limbs (forearms, shins) cluster finer than the
+ * torso, so they keep their shape instead of collapsing and leaving hands and shoes floating (R6-V). Small bones (fingers,
+ * toes) stay at 1: they merge into the hand / foot.
+ */
+export function boneCellScale(g: THREE.BufferGeometry): Float32Array {
+  const n = g.attributes.position.count, out = new Float32Array(n).fill(1), SI = g.attributes.skinIndex as THREE.BufferAttribute | undefined;
+  if (!SI) return out;
+  const P = g.attributes.position as THREE.BufferAttribute, box = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const b = SI.getX(i); let e = box.get(b);
+    if (!e) { e = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]; box.set(b, e); }
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    e[0] = Math.min(e[0], x); e[1] = Math.min(e[1], y); e[2] = Math.min(e[2], z); e[3] = Math.max(e[3], x); e[4] = Math.max(e[4], y); e[5] = Math.max(e[5], z);
+  }
+  const f = new Map<number, number>();
+  for (const [b, e] of box) {
+    const ext = [e[3] - e[0], e[4] - e[1], e[5] - e[2]].sort((a, c) => a - c);
+    f.set(b, ext[2] < 0.12 ? 1 : Math.max(0.35, Math.min(1, ext[0] / 0.24)));
+  }
+  for (let i = 0; i < n; i++) out[i] = f.get(SI.getX(i)) ?? 1;
+  return out;
+}
+
 /** Vertex-clustering decimation of a (non-indexed or indexed) skinned body: position/normal/uv are averaged, all other attributes keep the first vertex and split clusters. */
 export function lowBody(src: THREE.BufferGeometry, target: number): THREE.BufferGeometry {
   if (!BODY_IDS.has(src)) BODY_IDS.set(src, ++bodyIdN);
@@ -29,10 +53,11 @@ export function lowBody(src: THREE.BufferGeometry, target: number): THREE.Buffer
   const g = src.index ? src.toNonIndexed() : src, n = g.attributes.position.count, names = Object.keys(g.attributes);
   const others = ['skinIndex', 'region'].filter(k => g.attributes[k]); // discrete: clusters never mix bones / garment regions
   const avg = names.filter(k => !others.includes(k) && k !== 'skinWeight');
-  const run = (cell: number) => {
+  const P = g.attributes.position as THREE.BufferAttribute, scale = boneCellScale(g);
+  const run = (cell0: number) => {
     const key: string[] = new Array(n), cl = new Map<string, { first: number; c: number; sum: Record<string, number[]> }>();
-    const P = g.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < n; i++) {
+      const cell = cell0 * scale[i];
       let k = `${Math.floor(P.getX(i) / cell)},${Math.floor(P.getY(i) / cell)},${Math.floor(P.getZ(i) / cell)}`;
       for (const o of others) { const a = g.attributes[o] as THREE.BufferAttribute; for (let j = 0; j < a.itemSize; j++) k += ',' + a.array[i * a.itemSize + j]; }
       key[i] = k; let c = cl.get(k);

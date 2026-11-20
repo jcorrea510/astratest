@@ -146,7 +146,7 @@ export class VehiclePhysics {
   steerLimit(absV: number) {
     const geo = this.spec.maxSteer + (this.spec.highSteer - this.spec.maxSteer) * smooth(9, 46, absV); // full-ish lock stays available through city speeds
     // never ask the front tyres for much more slip than their peak: full lock = best possible turn, not a plough
-    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 1.7;
+    const grip = Math.atan((this.wheelBase * this.spec.grip * GRIP * G) / Math.max(1, absV * absV)) + this.spec.peakSlip * 2.0;
     return Math.min(geo, grip);
   }
 
@@ -170,21 +170,23 @@ export class VehiclePhysics {
 
     // Handbrake: grip drops quickly, comes back progressively so a slide can be caught instead of snapping straight.
     this.hb = input.handbrake ? Math.min(1, this.hb + dt * 9) : Math.max(0, this.hb - dt * 5);
-    if (input.handbrake) this.hbRelease = 1; else this.hbRelease = Math.max(0, this.hbRelease - dt * 1.6);
+    if (input.handbrake) this.hbRelease = 1; else this.hbRelease = Math.max(0, this.hbRelease - dt * 3.2); // R6-D: rear grip is back ~0.3 s after letting go
     // Drift state: started by the handbrake at speed, held while the car stays sideways and moving.
     if (input.handbrake && absV > 7 && fwdSpeed > 0) { this.drift = 1; if (Math.abs(yawRate) > 0.3) this.driftDir = Math.sign(yawRate); else if (Math.abs(sInRaw) > 0.2) this.driftDir = Math.sign(sInRaw); }
     else if (this.drift > 0) {
-      const holding = Math.abs(this.beta) > 0.1 && planar > 6 && thr > -0.3;
-      this.drift = holding ? Math.min(1, this.drift + dt) : this.drift - dt * 1.5;
+      // R6-D: a slide is only kept alive on purpose (throttle or steering into it); hands off it dies in ~0.5 s
+      const intent = thr > 0.3 || Math.abs(sInRaw) > 0.3;
+      const holding = Math.abs(this.beta) > 0.1 && planar > 6 && thr > -0.3 && intent;
+      this.drift = holding ? Math.min(1, this.drift + dt) : this.drift - dt * 2.5;
       if (this.drift < 0) this.drift = 0;
     }
     // power oversteer (no traction control): a spinning rear that steps out becomes a holdable drift too
-    if (!spec.tc && this.wheelspin > 0.5 && thr > 0.5 && Math.abs(this.beta) > 0.2 && fwdSpeed > 6 && Math.abs(yawRate) > 0.3) {
+    if (!spec.tc && this.wheelspin > 0.5 && thr > 0.5 && Math.abs(this.beta) > 0.3 && fwdSpeed > 6 && Math.abs(yawRate) > 0.3 && Math.abs(sInRaw) < 0.9 /* R6-D: full-lock cornering is not a drift */) {
       if (this.drift <= 0) this.driftDir = Math.sign(yawRate);
       this.drift = Math.max(this.drift, 0.6);
     }
     const drifting = this.drift > 0;
-    if (drifting && Math.abs(sInRaw) < 0.12 && this.hb < 0.05) this.driftLazy += dt; else this.driftLazy = Math.max(0, this.driftLazy - dt * 2);
+    if (drifting && Math.abs(sInRaw) < 0.12 && this.hb < 0.05) this.driftLazy += dt * 2; else this.driftLazy = Math.max(0, this.driftLazy - dt * 2);
 
     // Steering: rate-limited input with faster return-to-centre, speed-sensitive lock, countersteer help.
     const sIn = clamp(input.steer, -1, 1);
@@ -194,7 +196,7 @@ export class VehiclePhysics {
     let steerAngle = this.steerIn * (drifting ? spec.maxSteer * 0.9 : this.steerLimit(absV));
     if (fwdSpeed > 4) {
       const b = this.beta, dead = drifting ? 0.02 : 0.07;
-      if (Math.abs(b) > dead) steerAngle += (b - Math.sign(b) * dead) * (drifting ? 0.55 : 0.5);
+      if (Math.abs(b) > dead) steerAngle += (b - Math.sign(b) * dead) * (drifting ? 0.55 : 0.7); // R6-D: stronger automatic countersteer outside a held drift
     }
     steerAngle = clamp(steerAngle, -spec.maxSteer, spec.maxSteer);
     this.steer = steerAngle;
@@ -334,6 +336,10 @@ export class VehiclePhysics {
             const vx = lv.x / planar, vz = lv.z / planar, push = spec.mass * 3.2 * thr * Math.min(1, Math.abs(b) * 3) * dt;
             body.applyImpulse({ x: vx * push, y: 0, z: vz * push }, true);
           }
+        } else if (this.hb < 0.1 && Math.abs(this.beta) > 0.12 && Math.abs(this.steerIn) < 0.25 && thr < 0.3 && fwdSpeed > 2) {
+          // R6-D: sliding with hands off the wheel and the throttle: yaw damping + sideslip pull so the slide dies out in ~1 s
+          const k = clamp(Math.abs(this.beta) / 0.3, 0.4, 1.5);
+          body.applyTorqueImpulse({ x: 0, y: (-yawRate * 4.5 - this.beta * 6) * k * I * dt, z: 0 }, true);
         } else if (this.hb < 0.05 && Math.abs(this.steerIn) > 0.05 && fwdSpeed > 2) {
           // turn-in assist: an under-rotating car gets help up to the yaw rate its front wheels ask for
           // (fades out at speed, where stability matters more than agility)
@@ -341,8 +347,9 @@ export class VehiclePhysics {
           const rMax = (spec.grip * GRIP * G * 1.15) / Math.max(4, planar);
           const target = clamp(rRef, -rMax, rMax);
           const lack = target - yawRate;
-          const fade = 1 - smooth(22, 40, absV);
-          if (Math.sign(lack) === Math.sign(target) && Math.abs(yawRate) < Math.abs(target)) body.applyTorqueImpulse({ x: 0, y: lack * I * 3.2 * fade * dt, z: 0 }, true);
+          const fade = 1 - smooth(22, 40, absV); // R6-D: gain 3.2 -> 4 (quicker turn-in)
+          const slid = 1 - smooth(0.1, 0.3, Math.abs(this.beta)); // R6-D: no extra rotation once the tail is stepping out
+          if (Math.sign(lack) === Math.sign(target) && Math.abs(yawRate) < Math.abs(target)) body.applyTorqueImpulse({ x: 0, y: lack * I * 4 * fade * slid * dt, z: 0 }, true);
           else if (spec.stability > 0 && Math.abs(this.beta) > 0.05 && Math.sign(-lack) === Math.sign(yawRate)) body.applyTorqueImpulse({ x: 0, y: lack * I * spec.stability * 5 * dt, z: 0 }, true);
         } else if (spec.stability > 0) {
           // stability: damp yaw beyond what the steering asks for (only when the car is stepping out)

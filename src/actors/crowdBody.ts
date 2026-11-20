@@ -1,5 +1,5 @@
 /**
- * Far pedestrians: the real person body, decimated (~1k triangles) and vertex-animated. A walk cycle and an idle pose are
+ * Far pedestrians: the real person body, decimated (~1.8k triangles, the real lod 2) and vertex-animated. A walk cycle and an idle pose are
  * baked from the real retargeted clips into a float texture (positions + normals per vertex per frame); each instance
  * plays it at its own phase/rate, so a far crowd of hundreds is one draw call per sex but walks like real people. Clothes,
  * skin, hair and shoes come from the person's actual look (the same parameters the full-detail shader uses), so when a far
@@ -14,7 +14,7 @@ import type { FullLook, Sex } from './look';
 
 /** Walk frames baked per cycle (+ 1 idle frame after them). */
 export const VAT_FRAMES = 16;
-const LOW_TRIS = 1000;
+const LOW_TRIS = 1800; // = real lod 2 (same geometry: the hand-over at the promote radius is seamless)
 
 /** Per-person instance data: 6 x vec4 (see the shader). */
 export type CrowdLook = Float32Array;

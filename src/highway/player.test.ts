@@ -11,7 +11,7 @@ function mk(mph: number): PlayerCar {
 const cruise = (p: PlayerCar, target: number) => ({ steer: 0, throttle: p.v < target ? 0.4 : 0, brake: 0, handbrake: false });
 
 describe('highway player steering', () => {
-  it('a lane change at 70 mph with the key held completes in under 2 s and stays stable', () => {
+  it('a lane change at 70 mph with the key held completes in between 0.8 and 1.4 s and stays stable', () => {
     const p = mk(70), dt = 1 / 60, v0 = p.v, u0 = p.u;
     let t = 0, done = -1, maxPsi = 0, maxYaw = 0;
     for (; t < 3; t += dt) {
@@ -19,10 +19,17 @@ describe('highway player steering', () => {
       maxPsi = Math.max(maxPsi, Math.abs(p.psi)); maxYaw = Math.max(maxYaw, Math.abs(p.yawRate));
       if (done < 0 && Math.abs(p.u - u0) >= 3.7) done = t;
     }
-    expect(done, `t=${done} psi=${maxPsi} yaw=${maxYaw}`).toBeGreaterThan(0.5);
-    expect(done, `t=${done} psi=${maxPsi}`).toBeLessThan(1.6);
+    expect(done, `t=${done} psi=${maxPsi} yaw=${maxYaw}`).toBeGreaterThan(0.8);
+    expect(done, `t=${done} psi=${maxPsi}`).toBeLessThan(1.4);
     expect(maxPsi).toBeLessThan(0.35);   // never turns more than ~20 deg off the road
     expect(maxYaw).toBeLessThan(0.7);    // no spin
+  });
+  it('a 0.7 s tap at 70 mph moves about one lane and the nose comes straight back (no long slide)', () => {
+    const p = mk(70), dt = 1 / 60, u0 = p.u;
+    for (let t = 0; t < 4; t += dt) p.update(dt, { steer: t < 0.7 ? 1 : 0, throttle: 0.4, brake: 0, handbrake: false });
+    expect(Math.abs(p.u - u0)).toBeGreaterThan(3.0);
+    expect(Math.abs(p.u - u0)).toBeLessThan(4.2);
+    expect(Math.abs(p.psi)).toBeLessThan(0.01);
   });
   it('holding the key a long time at 70 mph never spins; releasing re-centres', () => {
     const p = mk(70), dt = 1 / 60;

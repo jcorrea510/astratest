@@ -34,20 +34,25 @@ export class PlayerCar {
     if (input.handbrake && !dead) a -= sp.brake * 0.35;
     this.accelNow += (a - this.accelNow) * Math.min(1, dt * 8);
     this.v = Math.max(0, this.v + a * dt);
-    // steering: keyboard-smoothed, much less lock at speed
+    // steering: the key commands a HEADING relative to the road (like a lane-change assist), so a tap-and-hold crosses a lane
+    // in ~1 s and a release brings the nose straight back with no long slide (the old rate-based yaw overshot by ~5 m).
     const target = dead ? 0 : input.steer;
-    // a held key reaches full lock in ~0.3 s, release self-centres in ~0.2 s; the road-wheel lock shrinks with speed
+    // a held key reaches full lock in ~0.17 s, release self-centres in ~0.12 s; the road-wheel lock shrinks with speed
     const toward = Math.abs(target) > Math.abs(this.steer) || Math.sign(target) !== Math.sign(this.steer);
-    const rate = toward ? 3.4 : 5.5;
+    const rate = toward ? 6 : 8.5;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
     const lock = sp.maxSteer / (1 + Math.pow(this.v / 7, 2));
     this.steerAngle = this.steer * lock;
-    const grip = input.handbrake ? 0.55 : 1;
-    const turn = (this.v / (this.len * 0.58)) * Math.tan(this.steerAngle) * grip;
-    const settle = 1.5 * (this.v / (this.v + 4)) * (input.handbrake ? 0.35 : 1);
-    this.yawRate += (turn - this.yawRate) * Math.min(1, dt * 14);
-    this.psi += (this.yawRate - settle * this.psi) * dt;
+    const hb = input.handbrake && !dead;
+    const grip = Math.max(0.85, Math.min(1.2, sp.grip / 0.8));
+    // sideways speed the key asks for: ~5 m/s at cruise (a lane in ~1 s), the heading limit grows at low speed
+    const psiMax = Math.min(0.62, Math.asin(Math.min(0.95, (5.0 * grip * (hb ? 1.35 : 1)) / Math.max(this.v, 4))));
+    const psiTarget = this.steer * psiMax * Math.min(1, this.v / 5);
+    const tau = hb ? 0.5 : 0.24; // the handbrake lets the tail hang out for longer
+    const prevPsi = this.psi;
+    this.psi += (psiTarget - this.psi) * (1 - Math.exp(-dt / tau));
     this.psi = Math.max(-1.2, Math.min(1.2, this.psi));
+    this.yawRate += ((this.psi - prevPsi) / Math.max(dt, 1e-4) - this.yawRate) * Math.min(1, dt * 14);
     this.s += this.v * Math.cos(this.psi) * dt;
     this.lastLateralSpeed = this.v * Math.sin(this.psi);
     this.u += this.lastLateralSpeed * dt;

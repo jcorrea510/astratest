@@ -989,3 +989,16 @@
 
 /* R6-M: game mode badge (subtle, bottom-left of the HUD) */
 .ma-mode-badge { position: absolute; left: calc(14 * var(--u)); bottom: calc(10 * var(--u)); font-family: var(--display); font-weight: 600; font-size: calc(11 * var(--u)); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); pointer-events: none; }
+
+/* R6-M: read-only shop panel (Goals) and icon-less lists (dealership goals) */
+.ma-shop.is-readonly .ma-hint-buy { display: none; }
+.ma-shop.is-readonly .ma-hint-leave { font-size: 0; }
+.ma-shop.is-readonly .ma-hint-leave .ma-key { font-size: calc(13.5 * var(--u)); margin-right: calc(8 * var(--u)); }
+.ma-shop.is-readonly .ma-hint-leave::after { content: 'Close'; font-size: calc(14 * var(--u)); }
+.ma-shop-list.no-icons .ma-shop-icon { display: none; }
+.ma-root .ma-menu-item.has-sub { flex-wrap: wrap; align-content: center; line-height: 1; height: calc(60 * var(--u)); }
+.ma-root .ma-menu-item .ma-mi-sub { display: block; width: 100%; font-size: calc(13 * var(--u)); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; margin-top: calc(2 * var(--u)); font-family: inherit; }
+/* title menu must fit 7 rows plus the hint line at 720p */
+.ma-title-menu { margin-top: calc(14 * var(--u)); }
+.ma-title .ma-menu-item { height: calc(42 * var(--u)); font-size: calc(28 * var(--u)); }
+.ma-title .ma-menu-item.has-sub { height: calc(54 * var(--u)); }

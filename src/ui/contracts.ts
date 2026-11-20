@@ -26,7 +26,9 @@ export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'med
 export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms'; label?: string; pulse?: boolean }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
 export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean }
-export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean }
+export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean;
+  /** Read-only row (goals / stats): shows `value` (or a Done / To do tag) instead of a price or lock. */
+  info?: { value?: string } }
 
 export interface GameUI {
   /** Called once with everything needed. Settings changes are applied via callbacks. */

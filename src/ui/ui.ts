@@ -270,13 +270,14 @@ export class UI implements GameUI {
     return { el, menu };
   }
 
-  private menuItem(label: string, onClick: () => void, disabled = false, key = '') {
+  private menuItem(label: string, onClick: () => void, disabled = false, key = '', sub = '') {
     const b = h('button', 'ma-menu-item');
     b.type = 'button';
     b.dataset.nav = '';
     if (key) b.dataset.item = key;
     b.disabled = disabled;
     b.appendChild(h('span', 'ma-mi-label', label));
+    if (sub) { b.appendChild(h('span', 'ma-mi-sub', sub)); b.setAttribute('aria-label', `${label} — ${sub}`); b.classList.add('has-sub'); }
     b.addEventListener('click', () => { if (!b.disabled) onClick(); });
     if (key && TITLE_ITEMS[key]) b.addEventListener('focus', () => { this.titleDesc.textContent = TITLE_ITEMS[key]; });
     return b;
@@ -298,7 +299,7 @@ export class UI implements GameUI {
     }, false, 'newgame');
     const items = [play, this.menuItem('Highway', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onHighway?.(); }, false, 'highway')];
     let cont: HTMLButtonElement | null = null;
-    if (hasSave) { cont = this.menuItem(`Continue — ${saveSummary || 'saved game'}`, () => start(true), false, 'continue'); items.unshift(cont); }
+    if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue', saveSummary || 'saved game'); items.unshift(cont); }
     items.push(
       this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'),
       this.menuItem('Controls', () => { this.sound('click'); this.openControls(); }, false, 'controls'),

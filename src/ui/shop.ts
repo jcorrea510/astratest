@@ -34,6 +34,8 @@ export class Shop {
     const hints = h('div', 'ma-foot-hints');
     for (const [k, t] of [['↑↓', 'Browse'], ['Enter', 'Buy'], ['Esc', 'Leave store']]) {
       const s = h('span', 'ma-foot-hint');
+      if (k === 'Enter') s.classList.add('ma-hint-buy');
+      if (k === 'Esc') s.classList.add('ma-hint-leave');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       hints.appendChild(s);
     }
@@ -66,6 +68,10 @@ export class Shop {
     this.moneyEl.textContent = formatMoney(money);
     if (!first && money !== prevMoney) { this.moneyEl.classList.remove('is-flash'); void this.moneyEl.offsetWidth; this.moneyEl.classList.add('is-flash'); }
     this.list.textContent = '';
+    const readOnly = items.length > 0 && items.every(i => i.info);
+    this.el.classList.toggle('is-readonly', readOnly);
+    const anyIcon = items.some(i => guessIcon(`${i.id} ${i.label}`));
+    this.list.classList.toggle('no-icons', !anyIcon);
     for (const it of items) {
       const b = h('button', 'ma-shop-item');
       b.type = 'button'; b.dataset.nav = ''; b.dataset.itemId = it.id;
@@ -81,7 +87,10 @@ export class Shop {
       text.appendChild(h('span', 'ma-shop-desc', it.description));
       b.appendChild(text);
       const right = h('span', 'ma-shop-right');
-      if (state === 'owned') {
+      if (it.info) {
+        if (it.info.value) right.appendChild(h('span', 'ma-shop-price', it.info.value));
+        else { const tag = h('span', `ma-shop-tag ${it.owned ? 'is-owned' : 'is-poor'}`); if (it.owned) tag.innerHTML = CHECK_SVG; tag.appendChild(document.createTextNode(it.owned ? 'Done' : 'To do')); right.appendChild(tag); }
+      } else if (state === 'owned') {
         const tag = h('span', 'ma-shop-tag is-owned');
         tag.innerHTML = CHECK_SVG; tag.appendChild(document.createTextNode('Owned'));
         right.appendChild(tag);
@@ -91,7 +100,7 @@ export class Shop {
         if (state === 'disabled') { const tag = h('span', 'ma-shop-tag is-locked'); tag.innerHTML = LOCK_SVG; tag.appendChild(document.createTextNode('Unavailable')); right.appendChild(tag); }
       }
       b.appendChild(right);
-      b.setAttribute('aria-label', `${it.label}, ${it.owned ? 'owned' : formatMoney(it.price)}`);
+      b.setAttribute('aria-label', `${it.label}, ${it.info ? (it.info.value ?? (it.owned ? 'done' : 'to do')) : it.owned ? 'owned' : formatMoney(it.price)}`);
       b.addEventListener('click', () => this.buy(it.id, b));
       this.list.appendChild(b);
     }
@@ -102,7 +111,7 @@ export class Shop {
   private buy(id: string, b: HTMLElement) {
     const it = this.items.find(i => i.id === id);
     if (!it) return;
-    if (it.owned || it.disabled || this.money < it.price) {
+    if (it.info || it.owned || it.disabled || this.money < it.price) {
       this.sound('back');
       b.classList.remove('is-denied'); void b.offsetWidth; b.classList.add('is-denied');
       return;

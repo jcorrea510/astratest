@@ -164,10 +164,10 @@ export class Activities {
   goalItems(): ShopItem[] {
     const g = this.game, f = (n: number) => `$${n.toLocaleString('en-US')}`;
     const items: ShopItem[] = [
-      { id: 'worth', label: 'Net worth', description: `Cash ${f(g.money)} plus ${this.ownedCars.length} car${this.ownedCars.length === 1 ? '' : 's'} at resale ${f(this.ownedCars.reduce((s, c) => s + carValue(c.kind), 0))}.`, price: this.netWorth(), disabled: true },
-      { id: 'robs', label: 'Holdups pulled off', description: 'Stores, banks and jewelers are the fast money. The police are not fond of it.', price: this.robberiesTotal, disabled: true },
+      { id: 'worth', label: 'Net worth', description: `Cash ${f(g.money)} plus ${this.ownedCars.length} car${this.ownedCars.length === 1 ? '' : 's'} at resale ${f(this.ownedCars.reduce((s, c) => s + carValue(c.kind), 0))}.`, price: 0, info: { value: f(this.netWorth()) } },
+      { id: 'robs', label: 'Holdups pulled off', description: 'Stores, banks and jewelers are the fast money. The police are not fond of it.', price: 0, info: { value: String(this.robberiesTotal) } },
     ];
-    for (const m of MILESTONES) items.push({ id: `m:${m.id}`, label: m.label, description: this.milestones.has(m.id) ? 'Done.' : m.hint, price: 0, disabled: true, owned: this.milestones.has(m.id) });
+    for (const m of MILESTONES) items.push({ id: `m:${m.id}`, label: m.label, description: this.milestones.has(m.id) ? 'Done.' : m.hint, price: 0, info: {}, owned: this.milestones.has(m.id) });
     return items;
   }
   openGoals() { this.ui.openShop('Net worth and goals', this.goalItems(), this.game.money, () => {}, () => {}); }
