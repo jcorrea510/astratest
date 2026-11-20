@@ -46,6 +46,8 @@ export class Npc {
   tag = '';
   fleeFrom = new THREE.Vector3();
   coverPoint: THREE.Vector3 | null = null;
+  /** seconds an officer keeps firing from the cover point they were ordered to (no flanking/strafing) */
+  holdCoverT = 0;
   far = false;
   animAcc = 0;
   /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
@@ -208,7 +210,8 @@ export class NpcBrainRunner {
         const ideal = w.melee ? 1.2 : w.id === 'shotgun' ? 9 : w.id === 'rifle' ? 22 : 15;
         if (seeing) n.aimT += dt; else n.aimT = Math.max(0, n.aimT - dt * 2);
         // Tactical repositioning
-        if (n.think <= 0.05 || !n.goal) {
+        n.holdCoverT = Math.max(0, n.holdCoverT - dt);
+        if (n.holdCoverT <= 0 && (n.think <= 0.05 || !n.goal)) {
           const lowHealth = c.health < c.maxHealth * 0.3;
           if (w.melee) n.goal = tgt.pos.clone();
           else if (lowHealth && !n.coverPoint) { n.coverPoint = this.findCover(n, tgt.pos); n.goal = n.coverPoint ?? c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(6)); }

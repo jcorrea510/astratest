@@ -159,7 +159,7 @@ function suspension(o: EastCtx, bz: number) {
         const y = deckAt(x) + 0.15;
         if (prev) {
           const a = prev, b = { x, y }, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, len = Math.hypot(b.x - a.x, b.y - a.y), pitch = Math.atan2(b.y - a.y, b.x - a.x);
-          if (Math.max(a.y, b.y) > 0.45) {
+          if (Math.max(a.y, b.y) > 0.2) { // built from the shore so people can walk up onto it
             const tb = trim.at(mx, zc);
             tb.beam(a.x, a.y - 0.25, zc, b.x, b.y - 0.25, zc, zOut - zIn, 0.5, walk2, T_STONE);
             for (const zr of [bz + sg * (zIn + 0.08), bz + sg * (zOut - 0.08)]) {

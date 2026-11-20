@@ -296,9 +296,10 @@ export class Police {
       for (const cop of this.dispatch.bail(car, side)) {
         this.dispatch.arm(cop, 'police', Math.max(2, this.state.heat), true); this.foot.push(cop);
         cop.char.human.playAction('exit_car', { rate: 2 });
-        // cover = the car's far side as seen from the player, spread a little so the crew does not stack up
-        const ax = v.position.x - pp.x, az = v.position.z - pp.z, al = Math.hypot(ax, az) || 1, k = ci++ === 0 ? 0 : 0.8;
-        cop.coverPoint = cop.goal = new THREE.Vector3(v.position.x + ax / al * 2.3 - az / al * k, v.position.y, v.position.z + az / al * 2.3 + ax / al * k); cop.crouching = true;
+        // cover = the car's far corner as seen from the player (the body shields them, the corner lets them aim); one officer per side
+        const ax = v.position.x - pp.x, az = v.position.z - pp.z, al = Math.hypot(ax, az) || 1, sg = ci++ % 2 === 0 ? 1 : -1;
+        cop.coverPoint = cop.goal = new THREE.Vector3(v.position.x + ax / al * 1.2 - az / al * 1.6 * sg, v.position.y, v.position.z + az / al * 1.2 + ax / al * 1.6 * sg);
+        cop.holdCoverT = 4; cop.crouching = true;
       }
     }
   }
@@ -382,7 +383,7 @@ export class Police {
         let pr = this.progress.get(u); if (!pr) { pr = { best: d, t: 0 }; this.progress.set(u, pr); }
         if (d < pr.best - 3) { pr.best = d; pr.t = 0; } else pr.t += dt;
         const stuck = !playerInVehicle && d < 90 && pr.t > 6;
-        if ((!playerInVehicle && d < 22) || (inHeli && d < 55) || (d < 10 && Math.abs(u.v.speed) < 1.5) || stuck) {
+        if (!this.bails.some(b => b.car === u) && ((!playerInVehicle && d < 22) || (inHeli && d < 55) || (d < 10 && Math.abs(u.v.speed) < 1.5) || stuck)) {
           this.progress.delete(u);
           if (stuck) { u.v.input.throttle = 0; u.v.input.handbrake = true; }
           for (const cop of D.bail(u)) { D.arm(cop, kind, st.heat, lethal); this.foot.push(cop); }

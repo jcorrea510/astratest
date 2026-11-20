@@ -16,21 +16,22 @@ test('benchmark: triangles and draw calls on low / medium / high along a fixed d
   await page.goto('./?autostart=1');
   await page.waitForFunction(() => !!(window as any).__meridian, null, { timeout: 500_000 });
   await page.evaluate(() => (window as any).__game.stop());
-  const res: Record<string, { calls: number; tris: number; cpuMs: number; cars: number }> = {};
+  const res: Record<string, { calls: number; tris: number; cpuMs: number /* sim-only ms/frame */; cars: number }> = {};
   for (const q of ['low', 'medium', 'high'] as const) {
     res[q] = await page.evaluate((q) => {
       const g = (window as any).__game; g.renderer.setQuality(q); g.clockRunning = false; g.hour = 12; g.trafficCap = null; g.pedCap = null;
       const path = [[-41, 9], [-41, -60], [-110, -60], [-110, 20]];
       g.player.place(path[0][0], 0.25, path[0][1], 0);
       for (let i = 0; i < 240; i++) g.frame(1 / 30, false); // settle the crowd
-      let calls = 0, tris = 0, ms = 0;
+      let calls = 0, tris = 0, ms = 0, nr = 0, nsim = 0;
       for (let i = 0; i < 300; i++) {
         const k = Math.floor(i / 75), f = (i % 75) / 75, a = path[k], b = path[(k + 1) % path.length];
         g.player.place(a[0] + (b[0] - a[0]) * f, 0.25, a[1] + (b[1] - a[1]) * f, Math.atan2(b[0] - a[0], b[1] - a[1]));
-        const t0 = performance.now(); g.frame(1 / 60, true); ms += performance.now() - t0;
-        calls += g.renderer.stats.calls; tris += g.renderer.stats.triangles;
+        const draw = i % 10 === 9; // software GL is ~1 s per drawn frame: draw every 10th, simulate all 300
+        const t0 = performance.now(); g.frame(1 / 60, draw);
+        if (draw) { nr++; calls += g.renderer.stats.calls; tris += g.renderer.stats.triangles; } else { ms += performance.now() - t0; nsim++; }
       }
-      return { calls: Math.round(calls / 300), tris: Math.round(tris / 300), cpuMs: +(ms / 300).toFixed(1), cars: g.vehicles.list.length };
+      return { calls: Math.round(calls / nr), tris: Math.round(tris / nr), cpuMs: +(ms / nsim).toFixed(1), cars: g.vehicles.list.length };
     }, q);
     console.log('BENCH', q, JSON.stringify(res[q]));
   }

@@ -414,7 +414,7 @@ export function generateCity(seed = 1977): CityMap {
   genWestPeds(paths, pedNodes, SIDEWALK);
   lots.push(...genEastLots(paths, lots.length, new Rng(seed + 53), SIDEWALK));
   genWestPeds(paths, pedNodes, SIDEWALK, true);
-  addBridgeWalkways(paths, pedNodes);
+  addBridgeWalkways(paths, pedNodes, { intersections });
   // ~50 walk-in stores: picked from the street-facing lots (grid and west), resized to the shop footprint
   snapHandmadeStores(lots);
   setGeneratedStores(genStores(lots, blocks, new Rng(seed + 77)));
@@ -588,7 +588,7 @@ function catmull(ctrl: P3[], step: number): P3[] {
  * Pedestrian paths along the outboard walkways of the two East River suspension bridges (see eastbuild suspension()):
  * a node every 20 m at the deck height, joined at each end to the nearest sidewalk node of its shore.
  */
-function addBridgeWalkways(paths: PathRoad[], nodes: PedNode[]) {
+function addBridgeWalkways(paths: PathRoad[], nodes: PedNode[], city: { intersections: Intersection[] }) {
   const ground = nodes.length;
   for (const bz of EAST_BRIDGE_ZS) {
     const path = paths.find(p => p.kind === 'freeway' && p.pts[0].x > 500 && p.pts[0].x < 540 && Math.abs(p.pts[0].z - bz) < 2 && p.pts[p.pts.length - 1].x > 700);
@@ -607,6 +607,10 @@ function addBridgeWalkways(paths: PathRoad[], nodes: PedNode[]) {
         const id = nodes.length; nodes.push({ id, x, z: z - sg * 3, blockId: -1, edges: [{ to: prevId, crossing: null }] }); nodes[prevId].edges.push({ to: id, crossing: null }); prevId = id;
       }
       ids.unshift(prevId);
+      // the approach crosses the Harbor Way drive at its junction with the ramp: mark that leg as a crossing (cars brake for people on it)
+      const jn = city.intersections.reduce((b, i) => Math.hypot(i.x - 522, i.z - bz) < Math.hypot(b.x - 522, b.z - bz) ? i : b, city.intersections[0]);
+      const n510 = nodes.findIndex(n => n.x === 510 && n.z === z - sg * 3);
+      for (const [from, to] of [[ids[1], n510], [n510, ids[1]]]) { const e = nodes[from]?.edges.find(x => x.to === to); if (e) e.crossing = { intersection: jn.id, axis: 'z' }; }
       for (const [end, west] of [[ids[0], true], [ids[ids.length - 1], false]] as [number, boolean][]) {
         let best = -1, bd = west ? 40 : 90;
         for (let k = 0; k < ground; k++) { const n = nodes[k]; if ((n.y ?? 0) > 0.3 || (west ? n.x > 600 : n.x < 600)) continue; const d = Math.hypot(n.x - nodes[end].x, n.z - nodes[end].z); if (d < bd) { bd = d; best = k; } }

@@ -76,24 +76,70 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
 });
 
 test('people wait at a bus stop, board when the bus kneels, and riders step off', async () => {
-  test.setTimeout(400_000);
-  const r = await page.evaluate(`(() => {
-    const g = window.__game; const B = g.buses; g.trafficCap = 0; g.pedCap = 40;
+  test.setTimeout(500_000);
+  await page.evaluate(`(() => {
+    const g = window.__game; g.trafficCap = 0; g.pedCap = 40;
     for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
-    const st = B.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 60, 0.4, st.z + st.dx * 6 + st.dz * 60, 0);
-    let seenQueue = 0, shot = false;
-    const boarded0 = B.stats.boarded;
-    for (let i = 0; i < 300 * 30; i++) {
+    const st = g.buses.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 60, 0.4, st.z + st.dx * 6 + st.dz * 60, 0);
+    window.__bus0 = { boarded0: g.buses.stats.boarded, st, shot: false };
+  })()`);
+  const poll = () => page.evaluate(`(() => {
+    const g = window.__game, B = g.buses, S = window.__bus0, st = S.st;
+    for (let i = 0; i < 30; i++) {
       g.frame(1 / 30, false);
-      const q = (B.waiting.get(st) ?? []).length; seenQueue = Math.max(seenQueue, q);
-      if (!shot && B.runs.some(r => r.waiting) && B.boarding.length) { shot = true; g.player.place(st.x - st.dz * 5 - st.dx * 8, 0.4, st.z + st.dx * 5 - st.dz * 8, 0); g.cam.yaw = Math.atan2(st.dx * 8 + st.dz * 0, st.dz * 0 + st.dz); for (let k = 0; k < 20; k++) g.frame(1 / 30, k === 19); }
-      if (B.stats.boarded > boarded0 && i > 600) break;
+      const run = B.runs.find(r => r.waiting && r.car);
+      if (run && !S.shot) {
+        const v = run.car.v, dp = v.doorPoint(-1);
+        const close = B.boarding.filter(n => Math.hypot(n.pos.x - dp.x, n.pos.z - dp.z) < 2.2);
+        if (close.length) {
+          S.shot = true; const rx = -st.dz, rz = st.dx;
+          // camera on the pavement a few metres back from the door, looking at it
+          const px = dp.x + rx * 3.2 - st.dx * 4.5, pz = dp.z + rz * 3.2 - st.dz * 4.5;
+          g.player.place(px, 0.4, pz, 0); g.player.human.root.visible = false; g.cam.yaw = Math.atan2(dp.x - px, dp.z - pz) + Math.PI;
+          for (let k = 0; k < 3; k++) g.frame(1 / 30, k === 2);
+          return { shot: true, near: close.length, y: close.map(n => +(n.pos.y).toFixed(2)) };
+        }
+      }
     }
-    return { queued: B.stats.queued, seenQueue, boarded: B.stats.boarded - boarded0, stops: B.stats.stops };
-  })()`) as any;
-  console.log('busboard', JSON.stringify(r));
+    return { shot: S.shot, queued: B.stats.queued, boarded: B.stats.boarded - S.boarded0 };
+  })()`) as Promise<any>;
+  let r: any = {}; let framed: any = null;
+  for (let k = 0; k < 400 && !framed; k++) { r = await poll(); if (r.near) framed = r; }
+  expect(framed).not.toBeNull();
   await page.screenshot({ path: `${SHOTS}/ped-busstop.png`, timeout: 120_000 });
-  expect(r.queued).toBeGreaterThan(0);
-  expect(r.boarded).toBeGreaterThan(0);
+  let done: any = {};
+  for (let k = 0; k < 60; k++) { done = await page.evaluate(`({ boarded: window.__game.buses.stats.boarded - window.__bus0.boarded0, queued: window.__game.buses.stats.queued })`); if (done.boarded > 0) break; await page.evaluate(`(() => { for (let i = 0; i < 30; i++) window.__game.frame(1 / 30, false); })()`); }
+  console.log('busboard', JSON.stringify({ framed, done }));
+  expect(done.queued).toBeGreaterThan(0);
+  expect(done.boarded).toBeGreaterThan(0);
+});
+
+test('a pedestrian routed from the west sidewalk crosses Harbor Way and reaches the bridge deck', async () => {
+  test.setTimeout(400_000);
+  const r = await page.evaluate(`(() => {
+    const g = window.__game; const N = g.city.pedNodes; g.pedCap = 20; g.trafficCap = 6;
+    const start = N.filter(n => n.y === undefined && n.x > 430 && n.x < 445 && Math.abs(n.z - 89) < 3)[0];
+    const goal = N.filter(n => n.y !== undefined && n.y > 4 && n.x > 560)[0];
+    // shortest path by BFS
+    const prev = new Map([[start.id, -1]]); const q = [start.id];
+    while (q.length) { const c = q.shift(); if (c === goal.id) break; for (const e of N[c].edges) if (!prev.has(e.to)) { prev.set(e.to, c); q.push(e.to); } }
+    const path = []; for (let c = goal.id; c !== -1; c = prev.get(c)) path.unshift(c);
+    const cross = path.some((id, i) => i && N[id].edges.some(e => e.to === path[i - 1] && e.crossing));
+    g.player.place(start.x + 6, 0.4, start.z + 8, 0);
+    const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6;
+    let reached = false, minX = 1e9, frames = 0;
+    for (let i = 0; i < 300 * 30 && !reached; i++) {
+      g.frame(1 / 30, false); frames++;
+      if (!n.alive || n.disposed) break;
+      const k = path.indexOf(n.node); if (k >= 0 && k < path.length - 1) n.nextNode = path[k + 1];
+      if (n.node === goal.id) reached = true;
+    }
+    return { reached, hops: path.length, cross, y: n.pos.y, alive: n.alive, sec: frames / 30, x: n.pos.x };
+  })()`) as any;
+  console.log('approach', JSON.stringify(r));
+  expect(r.cross).toBe(true);
+  expect(r.reached).toBe(true);
+  expect(r.alive).toBe(true);
+  expect(r.y).toBeGreaterThan(3.5);
 });
