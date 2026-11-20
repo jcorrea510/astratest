@@ -16,6 +16,8 @@ export class Population {
   npcs: Npc[] = [];
   runner: NpcBrainRunner;
   maxCivilians = 22;
+  /** Max people casting shadows at once (set from the graphics preset). */
+  shadowBudget = 20;
   /** world clock hour (set by the game each frame); drives crowd size, nightlife and idles */
   hour = 17;
   private lastSpeed = new WeakMap<Vehicle, number>(); private crashT = 0;
@@ -227,8 +229,12 @@ export class Population {
       h.mesh.castShadow = d < 32;
       const inView = d < 14 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
       h.mesh.visible = inView;
-      h.setDetail(d < 48 && inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
+      h.setBodyLod(d > 36 ? 2 : d > 13 ? 1 : 0); h.setDetail(d < 48 && inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }
+    // shadow caster budget: only the nearest people are drawn into the shadow map (the rest keep their lit body)
+    const sc: { n: Npc; d: number }[] = [];
+    for (const n of this.npcs) if (n.char.human.mesh.castShadow && n.brain !== 'inside' && !n.char.inVehicle) sc.push({ n, d: n.char.pos.distanceToSquared(focus) });
+    if (sc.length > this.shadowBudget) { sc.sort((x, y) => x.d - y.d); for (let i = this.shadowBudget; i < sc.length; i++) { const h = sc[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; } }
     // Despawn
     for (const n of [...this.npcs]) {
       if (n.persistent || n.char.inVehicle) continue;

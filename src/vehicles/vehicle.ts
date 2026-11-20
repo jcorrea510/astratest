@@ -107,7 +107,7 @@ export class Vehicle {
   lod = 0;
   private bones: THREE.Bone[] = [];
   private beam: THREE.Mesh | null = null;
-  private ownGeo = false;
+  private ownGeo = false; private ownG: THREE.BufferGeometry | null = null;
   /** 0..1: a city bus kneels at the kerb (body lowered and leaning to the pavement) */
   kneel = 0;
   private roll = 0; private pitch = 0; private rollV = 0; private pitchV = 0; private heave = 0; private heaveV = 0;
@@ -302,12 +302,13 @@ export class Vehicle {
   }
   /** 0 = detailed, 1 = mid (~3k tris), 2 = far (~600 tris). */
   setLod(l: number) {
-    if (l === this.lod || this.ownGeo) return;
+    if (l === this.lod) return;
     this.lod = l;
-    this.bodyMesh.geometry = this.tpl.lods[l].body;
+    this.bodyMesh.geometry = l === 0 && this.ownG ? this.ownG : this.tpl.lods[l].body;
     if (this.glassMesh) this.glassMesh.geometry = this.tpl.lods[l].glass ?? this.tpl.lods[0].glass!;
   }
-  updateLod(dist: number) { this.setLod(dist > LOD_FAR ? 2 : dist > LOD_MID ? 1 : 0); }
+  /** Dented cars keep their private (dented) body out to 40 m so damage never blinks away close by. */
+  updateLod(dist: number) { this.setLod(dist > LOD_FAR ? 2 : dist > (this.ownGeo ? 40 : LOD_MID) ? 1 : 0); }
   update(dt: number, night: number, time: number, braking: boolean) {
     this.syncTransform();
     const t = this.tpl, c = this.phys.ctrl, spec = this.spec;
@@ -423,9 +424,9 @@ export class Vehicle {
       // private positions/normals, everything else shared with the template
       const src = this.tpl.lods[0].body, g = new THREE.BufferGeometry();
       for (const [k, a] of Object.entries(src.attributes)) g.setAttribute(k, k === 'position' || k === 'normal' ? (a as THREE.BufferAttribute).clone() : a);
-      this.bodyMesh.geometry = g; this.ownGeo = true; this.lod = 0;
+      this.bodyMesh.geometry = g; this.ownGeo = true; this.ownG = g; this.lod = 0;
     }
-    const g = this.bodyMesh.geometry; const pos = g.attributes.position as THREE.BufferAttribute, si = g.attributes.skinIndex as THREE.BufferAttribute;
+    const g = this.ownG!; const pos = g.attributes.position as THREE.BufferAttribute, si = g.attributes.skinIndex as THREE.BufferAttribute;
     this.visual.updateMatrixWorld();
     const inv = new THREE.Matrix4().copy(this.visual.matrixWorld).invert();
     const lp = worldPoint.clone().applyMatrix4(inv);
@@ -462,7 +463,7 @@ export class Vehicle {
   /** The dented copy shares most attributes with the template, whose CPU arrays were freed after upload: disposing them
    *  would drop the shared GPU buffers and the next re-upload would be empty (invisible car bodies). Only free the private ones. */
   private disposeOwnGeo() {
-    const g = this.bodyMesh.geometry;
+    const g = this.ownG ?? this.bodyMesh.geometry; this.ownG = null;
     for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
     g.setIndex(null);
     g.dispose();

@@ -21,6 +21,45 @@ export { randomLook, resolveLook, PLAYER_DEFAULT_LOOK, SKIN_TONES } from './look
 export type { Look, FullLook, HairStyle, HatStyle, TopStyle, BottomStyle, ShoeStyle, FacialHair, Sex } from './look';
 export { ACTIONS, UAL_CLIPS } from './actions';
 
+const LOW_BODY = new Map<string, THREE.BufferGeometry>(), BODY_IDS = new WeakMap<THREE.BufferGeometry, number>();
+/** Vertex-clustering decimation of a (non-indexed or indexed) skinned body: position/normal/uv are averaged, all other attributes keep the first vertex and split clusters. */
+function lowBody(src: THREE.BufferGeometry, target: number): THREE.BufferGeometry {
+  if (!BODY_IDS.has(src)) BODY_IDS.set(src, BODY_IDS.size + 1);
+  const ck = `${BODY_IDS.get(src)}:${target}`, hit = LOW_BODY.get(ck); if (hit) return hit;
+  const g = src.index ? src.toNonIndexed() : src, n = g.attributes.position.count, names = Object.keys(g.attributes);
+  const others = ['skinIndex', 'region'].filter(k => g.attributes[k]); // discrete: clusters never mix bones / garment regions
+  const avg = names.filter(k => !others.includes(k) && k !== 'skinWeight');
+  const run = (cell: number) => {
+    const key: string[] = new Array(n), cl = new Map<string, { first: number; c: number; sum: Record<string, number[]> }>();
+    const P = g.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < n; i++) {
+      let k = `${Math.floor(P.getX(i) / cell)},${Math.floor(P.getY(i) / cell)},${Math.floor(P.getZ(i) / cell)}`;
+      for (const o of others) { const a = g.attributes[o] as THREE.BufferAttribute; for (let j = 0; j < a.itemSize; j++) k += ',' + a.array[i * a.itemSize + j]; }
+      key[i] = k; let c = cl.get(k);
+      if (!c) { c = { first: i, c: 0, sum: {} }; for (const a of avg) c.sum[a] = new Array((g.attributes[a] as THREE.BufferAttribute).itemSize).fill(0); cl.set(k, c); }
+      c.c++; for (const a of avg) { const at = g.attributes[a] as THREE.BufferAttribute; for (let j = 0; j < at.itemSize; j++) c.sum[a][j] += at.array[i * at.itemSize + j]; }
+    }
+    const keep: number[] = [];
+    for (let t = 0; t < n; t += 3) if (key[t] !== key[t + 1] && key[t + 1] !== key[t + 2] && key[t] !== key[t + 2]) keep.push(t, t + 1, t + 2);
+    return { key, cl, keep };
+  };
+  let lo = 0.02, hi = 1.5, best = run(hi);
+  for (let i = 0; i < 7; i++) { const mid = Math.sqrt(lo * hi), r = run(mid); if (r.keep.length / 3 > target) lo = mid; else { hi = mid; best = r; } }
+  const out = new THREE.BufferGeometry(), m = best.keep.length;
+  for (const name of names) {
+    const a = g.attributes[name] as THREE.BufferAttribute, arr = new (a.array.constructor as new (n: number) => Float32Array)(m * a.itemSize);
+    for (let v = 0; v < m; v++) {
+      const c = best.cl.get(best.key[best.keep[v]])!;
+      if (avg.includes(name)) for (let j = 0; j < a.itemSize; j++) arr[v * a.itemSize + j] = c.sum[name][j] / c.c;
+      else for (let j = 0; j < a.itemSize; j++) arr[v * a.itemSize + j] = a.array[c.first * a.itemSize + j];
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize, a.normalized));
+  }
+  if (out.attributes.normal) { const nr = out.attributes.normal as THREE.BufferAttribute; for (let i = 0; i < nr.count; i++) { const l = Math.hypot(nr.getX(i), nr.getY(i), nr.getZ(i)) || 1; nr.setXYZ(i, nr.getX(i) / l, nr.getY(i) / l, nr.getZ(i) / l); } }
+  out.boundingSphere = src.boundingSphere?.clone() ?? null; out.boundingBox = src.boundingBox?.clone() ?? null;
+  LOW_BODY.set(ck, out); return out;
+}
+
 export interface HumanTemplate { assets: HumanAssets }
 
 /** Loads the body assets and retargets the animation library (call once at start-up). */
@@ -439,6 +478,12 @@ export class Human {
   }
   /** Shows/hides hair and garment extras (far LOD). */
   setDetail(full: boolean) { for (const e of this.extras) e.visible = full; }
+  private bodyLod = 0;
+  /** Body detail by distance: 0 = full (~14k tris), 1 = ~4.5k, 2 = ~1.8k clustered copies of the shared body; same skeleton, so animation and the swap are seamless. */
+  setBodyLod(l: 0 | 1 | 2) {
+    if (l === this.bodyLod) return; this.bodyLod = l;
+    this.mesh.geometry = l === 0 ? this.base.geo : lowBody(this.base.geo, l === 1 ? 4500 : 1800);
+  }
   dispose() {
     this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); this.material.dispose(); this.root.removeFromParent(); this.mesh.skeleton.dispose();
   }

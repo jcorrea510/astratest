@@ -12,7 +12,8 @@ Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Ow
 - [x] R5-A Army (+A2 far LOD, guards, shed roof, sandbox gunship, heli seat teleport fix; A3: flash whiteout bug fixed, smoke+debris, charred wreck): base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
 - [x] R5-M Map (+M2 declutter, collapsible legend, cached pan layer): 3D-looking map (extruded buildings, shading) for full map + minimap.
 - [x] R5-G Gaps: highway cockpit rebuilt, buses, bus boarding, bench sitting, peds on bridge walkways; Eastbank signals; run soak.
-- [ ] R5-Z Gate + publish (soak included).
+- [x] R5-Z Published gh-pages 54c2e6a (main 4756ba8) 01:2x UTC 20 Nov: tsc, vitest 298/298, game.spec boot. Full e2e + soak not run.
+- [ ] R5-P2 perf (car LODs, instanced parked cars, benchmark) — stopped mid-way at owner's usage limit; partial uncommitted-to-main edits in WIP commit, unverified.
 
 ## Round 4 (hyper-realism night, 02:40-12:00 UTC)
 - [x] R4-A Driving (no steering retune done: owner still says hard to turn — retune keyboard steering in R4-R): car jitter fwd/back, curbs, easier turns+drift, stolen cop car siren J/K/L + lights key, windshield shatter, bridge camera stutter.
