@@ -7,6 +7,7 @@ import { randomLook, type HumanTemplate, type Look } from '../actors/human';
 import type { CityMap } from '../world/citymap';
 import { DISTRICT_INFO, districtAt, surfaceAt } from '../world/citymap';
 import type { Character } from '../actors/character';
+import type { RagdollSystem } from '../actors/ragdoll';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
@@ -134,6 +135,23 @@ export class Population {
       if (prev > 7 && sp < prev * 0.5 && this.crashT <= 0 && !v.destroyed) { this.crashT = 2; this.onlookers(v.position); }
     }
   }
+  /** R6-X: physics ragdoll system (set by Game); without it people fall with the old kinematic knock. */
+  ragdolls: RagdollSystem | null = null;
+  /** Launches `ch` as a ragdoll off the car `v` (moved out of the car's box first so the solver never has to eject it). */
+  private ragHit(ch: Character, v: Vehicle, sp: number, lying: boolean, lateral = 0) {
+    const vel = v.phys.body.linvel(), yaw = v.yaw, c = Math.cos(yaw), s = Math.sin(yaw);
+    const L = v.tpl.layout, zc = L.zCenter ?? 0, hxh = L.half[0] + 0.12, hzh = L.half[2] + 0.12;
+    const dx = ch.pos.x - v.position.x, dz = ch.pos.z - v.position.z;
+    let lx = dx * c - dz * s, lz = dx * s + dz * c;
+    if (Math.abs(lx) < hxh && Math.abs(lz - zc) < hzh) {
+      if (Math.abs(lz - zc) / hzh > Math.abs(lx) / hxh * 0.6) lz = zc + (lz - zc >= 0 ? 1 : -1) * (hzh + 0.12); else lx = (lx >= 0 ? 1 : -1) * (hxh + 0.12);
+      ch.pos.x = v.position.x + c * lx + s * lz; ch.pos.z = v.position.z - s * lx + c * lz;
+    }
+    const fwd = Math.sign(v.speed) || 1;
+    if (!lying) ch.yaw = Math.atan2(vel.x * fwd, vel.z * fwd) + Math.PI; // facing the car, so they fall back onto the hood
+    const k = lying ? 0.3 : 0.55 + Math.min(0.25, sp / 80);
+    this.ragdolls!.launch(ch, { vx: vel.x * k, vy: lying ? 0.8 : 1.6, vz: vel.z * k, spin: lateral * 2.2, getUp: !lying, lying, car: v });
+  }
   private hitPt = new THREE.Vector3(); private hitDir = new THREE.Vector3();
   /** Vehicles knock people over. Returns list of people hit this step. */
   vehicleHits(vehicles: Iterable<Vehicle>, player: Character, onPlayerHit: (v: Vehicle, speed: number) => void) {
@@ -151,15 +169,21 @@ export class Population {
         return Math.abs(lx) < hx && Math.abs(lz) < hz;
       };
       for (const n of this.npcs) {
-        if (!n.alive || n.char.inVehicle || n.char.knockT > 0) continue;
+        if (n.char.inVehicle || n.char.ragdoll) continue;
+        if (!n.alive) { // a corpse in the way: it is a physical body, the car shoves / rolls over it
+          if (this.ragdolls && sp > 3.5 && n.char.deadTime > 0.3 && test(n.char)) this.ragHit(n.char, v, sp, true);
+          continue;
+        }
+        if (n.char.knockT > 0) continue;
         if (!test(n.char)) continue;
         const vel = v.phys.body.linvel();
         const im = pedImpact(sp, lateralOf(n.char), Math.random()), hd = Math.hypot(vel.x, vel.z) || 1, hx2 = vel.x / hd, hz2 = vel.z / hd;
         n.char.knockT = 1;
+        if (this.ragdolls && im.outcome !== 'brush') this.ragHit(n.char, v, sp, false, lateralOf(n.char));
         n.char.lastHit = { zone: 'torso', dx: hx2, dz: hz2, power: im.outcome === 'over' ? 3.5 : im.outcome === 'hood' ? 3 : 0.8, blast: im.outcome === 'over' };
         const killed = n.char.damage(im.damage, v.driver, this.env.time());
-        if (!killed) n.char.hitReact(hx2, hz2, im.outcome === 'brush' ? 0.6 : 1.5); // stagger or full knockdown
-        n.char.vel.set(hx2 * im.carry - hz2 * im.side, im.up, hz2 * im.carry + hx2 * im.side);
+        if (!killed && !n.char.ragdoll) n.char.hitReact(hx2, hz2, im.outcome === 'brush' ? 0.6 : 1.5); // stagger or full knockdown
+        if (!n.char.ragdoll) n.char.vel.set(hx2 * im.carry - hz2 * im.side, im.up, hz2 * im.carry + hx2 * im.side);
         if (im.outcome !== 'brush') this.audio.play('hitBody', { pos: n.pos, volume: 1 });
         if (killed) this.onKilled?.(n, v.driver, 'vehicle');
         else if (n.role === 'civilian') { n.brain = 'flee'; n.fleeFrom.copy(v.position); n.stateT = 0; }

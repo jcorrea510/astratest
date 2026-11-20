@@ -115,7 +115,7 @@ export function logo(cls = ''): HTMLElement {
   w.innerHTML = `<svg viewBox="0 0 900 330" aria-hidden="true">
 <defs>
 <filter id="${id}Wear" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="n"/>
-<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 9 -6.55" result="m"/>
+<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 9 -7.3" result="m"/>
 <feComposite in="SourceGraphic" in2="m" operator="out"/></filter>
 <mask id="${id}Cut" maskUnits="userSpaceOnUse" x="0" y="0" width="900" height="330"><rect width="900" height="330" fill="#fff"/>
 <rect x="0" y="188" width="900" height="6" fill="#000"/></mask>
@@ -169,7 +169,7 @@ export function buildMobileGate(): HTMLDivElement {
   const box = h('div', 'ma-mobile-box');
   box.appendChild(logo('ma-logo-mobile'));
   box.appendChild(h('div', 'ma-mobile-head', 'Port Meridian is waiting on a bigger screen.'));
-  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow is built for a computer with a keyboard and mouse, or a gamepad. Open this page in Chrome, Safari or Firefox on your desktop or laptop to play.'));
+  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow needs a keyboard and mouse, or a game controller. Open this page on a laptop or desktop, or on an iPad with a Bluetooth keyboard and mouse or a paired controller.'));
   const url = h('div', 'ma-mobile-url', location.href.split('#')[0]);
   box.appendChild(url);
   const copy = h('button', 'ma-btn ma-btn-primary', 'Copy link');

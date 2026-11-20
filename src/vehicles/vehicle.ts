@@ -19,6 +19,7 @@ import type { Character } from '../actors/character';
 import { getTemplate, type CarTemplate } from './models/build';
 import { carMaterial, glassMaterial, type CarUniforms } from './models/carMaterial';
 import { GROUND } from './shapes';
+import { ragHulls } from './ragHull';
 
 /** Height of the rig's hips above its root in the sitting/driving clips. */
 export const HIP_ABOVE_ROOT = 0.55;
@@ -124,6 +125,7 @@ export class Vehicle {
     this.tpl = Object.assign(Object.create(t), { model: kind, body: t.lods[0].body }) as VehicleTemplate;
     this.health = this.spec.health;
     this.phys = new VehiclePhysics(physics, this.spec, t.layout, x, y + 0.6, z, yaw);
+    this.phys.addRagHulls(ragHulls(kind, t.shape, t.layout));
     physics.tag(this.phys.collider, { kind: 'vehicle', ref: this });
     // skeleton: body bone in the sprung group, wheel bones in the unsprung group, doors/turret under the body
     const inverses: THREE.Matrix4[] = [];

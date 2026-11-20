@@ -2,9 +2,9 @@
  * Meridian Afterglow UI layer: screens, HUD, wheel, shop, map and sandbox tools. Implements GameUI from ./contracts.
  * Plain DOM + Canvas 2D + inline SVG. One full-screen root overlay (pointer-events: none except on panels).
  */
-import '@fontsource/big-shoulders-display/latin-700.css';
-import '@fontsource/big-shoulders-display/latin-800.css';
-import '@fontsource/big-shoulders-display/latin-900.css';
+import '@fontsource/big-shoulders-display/latin-700';
+import '@fontsource/big-shoulders-display/latin-800';
+import '@fontsource/big-shoulders-display/latin-900';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';

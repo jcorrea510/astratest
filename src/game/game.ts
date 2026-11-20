@@ -25,6 +25,7 @@ import { NullAudio } from './nullAudio';
 import { Combat } from '../combat/combat';
 import { PlayerCombat } from './playerCombat';
 import { Population } from './population';
+import { RagdollSystem } from '../actors/ragdoll';
 import { Traffic } from './traffic';
 import { Crowd } from './crowd';
 import { BusService } from './buses';
@@ -85,6 +86,7 @@ export class Game {
   combat!: Combat;
   pcombat!: PlayerCombat;
   pop!: Population;
+  ragdolls!: RagdollSystem;
   traffic!: Traffic;
   crowd!: Crowd;
   buses!: BusService;
@@ -185,6 +187,7 @@ export class Game {
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
       onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: (by) => this.police.dispatch.arresting || (!!by && !this.orders.clearShot(by.pos)), armedThreat: () => this.police.armedThreat, onWitness: () => { },
     }, this.audio);
+    this.ragdolls = new RagdollSystem(this.physics); this.pop.ragdolls = this.ragdolls;
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
@@ -362,6 +365,7 @@ export class Game {
     this.pop.fixedUpdate(dt, this.player.pos);
     this.helis.fixedUpdate(dt);
     this.physics.step(dt);
+    this.ragdolls.update(dt);
     this.vehicles.postStep(this.time);
     this.helis.postStep();
     this.pop.vehicleHits(this.vehicles.list, this.player, (v, sp) => this.hitByVehicle(v, sp));

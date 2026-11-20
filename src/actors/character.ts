@@ -1,5 +1,6 @@
 /** Shared body for every person: physics capsule, movement, health and the animated Human. */
 import * as THREE from 'three';
+import type { Ragdoll } from './ragdoll';
 import { RAPIER, type Physics, G_STATIC, G_VEHICLE, G_CHAR, groups } from '../core/physics';
 import { Human, type HumanTemplate, type Look } from './human';
 import { damp, dampAngle, wrapAngle } from '../core/rng';
@@ -47,6 +48,9 @@ export class Character {
   /** Procedural settle of a dying body on top of the fall clip (ragdoll-like spring on pitch / roll / spin / hop). */
   deathStyle = ''; private dfx = { t: 0, delay: 0, pitchT: 0, rollT: 0, spinT: 0, spinDur: 0.7, lift: 0, liftDur: 0.45, p: 0, pv: 0, r: 0, rv: 0, spin: 0 };
   inVehicle: unknown = null;
+  /** R6-X: physics ragdoll (hit by a car, run-over corpse) driving the skeleton while set */
+  ragdoll: Ragdoll | null = null;
+  get isDisposed() { return this.disposed; }
   /** R6-F: the person holding this character as a human shield (their own shots / punches never hit the shield) */
   heldBy: Character | null = null;
   physicsEnabled = true;
@@ -189,6 +193,21 @@ export class Character {
     const hit = this.physics.ray(x, y + 0.3, z, 0, -1, 0, 0.3 + reach, groups(0xffff, G_STATIC | G_VEHICLE), this.collider);
     return hit ? y + 0.3 - hit.toi : null;
   }
+  /** R6-X: hands the skeleton to a physics ragdoll (called by RagdollSystem.launch). */
+  beginRagdoll(r: Ragdoll) {
+    this.ragdoll = r; const h = this.human;
+    h.stopAction(); h.setState('loco'); h.setUpperMode('none'); h.setSpeed(0);
+    this.physicsEnabled = false; this.collider.setEnabled(false);
+    this.downT = 99; this.knockT = 99; this.vel.set(0, 0, 0);
+  }
+  /** R6-X: ragdoll over; a living person stands back up here (get-up clip). */
+  endRagdoll(x: number, y: number, z: number, yaw: number) {
+    this.ragdoll = null; this.setCollision(true);
+    if (!this.alive) { this.collider.setCollisionGroups(groups(0, 0)); return; }
+    this.place(x, y, z, yaw);
+    this.human.root.rotation.set(0, yaw, 0);
+    this.human.playAction('get_up'); this.downT = 1.2; this.getUpAt = 0; this.knockT = 1.2;
+  }
   /** Teleports the body (no collision). */
   place(x: number, y: number, z: number, yaw?: number) {
     this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0;
@@ -252,6 +271,7 @@ export class Character {
   }
   kill() {
     if (!this.alive) return;
+    if (this.ragdoll) { this.alive = false; this.deadTime = 0; this.downT = 0; this.ragdoll.o.getUp = false; this.human.setUpperMode('none'); return; } // already limp: the physics body carries on
     this.alive = false; this.deadTime = 0; this.downT = 0;
     const f = this.lastDamageFrom, hit = this.lastHit, h = this.human;
     h.setState('dead'); h.setUpperMode('none');
@@ -369,7 +389,7 @@ export class Character {
     const h = this.human;
     this.meleeLock -= dt; this.sinceMelee += dt;
     if (this.meleeLock <= 0 && this.queuedMelee) { const w = this.queuedMelee; this.queuedMelee = null; this.startMelee(w); }
-    if (this.downT > 0) {
+    if (this.downT > 0 && !this.ragdoll) {
       const before = this.downT; this.downT -= dt;
       if (this.alive && before > this.getUpAt && this.downT <= this.getUpAt) h.playAction('get_up');
       if (this.downT <= 0 && this.alive) h.stopAction('get_up');
@@ -381,6 +401,7 @@ export class Character {
       h.turnRate = this.turnRateS;
     }
     this.lastYaw = this.yaw;
+    if (this.ragdoll) { this.ragdoll.syncRoot(h); h.update(dt); this.ragdoll.applyBend(h); return; }
     h.root.position.copy(this.pos);
     h.root.position.y += this.stepOffset;
     if (this.swimming) h.root.position.y += 0.15;

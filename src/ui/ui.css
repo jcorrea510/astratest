@@ -1022,7 +1022,6 @@
     linear-gradient(180deg, rgba(8, 10, 11, 0.5) 0%, rgba(8, 10, 11, 0) 18%),
     radial-gradient(ellipse at 62% 50%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.5) 100%);
 }
-.ma-title:not(.is-pressed) .ma-title-shade { background: inherit; }
 .ma-title-content { left: calc(84 * var(--u)); top: calc(92 * var(--u)); bottom: calc(86 * var(--u)); }
 .ma-title:not(.is-pressed) .ma-title-content { left: calc(84 * var(--u)); top: calc(92 * var(--u)); transform: none; align-items: flex-start; }
 .ma-logo-title, .ma-title:not(.is-pressed) .ma-logo-title { width: calc(440 * var(--u)); margin-left: 0; filter: none; animation: ma-fade-in 0.9s both; }

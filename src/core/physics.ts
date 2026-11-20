@@ -3,6 +3,8 @@ import RAPIER from '@dimforge/rapier3d-compat';
 
 export { RAPIER };
 export const G_STATIC = 0x0001, G_VEHICLE = 0x0002, G_CHAR = 0x0004, G_PROP = 0x0008, G_PLAYER = 0x0010;
+/** Ragdoll limbs, and the cars' ragdoll-only hull proxies (hood / cabin shaped; the plain car box ignores ragdolls). */
+export const G_RAG = 0x0020, G_VRAG = 0x0040;
 /** Rapier packs membership in the high 16 bits and the filter in the low 16 bits. */
 export const groups = (member: number, filter: number) => ((member & 0xffff) << 16) | (filter & 0xffff);
 export const ALL = 0xffff;

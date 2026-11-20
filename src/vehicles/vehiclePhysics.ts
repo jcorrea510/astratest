@@ -5,7 +5,7 @@
  * countersteer help, a mild yaw-stability assist, a handbrake drift you can hold with throttle and
  * countersteer, downforce, limited air control and a self-righting roll when stuck on the roof.
  */
-import { RAPIER, type Physics, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER, groups } from '../core/physics';
+import { RAPIER, type Physics, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER, G_VRAG, G_RAG, groups } from '../core/physics';
 import type { VehicleSpec } from './specs';
 
 export interface WheelDef { x: number; y: number; z: number; front: boolean; left: boolean }
@@ -490,6 +490,15 @@ export class VehiclePhysics {
     this.drift = 0; this.hb = 0; this.hbRelease = 0; this.steerIn = 0; this.steer = 0;
     this.capturePrev();
   }
+  /** Zero-mass convex proxies shaped like the hood / cabin that only ragdolls touch (the plain box would make people ride on the roof line). */
+  addRagHulls(hulls: Float32Array[]) {
+    for (const pts of hulls) {
+      const d = RAPIER.ColliderDesc.convexHull(pts); if (!d) continue;
+      d.setDensity(0).setFriction(0.9).setRestitution(0.02).setCollisionGroups(groups(G_VRAG, G_RAG));
+      this.ragHullColliders.push(this.physics.world.createCollider(d, this.body));
+    }
+  }
+  ragHullColliders: RAPIER.Collider[] = [];
   dispose() {
     this.physics.world.removeVehicleController(this.ctrl);
     this.physics.world.removeRigidBody(this.body);

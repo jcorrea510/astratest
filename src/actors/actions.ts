@@ -89,6 +89,9 @@ export const ACTIONS: Record<string, ActionDef> = {
   wrists_back: { layer: 'upper', hold: true, dur: 0.75, fade: 0.12, poses: [[0, sym({ armL: [0, 0, 150], foreL: [0, 0, -70], head: [-6, 0, 0] })], [0.5, sym({ shL: [6, 0, 0], armL: [14, 0, 70], foreL: [-10, 0, -40], chest: [8, 0, 0], head: [10, 0, 0] })], [1, sym({ shL: [10, 0, 0], armL: [28, 0, -6], foreL: [12, 0, -58], chest: [-4, 0, 0], head: [12, 0, 0] })]] },
   kneel: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25 },
   // "get down" order: kneeling, fingers laced behind the head
+  kneel_a: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, sym({ armL: [-110, 0, 70], foreL: [0, 0, 140], head: [8, 0, 0] })]] },
+  kneel_b: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, sym({ armL: [-60, 0, 60], foreL: [-30, 0, 130], head: [8, 0, 0] })]] },
+  kneel_c: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, sym({ armL: [-150, -20, 40], foreL: [-100, 0, 40], head: [8, 0, 0] })]] },
   kneel_head: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, sym({ armL: [-125, 0, 32], foreL: [-112, 0, 0], head: [8, 0, 0], chest: [4, 0, 0] })]] },
   // --- vehicles
   // driver side: left hand on the handle, pull the door round to the left (the player steps back on the legs layer)
