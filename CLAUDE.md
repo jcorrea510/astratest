@@ -11,7 +11,7 @@ Current brief: docs/BRIEF6.md (earlier: BRIEF5..BRIEF2). Target: hyper-realistic
 - Never open big/generated files (list below). Split giant scripts into modules so agents read only what they need.
 - No questions to the owner; finish end to end; publish when done (gh-pages via CI, or manual dist push if CI is slow).
 - Known problems/gaps you find (agent reports included) get fixed in the same round, not reported to the owner as leftovers.
-- Usage-limit resilience: each agent commits WIP often and keeps a <=8-line handoff under its package in docs/PROGRESS.md; after a limit/restart, restart the agent fresh from that handoff (cheap) instead of resuming a long context.
+- Usage-limit resilience: each agent commits WIP often and keeps a <=8-line handoff in docs/handoff/<pkg>.md; after a limit/restart, restart the agent fresh from that handoff (cheap) instead of resuming a long context.
 
 ## Commands
 `npx tsc --noEmit` · `npx eslint <files>` · `npx vitest run` · e2e: start `npx vite --port 5199 --strictPort &`, then

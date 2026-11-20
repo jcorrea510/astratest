@@ -20,3 +20,7 @@
 - If you hit a usage limit, just stop; you'll be resumed. Leave the code compiling at natural checkpoints.
 - Final report (<= 25 lines): what changed, files touched outside ownership, new APIs others should use, tests run with
   results, known gaps.
+- Round 6: keep docs/handoff/<your package id>.md current (<=8 lines: done, in progress, next, files touched) after every
+  milestone, so a fresh agent can continue if you're cut off. e2e: the shared dev server reloads on others' edits, so build
+  your own static copy (`npx vite build --outDir /tmp/dist-<pkg>`) and serve it (`npx vite preview --outDir /tmp/dist-<pkg>
+  --port <your port> --strictPort &`), run specs with `--workers=1`. Kill your server when done.
