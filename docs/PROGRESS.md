@@ -1,6 +1,10 @@
 # Progress (newest first; keep short — git has history)
 
-Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
+Resume: read CLAUDE.md, docs/BRIEF6.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
+
+## Round 6 (owner notes BRIEF6: quality pass; work overnight, wrap ~7-8am ET with a publish)
+- [ ] R6-PLAN lead splits BRIEF6 into packages here (each: id, scope, files, test, handoff lines). Not started.
+- Carry-over: R5-P2 perf WIP in 975ebd9 (unverified) feeds the LOD/vanishing package.
 
 ## Round 5 (owner notes BRIEF5 + "crazy realistic overhaul")
 - [x] R5-H Highway: snappy realistic steering (lane change ~1-2 s), no 0.2 s bounce, wheel turns in 1st person, realistic interior.

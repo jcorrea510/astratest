@@ -2,7 +2,7 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/tender-turing-bkf701.
-Current brief: docs/BRIEF5.md (earlier: BRIEF4, BRIEF3, BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current brief: docs/BRIEF6.md (earlier: BRIEF5..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Usage: delegate coding to Sonnet subagents (`model: sonnet`); use Opus only for architecture or a bug Sonnet failed twice on.
@@ -11,6 +11,7 @@ Current brief: docs/BRIEF5.md (earlier: BRIEF4, BRIEF3, BRIEF2). Target: hyper-r
 - Never open big/generated files (list below). Split giant scripts into modules so agents read only what they need.
 - No questions to the owner; finish end to end; publish when done (gh-pages via CI, or manual dist push if CI is slow).
 - Known problems/gaps you find (agent reports included) get fixed in the same round, not reported to the owner as leftovers.
+- Usage-limit resilience: each agent commits WIP often and keeps a <=8-line handoff under its package in docs/PROGRESS.md; after a limit/restart, restart the agent fresh from that handoff (cheap) instead of resuming a long context.
 
 ## Commands
 `npx tsc --noEmit` · `npx eslint <files>` · `npx vitest run` · e2e: start `npx vite --port 5199 --strictPort &`, then
