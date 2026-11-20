@@ -50,7 +50,7 @@ function farGeometry(body: THREE.BufferGeometry, glass: THREE.BufferGeometry | n
 
 const cache = new Map<VehicleKind, CarTemplate>();
 /** Triangle budget of the far model (lod 2, also the far-crowd impostor). */
-export const FAR_TRIS = 1300;
+export const FAR_TRIS = 1000; // body; + ~500 for the four wheels
 /** True once the kind's template is built (far crowds only use kinds that are ready, so they never cause a build hitch). */
 export function hasTemplate(kind: VehicleKind): boolean { return cache.has(kind); }
 export function getTemplate(kind: VehicleKind): CarTemplate {
@@ -91,18 +91,18 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     if (gh) { body.append(gh.body); glass = gh.glass; }
     for (const d of lower.doors) { body.append(d.soup).append(d.inner); const extra = gh?.doorParts.get(d.bone); if (extra) body.append(extra); }
     body.append(details(kit, lod, seats, doorBone));
-    const w = wheelSoup(s, lod);
+    // wheels stay out of the clustering below (it squashed far wheels into slivers, so far cars looked like they floated)
+    const w = wheelSoup(s, lod), wheels = new Soup();
     if (s.type !== 'tank') bl.wheelBones.forEach(b => {
       const p = bl.bones[b].pos, left = p[0] > 0;
-      const ws = (left ? w.clone() : w.mirrorX()).translate(p[0], s.R, p[2]).paint({ bone: b });
-      body.append(ws);
+      wheels.append((left ? w.clone() : w.mirrorX()).translate(p[0], s.R, p[2]).paint({ bone: b }));
     });
     if (s.type === 'tank') trackLen = tankParts(kit, body, lod, bl);
-    body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0);
+    body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0); wheels.translate(0, GROUND, 0);
     // lod 0 = full model (~35k tris); lod 1 (~3k) is clustered down from the simple model; lod 2 (~1.2k) is built natively coarse
     // (clustering a body down to a few hundred triangles tears it into spiky blobs) and only lightly clustered.
-    const bake = (b: Soup, g: Soup | null) => ({ body: b.toGeometry(), glass: g && g.tris ? g.toGeometry() : null });
-    const entries = lod === 0 ? [bake(body, glass)] : lod === 1 ? [bake(body.decimateTo(s.type === 'tank' ? 2200 : 3000), glass?.decimateTo(220) ?? null)]
+    const bake = (b: Soup, g: Soup | null) => ({ body: b.append(wheels).toGeometry(), glass: g && g.tris ? g.toGeometry() : null });
+    const entries = lod === 0 ? [bake(body, glass)] : lod === 1 ? [bake(body.decimateTo(s.type === 'tank' ? 2200 : 2600), glass?.decimateTo(220) ?? null)]
       : [bake(body.decimateTo(s.type === 'tank' ? 1100 : FAR_TRIS), glass?.decimateTo(240) ?? null)];
     for (const e of entries) {
       lods.push(e);

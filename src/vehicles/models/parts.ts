@@ -52,7 +52,9 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
   // tyre: lathe profile from the inner bead to the outer bead
   const pr: [number, number][] = [[Rr - 0.006, -hw + 0.014], [Rr + 0.012, -hw], [R - 0.055, -hw - 0.007], [R - 0.02, -hw + 0.008], [R - 0.005, -hw + 0.03], [R, -hw + 0.055],
     [R, hw - 0.055], [R - 0.005, hw - 0.03], [R - 0.02, hw - 0.008], [R - 0.055, hw + 0.007], [Rr + 0.012, hw], [Rr - 0.006, hw - 0.014]];
-  const lathe = new THREE.LatheGeometry(pr.map(([r, h]) => new THREE.Vector2(r, h)), lod > 1 ? 10 : lod ? 16 : 34).rotateZ(-Math.PI / 2);
+  // far lods: a 6-point profile (beads, shoulders, tread) keeps the tyre round when the body is clustered separately (R6-V)
+  const prLo: [number, number][] = [[Rr, -hw], [R - 0.04, -hw], [R, -hw + 0.05], [R, hw - 0.05], [R - 0.04, hw], [Rr, hw]];
+  const lathe = new THREE.LatheGeometry((lod ? prLo : pr).map(([r, h]) => new THREE.Vector2(r, h)), lod > 1 ? 12 : lod ? 18 : 34).rotateZ(-Math.PI / 2);
   const tyre = new Soup().addGeometry(lathe, { kind: K.RUBBER, color: '#1a1a1b' }); lathe.dispose();
   for (let i = 0; i < tyre.d.length; i += 14) {
     const x = tyre.d[i], r = Math.hypot(tyre.d[i + 1], tyre.d[i + 2]);
@@ -71,7 +73,7 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
   if (lod) {
     const disc = new THREE.CircleGeometry(Rr - 0.004, lod > 1 ? 8 : 14).rotateY(Math.PI / 2).translate(faceX, 0, 0);
     out.addGeometry(disc, rimPaint); disc.dispose();
-    out.append(cyl(0.05, 0.05, 0.01, { kind: K.METAL, color: '#3a3b3d' }, at(faceX + 0.006, 0, 0, 0, 0, -Math.PI / 2), 8));
+    if (lod === 1) out.append(cyl(0.05, 0.05, 0.01, { kind: K.METAL, color: '#3a3b3d' }, at(faceX + 0.006, 0, 0, 0, 0, -Math.PI / 2), 8));
     return out;
   }
   // barrel + brake disc behind the spokes

@@ -56,7 +56,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
     }
     return { reds, rolled, idleWorst, farWorst, moving: moving / samples, parked: parked / samples };
   });
-  console.log('TRAFFIC6', JSON.stringify({ ...r, reds: r.reds.length, rolled: r.rolled.length }));
+  console.log('TRAFFIC6', JSON.stringify({ ...r, reds: r.reds.length, rolled: r.rolled.length })); if (r.reds.length) console.log('REDS', JSON.stringify(r.reds.map((x: any) => ({ ...x, h: x.h.slice(-14).map((e: any) => e.join('/')).join(' ') }))));
   expect(r.reds, JSON.stringify(r.reds)).toEqual([]);
   expect(r.rolled, JSON.stringify(r.rolled)).toEqual([]);
   expect(r.idleWorst, JSON.stringify(r.idleWorst)).toEqual([]);

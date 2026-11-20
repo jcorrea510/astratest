@@ -24,9 +24,16 @@ describe('procedural vehicle models', () => {
       process.stdout.write(`MODEL ${kind.padEnd(11)} hi ${hi} lo ${lo} glass ${glass} wheel ${wheelSoup(SHAPES[kind], 0).tris} doors ${t.doors.length} panes ${t.panes.map(p => p.name).join(',')}\n`);
       expect(hi).toBeLessThan(42000);
       expect(lo).toBeLessThan(hi * 0.5);
-      expect(lo).toBeLessThan(3200);
+      expect(lo).toBeLessThan(2700 + t.wheelBones.length * 240);
       const far = t.lods[2].body.attributes.position.count / 3;
-      expect(far).toBeLessThan(kind === 'tank' ? 1200 : 1400); expect(far).toBeGreaterThan(40);
+      expect(far).toBeLessThan(kind === 'tank' ? 1200 : 1050 + t.wheelBones.length * 140); expect(far).toBeGreaterThan(40);
+      // far / mid wheels stay round (clustering them with the body squashed them into slivers: far cars seemed to float)
+      for (const l of [1, 2]) if (SHAPES[kind].type !== 'tank') {
+        const g = t.lods[l].body, P = g.attributes.position.array as Float32Array, SI = g.attributes.skinIndex.array as Uint16Array;
+        let lo = Infinity, hi = -Infinity, lz = Infinity, hz = -Infinity;
+        for (let i = 0; i < SI.length / 4; i++) if (SI[i * 4] === t.wheelBones[0]) { lo = Math.min(lo, P[i * 3 + 1]); hi = Math.max(hi, P[i * 3 + 1]); lz = Math.min(lz, P[i * 3 + 2]); hz = Math.max(hz, P[i * 3 + 2]); }
+        expect(hi - lo).toBeGreaterThan(SHAPES[kind].R * 1.9); expect(hz - lz).toBeGreaterThan(SHAPES[kind].R * 1.9);
+      }
       // the far model keeps (nearly) all its glass: decimating it too hard left see-through cabins on far-crowd cars (R6-V)
       if (t.lods[1].glass) expect(area(t.lods[2].glass)).toBeGreaterThan(area(t.lods[1].glass) * 0.8);
       expect(t.doors.length).toBe(SHAPES[kind].doors.length * 2);

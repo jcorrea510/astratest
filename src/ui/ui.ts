@@ -41,11 +41,11 @@ const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', sandbox: 'sandb
 const DOCKABLE = new Set<LayerId>(['map', 'sandbox', 'settings', 'controls']);
 export const GAME_VERSION = 'v0.3.0';
 const TITLE_ITEMS: Record<string, string> = {
-  newgame: 'Start over. You choose the mode next: Regular or Sandbox.',
+  newgame: 'Start over, then pick Regular or Sandbox.',
   regular: 'Regular: start with fists and a little cash. Rob stores, buy guns and cars, and pay the hospital when you go down. No cheats.',
   sandbox: 'Sandbox: a pistol, cash and a whole city. Spawn cars, set the wanted level or time, teleport. Nothing is ever lost.',
   back: 'Back to the main menu.',
-  continue: 'Pick up your saved game exactly where you left off: cash, guns, cars, spot in the city and the time of day.',
+  continue: 'Pick up your saved game right where you left off.',
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
   highway: 'Endless multi-lane highway at speed: weave through traffic, pass close for points. Pick your car and the time of day.',

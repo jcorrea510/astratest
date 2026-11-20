@@ -136,4 +136,3 @@ export function samplePose(keys: [number, Pose][], u: number, out: Map<BoneKey, 
   }
   return out;
 }
-(globalThis as any).__ACTIONS = ACTIONS; // R6P-TEMP
