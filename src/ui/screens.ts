@@ -103,30 +103,28 @@ export function titleArtSvg(prefix = 'maT'): string {
 let logoSeq = 0;
 
 /**
- * The MERIDIAN AFTERGLOW lockup: two justified lines of heavy condensed italic with a hard outline, a block
- * drop shadow and the striped-sun cut lines through AFTERGLOW. Built as SVG so the outline stays crisp at any size.
+ * The MERIDIAN AFTERGLOW lockup: a flat, left-aligned stack. MERIDIAN in heavy condensed capitals with a stencil slice
+ * through the lower third and a faint worn-print grain; AFTERGLOW tracked out to the same width in a single burnt orange.
+ * No outline, glow or gradient: it reads as printed signage. SVG so it stays crisp at any size.
  */
 export function logo(cls = ''): HTMLElement {
   const id = `maLogo${++logoSeq}`;
   const w = h('div', `ma-logo ${cls}`);
   w.setAttribute('role', 'img');
   w.setAttribute('aria-label', 'Meridian Afterglow');
-  const line = (y: number, text: string, size: number, fill: string, extra = '') =>
-    `<text x="500" y="${y}" font-size="${size}" text-anchor="middle" textLength="940" lengthAdjust="spacingAndGlyphs" fill="${fill}" ${extra}>${text}</text>`;
-  const lines = (fill1: string, fill2: string, extra = '') => line(232, 'MERIDIAN', 262, fill1, extra) + line(470, 'AFTERGLOW', 262, fill2, extra);
-  w.innerHTML = `<svg viewBox="0 0 1000 520" aria-hidden="true">
+  w.innerHTML = `<svg viewBox="0 0 900 330" aria-hidden="true">
 <defs>
-<linearGradient id="${id}Sun" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0" stop-color="#ffd39a"/><stop offset="0.62" stop-color="#ffd39a"/><stop offset="0.62" stop-color="#ff9b6a"/><stop offset="1" stop-color="#ff9b6a"/>
-</linearGradient>
-<mask id="${id}Cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="520"><rect width="1000" height="520" fill="#fff"/>
-<rect x="0" y="404" width="1000" height="7" fill="#000"/><rect x="0" y="426" width="1000" height="10" fill="#000"/><rect x="0" y="452" width="1000" height="13" fill="#000"/></mask>
+<filter id="${id}Wear" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="n"/>
+<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 9 -6.55" result="m"/>
+<feComposite in="SourceGraphic" in2="m" operator="out"/></filter>
+<mask id="${id}Cut" maskUnits="userSpaceOnUse" x="0" y="0" width="900" height="330"><rect width="900" height="330" fill="#fff"/>
+<rect x="0" y="188" width="900" height="6" fill="#000"/></mask>
 </defs>
-<g class="ma-logo-type" transform="rotate(-4 500 260)">
-<g class="ma-logo-drop" transform="translate(14 16)">${lines('#0b2226', '#0b2226', 'stroke="#0b2226" stroke-width="22" stroke-linejoin="round"')}</g>
-<g class="ma-logo-stroke">${lines('#0b2226', '#0b2226', 'stroke="#0b2226" stroke-width="22" stroke-linejoin="round"')}</g>
-<g class="ma-logo-fill">${line(232, 'MERIDIAN', 262, '#fff3dc')}<g mask="url(#${id}Cut)">${line(470, 'AFTERGLOW', 262, `url(#${id}Sun)`)}</g></g>
-</g></svg>`;
+<g class="ma-logo-main" mask="url(#${id}Cut)" filter="url(#${id}Wear)">
+<text class="ma-logo-a" x="-6" y="238" font-size="286" textLength="912" lengthAdjust="spacingAndGlyphs" fill="#ece6d6">MERIDIAN</text>
+</g>
+<text class="ma-logo-b" x="2" y="322" font-size="66" textLength="896" lengthAdjust="spacing" fill="#d9824f">AFTERGLOW</text>
+</svg>`;
   return w;
 }
 

@@ -20,12 +20,15 @@ export interface Building3D {
   roof: string; wallL: string; wallR: string; edge: string;
 }
 
+/** sqrt(1 - 0.64^2): the default map pitch, where HEIGHT_K applies unscaled */
+const PITCH_REF = 0.768;
 export const HEIGHT_K = 0.8; // screen pixels of rise per metre-of-height per pixel-per-metre of scale
 
 export class Buildings3D {
   readonly list: Building3D[] = [];
   private order: Building3D[] = [];
   private orderTilt = NaN;
+  private keys = new Float64Array(0);
 
   constructor(city: CityMap) {
     const blockById = new Map(city.blocks.map(b => [b.id, b]));
@@ -53,8 +56,11 @@ export class Buildings3D {
   /** Back-to-front order for a map rotation (depth = coordinate along the view's vertical axis). */
   sorted(tilt: number): Building3D[] {
     if (tilt !== this.orderTilt) {
-      const s = Math.sin(tilt), c = Math.cos(tilt);
-      this.order = this.list.slice().sort((a, b) => (a.cx * s + a.cz * c) - (b.cx * s + b.cz * c));
+      const s = Math.sin(tilt), c = Math.cos(tilt), n = this.list.length;
+      if (this.keys.length !== n) this.keys = new Float64Array(n);
+      for (let i = 0; i < n; i++) this.keys[i] = this.list[i].cx * s + this.list[i].cz * c;
+      const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => this.keys[a] - this.keys[b]);
+      this.order = idx.map(i => this.list[i]);
       this.orderTilt = tilt;
     }
     return this.order;
@@ -63,7 +69,10 @@ export class Buildings3D {
   /** Extruded draw for the pitched full map. Screen mapping: x' = dx*c - dz*s, y' = (dx*s + dz*c)*pitch. */
   drawExtruded(ctx: CanvasRenderingContext2D, cx: number, cz: number, scale: number, tilt: number, pitch: number, w: number, hgt: number, fast = false) {
     const c = Math.cos(tilt), s = Math.sin(tilt), hw = w / 2, hh = hgt / 2;
-    const lift = scale * HEIGHT_K;
+    // wall rise follows the camera angle: full at the default pitch, none when looking straight down
+    const lf = Math.sqrt(Math.max(0, 1 - pitch * pitch)) / PITCH_REF;
+    const lift = scale * HEIGHT_K * lf;
+    const flat = Math.max(0, 1 - lf);
     const sx = new Float32Array(4), sy = new Float32Array(4);
     const order = this.sorted(tilt);
     // pass 1: cast shadows, one path, one fill
@@ -75,8 +84,9 @@ export class Buildings3D {
       const rise = Math.min(b.h, 140) * lift;
       if (px < -60 - rise || px > w + 60 + rise || py < -60 || py > hgt + 80 + rise) continue;
       vis.push(b);
-      if (fast || (b.h < 14 && scale < 0.5)) continue;
-      const ox = rise * 0.45, oy = rise * 0.12;
+      if (b.h < 14 && scale < 0.5) continue;
+      const hs = Math.min(b.h, 100) * scale;
+      const ox = rise * 0.45 + flat * hs * 0.14, oy = rise * 0.12 + flat * hs * 0.1;
       for (let i = 0; i < 4; i++) {
         const ex = b.p[i * 2] - cx, ez = b.p[i * 2 + 1] - cz;
         const X = (ex * c - ez * s) * scale + hw + ox, Y = (ex * s + ez * c) * scale * pitch + hh + oy;
@@ -95,7 +105,7 @@ export class Buildings3D {
         mx += sx[i]; my += sy[i];
       }
       mx /= 4; my /= 4;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; rise > 0.4 && i < 4; i++) {
         const j = (i + 1) & 3;
         let nx = sy[j] - sy[i], ny = -(sx[j] - sx[i]);
         if (nx * ((sx[i] + sx[j]) / 2 - mx) + ny * ((sy[i] + sy[j]) / 2 - my) < 0) { nx = -nx; ny = -ny; }

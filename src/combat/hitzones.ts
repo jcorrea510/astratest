@@ -148,3 +148,13 @@ export function bodyCapsules(model: THREE.Object3D, pos: THREE.Vector3, yaw: num
   }
   return out;
 }
+
+/** The skeleton bone that carries a wound mark for a hit zone (`left` picks the L / R limb); null when the rig has no known bones. */
+export function zoneBone(model: THREE.Object3D, zone: Zone, left: boolean): THREE.Object3D | null {
+  const b = findBones(model); if (!b) return null;
+  if (zone === 'head') return b.head ?? null;
+  if (zone === 'neck') return b.neck ?? null;
+  if (zone === 'arm') return (left ? b.elL : b.elR) ?? null;
+  if (zone === 'leg') return (left ? b.hipL : b.hipR) ?? null;
+  return b.chest ?? b.hips ?? null;
+}

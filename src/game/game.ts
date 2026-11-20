@@ -43,6 +43,9 @@ import { ArmyGuards, guardsHostile } from './armyGuards';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
+import { Blood } from '../render/blood'; // R6-F
+import { CombatFx } from '../ui/combatfx';
+import { Orders } from './orders';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -89,6 +92,9 @@ export class Game {
   readonly benches = BENCHES;
   police!: Police;
   playerVehicle: Vehicle | null = null;
+  /** R6-F: orders / hostages, blood, damage feedback */
+  orders!: Orders; blood!: Blood; fx: CombatFx | null = null;
+  private lowRingT = 0; private wasLow = false;
   /** the car the player last got out of (kept out of mission clean-ups) */
   lastPlayerVehicle: Vehicle | null = null;
   money = 250;
@@ -169,13 +175,15 @@ export class Game {
     this.carEntry = new CarEntry(this);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.worldGlass = worldGlass;
+    this.blood = new Blood(this.renderer.scene); this.blood.enabled = this.settings.blood; this.combat.blood = this.blood;
+    try { this.fx = new CombatFx(this.canvas.parentElement ?? document.body); } catch { this.fx = null; }
     worldGlass.onBreak = pane => { this.particles.decals.clearIn(pane.x, pane.y, pane.z, pane.yaw, pane.w, pane.h, pane.inst >= 0 ? 1.7 : 0.4); }; // shot-out glass loses its bullet holes
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
       physics: this.physics, city: this.city, combat: this.combat, scene: this.renderer.scene, time: () => this.time,
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
-      onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: () => this.police.dispatch.arresting, armedThreat: () => this.police.armedThreat, onWitness: () => { },
+      onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: (by) => this.police.dispatch.arresting || (!!by && !this.orders.clearShot(by.pos)), armedThreat: () => this.police.armedThreat, onWitness: () => { },
     }, this.audio);
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
@@ -193,6 +201,7 @@ export class Game {
       removeHeli: h => this.helis.remove(h),
       sfx: (name, at) => this.audio.play(name, { pos: at }),
     });
+    this.orders = new Orders(this);
     this.events.arrestAnimationDone = this.police.dispatch.animHook; // [POLICE] the cop cuffs the player before the ARRESTED card
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
@@ -221,7 +230,8 @@ export class Game {
         if (killed) { this.stats.kills++; this.onNpcKilled(npc, from); }
       } else if (npc && killed) this.onNpcKilled(npc, from);
       if (target === this.player && killed) this.playerDown('down');
-      if (target === this.player) this.cam.addShake(0.15);
+      if (target === this.player) this.onPlayerHurt(from, _dmg);
+      else if (from === this.player && npc?.role === 'civilian') this.orders.noteHurt(npc);
     };
     this.combat.onVehicleHit = (v, from) => { if (from === this.player) { this.police.onVehicleShot(v); this.traffic.panic(v); } };
     this.combat.helis = () => this.helis.list;
@@ -551,6 +561,7 @@ export class Game {
     this.events.onDeath(kind, pen.loseGear ? (kind === 'down' ? `Medical bill  -$${fee}` : `Fined  -$${fee}`) : (kind === 'down' ? 'Patched up, no charge' : 'Released, no charge'));
   }
   private respawn() {
+    this.orders.reset();
     const place = this.deathKind === 'down' ? CLINIC : PRECINCT;
     this.carEntry?.cancel();
     if (this.playerVehicle) this.exitVehicle(true);
@@ -601,7 +612,7 @@ export class Game {
     this.time += dt;
     if (this.clockRunning) this.hour = (this.hour + (dt / this.dayLength) * 24) % 24;
     const blocked = this.inputBlocked;
-    if (!this.paused && !blocked) {
+    if (!this.paused && !blocked && !this.orders.open) {
       const look = this.input.lookDelta(raw);
       this.cam.addInput(look.x, look.y, this.settings.sensitivity * this.pcombat.lookScale, this.settings.invertY);
     }
@@ -627,6 +638,8 @@ export class Game {
       if (!handled) { this.playerCtl.updateAnimation(); this.player.updateVisual(dt); }
       if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
     }
+    this.orders.update(dt, raw, blocked);
+    this.updateHurtFx(dt);
     this.pcombat.update(dt, blocked || this.paused || this.carEntry.active, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
     this.pop.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 26 : 16;
@@ -675,6 +688,31 @@ export class Game {
       for (const g of w.userData.gondolas as THREE.Object3D[]) g.rotation.z = -w.rotation.z;
       (w.userData.ringMat as THREE.MeshStandardMaterial).emissiveIntensity = this.renderer.skyState.night * 2.2;
     }
+  }
+  private extra(name: 'hitThud' | 'earRing', volume: number) { (this.audio as unknown as Partial<{ playExtra(n: string, o?: { volume?: number }): void }>).playExtra?.(name, { volume }); }
+  /** The player was hit: red arrow towards the shooter, vignette, thud, camera flinch. */
+  private onPlayerHurt(from: Character, dmg: number) {
+    this.cam.addShake(0.15 + Math.min(0.2, dmg / 120));
+    this.cam.addInput((Math.random() - 0.5) * 8, -7, 1, false); // a small kick up and sideways
+    this.extra('hitThud', Math.min(1, 0.5 + dmg / 40));
+    if (from === this.player || !from.pos) return;
+    const dx = from.pos.x - this.player.pos.x, dz = from.pos.z - this.player.pos.z;
+    let rel = (this.cam.forwardYaw - Math.atan2(dx, dz)) * 180 / Math.PI;
+    rel = ((rel + 540) % 360) - 180; // 0 ahead, +right, -left, ±180 behind
+    this.fx?.hurt(rel, dmg);
+  }
+  private updateHurtFx(dt: number) {
+    this.blood.enabled = this.settings.blood;
+    this.blood.update(dt);
+    const fx = this.fx; if (!fx) return;
+    fx.root.style.visibility = this.menuOpen || this.paused ? 'hidden' : 'visible';
+    const frac = this.player.health / this.player.maxHealth, alive = this.player.alive && this.deathT < 0;
+    fx.update(dt, frac, alive);
+    this.renderer.setHurt(fx.lowHealth);
+    const low = alive && frac < 0.3;
+    this.lowRingT -= dt;
+    if (low && (!this.wasLow || this.lowRingT <= 0)) { this.extra('earRing', 1); this.lowRingT = 9; }
+    this.wasLow = low;
   }
   // ---------------- Street lamps ----------------
   private buildLamps() {

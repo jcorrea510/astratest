@@ -117,11 +117,12 @@ test.describe('save safety and wheel', () => {
   });
 });
 
-test('title says Sandbox and points at the pause-menu tools', async ({ page }) => {
+test('title menu describes the Sandbox mode choice', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
-  await expect(page.locator('.ma-title-mode-badge')).toHaveText('Sandbox');
   await page.keyboard.press('Enter');
-  await expect(page.locator('.ma-title-desc')).toContainText('Sandbox tab');
+  await page.getByRole('button', { name: 'New game' }).click();
+  await page.getByRole('button', { name: 'Sandbox' }).focus();
+  await expect(page.locator('.ma-title-desc')).toContainText('Sandbox');
   await page.screenshot({ path: '/tmp/claude-0/s/title.png' });
 });

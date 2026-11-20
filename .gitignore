@@ -8,3 +8,4 @@ test-results/
 .gameshot*
 .citydbg.mjs
 .cityshots.mjs
+dist-local/

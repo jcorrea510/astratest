@@ -2,6 +2,9 @@
  * Meridian Afterglow UI layer: screens, HUD, wheel, shop, map and sandbox tools. Implements GameUI from ./contracts.
  * Plain DOM + Canvas 2D + inline SVG. One full-screen root overlay (pointer-events: none except on panels).
  */
+import '@fontsource/big-shoulders-display/latin-700.css';
+import '@fontsource/big-shoulders-display/latin-800.css';
+import '@fontsource/big-shoulders-display/latin-900.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';
@@ -26,7 +29,8 @@ import { SandboxPanel } from './sandbox';
 import { buildCard, buildCredits, buildDeath, buildLoading, buildMobileGate, logo, titleArtSvg, DEATH_TIMING, deathGrade } from './screens';
 import { formatMoney } from './geometry';
 import { fmtDistance, MPS_TO_MPH } from '../core/units';
-import { toggleFullscreen } from '../core/fullscreen';
+import { createFullscreenButton } from '../core/fullscreen';
+import { padGlyph } from '../core/gamepad';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
 type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'sandbox' | 'credits';
@@ -49,7 +53,6 @@ const TITLE_ITEMS: Record<string, string> = {
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
   highway: 'Endless multi-lane highway at speed: weave through traffic, pass close for points. Pick your car and the time of day.',
-  fullscreen: 'Fill the whole screen (Alt+Enter anywhere).',
   credits: 'Who made this, and the open assets and fonts it uses.',
 };
 
@@ -61,11 +64,14 @@ const NOOP_CALLBACKS: UICallbacks = {
   onSetWaypoint: () => {}, onUiSound: () => {}, captureKey: () => {}, onSandbox: () => {}, onOpenSandbox: () => {},
 };
 
+/** Controller labels for the keyboard hints shown in menu footers (swapped in by CSS while the last input was a pad). */
+const PAD_FOR_KEY: Record<string, string> = { 'Enter': 'A', 'Esc': 'B', '\u2191\u2193': 'D-Pad', '\u2191\u2193\u2190\u2192': 'D-Pad', 'PgUp PgDn': 'LB / RB', 'Click': 'A' };
 function footHints(pairs: [string, string][], cls = 'ma-foot-hints'): HTMLDivElement {
   const el = h('div', cls);
   for (const [k, t] of pairs) {
     const s = h('span', 'ma-foot-hint');
-    s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
+    const kbd = h('kbd', 'ma-key', k); if (PAD_FOR_KEY[k]) kbd.dataset.pad = PAD_FOR_KEY[k];
+    s.appendChild(kbd); s.appendChild(document.createTextNode(t));
     el.appendChild(s);
   }
   return el;
@@ -181,6 +187,7 @@ export class UI implements GameUI {
     this.root.appendChild(this.credits.el);
     this.credits.back.addEventListener('click', () => { this.sound('back'); this.popLayer('credits'); });
     this.root.appendChild(this.loading.el);
+    this.root.appendChild(createFullscreenButton('ma-fs-btn')); // top-right on every menu; Alt+Enter anywhere
 
     window.addEventListener('keydown', this.onKeyDown, true);
     // After a mouse button is captured for rebinding, swallow the click it produces (until that button is released).
@@ -239,12 +246,8 @@ export class UI implements GameUI {
     const el = h('div', 'ma-layer ma-title');
     el.innerHTML = titleArtSvg();
     el.appendChild(h('div', 'ma-title-shade'));
-    el.appendChild(h('div', 'ma-title-bars'));
     const content = h('div', 'ma-title-content');
     content.appendChild(logo('ma-logo-title'));
-    const tag = h('div', 'ma-title-mode');
-    tag.append(h('span', 'ma-title-mode-badge', 'Open world'), h('span', 'ma-title-mode-text', 'Regular or Sandbox'));
-    content.appendChild(tag);
     const menu = h('div', 'ma-menu ma-title-menu');
     content.appendChild(menu);
     this.titleDesc = h('div', 'ma-title-desc');
@@ -252,7 +255,7 @@ export class UI implements GameUI {
     el.appendChild(content);
     const press = h('div', 'ma-title-press');
     press.appendChild(h('span', 'ma-title-press-text', 'Press any key'));
-    el.appendChild(press);
+    content.appendChild(press);
     const shot = h('div', 'ma-title-shot');
     this.titleShotName = h('div', 'ma-title-shot-name');
     this.titleShotCap = h('div', 'ma-title-shot-cap');
@@ -301,9 +304,8 @@ export class UI implements GameUI {
     let cont: HTMLButtonElement | null = null;
     if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue', saveSummary || 'saved game'); items.unshift(cont); }
     items.push(
-      this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'),
+      Object.assign(this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'), { className: 'ma-menu-item ma-mi-gap' }),
       this.menuItem('Controls', () => { this.sound('click'); this.openControls(); }, false, 'controls'),
-      this.menuItem('Fullscreen', () => { this.sound('click'); toggleFullscreen(); }, false, 'fullscreen'),
       this.menuItem('Credits', () => { this.sound('click'); this.openCredits(); }, false, 'credits'),
     );
     this.titleMenu.append(...items);
@@ -417,7 +419,13 @@ export class UI implements GameUI {
     box.classList.add('is-in');
   }
 
-  private keyFor(a: Action) { const c = this.settings.bindings[a]?.[0]; return c ? keyLabel(c) : '?'; }
+  private inputSource: 'kbm' | 'pad' = 'kbm';
+  /** Called by the game loop: menus and hints switch between keyboard and controller labels. */
+  setInputSource(src: 'kbm' | 'pad'): void {
+    if (src === this.inputSource) return;
+    this.inputSource = src; setClass(this.root, 'is-pad', src === 'pad');
+  }
+  private keyFor(a: Action) { if (this.inputSource === 'pad') { const g = padGlyph(a); if (g) return g; } const c = this.settings.bindings[a]?.[0]; return c ? keyLabel(c) : '?'; }
   private tips(): string[] {
     return [
       `Hold [${this.keyFor('wheel')}] to open the weapon wheel. The city slows down while you choose.`,
@@ -485,7 +493,6 @@ export class UI implements GameUI {
     this.pausePanes.set('quit', pane);
     const menu = h('div', 'ma-menu ma-pause-menu');
     menu.appendChild(this.menuItem('Resume', () => { this.sound('click'); this.resume(); }));
-    menu.appendChild(this.menuItem('Fullscreen', () => { this.sound('click'); toggleFullscreen(); }, false, 'fullscreen'));
     this.saveItem = this.menuItem('Save game', () => {
       const ok = this.callbacks.onSaveGame?.() ?? false;
       this.sound(ok ? 'click' : 'back');
@@ -497,7 +504,7 @@ export class UI implements GameUI {
     pane.appendChild(menu);
     pane.appendChild(h('div', 'ma-quit-stats'));
     el.appendChild(body);
-    el.appendChild(footHints([['Q / E', 'Tabs'], ['↑↓←→', 'Select'], ['Enter', 'Open'], ['Esc', 'Resume']], 'ma-foot-hints ma-pause-foot'));
+    el.appendChild(footHints([['PgUp PgDn', 'Tabs'], ['↑↓←→', 'Select'], ['Enter', 'Open'], ['Esc', 'Resume']], 'ma-foot-hints ma-pause-foot'));
     return el;
   }
 
@@ -919,8 +926,10 @@ export class UI implements GameUI {
       case 'Enter': case 'NumpadEnter': return 'select';
       case 'Escape': case 'Backspace': return 'back';
       case 'Tab': return e.shiftKey ? 'up' : 'down';
-      case 'KeyQ': case 'PageUp': return 'tabPrev';
-      case 'KeyE': case 'PageDown': return 'tabNext';
+      case 'KeyQ': return layer.id === 'map' ? null : 'tabPrev'; // on the map Q / E rotate it (the map handles them itself)
+      case 'KeyE': return layer.id === 'map' ? null : 'tabNext';
+      case 'PageUp': return 'tabPrev';
+      case 'PageDown': return 'tabNext';
       case 'Equal': case 'NumpadAdd': return 'zoomIn';
       case 'Minus': case 'NumpadSubtract': return 'zoomOut';
       default: return null;

@@ -1,0 +1,91 @@
+/**
+ * R6-F screen feedback that lives outside the main HUD: the directional damage indicator, the red hit vignette (plus the
+ * low-health pulse), the hold-to-order radial menu and a one-line subtitle for what people shout back. Self-contained DOM
+ * (its own stylesheet), so it works under any menu / HUD arrangement.
+ */
+import { h } from './dom';
+
+const CSS = `
+.ma-fx { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; font-family: inherit; }
+.ma-fx-vig { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 38%, rgba(150,8,8,0.55) 78%, rgba(90,0,0,0.9) 100%); }
+.ma-fx-low { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(40,0,0,0.65) 100%); }
+.ma-fx-ind { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+.ma-fx-ind i { position: absolute; left: -90px; top: -38vh; width: 180px; height: 56px; border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255,40,30,0.95), rgba(220,20,20,0.55) 45%, rgba(220,20,20,0) 72%); filter: blur(1px); }
+.ma-fx-ind.is-on { animation: ma-fx-ind 1.25s ease-out forwards; }
+@keyframes ma-fx-ind { 0% { opacity: 1; } 55% { opacity: 0.8; } 100% { opacity: 0; } }
+.ma-fx-say { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); padding: 6px 14px; border-radius: 14px; background: rgba(12,14,18,0.72);
+  color: #f2f4f8; font-size: 15px; letter-spacing: 0.01em; opacity: 0; transition: opacity 0.2s; white-space: nowrap; }
+.ma-fx-say.is-on { opacity: 1; }
+.ma-fx-menu { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; transition: opacity 0.12s; }
+.ma-fx-menu.is-on { opacity: 1; }
+.ma-fx-menu .ring { position: absolute; left: -120px; top: -120px; width: 240px; height: 240px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.18); background: rgba(10,12,16,0.35); backdrop-filter: blur(2px); }
+.ma-fx-menu .hub { position: absolute; left: -46px; top: -12px; width: 92px; text-align: center; font-size: 11px; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.1em; }
+.ma-fx-menu .opt { position: absolute; padding: 7px 12px; border-radius: 16px; background: rgba(16,18,24,0.88); color: #eef1f6; font-size: 15px; white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.22); transform: translate(-50%, -50%); }
+.ma-fx-menu .opt b { color: #ffb347; margin-right: 7px; }
+.ma-fx-menu .opt.is-sel { background: #ffb347; color: #14100a; border-color: #ffd7a0; }
+.ma-fx-menu .opt.is-sel b { color: #14100a; }
+`;
+
+export interface MenuItem { id: string; label: string }
+
+export class CombatFx {
+  readonly root: HTMLDivElement;
+  private vig: HTMLDivElement; private low: HTMLDivElement; private say_: HTMLDivElement; private menu: HTMLDivElement; private hub: HTMLDivElement;
+  private inds: HTMLDivElement[] = []; private indNext = 0;
+  private vigT = 0; private sayT = 0; private lowK = 0; private pulse = 0;
+  /** last indicator fired (angle in degrees: 0 = shooter ahead / top of the screen, 90 = to the right) - read by tests */
+  last: { angle: number; t: number } | null = null;
+  constructor(parent: HTMLElement) {
+    if (!document.getElementById('ma-fx-css')) { const st = document.createElement('style'); st.id = 'ma-fx-css'; st.textContent = CSS; document.head.appendChild(st); }
+    this.root = h('div', 'ma-fx');
+    this.vig = h('div', 'ma-fx-vig'); this.low = h('div', 'ma-fx-low');
+    this.root.append(this.low, this.vig);
+    for (let i = 0; i < 6; i++) { const d = h('div', 'ma-fx-ind'); d.appendChild(document.createElement('i')); this.root.appendChild(d); this.inds.push(d); }
+    this.say_ = h('div', 'ma-fx-say'); this.menu = h('div', 'ma-fx-menu'); this.hub = h('div', 'hub');
+    this.root.append(this.say_, this.menu);
+    parent.appendChild(this.root);
+  }
+  /** Damage came from `angleDeg` relative to where the camera looks (0 = ahead, 90 = right, 180 = behind). */
+  hurt(angleDeg: number, amount: number) {
+    const el = this.inds[this.indNext]; this.indNext = (this.indNext + 1) % this.inds.length;
+    el.style.transform = `rotate(${angleDeg.toFixed(1)}deg)`; el.dataset.angle = angleDeg.toFixed(1);
+    el.classList.remove('is-on'); void el.offsetWidth; el.classList.add('is-on');
+    this.vigT = Math.min(1, Math.max(this.vigT, 0.35 + amount / 40));
+    this.last = { angle: angleDeg, t: performance.now() };
+  }
+  /** Brief subtitle line (what a person shouts back). */
+  say(text: string, ms = 1800) { this.say_.textContent = text; this.say_.classList.add('is-on'); this.sayT = ms / 1000; }
+  /** health 0..1; the screen darkens at the edges and pulses below 30%. */
+  update(dt: number, healthFrac: number, alive: boolean) {
+    this.vigT = Math.max(0, this.vigT - dt * 1.6);
+    const lowK = alive ? Math.max(0, Math.min(1, (0.35 - healthFrac) / 0.3)) : 0;
+    this.lowK += (lowK - this.lowK) * Math.min(1, dt * 3);
+    this.pulse += dt * (1.6 + this.lowK * 1.4);
+    this.vig.style.opacity = String(this.vigT * 0.9);
+    this.low.style.opacity = String(this.lowK * (0.7 + 0.3 * Math.sin(this.pulse * Math.PI)));
+    if (this.sayT > 0 && (this.sayT -= dt) <= 0) this.say_.classList.remove('is-on');
+  }
+  get lowHealth() { return this.lowK; }
+  get vignette() { return this.vigT; }
+  /** Opens / updates the radial order menu (items spread around a ring, top first). */
+  showMenu(title: string, items: MenuItem[], sel: number) {
+    const n = items.length;
+    if (this.menu.dataset.sig !== items.map(i => i.id).join()) {
+      this.menu.textContent = ''; this.menu.dataset.sig = items.map(i => i.id).join();
+      const ring = h('div', 'ring'); this.menu.appendChild(ring); this.hub.textContent = title; this.menu.appendChild(this.hub);
+      items.forEach((it, i) => {
+        const a = -Math.PI / 2 + (i / n) * Math.PI * 2, o = h('div', 'opt'); o.dataset.id = it.id;
+        o.style.left = `${Math.cos(a) * 150}px`; o.style.top = `${Math.sin(a) * 120}px`;
+        const b = document.createElement('b'); b.textContent = String(i + 1); o.append(b, document.createTextNode(it.label)); this.menu.appendChild(o);
+      });
+    }
+    this.hub.textContent = title;
+    this.menu.querySelectorAll('.opt').forEach((o, i) => o.classList.toggle('is-sel', i === sel));
+    this.menu.classList.add('is-on');
+  }
+  hideMenu() { this.menu.classList.remove('is-on'); }
+  get menuOpen() { return this.menu.classList.contains('is-on'); }
+  dispose() { this.root.remove(); }
+}

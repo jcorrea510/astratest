@@ -47,6 +47,8 @@ export class Character {
   /** Procedural settle of a dying body on top of the fall clip (ragdoll-like spring on pitch / roll / spin / hop). */
   deathStyle = ''; private dfx = { t: 0, delay: 0, pitchT: 0, rollT: 0, spinT: 0, spinDur: 0.7, lift: 0, liftDur: 0.45, p: 0, pv: 0, r: 0, rv: 0, spin: 0 };
   inVehicle: unknown = null;
+  /** R6-F: the person holding this character as a human shield (their own shots / punches never hit the shield) */
+  heldBy: Character | null = null;
   physicsEnabled = true;
   lastDamageFrom: Character | null = null;
   lastHitTime = -10;

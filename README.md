@@ -72,6 +72,29 @@ npm run test:soak                # 20 minutes (game time) of scripted chaos with
 
 The browser tests drive the real production build at the `/astratest/` subpath: title screen to gameplay, walking/driving/crashing, combat, the inventory wheel, gaining and losing heat, death and arrest, every mission start to finish, save and continue, settings persistence, and the mobile screen. `?autostart=1` skips the title screen (add `&sandbox=1` for sandbox mode); `?quality=low|medium|high` overrides the graphics preset.
 
+## Run it locally
+
+The game is the same code whether you play it on GitHub Pages or on your own machine. Running it locally mainly removes the network loading (models, textures and sounds come off your disk), and the page never waits on the server; frame rate depends on your GPU either way. For the smoothest play also pick **High** in Settings (or **Low** on weaker machines) and press the fullscreen button in the top-right corner.
+
+You need [Node.js 22+](https://nodejs.org). Then either:
+
+1. **From GitHub:** on the repository page choose **Code → Download ZIP** and unzip it (or `git clone https://github.com/jcorrea510/astratest.git`), open a terminal in that folder and run:
+
+   ```bash
+   npm install
+   npm run local        # builds, starts a local server and opens http://127.0.0.1:4180/
+   ```
+
+   `npm run local` is the same as `npm run build && npm run preview` but built for the root path, so no sub-folder is needed. If you prefer the manual way: `npm run build`, then `npm run preview` and open `http://localhost:4173/astratest/`.
+
+2. **Prebuilt, no Node build step:** download the `gh-pages` branch as a ZIP (**Code → switch branch to `gh-pages` → Download ZIP**). The site expects to live under `/astratest/`, so make a folder, put the unzipped files in a sub-folder named `astratest`, and serve the outer folder with any static server, for example `npx serve outer-folder` or `python3 -m http.server 8000`, then open `http://localhost:8000/astratest/`.
+
+Keep the page in a normal browser window (Chrome, Edge, Safari, Firefox); opening `index.html` by double-clicking does not work because browsers block module scripts from `file://`.
+
+### iPad
+
+Open the live link in Safari with a Bluetooth keyboard and mouse, or a paired game controller. iPad starts on the Low graphics preset to stay under Safari's memory limit; raise it in Settings if it holds up. If Safari refuses mouse capture the cursor and finger-drag look around instead.
+
 ## Deploy
 
 `.github/workflows/deploy.yml` runs on every push to `main`: typecheck, lint, unit tests, build, browser tests, then publishes `dist/` to the `gh-pages` branch, which GitHub Pages serves at https://jcorrea510.github.io/astratest/. Nothing is published if any check fails.

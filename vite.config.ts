@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 export default defineConfig({
-  base: '/astratest/',
+  base: process.env.MA_BASE ?? '/astratest/', // npm run local builds for the root path
   test: { include: ['src/**/*.test.ts'], environment: 'node' },
   build: {
     target: 'es2022',

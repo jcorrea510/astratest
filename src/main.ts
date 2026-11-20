@@ -3,7 +3,7 @@ import { setRealisticDriving } from './vehicles/vehiclePhysics';
 import * as THREE from 'three';
 import { loadAssets, type Assets } from './world/assets';
 import { initPhysics } from './core/physics';
-import { loadSettings, saveSettings, safeStorage, type Settings } from './core/settings';
+import { loadSettings, SETTINGS_KEY, saveSettings, safeStorage, type Settings } from './core/settings';
 import { Game, PLAYER_LOOK } from './game/game';
 import { generateCity, surfaceAt } from './world/citymap';
 import { UI } from './ui/ui';
@@ -21,7 +21,8 @@ import type { GameMode } from './game/modes';
 import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
-import { installFullscreenShortcut } from './core/fullscreen';
+import { installFullscreenShortcut, rememberFullscreen } from './core/fullscreen';
+import { defaultQualityFor, isPhoneLike } from './core/platform';
 
 installFullscreenShortcut();
 
@@ -37,6 +38,7 @@ const params = new URLSearchParams(location.search);
 const settings: Settings = loadSettings();
 if (params.get('quality') === 'low' || params.get('quality') === 'medium' || params.get('quality') === 'high') settings.quality = params.get('quality') as Settings['quality'];
 const storage = safeStorage();
+{ const dq = defaultQualityFor(); if (dq && !params.get('quality') && !storage?.getItem(SETTINGS_KEY)) settings.quality = dq; } // iPad: lightest preset until the player picks one
 const ui = new UI();
 // Realistic weapon icons: render the 3D models once, off the critical path (HUD, wheel and shop read the cache).
 setTimeout(() => { renderWeaponIcons(); }, 0);
@@ -54,10 +56,12 @@ let mapByKey = false;
 let attract: { shot: number; t: number; dipped: boolean } | null = null;
 const DEFAULT_SAT = 1.08;
 
+/** Phones get the "bigger screen" page. iPad (keyboard + mouse or a controller) plays the real game; iPadOS reports a coarse pointer, so it is excluded explicitly. */
 function isMobile(): boolean {
+  if (params.get('mobile') === '1') return true;
   const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
   const small = Math.min(screen.width, screen.height) < 600;
-  return params.get('mobile') === '1' || (coarse && (small || 'ontouchstart' in window));
+  return coarse && (small || 'ontouchstart' in window) && isPhoneLike(navigator, Math.min(screen.width, screen.height));
 }
 function webglOk(): boolean {
   try { const c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch { return false; }
@@ -282,6 +286,7 @@ function resume() {
 function showTitle() { const s = readSave(storage); ui.showTitle(!!s, s ? saveSummary(s) : undefined); }
 function quitToTitle() {
   saveGame();
+  rememberFullscreen(); // the reload drops fullscreen; the next key press / click on the title puts it back
   location.href = location.pathname; // the title screen (drop debug query flags such as ?autostart)
 }
 
@@ -307,6 +312,7 @@ function closeWheel(discard = false) {
 function frame(raw: number) {
   const g = game!, a = activities!;
   const input = g.input;
+  ui.setInputSource(input.lastSource);
   // pause / map
   if (input.justPressed('pause') && !a.shopIsOpen) { if (g.paused) { /* UI handles Esc in menus */ } else pause(); }
   if (mapByKey && g.paused && !ui.isMenuOpen()) { mapByKey = false; resume(); }
@@ -387,7 +393,7 @@ async function openHighway(auto?: { kind?: string; time?: string; density?: numb
     const renderer = shared ?? new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     if (!shared) { renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; }
     started = true; attract = null;
-    const g = new HighwayGame({ renderer, model: c.kind, time: c.time, density: c.density, onQuit: () => { location.href = location.pathname; } });
+    const g = new HighwayGame({ renderer, model: c.kind, time: c.time, density: c.density, onQuit: () => { rememberFullscreen(); location.href = location.pathname; } });
     window.__highway = g;
     g.start();
   };

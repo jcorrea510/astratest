@@ -1,6 +1,6 @@
 /** DOM overlay for the highway mode: menu, HUD, pause and wreck screens. Styled inline so the mode stays self-contained. */
 import { MPS_TO_MPH, fmtClock12, miles } from '../core/units';
-import { toggleFullscreen } from '../core/fullscreen';
+import { createFullscreenButton } from '../core/fullscreen';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import type { TimeOfDay } from './sky';
 
@@ -25,6 +25,9 @@ const CSS = `
 .hw-go:hover,.hw-go:focus-visible{background:#ffd27a;outline:none}
 .hw-ghost{padding:12px 22px;font-size:22px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:transparent;color:inherit;border:1px solid rgba(255,255,255,.3);border-radius:3px}
 .hw-ghost:hover,.hw-ghost:focus-visible{background:rgba(255,255,255,.12);outline:none}
+.hw-fs-btn{position:fixed;right:18px;top:16px;z-index:60;width:40px;height:40px;padding:8px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);color:#f4efe4;border:1px solid rgba(255,255,255,.28);border-radius:3px;pointer-events:auto;cursor:pointer}
+.hw-fs-btn svg{width:100%;height:100%}
+.hw-fs-btn:hover,.hw-fs-btn:focus-visible{background:rgba(255,255,255,.18);outline:none}
 .hw-keys{margin-left:auto;opacity:.6;font-size:17px;text-align:right}
 .hw-score{position:absolute;left:28px;top:22px;text-shadow:0 2px 10px rgba(0,0,0,.6)}
 .hw-score b{display:block;font-size:64px;line-height:.9;font-weight:800;font-style:italic;font-variant-numeric:tabular-nums}
@@ -39,7 +42,7 @@ const CSS = `
 .hw-trip{position:absolute;left:28px;bottom:26px;font-size:26px;line-height:1.15;text-shadow:0 2px 10px rgba(0,0,0,.7)}
 .hw-trip b{font-weight:800;font-size:40px;font-variant-numeric:tabular-nums}
 .hw-trip div{opacity:.82}
-.hw-top{position:absolute;right:20px;top:18px;display:flex;gap:8px;align-items:center}
+.hw-top{position:absolute;right:68px;top:18px;display:flex;gap:8px;align-items:center}
 .hw-top .hw-ghost{padding:6px 12px;font-size:18px;background:rgba(0,0,0,.35)}
 .hw-pop{position:absolute;left:50%;top:26%;transform:translateX(-50%);text-align:center;font-size:44px;font-weight:800;font-style:italic;color:#fff;text-shadow:0 3px 14px rgba(0,0,0,.7);opacity:0}
 .hw-pop small{display:block;font-size:26px;color:#f2b950}
@@ -91,8 +94,8 @@ export function showHighwayMenu(onGo: (c: MenuChoice) => void, onBack: () => voi
   const act = el('div', 'hw-actions');
   const go = el('button', 'hw-go', 'Start'); go.id = 'hw-start'; go.type = 'button';
   const back = el('button', 'hw-ghost', 'Back'); back.type = 'button';
-  const fs = el('button', 'hw-ghost', 'Fullscreen'); fs.type = 'button'; fs.addEventListener('click', toggleFullscreen);
-  act.append(go, back, fs, Object.assign(el('div', 'hw-keys'), { innerHTML: 'W / S throttle and brake · A / D steer<br>V camera · C look back · H horn · Esc pause' }));
+  root.appendChild(createFullscreenButton('hw-fs-btn', 'hw-menu-fs'));
+  act.append(go, back, Object.assign(el('div', 'hw-keys'), { innerHTML: 'W / S throttle and brake · A / D steer<br>V camera · C look back · H horn · Esc pause' }));
   card.appendChild(act);
   const close = () => root.remove();
   go.addEventListener('click', () => { close(); onGo({ ...choice }); });
@@ -111,7 +114,7 @@ export class HighwayHud {
   private pause = el('div', 'hw-layer'); private wreck = el('div', 'hw-layer');
   private wreckStats = el('div', 'hw-stats');
   private cache = new Map<string, string>();
-  fsButton = el('button', 'hw-ghost', 'Fullscreen');
+  fsButton = createFullscreenButton('hw-fs-btn', 'hw-fs');
   constructor(private cb: { onResume(): void; onQuit(): void; onRetry(): void; onPause(): void }) {
     ensureStyle();
     const sc = el('div', 'hw-score'); sc.append(el('span', '', 'Score'), this.score, this.combo);
@@ -121,16 +124,15 @@ export class HighwayHud {
     sp.append(sb, hb);
     const trip = el('div', 'hw-trip'); trip.append(el('div', '', 'Trip'), this.odo, this.clock, this.best);
     const top = el('div', 'hw-top');
-    this.fsButton.type = 'button'; this.fsButton.id = 'hw-fs'; this.fsButton.addEventListener('click', toggleFullscreen);
     const pb = el('button', 'hw-ghost', 'Pause'); pb.type = 'button'; pb.addEventListener('click', () => cb.onPause());
-    top.append(this.fsButton, pb);
+    top.append(pb); document.body.appendChild(this.fsButton);
     this.hint.textContent = 'V camera · C look back · H horn · Esc pause';
     this.root.append(this.hit, sc, trip, sp, top, this.pop, this.hint);
     // pause layer
     const pc = el('div', 'hw-card'); pc.append(el('h1', '', 'Paused'));
     const st = el('div', 'hw-stack');
     const mk = (label: string, cls: string, fn: () => void, id: string) => { const b = el('button', cls, label); b.type = 'button'; b.id = id; b.addEventListener('click', fn); return b; };
-    st.append(mk('Resume', 'hw-go', () => cb.onResume(), 'hw-resume'), mk('Fullscreen', 'hw-ghost', toggleFullscreen, 'hw-pause-fs'), mk('Quit to title', 'hw-ghost', () => cb.onQuit(), 'hw-quit'));
+    st.append(mk('Resume', 'hw-go', () => cb.onResume(), 'hw-resume'), mk('Quit to title', 'hw-ghost', () => cb.onQuit(), 'hw-quit'));
     pc.appendChild(st); this.pause.appendChild(pc); this.pause.setAttribute('role', 'dialog'); this.pause.setAttribute('aria-label', 'Paused');
     const wc = el('div', 'hw-card'); wc.append(el('h1', '', 'Wrecked'), this.wreckStats);
     const ws = el('div', 'hw-stack'); ws.append(mk('Try again', 'hw-go', () => cb.onRetry(), 'hw-retry'), mk('Quit to title', 'hw-ghost', () => cb.onQuit(), 'hw-quit2'));

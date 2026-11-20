@@ -14,7 +14,7 @@ test('US units: 12-hour clock with AM/PM and mph on the speedometer', async ({ p
   expect(r.unit).toBe('mph');
 });
 
-test('fullscreen button + Alt+Enter call requestFullscreen; highway boots from the title and runs', async ({ page }) => {
+test('fullscreen icon button + Alt+Enter call requestFullscreen; highway boots from the title and runs', async ({ page }) => {
   test.setTimeout(420_000);
   const prob = watch(page);
   await page.goto('./');
@@ -22,7 +22,7 @@ test('fullscreen button + Alt+Enter call requestFullscreen; highway boots from t
   await page.evaluate(() => (window as any).__title.game.stop()); // (the city flyover is slow in software GL; the menu works without it)
   await page.evaluate(() => { (window as any).__fsCalls = 0; Element.prototype.requestFullscreen = function () { (window as any).__fsCalls++; return Promise.resolve(); }; });
   await page.keyboard.press('Space'); // press any key -> menu
-  await page.locator('[data-item="fullscreen"]:visible').click();
+  await page.locator('.ma-fs-btn').dispatchEvent('click');
   expect(await page.evaluate(() => (window as any).__fsCalls)).toBe(1);
   await page.keyboard.press('Alt+Enter');
   expect(await page.evaluate(() => (window as any).__fsCalls)).toBe(2);

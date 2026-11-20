@@ -14,7 +14,9 @@ import { Rng, wrapAngle } from '../core/rng';
 import { STORES, STORE_D } from '../game/places';
 
 export type Role = 'civilian' | 'gang' | 'police';
-export type Brain = 'inside' | 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger' | 'fight';
+export type Brain = 'inside' | 'wander' | 'idle' | 'flee' | 'cower' | 'surrender' | 'combat' | 'chase' | 'dead' | 'scripted' | 'passenger' | 'fight' | 'ordered' | 'hostage';
+/** R6-F: what the player ordered this person to do (brain 'ordered'); 'board' = reached the car door, waiting to be seated */
+export type OrderKind = '' | 'kneel' | 'hands' | 'come' | 'car' | 'board';
 
 /** Street-life activities of civilians (stand still doing something, walk to a shop, board a cab). */
 export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi' | 'sit' | 'sitting' | 'board' | 'queue';
@@ -75,6 +77,8 @@ export class Npc {
   /** fist fight: seconds since either side landed or threw a blow, dodge/step timers, strafing side, punches thrown */
   fightT = 0; dodgeT = 0; dodgeCool = 0; strafeT = 0; strafeDir = 1; playerSwung = false; dodgeDir = new THREE.Vector3(); callCops = false;
   destPt: THREE.Vector3 | null = null; destYaw = 0;
+  /** R6-F orders: current order, seconds since it was given, seconds before the person relaxes and goes about their day */
+  order: OrderKind = ''; orderT = 0; orderMax = 25;
   /** the bench this pedestrian is walking to / sitting on */
   bench: Bench | null = null;
   /** delayed reaction to danger: seconds until it registers, and where from */
@@ -97,7 +101,7 @@ export class Npc {
 
 export interface NpcEnv {
   physics: Physics; city: CityMap; combat: Combat; scene: THREE.Scene; time: () => number;
-  player: Character; playerHeat: () => number; copsLethal?: () => boolean; /** an arrest is in progress: every other officer holds fire */ copsHoldFire?: () => boolean; /** the player is pointing a gun */ armedThreat?: () => boolean; others: () => Iterable<Character>;
+  player: Character; playerHeat: () => number; copsLethal?: () => boolean; /** an arrest is in progress: every other officer holds fire */ copsHoldFire?: (by?: Npc) => boolean; /** the player is pointing a gun */ armedThreat?: () => boolean; others: () => Iterable<Character>;
   onArrest: (by: Npc) => void; onWitness: (npc: Npc, what: 'shot' | 'attack' | 'kill' | 'carjack') => void;
 }
 
@@ -152,7 +156,8 @@ export class NpcBrainRunner {
     if (n.activity && (n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender' || n.brain === 'fight')) this.endAct(n);
     if (c.blockT > 0) c.blockT -= dt;
     // poses belong to their brain: hands go down when the person runs / cowers / is hit, the guard drops when the fight is over
-    if (n.brain !== 'surrender' && n.brain !== 'scripted' && c.human.actionName === 'hands_up') c.human.stopAction('hands_up');
+    if (n.brain !== 'surrender' && n.brain !== 'scripted' && n.brain !== 'hostage' && !(n.brain === 'ordered' && n.order !== 'kneel') && c.human.actionName === 'hands_up') c.human.stopAction('hands_up');
+    if (n.brain !== 'ordered' && c.human.actionName === 'kneel_head') c.human.stopAction('kneel_head');
     if (n.brain !== 'fight' && c.human.actionName === 'guard') c.human.stopAction('guard');
     if (n.reloadT > 0) { n.reloadT -= dt; if (n.reloadT <= 0) n.clip = WEAPONS[n.weapon].clip; }
     const desired = tvDesired.set(0, 0, 0);
@@ -294,7 +299,7 @@ export class NpcBrainRunner {
         if (speed > 0) n.crouching = false;
         if (w.melee) { if (d < 1.6) this.meleeAttack(n, tgt); faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); break; }
         // Shooting (nobody fires while a colleague is arresting the suspect: the bullets would hit the officer)
-        if (seeing && d < w.range && !(n.role === 'police' && env.copsHoldFire?.())) {
+        if (seeing && d < w.range && !(n.role === 'police' && env.copsHoldFire?.(n))) {
           aiming = true;
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           const facingOk = Math.abs(wrapAngle(faceYaw - c.yaw)) < 0.35;
@@ -306,6 +311,29 @@ export class NpcBrainRunner {
             n.cooldown = n.burst > 0 ? w.interval * 1.4 : w.interval + 0.8 + Math.random() * 1.2;
           }
         }
+        break;
+      }
+      case 'ordered': { // R6-F: the player gave an order and this person complied
+        const pl = env.player, dx = pl.pos.x - c.pos.x, dz = pl.pos.z - c.pos.z, d = Math.hypot(dx, dz) || 0.01;
+        n.orderT += dt; faceYaw = Math.atan2(dx, dz);
+        if (!pl.alive || d > 32 || (n.order !== 'board' && n.orderT > n.orderMax)) { this.releaseOrder(n); break; }
+        if (n.order === 'kneel') { speed = 0; if (c.human.actionName !== 'kneel_head' && !c.human.busy) c.human.playAction('kneel_head'); }
+        else if (n.order === 'hands') { speed = 0; if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up'); }
+        else if (n.order === 'come') {
+          if (d > 1.7) { desired.set(dx / d, 0, dz / d); speed = d > 6 ? 3.4 : 2.2; if (c.human.actionName === 'hands_up') c.human.stopAction('hands_up'); }
+          else { speed = 0; if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up'); }
+        } else if (n.order === 'car' && n.destPt) {
+          tv.copy(n.destPt).sub(c.pos); tv.y = 0; const gd = tv.length(); faceYaw = null;
+          if (gd > 0.9) { desired.copy(tv.normalize()); speed = gd > 5 ? 3.6 : 2.4; } else { n.order = 'board'; speed = 0; }
+        } else speed = 0; // 'board': the Orders manager seats this person next frame
+        break;
+      }
+      case 'hostage': { // R6-F: human shield: stays just in front of the holder, facing the same way, hands up
+        const pl = env.player; speed = 0; faceYaw = pl.yaw;
+        const sx = pl.pos.x + Math.sin(pl.yaw) * 0.7, sz = pl.pos.z + Math.cos(pl.yaw) * 0.7, dx = sx - c.pos.x, dz = sz - c.pos.z, d = Math.hypot(dx, dz);
+        if (d > 3.5) { c.place(sx, pl.pos.y, sz, pl.yaw); }
+        else if (d > 0.04) { desired.set(dx / d, 0, dz / d); speed = Math.min(d / Math.max(dt, 0.016), 7.5); }
+        if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up');
         break;
       }
       case 'scripted': case 'passenger': case 'dead': break;
@@ -367,6 +395,12 @@ export class NpcBrainRunner {
     }
     n.brain = 'flee'; n.fleeFrom.copy(from.pos); n.stateT = 0;
     if (n.nerve < 0.25) n.callCops = true;
+  }
+  /** The order has run its course (or the player left): the person relaxes, stops posing and goes about their day. */
+  releaseOrder(n: Npc) {
+    const h = n.char.human;
+    if (h.actionName === 'kneel_head' || h.actionName === 'hands_up') h.stopAction();
+    n.order = ''; n.orderT = 0; n.node = -1; n.goal = null; n.destPt = null; n.brain = 'wander'; n.stateT = 0;
   }
   private endFight(n: Npc, tgt: Character) {
     if (n.char.human.actionName === 'guard') n.char.human.stopAction('guard');

@@ -1,12 +1,9 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-
-export interface PadState { lx: number; ly: number; rx: number; ry: number; lt: number; rt: number; buttons: boolean[]; connected: boolean }
-type ActionSource = 'kbm' | 'pad';
-
-const PAD_MAP: Partial<Record<Action, number[]>> = {
-  jump: [1], enter: [3], reload: [2], sprint: [0], crouch: [10], wheel: [4], handbrake: [0], horn: [10], lookBehind: [11], map: [8], pause: [9], interact: [2], nextWeapon: [5], prevWeapon: [], headlights: [13], radio: [12], camera: [15],
-};
+import { PAD_MAP, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
+import { pointerLockSupported, isIPad } from './platform';
+export type { PadState };
+export type ActionSource = 'kbm' | 'pad';
 
 export class Input {
   private down = new Set<string>();
@@ -14,7 +11,10 @@ export class Input {
   private released = new Set<string>();
   mouseDX = 0; mouseDY = 0; wheel = 0;
   locked = false;
-  pad: PadState = { lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0, buttons: [], connected: false };
+  /** True when the browser has no Pointer Lock (iPad Safari): the cursor itself looks around and a finger drag looks too. */
+  virtualLock = false;
+  private lastTouch = new Map<number, { x: number; y: number }>();
+  pad: PadState = { ...EMPTY_PAD, buttons: [] };
   private padPrev: boolean[] = [];
   lastSource: ActionSource = 'kbm';
   enabled = true;
@@ -45,17 +45,26 @@ export class Input {
       const code = e.deltaY > 0 ? 'WheelDown' : 'WheelUp';
       this.pressed.add(code); this.wheel += Math.sign(e.deltaY);
     }, { passive: true });
+    canvas.addEventListener('pointermove', e => {
+      if (!this.virtualLock || e.pointerType !== 'touch') return;
+      const prev = this.lastTouch.get(e.pointerId);
+      this.lastTouch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (prev) { this.mouseDX += (e.clientX - prev.x) * 1.4; this.mouseDY += (e.clientY - prev.y) * 1.4; }
+    });
+    const dropTouch = (e: PointerEvent) => { this.lastTouch.delete(e.pointerId); };
+    canvas.addEventListener('pointerup', dropTouch); canvas.addEventListener('pointercancel', dropTouch);
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
   }
   captureNext(cb: (code: string) => void) { this.captureCb = cb; }
   requestLock() {
     if (document.pointerLockElement === this.canvas) return;
+    if (!pointerLockSupported(this.canvas)) { this.virtualLock = true; this.locked = true; return; }
     try {
       const r = (this.canvas as HTMLCanvasElement).requestPointerLock?.() as unknown as Promise<void> | undefined;
-      if (r && typeof r.catch === 'function') r.catch(() => { /* user gesture required; we retry on next click */ });
+      if (r && typeof r.catch === 'function') r.catch(() => { if (isIPad()) { this.virtualLock = true; this.locked = true; } /* else: user gesture required; we retry on next click */ });
     } catch { /* ignore */ }
   }
-  exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  exitLock() { if (this.virtualLock) this.locked = false; if (document.pointerLockElement) document.exitPointerLock(); }
   private codes(a: Action) { return this.settings.bindings[a] ?? []; }
   private isCodeDown(c: string) { return this.down.has(c) || this.scripted.has(c); }
   held(a: Action): boolean {
@@ -74,6 +83,8 @@ export class Input {
     if (pb && pb.some(b => this.pad.buttons[b] && !this.padPrev[b])) return true;
     return false;
   }
+  /** A raw key code pressed this frame (menu digits, tests); not tied to a rebindable action. */
+  rawPressed(code: string): boolean { return this.enabled && this.pressed.has(code); }
   justReleased(a: Action): boolean {
     if (this.codes(a).some(c => this.released.has(c))) return true;
     const pb = PAD_MAP[a];
@@ -93,7 +104,7 @@ export class Input {
   lookDelta(dt: number): { x: number; y: number } {
     let x = this.mouseDX, y = this.mouseDY;
     if (this.pad.connected) {
-      const dz = (v: number) => (Math.abs(v) < 0.12 ? 0 : Math.sign(v) * ((Math.abs(v) - 0.12) / 0.88) ** 1.6);
+      const dz = (v: number) => Math.sign(v) * Math.abs(deadzone(v)) ** 1.6;
       x += dz(this.pad.rx) * 900 * dt; y += dz(this.pad.ry) * 600 * dt;
     }
     if (!this.enabled) return { x: 0, y: 0 };
@@ -107,14 +118,8 @@ export class Input {
   }
   pollGamepad() {
     this.padPrev = this.pad.buttons.slice();
-    const pads = navigator.getGamepads?.() ?? [];
-    const gp = Array.from(pads).find(p => p && p.connected);
-    if (!gp) { this.pad.connected = false; this.pad.buttons = []; return; }
-    this.pad.connected = true;
-    this.pad.lx = gp.axes[0] ?? 0; this.pad.ly = gp.axes[1] ?? 0; this.pad.rx = gp.axes[2] ?? 0; this.pad.ry = gp.axes[3] ?? 0;
-    this.pad.buttons = gp.buttons.map(b => b.pressed);
-    this.pad.lt = gp.buttons[6]?.value ?? 0; this.pad.rt = gp.buttons[7]?.value ?? 0;
-    if (this.pad.buttons.some(Boolean) || Math.abs(this.pad.lx) + Math.abs(this.pad.ly) > 0.3) this.lastSource = 'pad';
+    this.pad = readPad();
+    if (padActive(this.pad)) this.lastSource = 'pad';
   }
   /** Call at the end of every frame. */
   endFrame() { this.pressed.clear(); this.released.clear(); this.mouseDX = 0; this.mouseDY = 0; this.wheel = 0; }

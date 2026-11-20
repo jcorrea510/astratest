@@ -81,8 +81,15 @@ export class Renderer {
     this.look = look;
     if (!this.grade) return;
     const u = this.grade.uniforms, n = look === 'natural';
-    u.uSat.value = n ? LOOK.natural.sat : LOOK.stylised.sat; u.uSplit.value = n ? LOOK.natural.split : 1; u.uVignette.value = n ? LOOK.natural.vignette : LOOK.stylised.vignette;
+    this.hurtK = 0; u.uSat.value = n ? LOOK.natural.sat : LOOK.stylised.sat; u.uSplit.value = n ? LOOK.natural.split : 1; u.uVignette.value = n ? LOOK.natural.vignette : LOOK.stylised.vignette;
   }
+  /** R6-F: low health pulls the colour out of the picture and darkens the edges (k 0..1). */
+  setHurt(k: number) {
+    if (!this.grade || Math.abs(k - this.hurtK) < 0.004) return;
+    this.hurtK = k; const u = this.grade.uniforms, L = LOOK[this.look];
+    u.uSat.value = L.sat * (1 - 0.55 * k); u.uVignette.value = L.vignette + 0.3 * k;
+  }
+  private hurtK = 0;
   private shadowTarget = new THREE.Vector3(); private lightDir = new THREE.Vector3(0, 1, 0);
   private _fwd = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator;

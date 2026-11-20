@@ -152,6 +152,15 @@ export class Particles {
       for (let i = 0; i < 2; i++) this.normal.emit(this.p(x + nx * 0.04, y + ny * 0.04, z + nz * 0.04, { ...lift(rnd(0.6, 1.4)), max: rnd(0.25, 0.4), size: rnd(0.07, 0.1) * (0.6 + 0.4 * S), grow: 2.2, r: 0.78, g: 0.74, b: 0.72, a: 0.4, drag: 5 }));
     }
   }
+  /**
+   * Blood (Teen: moderate): a fine dark-red spray that flies off along `dir` and a few heavier drops that fall and splat on
+   * `floorY`. Always small and quick; gated by the Settings "Blood" toggle in the caller.
+   */
+  blood(x: number, y: number, z: number, dx: number, dy: number, dz: number, strength = 1) {
+    const S = strength;
+    for (let i = 0; i < Math.round(6 * S); i++) this.normal.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 4) + rnd(-0.8, 0.8), vy: dy * rnd(1.5, 4) + rnd(0.2, 1.4), vz: dz * rnd(1.5, 4) + rnd(-0.8, 0.8), max: rnd(0.25, 0.5), size: rnd(0.035, 0.06), r: 0.45, g: 0.03, b: 0.04, a: 0.9, drag: 2.2, grav: 7, hold: 0.5 }));
+    for (let i = 0; i < Math.round(3 * S); i++) this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1, 3) + rnd(-0.6, 0.6), vy: rnd(0.4, 1.8), vz: dz * rnd(1, 3) + rnd(-0.6, 0.6), max: rnd(0.5, 0.9), size: rnd(0.02, 0.035), r: 0.35, g: 0.02, b: 0.03, a: 1, drag: 0.8, grav: 12, hold: 0.9, floor: Math.max(0, y - 1.7) }));
+  }
   smoke(x: number, y: number, z: number, dark = 0.5, amount = 1) {
     const c = 0.85 - dark * 0.7;
     this.normal.emit(this.p(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4, { vx: (Math.random() - 0.5) * 0.6, vy: 1.2 + Math.random(), vz: (Math.random() - 0.5) * 0.6, max: 1.6 + Math.random(), size: 0.6 * amount, grow: 3, r: c, g: c, b: c * 1.02, a: 0.45, drag: 0.6, grav: -0.3 }));

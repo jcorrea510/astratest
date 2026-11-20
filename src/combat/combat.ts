@@ -16,7 +16,8 @@ import type { GameAudio, SfxName } from '../ui/contracts';
 import type { AudioExtras, ExtraSfx } from '../audio/sfx';
 import { WEAPONS, type WeaponDef } from './weapons';
 import { WATER_LEVEL } from '../world/citymap';
-import { bodyCapsules, rayBody, zoneDamage, type Capsule, type Zone } from './hitzones';
+import { bodyCapsules, rayBody, zoneDamage, zoneBone, type Capsule, type Zone } from './hitzones';
+import type { Blood } from '../render/blood';
 import { coneSample } from './aim';
 
 export interface HitInfo { point: THREE.Vector3; target: Character | Vehicle | null; kind: 'character' | 'vehicle' | 'static' | 'none'; headshot: boolean; killed: boolean; damage?: number; surface?: ImpactKind; zone?: Zone; throughGlass?: boolean; ricochet?: boolean }
@@ -105,6 +106,8 @@ export class Combat {
   flash: THREE.PointLight;
   private flashT = 0; private flashPeak = 0;
   onHit: ((target: Character, damage: number, from: Character, headshot: boolean, killed: boolean, weapon: WeaponDef, zone?: Zone) => void) | null = null;
+  /** R6-F: blood decals / pools (null = none); `enabled` follows the Settings toggle. */
+  blood: Blood | null = null;
   onShot: ((e: ShotEvent) => void) | null = null;
   onVehicleHit: ((v: Vehicle, from: Character) => void) | null = null;
   /** Explosion hook: the game damages people around `at` (and reports heat). Without it, combat damages them itself. */
@@ -234,7 +237,7 @@ export class Combat {
       // people (bone capsules) in front of the world hit
       let best: { t: number; zone: Zone; c: Character } | null = null;
       for (const c of this.targets()) {
-        if (c === shooter || !c.alive) continue;
+        if (c === shooter || !c.alive || c.heldBy === shooter) continue; // a human shield never takes the holder's own rounds
         if (c.inVehicle && !res.glass.includes(c.inVehicle as Vehicle) && !through.has(c.inVehicle as Vehicle) && c.inVehicle !== opts.excludeVehicle) continue;
         const root = c.human.root; root.getWorldPosition(this.v1); this.v1.y += 0.9;
         // broad phase: ray vs bounding sphere
@@ -344,6 +347,7 @@ export class Combat {
         const apply = () => {
           const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
           this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
+          this.bloodHit(c, end, d, zone, strength, res.killed);
           return res;
         };
         const delay = tr.t > 100 ? flightTime(v0, tr.t) : 0; // long shots take time to arrive
@@ -392,6 +396,17 @@ export class Combat {
     }
     this.onShot?.({ shooter, weapon: w, origin: origin.clone(), hits });
     return hits;
+  }
+
+  /** Spray, ground / wall spatter, a wound mark on the hit bone and (on a kill) a growing pool. Skipped when Blood is off. */
+  private bloodHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, killed: boolean) {
+    const b = this.blood; if (!b || !b.enabled) return;
+    this.particles.blood(end.x, end.y, end.z, d.x, d.y * 0.3, d.z, strength * (zone === 'head' ? 1.3 : 1));
+    const wr = this.physics.ray(end.x, end.y, end.z, d.x, d.y, d.z, 3.5, WORLD, c.collider);
+    const wall = wr ? { x: end.x + d.x * wr.toi, y: end.y + d.y * wr.toi, z: end.z + d.z * wr.toi, nx: wr.normal.x, ny: wr.normal.y, nz: wr.normal.z } : null;
+    const left = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
+    b.hit(end, d, c.pos.y, strength, wall, zoneBone(c.human.model, zone, left));
+    if (killed && !c.inVehicle) b.pool(c.pos.x + d.x * 0.35, c.pos.y, c.pos.z + d.z * 0.35);
   }
 
   /** Applies zone damage and the hit reaction. */
@@ -592,7 +607,7 @@ export class Combat {
     const cx = attacker.pos.x + fx * reach, cz = attacker.pos.z + fz * reach;
     let best: Character | null = null, bd = w.range;
     for (const c of targets) {
-      if (c === attacker || !c.alive || c.inVehicle) continue;
+      if (c === attacker || !c.alive || c.inVehicle || c.heldBy === attacker) continue;
       const d = Math.hypot(c.pos.x - cx, c.pos.z - cz);
       if (d < bd && Math.abs(c.pos.y - attacker.pos.y) < 1.2) { bd = d; best = c; }
     }

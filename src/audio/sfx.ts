@@ -15,7 +15,7 @@ type Recipe = (a: SfxArgs) => number;
  */
 export type GunKey = `gun_${GunSound}` | `gunFar_${GunSound}`;
 export type ExtraSfx = 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert' | 'pump' | 'whizz' | 'crackBy' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'casingHull'
-  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen' | 'swing' | GunKey;
+  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen' | 'swing' | 'hitThud' | 'earRing' | GunKey;
 export const GUN_SOUNDS = Object.keys(GUNS) as GunSound[];
 export type SfxKey = SfxName | ExtraSfx;
 /** Surroundings of the listener for gunshot reflections: nearby walls (distance + horizontal direction) and openness 0..1. */
@@ -59,6 +59,7 @@ export const EXTRA_META: Record<ExtraSfx, SfxMeta> = {
   casingHull: W(1, 3, 0.05, 0.02, 0.4, 0.08),
   pinPull: W(5, 1, 0.1, 0.02, 0.6, 0.03), grenadeBounce: W(4, 3, 0.05, 0.08, 0.6, 0.08), glassShatter: W(6, 3, 0.05, 0.2, 0.85, 0.06, 0.2),
   cylinderOpen: W(5, 1, 0.1, 0.03, 0.6, 0.03), swing: W(4, 2, 0.08, 0.02, 0.6, 0.06),
+  hitThud: U(0.9, 2, 0.06), earRing: U(0.35, 1, 1.5),
   ...gunMeta(),
 };
 /** Gunshot voices: close (full report, environment send) and far (dull report heard across the city). */
@@ -338,6 +339,9 @@ export const EXTRA_RECIPES: Record<ExtraSfx, Recipe> = {
   casingHull: a => fol(a, 'casingHull', R(a.kit, 0.3, 0.45)),
   pinPull: a => fol(a, 'pinPull'), grenadeBounce: a => fol(a, 'grenadeBounce'), glassShatter: a => fol(a, 'glassShatter'), cylinderOpen: a => fol(a, 'cylinderOpen'),
   swing: ({ kit: k, out, t, p }) => burst(k, out, t, { type: 'bandpass', f: 380 * p, f2: 1500 * p, glideDur: 0.14, q: 1.4, a: 0.08, peak: 0.7, dec: 0.12, color: 'pink' }),
+  // R6-F: you were hit: a dull body thump (low sine drop + muffled noise), and the high ring left in the ear after a bad one
+  hitThud: ({ kit: k, out, t }) => mx(tone(k, out, t, { type: 'sine', f: 150, f2: 48, glideDur: 0.14, peak: 0.85, dec: 0.2 }), burst(k, out, t, { type: 'lowpass', f: 700, a: 0.001, peak: 0.55, dec: 0.12, color: 'brown' })),
+  earRing: ({ kit: k, out, t }) => mx(tone(k, out, t, { type: 'sine', f: 3300, peak: 0.09, a: 0.05, dec: 2.4 }), tone(k, out, t, { type: 'sine', f: 4950, peak: 0.03, a: 0.05, dec: 1.6 })),
   ...gunRecipes(),
 };
 function gunRecipes(): Record<GunKey, Recipe> {

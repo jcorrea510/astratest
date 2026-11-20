@@ -54,7 +54,7 @@ export class Population {
         if (d < 0.62 && p.speed > 5 && into > 0.6 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
         else if (into > 0.3) c.faceTowards(Math.atan2(-dx, -dz), 7, 0.1);
       }
-      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower') {
+      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower' && n.brain !== 'ordered' && n.brain !== 'hostage') {
         const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
         const along = cx * aim.dir.x + cy * aim.dir.y + cz * aim.dir.z;
         if (along > 0) {
@@ -97,7 +97,7 @@ export class Population {
     const from = source ? source.pos : at;
     for (const n of this.npcs) {
       if (n.alive && n.role === 'civilian' && n.pos.distanceTo(at) <= radius) n.shotAt = this.env.time(); // store shoppers (scripted) read this to drop their hands
-      if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside') continue;
+      if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.brain === 'hostage') continue; // a hostage in your grip does not bolt
       const d = n.pos.distanceTo(at);
       if (d > radius) continue;
       // hands up but the shooting has started: they stop waiting to be robbed and bolt (a beat later when it is further off)

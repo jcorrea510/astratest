@@ -9,6 +9,9 @@ import { fmtDistance } from '../core/units';
 
 /** Ground-plane squash of the pitched map (cos of the camera tilt from straight down). */
 export const MAP_PITCH = 0.64;
+/** Pitch range: 1 is straight down (flat 2D map), lower is a flatter oblique view. */
+export const MAP_PITCH_MIN = 0.42;
+export const MAP_TOPDOWN = 1;
 /** The cached ground layer extends this fraction of the viewport past each edge, so panning rarely shows a gap. */
 const LAYER_MARGIN = 0.2;
 const w2 = (p: { x: number; z: number }): [number, number] => [p.x, p.z];
@@ -23,12 +26,18 @@ export class FullMap {
   private view: MapView = { cx: 0, cz: 0, scale: 1, w: 1, h: 1, tilt: MAP_TILT, pitch: MAP_PITCH };
   private targetScale = 1;
   private targetTilt = MAP_TILT;
+  private targetPitch = MAP_PITCH;
+  private rotDrag: { x: number; y: number; tilt: number; pitch: number } | null = null;
+  private rotating = false;
+  private lastLayerAt = 0;
+  private layerCost = 6;
+  private modeBtn!: HTMLButtonElement;
   private anchor = { x: 0, y: 0 };
   private lastRender = 0;
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch: { d: number } | null = null;
   private layer = document.createElement('canvas');
-  private layerView: { cx: number; cz: number; scale: number; tilt: number; w: number; h: number; dpr: number; heat: number; fast: boolean; W: number; H: number } | null = null;
+  private layerView: { cx: number; cz: number; scale: number; tilt: number; pitch: number; w: number; h: number; dpr: number; heat: number; fast: boolean; W: number; H: number } | null = null;
   private viewKey = '';
   private lastChange = 0;
   private legendOpen = false;
@@ -55,6 +64,10 @@ export class FullMap {
     head.appendChild(titles);
     this.readout = h('div', 'ma-map-readout');
     head.appendChild(this.readout);
+    this.modeBtn = h('button', 'ma-btn ma-btn-ghost ma-map-mode', '2D') as HTMLButtonElement;
+    this.modeBtn.type = 'button'; this.modeBtn.id = 'ma-map-pitch'; this.modeBtn.title = 'Switch between the angled 3D view and a straight top-down map (T)';
+    this.modeBtn.addEventListener('click', () => { this.sound('click'); this.togglePitch(); this.modeBtn.blur(); });
+    head.appendChild(this.modeBtn);
     head.appendChild(backButton(() => { this.sound('back'); this.onClose(); }));
     this.el.appendChild(head);
 
@@ -99,7 +112,7 @@ export class FullMap {
     this.el.appendChild(body);
 
     const foot = h('div', 'ma-map-foot');
-    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['L', 'Legend'], ['Enter', 'Waypoint at centre'], ['Esc', 'Close']]) {
+    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', '2D / 3D'], ['Right-drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       foot.appendChild(s);
@@ -110,7 +123,9 @@ export class FullMap {
     if (!ctx) throw new Error('2D canvas unavailable');
     this.ctx = ctx;
 
+    this.canvas.addEventListener('contextmenu', e => e.preventDefault());
     this.canvas.addEventListener('pointerdown', e => {
+      if (e.button === 2) { this.canvas.setPointerCapture(e.pointerId); this.rotDrag = { x: e.clientX, y: e.clientY, tilt: this.targetTilt, pitch: this.targetPitch }; return; }
       if (e.button !== 0) return;
       this.canvas.setPointerCapture(e.pointerId);
       const r0 = this.canvas.getBoundingClientRect();
@@ -122,6 +137,11 @@ export class FullMap {
       const r = this.canvas.getBoundingClientRect();
       this.cursor = { x: e.clientX - r.left, y: e.clientY - r.top };
       this.keyboardCursor = false;
+      if (this.rotDrag) {
+        this.targetTilt = this.rotDrag.tilt + (e.clientX - this.rotDrag.x) * 0.006;
+        this.targetPitch = Math.min(MAP_TOPDOWN, Math.max(MAP_PITCH_MIN, this.rotDrag.pitch + (e.clientY - this.rotDrag.y) * 0.003));
+        this.dirty = true; return;
+      }
       if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x: this.cursor.x, y: this.cursor.y });
       if (this.pinch && this.pointers.size >= 2) {
         const d = this.pinchDist(), pts = [...this.pointers.values()];
@@ -139,6 +159,7 @@ export class FullMap {
       this.dirty = true;
     });
     this.canvas.addEventListener('pointerup', e => {
+      if (e.button === 2) { this.rotDrag = null; return; }
       this.pointers.delete(e.pointerId);
       this.dirty = true;
       if (this.pointers.size < 2) this.pinch = null;
@@ -151,7 +172,7 @@ export class FullMap {
         this.setWaypoint(w.x, w.z);
       }
     });
-    this.canvas.addEventListener('pointercancel', e => { this.drag = null; this.pointers.delete(e.pointerId); this.pinch = null; });
+    this.canvas.addEventListener('pointercancel', e => { this.drag = null; this.rotDrag = null; this.pointers.delete(e.pointerId); this.pinch = null; });
     this.canvas.addEventListener('pointerleave', () => { this.cursor = null; this.dirty = true; });
     this.canvas.addEventListener('wheel', e => {
       e.preventDefault();
@@ -161,10 +182,16 @@ export class FullMap {
     window.addEventListener('resize', () => { if (this.open) this.resize(false); });
     window.addEventListener('keydown', e => {
       if (!this.open || e.ctrlKey || e.metaKey || e.altKey) return;
+      let used = true;
       if (e.code === 'KeyQ') this.rotate(-Math.PI / 12);
       else if (e.code === 'KeyE') this.rotate(Math.PI / 12);
       else if (e.code === 'KeyL') this.toggleLegend();
-      else if (e.code === 'KeyR') { this.targetTilt = MAP_TILT; this.dirty = true; }
+      else if (e.code === 'KeyR') this.tilt(0.12);
+      else if (e.code === 'KeyF') this.tilt(-0.12);
+      else if (e.code === 'KeyT') this.togglePitch();
+      else if (e.code === 'KeyN') { this.targetTilt = MAP_TILT; this.targetPitch = MAP_PITCH; this.dirty = true; }
+      else used = false;
+      if (used) { e.preventDefault(); e.stopPropagation(); } // the map owns its keys: nothing else (sandbox panel, tabs, hotkeys) may react to them
     }, true); // capture: the UI layer stops propagation of keys while a menu is open
   }
 
@@ -176,6 +203,22 @@ export class FullMap {
   private pinchDist() { const p = [...this.pointers.values()]; return p.length >= 2 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0; }
   /** Rotate the map by `da` radians (eased). */
   rotate(da: number) { this.targetTilt += da; this.dirty = true; }
+  /** Raise (+) or lower (-) the camera pitch; +1 is straight down. */
+  tilt(dp: number) { this.targetPitch = Math.min(MAP_TOPDOWN, Math.max(MAP_PITCH_MIN, this.targetPitch + dp)); this.dirty = true; }
+  /** Switch between the angled 3D view and a straight top-down map. */
+  togglePitch() {
+    const old = this.targetPitch, next = old > 0.95 ? MAP_PITCH : MAP_TOPDOWN;
+    // keep the whole city framed if it was framed before
+    if (Math.abs(this.targetScale / this.fitFor(old) - 1) < 0.08) { this.targetScale = this.fitFor(next); this.anchor = { x: this.view.w / 2, y: this.view.h / 2 }; }
+    this.targetPitch = next; this.dirty = true;
+  }
+  /** Scale at which the whole city fits the screen for a given camera pitch. */
+  private fitFor(pitch: number): number {
+    const b = this.painter.bounds, w = this.view.w, hgt = this.view.h;
+    const bw = b.maxX - b.minX, bh = b.maxZ - b.minZ, ct = Math.abs(Math.cos(MAP_TILT)), st = Math.abs(Math.sin(MAP_TILT));
+    return Math.min(w / (bw * ct + bh * st), hgt / ((bw * st + bh * ct) * pitch)) * 1.12;
+  }
+  get topDown() { return this.targetPitch > 0.95; }
 
   private setWaypoint(x: number, z: number) {
     const b = this.painter.bounds;
@@ -192,7 +235,7 @@ export class FullMap {
     this.el.classList.add('is-open');
     this.localWaypoint = s.blips.find(b => b.kind === 'waypoint') ?? null;
     this.resize(true);
-    this.targetScale = this.view.scale; this.targetTilt = MAP_TILT; this.view.tilt = MAP_TILT; this.layerView = null; this.lastRender = performance.now();
+    this.targetScale = this.view.scale; this.targetTilt = MAP_TILT; this.view.tilt = MAP_TILT; this.targetPitch = MAP_PITCH; this.view.pitch = MAP_PITCH; this.layerView = null; this.lastRender = performance.now();
     const present = new Set(s.blips.map(b => b.kind));
     for (const l of this.legendCanvases) {
       const ctx = l.c.getContext('2d');
@@ -238,7 +281,7 @@ export class FullMap {
   }
 
   private zoomAt(f: number, sx: number, sy: number, instant = false) {
-    this.targetScale = Math.min(this.fitScale * 7, Math.max(this.fitScale * 0.9, this.targetScale * f));
+    this.targetScale = Math.min(this.fitScale * 7, Math.max(this.fitFor(MAP_TOPDOWN) * 0.9, this.targetScale * f));
     this.anchor = { x: sx, y: sy };
     if (instant) this.stepZoom(1);
     this.dirty = true;
@@ -255,7 +298,9 @@ export class FullMap {
       moving = true;
     } else v.scale = this.targetScale;
     const t = v.tilt ?? 0;
-    if (Math.abs(this.targetTilt - t) > 0.002) { v.tilt = t + (this.targetTilt - t) * k; moving = true; } else v.tilt = this.targetTilt;
+    if (Math.abs(this.targetTilt - t) > 0.002) { v.tilt = t + (this.targetTilt - t) * k; moving = true; this.rotating = true; } else v.tilt = this.targetTilt;
+    const pp = v.pitch ?? MAP_PITCH;
+    if (Math.abs(this.targetPitch - pp) > 0.002) { v.pitch = pp + (this.targetPitch - pp) * k; moving = true; this.rotating = true; } else v.pitch = this.targetPitch;
     this.clampView();
     return moving;
   }
@@ -270,9 +315,9 @@ export class FullMap {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(hgt * this.dpr);
     const b = this.painter.bounds;
     const prevFit = this.fitScale;
-    const bw = b.maxX - b.minX, bh = b.maxZ - b.minZ, ct = Math.abs(Math.cos(MAP_TILT)), st = Math.abs(Math.sin(MAP_TILT));
-    this.fitScale = Math.min(w / (bw * ct + bh * st), hgt / ((bw * st + bh * ct) * MAP_PITCH)) * 1.12;
+    void b;
     this.view.w = w; this.view.h = hgt;
+    this.fitScale = this.fitFor(MAP_PITCH);
     if (refit) {
       this.view.scale = this.fitScale; this.targetScale = this.fitScale;
       this.view.cx = (b.minX + b.maxX) / 2;
@@ -292,25 +337,30 @@ export class FullMap {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastRender) / 1000); this.lastRender = now;
     const t = (now - this.t0) / 1000;
+    this.rotating = false;
     const moving = this.stepZoom(1 - Math.exp(-dt * 11));
+    const rotating = this.rotating || !!this.rotDrag;
     const animated = moving || !!this.state?.blips.some(b => b.pulse || b.kind === 'police');
     if (!this.dirty && !animated) return;
     this.dirty = false;
     const ctx = this.ctx, v = this.view, s = this.state;
     const tilt = v.tilt ?? 0, pitch = v.pitch ?? 1;
+    const td = pitch > 0.95;
+    if (this.modeBtn.textContent !== (td ? '3D' : '2D')) { this.modeBtn.textContent = td ? '3D' : '2D'; this.modeBtn.setAttribute('aria-pressed', String(td)); }
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // ground + buildings live in an oversized offscreen layer rendered crisply only when the view has settled;
     // while panning / zooming / rotating it is just re-transformed (a single drawImage)
     const W = Math.round(v.w * (1 + 2 * LAYER_MARGIN)), H = Math.round(v.h * (1 + 2 * LAYER_MARGIN));
     const heatKey = s?.heatRadius ? Math.round(s.heatRadius.x + s.heatRadius.z + s.heatRadius.r) : 0;
-    const vkey = `${v.cx.toFixed(2)}|${v.cz.toFixed(2)}|${v.scale.toFixed(4)}|${tilt.toFixed(4)}`;
+    const vkey = `${v.cx.toFixed(2)}|${v.cz.toFixed(2)}|${v.scale.toFixed(4)}|${tilt.toFixed(4)}|${pitch.toFixed(4)}`;
     if (vkey !== this.viewKey) { this.viewKey = vkey; this.lastChange = now; }
     const lv = this.layerView;
-    const stale = !lv || lv.cx !== v.cx || lv.cz !== v.cz || lv.scale !== v.scale || lv.tilt !== tilt || lv.w !== v.w || lv.h !== v.h || lv.dpr !== this.dpr || lv.heat !== heatKey || lv.fast;
+    const stale = !lv || lv.cx !== v.cx || lv.cz !== v.cz || lv.scale !== v.scale || lv.tilt !== tilt || lv.pitch !== pitch || lv.w !== v.w || lv.h !== v.h || lv.dpr !== this.dpr || lv.heat !== heatKey || lv.fast;
     const settled = now - this.lastChange > 140 && !this.drag?.moved && !this.pinch && !moving;
     let renderLayer = false, fastLayer = false;
     if (stale) {
       if (settled || !lv) { renderLayer = true; fastLayer = !settled; }
+      else if (rotating && now - this.lastLayerAt >= Math.max(0, this.layerCost * 1.2 - 8)) { renderLayer = true; fastLayer = true; } // live: re-extrude the buildings every frame while turning, as long as it fits the frame budget
       else {
         const ratio = v.scale / lv.scale;
         if (ratio > 2.4 || ratio < 0.42 || lv.w !== v.w || lv.h !== v.h || lv.dpr !== this.dpr) { renderLayer = true; fastLayer = true; }
@@ -318,7 +368,8 @@ export class FullMap {
       }
     }
     if (renderLayer) {
-      this.layerView = { cx: v.cx, cz: v.cz, scale: v.scale, tilt, w: v.w, h: v.h, dpr: this.dpr, heat: heatKey, fast: fastLayer, W, H };
+      const t0 = performance.now();
+      this.layerView = { cx: v.cx, cz: v.cz, scale: v.scale, tilt, pitch, w: v.w, h: v.h, dpr: this.dpr, heat: heatKey, fast: fastLayer, W, H };
       const lw = Math.round(W * this.dpr), lh = Math.round(H * this.dpr);
       if (this.layer.width !== lw || this.layer.height !== lh) { this.layer.width = lw; this.layer.height = lh; }
       const lc = this.layer.getContext('2d')!;
@@ -335,12 +386,14 @@ export class FullMap {
       lc.restore();
       this.painter.buildings.drawExtruded(lc, v.cx, v.cz, v.scale, tilt, pitch, W, H, fastLayer);
       if (fastLayer && settled) this.dirty = true; // upgrade to the crisp version next frame
+      this.lastLayerAt = now; this.layerCost = this.layerCost * 0.6 + (performance.now() - t0) * 0.4;
+      if (fastLayer && rotating) this.dirty = true;
     }
     const L = this.layerView;
     ctx.fillStyle = '#071f2b'; ctx.fillRect(0, 0, v.w, v.h);
     if (L) {
       // layer pixel -> world (as rendered) -> current screen, an exact affine map for the ground plane
-      const lvw: MapView = { cx: L.cx, cz: L.cz, scale: L.scale, w: L.W, h: L.H, tilt: L.tilt, pitch };
+      const lvw: MapView = { cx: L.cx, cz: L.cz, scale: L.scale, w: L.W, h: L.H, tilt: L.tilt, pitch: L.pitch };
       const o = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 0, 0))), px = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 1, 0))), py = mapWorldToScreen(v, ...w2(mapScreenToWorld(lvw, 0, 1)));
       const d = this.dpr;
       ctx.setTransform((px.x - o.x) * d, (px.y - o.y) * d, (py.x - o.x) * d, (py.y - o.y) * d, o.x * d, o.y * d);
@@ -359,7 +412,7 @@ export class FullMap {
     // haze at the far edge of the pitched plane
     const hz = ctx.createLinearGradient(0, 0, 0, v.h * 0.3);
     hz.addColorStop(0, 'rgba(7,31,43,0.9)'); hz.addColorStop(1, 'rgba(7,31,43,0)');
-    ctx.fillStyle = hz; ctx.fillRect(0, 0, v.w, v.h * 0.3);
+    ctx.globalAlpha = Math.max(0, Math.min(1, (1 - pitch) / 0.36)); ctx.fillStyle = hz; ctx.fillRect(0, 0, v.w, v.h * 0.3); ctx.globalAlpha = 1;
     const vg = ctx.createRadialGradient(v.w / 2, v.h / 2, v.h * 0.45, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
     vg.addColorStop(0, 'rgba(3,12,16,0)'); vg.addColorStop(1, 'rgba(3,12,16,0.5)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, v.w, v.h);

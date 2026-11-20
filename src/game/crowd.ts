@@ -96,7 +96,7 @@ export class Crowd {
       const len = bus ? 12.5 : 5.2;
       for (const o of this.vehicles.list) {
         const dx = o.position.x - sp.x, dz = o.position.z - sp.z, along = dx * sp.dx + dz * sp.dz, side = dx * sp.dz - dz * sp.dx;
-        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; this.failWhy = 'overlap'; return false; }
+        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; this.failWhy = 'overlap'; return !!near; } // up close the far model shares the space of a real car: drop it (the real car stands in) instead of showing a boxy duplicate
       }
       const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
       car.v.respray(col.copy(paint).convertLinearToSRGB());
