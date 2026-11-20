@@ -6,7 +6,7 @@ Resume: read CLAUDE.md, docs/BRIEF6.md, this file. Continue unfinished items. Ow
 Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Waves of <=4 agents. Ports: own 52xx per agent.
 - [x] R6-V (vanish e2e: base 10 → 0) (Opus) vanishing + LOD + perf: near peds/cars/bus never vanish, no boxy cars/Minecraft peds up close, high playable, car shadow lag/shadow glitch. Uses R5-P2 WIP 975ebd9.
 - [x] R6-K (+follow-up: all guns drive-by, window roll-down, reach-in prompt) car entry: parked/curb theft drivable, no feet through floor, shot-out window = no re-break, hold RMB in car = aim/shoot held weapon.
-- [ ] R6-T traffic AI: obey lights/signs, no stopping mid-road, all cars drive regardless of distance to player, more moving than parked, realistic flow.
+- [x] R6-T traffic AI: obey lights/signs, no stopping mid-road, all cars drive regardless of distance to player, more moving than parked, realistic flow.
 - [x] R6-C police/air: taser arrest (no shooting own arrest, no killing arresting cop), react to drawn gun, 3-star always pursue, no SWAT/heli spawning on top (arrive from distance), police heli = spotter only, army heli realistic accuracy, sandbox ignore-police at army base.
 - [x] R6-P peds (wave 2): crosswalk walk signals, no jaywalking, no phantom collision/stumble anims, fight back when punched, hands-up pose natural + flee after shots.
 - [ ] R6-M modes (wave 2): Regular (earn money, no cheats; death = medical bill + lose inventory; buy guns/cars) vs Sandbox; no spawn holding gun; purpose loop (net worth, car showroom/garage goals).
@@ -17,7 +17,7 @@ Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Wav
 - [ ] R6-A audio (wave 3): gunshots = loud pops, more ambient/vehicle sounds, stop random popping in city.
 - [ ] R6-U UI (wave 3): fullscreen persists (highway<->city, menus) + top-right button, front page/title not AI-looking, Play vs Continue clear, map Q/E live rotate + top-down toggle + E-opens-sandbox bug, iPad keyboard/mouse/gamepad, README run-locally.
 - [ ] R6-B barber + clothing stores with map icons (wave 3). R6-W world: subway rails end, park blue slab with benches, one-hand gun left-hand lag.
-- [ ] R6-Z (also: find the one-off 1285 off-crosswalk peds run + restore a "some peds crossed" assertion in pedsr6p; flaky ped screenshot test) full e2e + soak + publish + owner summary.
+- [ ] R6-Z (also: find the one-off 1285 off-crosswalk peds run + restore a "some peds crossed" assertion in pedsr6p; flaky ped screenshot test; far-car spawn right behind a stopped real car; buses.test flake) full e2e + soak + publish + owner summary.
 
 ## Round 5 (owner notes BRIEF5 + "crazy realistic overhaul")
 - [x] R5-H Highway: snappy realistic steering (lane change ~1-2 s), no 0.2 s bounce, wheel turns in 1st person, realistic interior.

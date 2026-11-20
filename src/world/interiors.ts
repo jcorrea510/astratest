@@ -154,7 +154,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     // hanging rails, folded stacks on the wall, mirror and fitting room
     for (const ax of [0.6, 3.0]) {
       box(ax, 1.55, -0.6, 0.06, 0.06, 4.4, C('#bfc3c6'), T_METAL); box(ax, 0.8, -2.7, 0.06, 1.6, 0.06, C('#bfc3c6'), T_METAL); box(ax, 0.8, 1.5, 0.06, 1.6, 0.06, C('#bfc3c6'), T_METAL);
-      for (let k = 0; k < 9; k++) box(ax, 1.05, -2.6 + k * 0.5, 0.5, 0.9, 0.14, C(['#c0392b', '#2c3e50', '#f1c40f', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#1abc9c'][r.int(0, 7)]), T_FABRIC);
+      for (let k = 0; k < 34; k++) { const gh = r.range(0.7, 0.95), gc = C(['#c0392b', '#2c3e50', '#d8c9a0', '#27ae60', '#ecf0f1', '#8e44ad', '#34495e', '#1abc9c', '#222', '#8a6a4a'][r.int(0, 9)]); box(ax, 1.5 - gh / 2, -2.55 + k * 0.125, r.range(0.42, 0.55), gh, 0.07, gc, T_PAINT); box(ax, 1.5 - gh - 0.01, -2.55 + k * 0.125, 0.38, 0.03, 0.02, gc, T_PAINT); box(ax, 1.54, -2.55 + k * 0.125, 0.02, 0.05, 0.02, C('#999'), T_METAL); }
       col(ax, 0.8, -0.6, 0.3, 0.8, 2.2);
     }
     box(hw - 0.45, 1.0, -0.6, 0.5, 2.0, 6.0, C('#e2dfd8'), T_PAINT);

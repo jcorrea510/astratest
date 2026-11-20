@@ -124,16 +124,16 @@ test('bank heist: hold up the tellers, drill the vault, open the door, grab the 
   const r = await page.evaluate(({ SETUP }) => {
     const g = (window as any).__game, R = (window as any).__meridian.activities.robberies;
     const i = (eval(SETUP) as (k: string) => number)('bank'), k = R.kiosks[i], sh = k.shell, v = sh.vault;
-    const log: string[] = []; const m0 = g.money;
-    const keepCalm = () => { g.police.clear(); g.player.health = g.player.maxHealth; };
+    const log: string[] = []; const m0 = g.money; let maxHeat = 0;
+    const keepCalm = () => { maxHeat = Math.max(maxHeat, g.police.heat); g.police.clear(); g.player.health = g.player.maxHealth; };
     // step 1: tellers. Cover the clerk from the customer spot until the hold-up completes
     const cp = k.customer; g.player.place(cp.x, cp.y + 0.3, cp.z, 0);
     for (let f = 0; f < 45; f++) g.frame(1 / 30, false);
     k.brave = false; const clerk = k.clerk; g.input.press('Mouse2');
-    for (let f = 0; f < 30 * 9; f++) { g.cam.yaw = Math.atan2(-(clerk.pos.x - g.player.pos.x), -(clerk.pos.z - g.player.pos.z)); g.cam.pitch = -0.05; g.frame(1 / 30, false); if (f % 20 === 0 && k.ex.stage < 1) keepCalm(); }
+    for (let f = 0; f < 30 * 9; f++) { g.cam.yaw = Math.atan2(-(clerk.pos.x - g.player.pos.x), -(clerk.pos.z - g.player.pos.z)); g.cam.pitch = -0.05; g.frame(1 / 30, false); maxHeat = Math.max(maxHeat, g.police.heat); if (f % 20 === 0 && k.ex.stage < 1) keepCalm(); }
     g.input.release('Mouse2');
     log.push('stage after holdup ' + k.ex.stage);
-    const afterTellers = k.ex.stage; const heat = g.police.heat;
+    const afterTellers = k.ex.stage; const heat = Math.max(maxHeat, g.police.heat);
     const bag = g.pickups.find((q: any) => q.kind === 'cash'); if (bag) { g.player.place(bag.pos.x, bag.pos.y - 0.55, bag.pos.z, 0); for (let f = 0; f < 15; f++) g.frame(1 / 30, false); }
     const m1 = g.money;
     // step 2: drill the vault (hold E at the door)

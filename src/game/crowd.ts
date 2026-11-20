@@ -12,7 +12,8 @@ import { samplePath, signalState, yellowLeft, pedestrianMayCross, districtAt, DI
 import { CrowdPeople, type CrowdLook } from '../actors/crowdBody';
 import { randomLook, type FullLook } from '../actors/look';
 import type { VehicleManager } from './vehicles';
-import type { Traffic } from './traffic';
+import type { Traffic, AiCar } from './traffic';
+import type { Npc } from '../actors/npc';
 import type { Population } from './population';
 import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX, TRAFFIC_MIX, type VehicleKind } from '../vehicles/specs';
@@ -43,6 +44,8 @@ const col = new THREE.Color();
 const NEAR_KILL = 9, PROMOTE_R = 60;
 /** Real cars / people allowed over the preset cap for hand-overs (far real ones are demoted back to the crowd meanwhile). */
 const PROMOTE_SLACK = 10, PROMOTE_SLACK_PEDS = 16;
+/** Far-model cars / people never stay this close: over the cap a real one is demoted for them (or the cap stretches a little). */
+const NEAR_PROMOTE_CAR = 25, NEAR_PROMOTE_PED = 22, NEAR_OVERFLOW = 4;
 /** Real cars / people this far away (and out of view, or much further) go back to the cheap crowd. */
 const DEMOTE_R = 128, DEMOTE_PED_R = 82; // cars: just beyond Traffic's own spawn ring (no spawn/demote churn)
 /** Look seeds for far people (distinct from Population's). */
@@ -77,20 +80,23 @@ export class Crowd {
    * in place by a real, fully simulated one (return true) instead of vanishing. When the hook declines (real caps full)
    * the cheap one keeps walking/driving until it is almost beside the camera, so nobody blinks out at mid range.
    */
-  promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number, kind: VehicleKind, paint: THREE.Color) => boolean) | null = null;
-  promotePed: ((x: number, z: number, from: number, to: number, yaw: number, look?: FullLook) => boolean) | null = null;
+  promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number, kind: VehicleKind, paint: THREE.Color, near?: boolean) => boolean) | null = null;
+  promotePed: ((x: number, z: number, from: number, to: number, yaw: number, look?: FullLook, near?: boolean) => boolean) | null = null;
+  private focus = new THREE.Vector3();
+  /** why the last car hand-over was refused (tests) */ failWhy = '';
   /** Connects the hand-over hooks to the real traffic / pedestrian systems; `caps` returns the current real-population caps. */
   wire(traffic: Traffic, pop: Population, caps: () => { traffic: number; peds: number }) {
     this.traffic = traffic; this.pop = pop;
-    this.promoteCar = (lane, s, bus, speed, kind, paint) => {
-      // soft cap: a car about to be seen up close is always handed over (far real cars are demoted to make room)
-      if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK) { this.stats.failCap++; return false; }
+    this.promoteCar = (lane, s, bus, speed, kind, paint, near) => {
+      // soft cap: a car about to be seen up close is always handed over (far real cars are demoted to make room); within
+      // NEAR_PROMOTE_CAR the least important real car is demoted on the spot, or the cap stretches by NEAR_OVERFLOW
+      if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK && !(near && (this.evictCar() || traffic.cars.length < caps().traffic + PROMOTE_SLACK + NEAR_OVERFLOW))) { this.stats.failCap++; this.failWhy = 'cap'; return false; }
       samplePath(lane, s, sp);
       // never spawn inside a real car: footprint overlap only (a car queued 2 m behind another is fine)
       const len = bus ? 12.5 : 5.2;
       for (const o of this.vehicles.list) {
         const dx = o.position.x - sp.x, dz = o.position.z - sp.z, along = dx * sp.dx + dz * sp.dz, side = dx * sp.dz - dz * sp.dx;
-        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; return false; }
+        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; this.failWhy = 'overlap'; return false; }
       }
       const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
       car.v.respray(col.copy(paint).convertLinearToSRGB());
@@ -99,9 +105,11 @@ export class Crowd {
     };
     pop.reserve = 10; pop.spawnMax = DEMOTE_PED_R - 6; // real people are spawned only where they would stay real
     try { this.people = new CrowdPeople(this.scene, pop.tpl); } catch (e) { console.warn('far crowd bodies unavailable', e); this.people = null; }
-    this.promotePed = (x, z, from, to, yaw, look) => {
-      // soft cap (far real people are demoted to make room); never refused for a person walking into view
-      if (pop.npcs.filter(n => n.role === 'civilian' && !n.persistent).length >= caps().peds + PROMOTE_SLACK_PEDS) return false;
+    this.promotePed = (x, z, from, to, yaw, look, near) => {
+      // soft cap (far real people are demoted to make room); within NEAR_PROMOTE_PED the farthest unseen real walker is demoted
+      // on the spot, or the cap stretches by NEAR_OVERFLOW
+      const civ = () => pop.npcs.filter(n => n.role === 'civilian' && !n.persistent).length, cap = caps().peds + PROMOTE_SLACK_PEDS;
+      if (civ() >= cap && !(near && (this.evictPed() || civ() < cap + NEAR_OVERFLOW))) return false;
       const n = pop.spawn('civilian', x, z, 0.2, look);
       n.node = from; n.nextNode = to; n.char.yaw = yaw;
       this.stats.promotedPeds++;
@@ -154,6 +162,7 @@ export class Crowd {
   }
 
   update(dt: number, focus: THREE.Vector3, caps: CrowdCaps) {
+    this.focus.copy(focus);
     caps = { farCars: Math.round(caps.farCars * carActivity(this.hour)), farPeds: Math.round(caps.farPeds * pedActivity(this.hour)), parked: caps.parked };
     this.caps = caps; this.t += dt;
     if (!this.camera && this.pop?.camera) this.camera = this.pop.camera;
@@ -187,39 +196,77 @@ export class Crowd {
    * Hands far-away real traffic back to the cheap crowd (same kind, paint, lane, speed) so the real-car budget is spent
    * where the player is: promotion of the cars ahead never runs out of slots.
    */
+  /** A plain civilian car cruising its lane (no police, player car, chase, damage or scripted stop): it may go back to the crowd. */
+  private demotableCar(car: AiCar): boolean {
+    const v = car.v;
+    if (car.persistent || car.mode !== 'cruise' || car.patrol || car.driver.role !== 'civilian' || !car.driver.alive || v.destroyed || car.stopPlan || car.passengers?.some(p => !p.alive)) return false;
+    return !(v.health < v.spec.health * 0.97 || v.lastDamagedBy || Math.abs(v.speed) > 22 || this.cars.length >= MAX_FAR_CARS - 1 || !car.lane);
+  }
+  /** Demotes the real car that matters least (farthest, out of view) to make room for one up close. */
+  private evictCar(): boolean {
+    const tr = this.traffic; if (!tr) return false;
+    let best: AiCar | null = null, bd = 30;
+    for (const car of tr.cars) {
+      const p = car.v.position, d = Math.hypot(p.x - this.focus.x, p.z - this.focus.z);
+      if (d > bd && this.demotableCar(car) && !this.seen(p.x, p.y + 1, p.z, 3)) { best = car; bd = d; }
+    }
+    if (best) this.demoteCar(best);
+    return !!best;
+  }
+  /** Demotes the farthest unseen real walker to make room for one up close. */
+  private evictPed(): boolean {
+    const pop = this.pop; if (!pop || !this.people) return false;
+    let best: Npc | null = null, bd = 25;
+    for (const n of pop.npcs) {
+      const p = n.char.pos, d = Math.hypot(p.x - this.focus.x, p.z - this.focus.z);
+      if (d > bd && this.demotablePed(n) && !this.seen(p.x, p.y + 1, p.z, 1.2)) { best = n; bd = d; }
+    }
+    return !!best && this.demotePed(best);
+  }
   private demote(focus: THREE.Vector3) {
     const tr = this.traffic; if (!tr) return;
     for (const car of [...tr.cars]) {
       const v = car.v, d = Math.hypot(v.position.x - focus.x, v.position.z - focus.z);
-      if (d < DEMOTE_R || car.persistent || car.mode !== 'cruise' || car.patrol || car.driver.role !== 'civilian' || !car.driver.alive || v.destroyed || car.stopPlan || car.passengers?.some(p => !p.alive)) continue;
-      if (v.health < v.spec.health * 0.97 || v.lastDamagedBy || Math.abs(v.speed) > 22 || this.cars.length >= MAX_FAR_CARS - 1) continue;
+      if (d < DEMOTE_R || !this.demotableCar(car)) continue;
       if (d < DEMOTE_R + 30 && this.seen(v.position.x, v.position.y + 1, v.position.z, 3)) continue; // in plain view: keep the real one a while longer
-      const lane = car.lane; if (!lane) continue;
-      tr.cars.splice(tr.cars.indexOf(car), 1);
+      this.demoteCar(car);
+    }
+    // far real pedestrians who are just walking go back to the crowd (same person, same route)
+    const pop = this.pop; if (!pop || !this.people) return;
+    for (const n of [...pop.npcs]) {
+      if (!this.demotablePed(n)) continue;
+      const c = n.char, d = Math.hypot(c.pos.x - focus.x, c.pos.z - focus.z);
+      if (d < DEMOTE_PED_R) continue;
+      if (d < DEMOTE_PED_R + 30 && this.seen(c.pos.x, c.pos.y + 1, c.pos.z, 1.2)) continue;
+      this.demotePed(n);
+    }
+  }
+  private demotablePed(n: Npc): boolean {
+    return !(n.role !== 'civilian' || n.persistent || !n.alive || n.brain !== 'wander' || n.activity || n.buddy || n.char.inVehicle || n.node < 0 || n.nextNode < 0 || n.alertT > 0 || this.peds.length >= 899);
+  }
+  private demoteCar(car: AiCar) {
+    const tr = this.traffic!, v = car.v, lane = car.lane;
+    tr.cars.splice(tr.cars.indexOf(car), 1);
       this.pop?.remove(car.driver); for (const p of car.passengers ?? []) this.pop?.remove(p);
       const pc = v.paint.clone(), bus = v.kind === 'bus';
       this.vehicles.remove(v);
       samplePath(lane, Math.min(car.s, lane.length - 0.01), sp);
       this.cars.push({ lane, s: Math.min(car.s, lane.length - 0.01), v: Math.max(0, Math.abs(v.speed)), paint: 0, len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: 6, bus, dwell: 0, stopS: -1, planLane: lane.id, kind: v.kind, pc });
       this.stats.demotedCars++;
-    }
-    // far real pedestrians who are just walking go back to the crowd (same person, same route)
-    const pop = this.pop; if (!pop || !this.people) return;
-    const nodes = this.city.pedNodes;
-    for (const n of [...pop.npcs]) {
-      if (n.role !== 'civilian' || n.persistent || !n.alive || n.brain !== 'wander' || n.activity || n.buddy || n.char.inVehicle || n.node < 0 || n.nextNode < 0 || n.alertT > 0) continue;
-      const c = n.char, d = Math.hypot(c.pos.x - focus.x, c.pos.z - focus.z);
-      if (d < DEMOTE_PED_R || this.peds.length >= 899) continue;
-      if (d < DEMOTE_PED_R + 30 && this.seen(c.pos.x, c.pos.y + 1, c.pos.z, 1.2)) continue;
-      const a = nodes[n.node], b = nodes[n.nextNode]; if (!a || !b || !a.edges.some(e => e.to === b.id)) continue;
+  }
+  private demotePed(n: Npc): boolean {
+    const pop = this.pop!, nodes = this.city.pedNodes, c = n.char;
+    {
+      const a = nodes[n.node], b = nodes[n.nextNode]; if (!a || !b || !a.edges.some(e => e.to === b.id)) return false;
       const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1;
       const t = THREE.MathUtils.clamp(((c.pos.x - a.x) * dx + (c.pos.z - a.z) * dz) / L2, 0, 1);
       const L = Math.sqrt(L2), off = THREE.MathUtils.clamp(((c.pos.x - a.x) * dz - (c.pos.z - a.z) * dx) / L * -1, -0.9, 0.9);
       const lk = c.human.look;
-      this.peds.push({ from: a.id, to: b.id, t, speed: Math.max(1, Math.min(1.8, c.speed || 1.3)), wait: 0, off, look: 0, x: c.pos.x, z: c.pos.z, yaw: c.yaw, tint: 0, tint2: 0, skin: 0, phase: Math.random(), lk, data: this.people.pack(lk) });
+      this.peds.push({ from: a.id, to: b.id, t, speed: Math.max(1, Math.min(1.8, c.speed || 1.3)), wait: 0, off, look: 0, x: c.pos.x, z: c.pos.z, yaw: c.yaw, tint: 0, tint2: 0, skin: 0, phase: Math.random(), lk, data: this.people!.pack(lk) });
       pop.remove(n);
       this.stats.demotedPeds++;
     }
+    return true;
   }
 
   // ---------------------------------------------------------------- cars
@@ -260,7 +307,7 @@ export class Crowd {
       // never removed while it can be seen up close: over the cap / on top of a real car it waits until it is out of view
       const inView = d < 120 && this.seen(c.x, 1.2, c.z, c.bus ? 7 : 3.5);
       let kill = d > 215 || (i >= cap && !inView);
-      if (!kill && d < PROMOTE_R && !this.prewarming) { if (this.promoteCar?.(c.lane, c.s, c.bus, c.v, c.kind, c.pc)) kill = true; else this.stats.heldCars++; }
+      if (!kill && d < PROMOTE_R && !this.prewarming) { if (this.promoteCar?.(c.lane, c.s, c.bus, c.v, c.kind, c.pc, d < NEAR_PROMOTE_CAR)) kill = true; else this.stats.heldCars++; }
       if (!kill && d < NEAR_KILL && !inView) kill = true; // beside / behind the camera and still not handed over
       let why = kill ? 'promoted' : '';
       if (!kill && checkReal && d < 140 && (!inView || d > 90)) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 4 && Math.abs(o.position.z - c.z) < 4) { kill = true; why = 'real'; break; }
@@ -383,7 +430,7 @@ export class Crowd {
       // never removed while it can be seen: over the cap it waits until it is out of view; up close it becomes a real person
       const inView = d < 120 && this.seen(p.x, 1 + (p.y ?? 0), p.z, 1.2);
       let gone = d > 235 || (i >= cap && !inView);
-      if (!gone && d < PROMOTE_R && !this.prewarming) { if (this.promotePed?.(p.x, p.z, p.from, p.to, p.yaw, this.lookOf(p))) gone = true; else this.stats.heldPeds++; }
+      if (!gone && d < PROMOTE_R && !this.prewarming) { if (this.promotePed?.(p.x, p.z, p.from, p.to, p.yaw, this.lookOf(p), d < NEAR_PROMOTE_PED)) gone = true; else this.stats.heldPeds++; }
       if (!gone && d < NEAR_KILL && !inView) gone = true;
       if (gone) { p.dead = true; peds.splice(i, 1); }
     }

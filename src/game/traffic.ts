@@ -41,7 +41,7 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
   legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null;
   /** stop-sign / left-turn wait bookkeeping: lane it was counted on and seconds stood at the line */
-  ssLane?: number; ssWait?: number }
+  ssLane?: number; ssWait?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -303,6 +303,15 @@ export class Traffic {
             }
           }
         }
+      }
+      // never block the box: hold at the line while the lane beyond the junction is backed up at its start
+      if (car.mode === 'cruise' && !car.persistent && !car.lane.connector && car.nextChoice !== undefined) {
+        const dS = this.distToStop(car);
+        if (dS > -0.5 && dS < 10) {
+          const conn = this.city.lanes[car.nextChoice], exit = conn.connector && conn.next.length ? conn.next[0] : -1;
+          const full = exit >= 0 && this.cars.some(o => o !== car && o.lane.id === exit && o.s < 11 && Math.abs(o.v.speed) < 1.2);
+          if (full && (car.boxWait ?? 0) < 10) { car.boxWait = (car.boxWait ?? 0) + (Math.abs(speed) < 0.5 ? dt : 0); targetSpeed = Math.min(targetSpeed, stopSpeed(dS - 0.4)); legit = true; }
+        } else car.boxWait = 0;
       }
       if (car.mode === 'cruise' && !car.persistent) { targetSpeed = this.curbStops(car, dt, targetSpeed, f, t); if ((car.stopT ?? 0) > 0 || car.stopPlan) legit = true; }
       // Following distance / obstacles ahead

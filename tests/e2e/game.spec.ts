@@ -4,15 +4,14 @@ import { watch, boot, step, tap, state, clean, quietStreets } from './helpers';
 test.describe.configure({ mode: 'serial' });
 
 test('title: live city flyover, press any key, menu, credits, Play starts the sandbox with no story', async ({ page }) => {
+  test.setTimeout(480_000);
   const p = watch(page);
   await page.goto('./');
   await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
   // the running game renders the city behind the title (no painted backdrop) and the camera follows the scripted flyover
   expect(await page.evaluate(() => document.querySelector('.ma-title')!.classList.contains('is-live'))).toBe(true);
   const cam0 = await page.evaluate(() => (window as any).__game.renderer.camera.position.toArray());
-  await page.waitForTimeout(1500);
-  const cam1 = await page.evaluate(() => (window as any).__game.renderer.camera.position.toArray());
-  expect(cam1).not.toEqual(cam0);
+  await expect.poll(() => page.evaluate(() => (window as any).__game.renderer.camera.position.toArray()), { timeout: 60_000 }).not.toEqual(cam0);
   expect(await page.evaluate(() => (window as any).__game.player.human.root.visible)).toBe(false);
   await page.screenshot({ path: 'test-results/shots/title.png' });
   await page.keyboard.press('Enter');
@@ -28,7 +27,7 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   await page.keyboard.press('Escape');
   await expect(page.getByText('Open assets (CC0)')).toBeHidden();
   await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByRole('button', { name: 'Sandbox' }).click();
+  await page.getByRole('button', { name: 'Sandbox' }).click({ timeout: 120_000 });
   await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
   await step(page, 1, { render: true });

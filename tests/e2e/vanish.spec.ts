@@ -58,6 +58,13 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
       return out;
     };
     const events: any[] = []; const bySrc: Record<string, number> = {};
+    // far-model (crowd) cars / people drawn within 20 m of the camera: the owner's "boxy cars up close"
+    const nearFar: any[] = []; let nearFarN = 0;
+    const checkNearFar = (f: number) => {
+      const cx = cam.position.x, cz = cam.position.z, cr = g.crowd;
+      for (const c of cr.cars) { const d = Math.hypot(c.x - cx, c.z - cz); if (d < 20 && inView(c.x, 0.8, c.z)) { nearFarN++; if (nearFar.length < 10) nearFar.push({ f, cls: c.bus ? 'bus' : 'car', d: +d.toFixed(1), why: cr.failWhy, real: g.traffic.cars.length }); } }
+      for (const p of cr.peds) { const d = Math.hypot(p.x - cx, p.z - cz); if (d < 20 && inView(p.x, (p.y ?? 0) + 1, p.z)) { nearFarN++; if (nearFar.length < 10) nearFar.push({ f, cls: 'ped', d: +d.toFixed(1) }); } }
+    };
     let prev = snapshot(), frames = 0, maxSeen = 0;
     const dt = 1 / 30, n = Math.round(seconds / dt);
     for (let i = 0; i < n; i++) {
@@ -65,7 +72,7 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
       while (s > lane.length) { s -= lane.length; const nx = lane.next; lane = lanes[nx.length ? nx[Math.floor(rnd() * nx.length)] : lane.id]; if (!nx.length) { s = 0; break; } }
       place();
       g.frame(dt, false); frames++;
-      const cur = snapshot(); maxSeen = Math.max(maxSeen, cur.size);
+      const cur = snapshot(); maxSeen = Math.max(maxSeen, cur.size); if (i > 30) checkNearFar(i);
       for (const [k, e] of prev) {
         if (cur.has(k)) continue;
         // still around but now out of view / range / behind? not a vanish
@@ -91,7 +98,7 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
     }
     function viewNear(x: number, z: number, y: number) { const d = Math.hypot(x - cam.position.x, z - cam.position.z); return d <= 60 && d >= 3 && inView(x, y, z); }
     const tot = Object.values(bySrc).reduce((a, b) => a + b, 0);
-    return { frames, vanished: tot, bySrc, events, maxSeen, real: { peds: g.pop.npcs.length, cars: g.traffic.cars.length, vehicles: g.vehicles.list.length }, crowd: { peds: g.crowd.peds.length, cars: g.crowd.cars.length }, stats: g.crowd.stats };
+    return { frames, nearFarN, nearFar, vanished: tot, bySrc, events, maxSeen, real: { peds: g.pop.npcs.length, cars: g.traffic.cars.length, vehicles: g.vehicles.list.length }, crowd: { peds: g.crowd.peds.length, cars: g.crowd.cars.length }, stats: g.crowd.stats };
   }, opts);
 }
 
@@ -103,5 +110,6 @@ test('driving through a full crowd on high: nothing within 60 m in view vanishes
   console.log('VANISH', JSON.stringify(r));
   expect(r.maxSeen).toBeGreaterThan(10); // the street really was busy
   expect(r.vanished, JSON.stringify(r.events.slice(0, 12))).toBe(0);
+  expect(r.nearFarN, JSON.stringify(r.nearFar)).toBe(0); // no far-model car / person drawn within 20 m in view
   clean(p);
 });
