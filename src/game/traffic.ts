@@ -78,11 +78,14 @@ export class Traffic {
     return 'sedan';
   }
   /** Spawns a driven car on a lane at distance s. */
-  spawnOnLane(kind: VehicleKind, lane: Lane, s: number, mode: DriveMode = 'cruise', role: 'civilian' | 'police' | 'gang' = 'civilian', look?: Look): AiCar {
+  spawnOnLane(kind: VehicleKind, lane: Lane, s: number, mode: DriveMode = 'cruise', role: 'civilian' | 'police' | 'gang' = 'civilian', look?: Look, speed0?: number): AiCar {
     samplePath(lane, s, sp);
     const yaw = Math.atan2(sp.dx, sp.dz);
     const v = this.vehicles.spawn(kind, sp.x, sp.z, yaw);
-    v.phys.body.setLinvel({ x: sp.dx * lane.speed * 0.6, y: 0, z: sp.dz * lane.speed * 0.6 }, true);
+    // start at the speed the caller handed over (a far-crowd car being promoted), never faster than it could stop for a red
+    let v0 = speed0 ?? lane.speed * 0.6;
+    if (!lane.connector && mode === 'cruise') v0 = Math.min(v0, signalCap(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), lane.length - s - 5.2, v0));
+    v.phys.body.setLinvel({ x: sp.dx * v0, y: 0, z: sp.dz * v0 }, true);
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
     const car: AiCar = { v, driver, lane, s, mode, target: null, stuckT: 0, honkT: 0, reverseT: 0, persistent: false, ram: false, arriveDist: 8 };

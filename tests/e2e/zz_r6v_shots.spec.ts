@@ -4,6 +4,7 @@ const OUT = process.env.SHOT_DIR ?? '/tmp/claude-0/-home-user-astratest/d1ebd1cb
 const TAG = process.env.SHOT_TAG ?? 'old';
 test('lod shots', async ({ page }) => {
   test.setTimeout(900_000);
+  page.on('console', m => { if (m.text().startsWith('DBG')) console.log(m.text()); });
   await boot(page);
   await quietStreets(page);
   // a straight street: cars parked along the line of sight at 10 / 30 / 60 / 100 m, crowd impostors around
@@ -14,7 +15,9 @@ test('lod shots', async ({ page }) => {
   for (const view of ['real', 'crowd']) {
     await page.evaluate((view) => {
       const g = (window as any).__game, cam = g.renderer.camera;
+      for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); }
       for (const v of [...g.vehicles.list]) if (!v.persistent) g.vehicles.remove(v);
+      g.buses.spawnT = 1e9;
       for (const n of [...g.pop.npcs]) if (!n.persistent) g.pop.remove(n);
       g.crowd.clear(); g.trafficCap = 0; g.pedCap = 0;
       // a long straight lane (no slope): camera on it at s=0 looking along it; things placed along the lane
@@ -36,9 +39,13 @@ test('lod shots', async ({ page }) => {
       (window as any).__shotCam = () => { cam.position.set(cp.x, 1.7, cp.z); cam.lookAt(la.x, 1.0, la.z); cam.updateMatrixWorld(true); };
       g.player.place(cp.x - fx * 8, 0.25, cp.z - fz * 8, yaw);
       for (let i = 0; i < 6; i++) g.frame(1 / 30, false);
-      (window as any).__shotCam = () => { cam.position.set(ox + 0.4, 1.7, oz + 3); cam.lookAt(ox, 1.2, oz - 40); cam.updateMatrixWorld(true); };
     }, view);
-    await page.evaluate(() => { const g = (window as any).__game; g.frame(1 / 30, false); (window as any).__shotCam(); g.vehicles.update(0, 0, 0, g.renderer.camera.position, null); g.renderer.render(); g.renderer.render(); });
+    await page.evaluate(() => { const g = (window as any).__game; g.frame(1 / 30, false); (window as any).__shotCam(); g.vehicles.update(0, 0, 0, g.renderer.camera.position, null);
+      for (const v of g.vehicles.list) { v.bodyMesh.userData.drawn = false; v.bodyMesh.onBeforeRender = () => { v.bodyMesh.userData.drawn = true; }; }
+      g.renderer.render(); g.renderer.render();
+      const cam = g.renderer.camera;
+      console.log('DBG cam', cam.position.toArray().map((x: number) => x.toFixed(1)).join(','), JSON.stringify(g.vehicles.list.map((v: any) => ({ k: v.kind, p: v.position.toArray().map((x: number) => +x.toFixed(1)), d: +v.position.distanceTo(cam.position).toFixed(1), gv: v.group.visible, bv: v.bodyMesh.visible, drawn: v.bodyMesh.userData.drawn, lod: v.lod }))));
+    });
     await page.screenshot({ path: `${OUT}/${TAG}-${view}.png` });
   }
 });

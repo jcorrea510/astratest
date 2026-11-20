@@ -60,7 +60,8 @@ export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Mat
  * Red: stop at the line (a car already across it, dStop < -1, clears the box).
  */
 export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, speed: number): number {
-  if (state === 'green' || dStop < -1) return Infinity;
+  // across the line and rolling (or well inside the box): keep going; a car that merely overshot and stands still stays put
+  if (state === 'green' || dStop < -6 || (dStop < -1 && speed > 2.5)) return Infinity;
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) return Infinity;
   return stopSpeed(dStop - 0.4);
 }
@@ -76,7 +77,7 @@ export function stopSignCap(dStop: number, speed: number, waited: number, clear:
 }
 /** +1 = left turn, -1 = right turn, 0 = straight, from unit heading before (d0) and after (d1) the turn. */
 export function turnSide(d0x: number, d0z: number, d1x: number, d1z: number): number {
-  const c = d0x * d1z - d0z * d1x; // x right / z forward world: left turn gives negative cross
+  const c = d0x * d1z - d0z * d1x; // heading +z has its left at +x: a left turn gives a negative cross
   return c < -0.5 ? 1 : c > 0.5 ? -1 : 0;
 }
 /** Is an oncoming car (position rel. to junction centre, heading, speed) close enough that a left-turner must wait? */

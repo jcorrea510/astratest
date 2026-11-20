@@ -446,7 +446,7 @@ export class Human {
       const T = this.bones.get(side === 'L' ? 'thighL' : 'thighR'), K = this.bones.get(side === 'L' ? 'shinL' : 'shinR'), F = this.bones.get(side === 'L' ? 'footL' : 'footR');
       if (!T || !K || !F) continue;
       par!.worldToLocal(F.getWorldPosition(_ft));
-      const ankle = fy + 0.1; // ankle joint above the sole
+      const ankle = fy + 0.06; // ankle joint above the sole
       if (_ft.y >= ankle) continue;
       _ft.y = ankle; par!.localToWorld(_ft);
       this.solveChain(T, K, F, _ft, 1);

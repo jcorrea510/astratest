@@ -155,15 +155,15 @@ export class Crowd {
    * in place by a real, fully simulated one (return true) instead of vanishing. When the hook declines (real caps full)
    * the cheap one keeps walking/driving until it is almost beside the camera, so nobody blinks out at mid range.
    */
-  promoteCar: ((lane: Lane, s: number, bus: boolean) => boolean) | null = null;
+  promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number) => boolean) | null = null;
   promotePed: ((x: number, z: number, from: number, to: number, yaw: number) => boolean) | null = null;
   /** Connects the hand-over hooks to the real traffic / pedestrian systems; `caps` returns the current real-population caps. */
   wire(traffic: Traffic, pop: Population, caps: () => { traffic: number; peds: number }) {
-    this.promoteCar = (lane, s, bus) => {
+    this.promoteCar = (lane, s, bus, speed) => {
       if (bus || traffic.cars.length >= caps().traffic) return false;
       samplePath(lane, s, sp);
       for (const o of this.vehicles.list) if (Math.abs(o.position.x - sp.x) < 8 && Math.abs(o.position.z - sp.z) < 8) return false; // never spawn inside a real car
-      traffic.spawnOnLane(traffic.pickKind(), lane, s);
+      traffic.spawnOnLane(traffic.pickKind(), lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
       return true;
     };
     this.promotePed = (x, z, from, to, yaw) => {
@@ -237,11 +237,13 @@ export class Crowd {
       const s = 6 + Math.random() * (lane.length - 12);
       samplePath(lane, s, sp);
       const d = Math.hypot(sp.x - focus.x, sp.z - focus.z);
-      if (d < (this.prewarming ? 40 : 70) || d > 230) continue;
+      if (d < (this.prewarming ? 40 : 65) || d > 190) continue; // R6-T: denser ring (was 70-230) so moving cars outnumber parked ones in view
       if (Math.random() > DISTRICT_INFO[districtAt(this.city, sp.x, sp.z)].trafficDensity) continue;
-      if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 13))) continue;
+      if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 11))) continue;
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
-      this.cars.push({ lane, s, v: lane.speed * 0.8, paint: bus ? BUS_PAINT[Math.floor(Math.random() * BUS_PAINT.length)] : CAR_PAINT[Math.floor(Math.random() * CAR_PAINT.length)], len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1 });
+      // never appear already doing 40 km/h towards a red line it cannot stop at (R6-T)
+      const sInter = this.city.intersections[lane.intersection], v0 = lane.connector ? lane.speed * 0.8 : Math.min(lane.speed * 0.8, signalCap(signalState(sInter, lane.axis, this.time()), lane.length - s - 5.4, lane.speed * 0.8));
+      this.cars.push({ lane, s, v: v0, paint: bus ? BUS_PAINT[Math.floor(Math.random() * BUS_PAINT.length)] : CAR_PAINT[Math.floor(Math.random() * CAR_PAINT.length)], len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1 });
       return true;
     }
     return false;
@@ -253,8 +255,8 @@ export class Crowd {
     const checkReal = this.slowT <= 0; if (checkReal) this.slowT = 0.4;
     for (let i = cars.length - 1; i >= 0; i--) {
       const c = cars[i], d = Math.hypot(c.x - focus.x, c.z - focus.z);
-      let kill = d < NEAR_KILL || d > 250 || i >= cap;
-      if (!kill && d < PROMOTE_R && !this.prewarming && this.promoteCar?.(c.lane, c.s, c.bus)) kill = true;
+      let kill = d < NEAR_KILL || d > 215 || i >= cap;
+      if (!kill && d < PROMOTE_R && !this.prewarming && this.promoteCar?.(c.lane, c.s, c.bus, c.v)) kill = true;
       if (!kill && checkReal && d < 140) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 6 && Math.abs(o.position.z - c.z) < 6) { kill = true; break; }
       if (kill) cars.splice(i, 1);
     }
