@@ -7,6 +7,7 @@ import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { PLACES } from './places';
 import type { SandboxTools } from './save';
 import type { UnitKind } from './dispatch';
+import { START_CASH, canUseSandbox, type GameMode } from './modes';
 
 const UNITS: { value: UnitKind; label: string }[] = [{ value: 'police', label: 'Police cruiser' }, { value: 'fbi', label: 'FBI SUV' }, { value: 'swat', label: 'SWAT van' }, { value: 'army', label: 'Army truck' }, { value: 'tank', label: 'Tank' }];
 
@@ -30,24 +31,28 @@ export class Sandbox {
   open = false;
   constructor(private game: Game, private ui: GameUI) {
   }
-  /** A fresh game: some cash, a pistol, golden hour. Everything else is earned, bought or taken from the tools panel. */
-  setup() {
+  /** A fresh game. Regular: small cash, no weapons, nothing but fists. Sandbox: more cash and a pistol in the pocket. Always holstered. */
+  setup(mode: GameMode = 'sandbox') {
     const g = this.game;
-    g.money = 2500; g.hour = 18.2; g.player.armor = 0;
-    g.pcombat.give('pistol', WEAPONS.pistol.clip * 3);
-    g.pcombat.inv.medkits = 1;
+    g.mode = mode;
+    g.money = START_CASH[mode]; g.hour = 18.2; g.player.armor = 0;
+    g.pcombat.inv.strip();
+    if (mode === 'sandbox') { g.pcombat.give('pistol', WEAPONS.pistol.clip * 3); g.pcombat.inv.medkits = 1; }
+    g.pcombat.inv.holster();
     this.applyCaps();
   }
+  get enabled() { return canUseSandbox(this.game.mode); }
   applyCaps() { this.game.clockRunning = this.clockRunning; }
   /** Every weapon incl. melee and throwables, with plenty of ammo. */
   arsenal() {
+    if (!this.enabled) return;
     const g = this.game;
     for (const id of WEAPON_ORDER) g.pcombat.give(id, WEAPONS[id].clip * 6 + (WEAPONS[id].cat === 'throw' ? 4 : 0));
     g.pcombat.inv.medkits = Math.max(g.pcombat.inv.medkits, 5);
   }
   tools(): SandboxTools { return { god: this.god, ammo: this.infiniteAmmo, never: this.neverWanted, clock: this.clockRunning }; }
   loadTools(t: SandboxTools | undefined) {
-    if (!t) return;
+    if (!t || !this.enabled) return;
     this.god = t.god; this.infiniteAmmo = t.ammo; this.neverWanted = t.never; this.clockRunning = t.clock;
     this.game.police.ignoring = this.neverWanted;
     this.applyCaps();
@@ -76,11 +81,13 @@ export class Sandbox {
     ];
   }
   openPanel(onClose: () => void) {
+    if (!this.enabled) { onClose(); return; } // Regular mode: no tools panel
     this.open = true;
     // sliders are not re-rendered while dragging (rebuilding the panel would drop the drag)
     this.ui.openSandbox(this.actions(), (id, v) => { this.act(id, v); if (this.actions().find(a => a.id === id)?.kind !== 'slider') this.ui.refreshSandbox(this.actions()); }, () => { this.open = false; onClose(); });
   }
   act(id: string, v?: number | string | boolean) {
+    if (!this.enabled) return; // Regular mode: no cheats, whatever calls this
     const g = this.game, num = Number(v);
     switch (id) {
       case 'god': this.god = !!v; break;
@@ -120,6 +127,7 @@ export class Sandbox {
   }
   /** Per-frame effects of the toggles. */
   update() {
+    if (!this.enabled) { this.god = this.infiniteAmmo = this.neverWanted = false; this.game.police.ignoring = false; return; }
     const g = this.game;
     if (this.god && g.player.alive) { g.player.health = g.player.maxHealth; g.player.armor = 100; }
     if (this.infiniteAmmo) for (const id of WEAPON_ORDER) { const w = g.pcombat.inv.weapons[id]; if (w.owned && !WEAPONS[id].melee && w.reserve < WEAPONS[id].clip * 4) w.reserve = WEAPONS[id].clip * 8; }

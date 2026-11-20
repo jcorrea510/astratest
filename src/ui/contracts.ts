@@ -32,7 +32,7 @@ export interface GameUI {
   /** Called once with everything needed. Settings changes are applied via callbacks. */
   init(opts: { city: CityMap; settings: Settings; callbacks: UICallbacks }): void;
   // Screens
-  showTitle(hasSave: boolean): void;
+  showTitle(hasSave: boolean, saveSummary?: string): void; // saveSummary: e.g. "Regular, $1,200, 5 min ago" for the Continue button
   showLoading(fraction: number, label: string): void; // fraction 0..1, safe to call many times
   hideLoading(): void;
   showMobileGate(): void;
@@ -71,7 +71,7 @@ export interface GameUI {
   robberyMeter(s: { label: string; progress: number /*0..1*/; cash: number } | null): void;
   // Sandbox mode: the title offers it (callbacks.onSandbox); in a sandbox game the pause menu gets a
   // "Sandbox tools" entry (callbacks.onOpenSandbox) and the game opens a generic tools panel.
-  setMode(mode: 'story' | 'sandbox'): void;
+  setMode(mode: 'story' | 'sandbox' | 'regular'): void; // regular: the pause menu's Sandbox tab becomes Goals; a subtle mode badge shows on the HUD
   openSandbox(actions: SandboxAction[], onAction: (id: string, value?: number | string | boolean) => void, onClose: () => void): void;
   refreshSandbox(actions: SandboxAction[]): void; // re-render values (e.g. after a toggle)
   closeSandbox(): void;
@@ -84,7 +84,7 @@ export interface SandboxAction {
 }
 export interface DeathOpts { arrestAnimationDone?: (done: () => void) => void }
 export interface UICallbacks {
-  onStart(continueGame: boolean): void; // title: New game / Continue
+  onStart(continueGame: boolean, mode?: 'regular' | 'sandbox'): void; // title: Continue, or New game with the chosen mode
   onSandbox?(): void; // unused: the game is sandbox-only (the title's Play starts it)
   onHighway?(): void; // title: the endless highway mode
   onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel

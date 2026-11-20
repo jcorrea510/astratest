@@ -63,7 +63,7 @@ export class Crowd {
   private frustum = new THREE.Frustum(); private pm = new THREE.Matrix4(); private sph = new THREE.Sphere(); private v3 = new THREE.Vector3();
   private traffic: Traffic | null = null; private pop: Population | null = null; private demoteT = 0;
   /** hand-over bookkeeping for tests / debugging */
-  stats = { promotedCars: 0, promotedPeds: 0, demotedCars: 0, demotedPeds: 0, heldCars: 0, heldPeds: 0, removedInView: 0 };
+  stats = { promotedCars: 0, promotedPeds: 0, demotedCars: 0, demotedPeds: 0, heldCars: 0, heldPeds: 0, removedInView: 0, failCap: 0, failOverlap: 0 };
   private slots: Slot[] = []; private visSlots: Slot[] = [];
   private rng = new Rng(4242); private nextId = 1; private t = 0; private slowT = 0; private parkT = 0; private slowIdx = 0;
   private carLaneIdx: number[] = [];
@@ -84,13 +84,13 @@ export class Crowd {
     this.traffic = traffic; this.pop = pop;
     this.promoteCar = (lane, s, bus, speed, kind, paint) => {
       // soft cap: a car about to be seen up close is always handed over (far real cars are demoted to make room)
-      if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK) return false;
+      if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK) { this.stats.failCap++; return false; }
       samplePath(lane, s, sp);
       // never spawn inside a real car: footprint overlap only (a car queued 2 m behind another is fine)
       const len = bus ? 12.5 : 5.2;
       for (const o of this.vehicles.list) {
         const dx = o.position.x - sp.x, dz = o.position.z - sp.z, along = dx * sp.dx + dz * sp.dz, side = dx * sp.dz - dz * sp.dx;
-        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) return false;
+        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; return false; }
       }
       const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
       car.v.respray(col.copy(paint).convertLinearToSRGB());

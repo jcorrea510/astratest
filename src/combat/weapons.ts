@@ -174,6 +174,10 @@ export class Inventory {
     w.reserve += Math.max(0, ammo);
     if (w.clip === 0 && w.reserve > 0 && this.current !== id) { const take = Math.min(d.clip, w.reserve); w.clip += take; w.reserve -= take; }
   }
+  /** Death / arrest in Regular mode: every weapon, round and medkit is gone; only fists remain, holstered. */
+  strip() { this.weapons = freshStates(); this.current = 'fists'; this.pick = {}; this.medkits = 0; this.cooldown = 0; this.reloadT = 0; this.reloadDur = 0; this.burstLeft = 0; }
+  /** Puts the weapon away (fists = nothing in hand). */
+  holster() { this.select('fists'); this.reloadT = 0; this.reloadDur = 0; this.burstLeft = 0; }
   get def() { return WEAPONS[this.current]; }
   get state() { return this.weapons[this.current]; }
   /** Rounds left in total (clip + reserve); for throwables the count in the pocket. */

@@ -20,7 +20,7 @@ interface Kiosk {
   /** shoppers wandering the aisles (2-5), their reactions and the register state when the clerk is out of the picture */
   shoppers: Shopper[]; /** seconds until the next shopper walks in */ refillT: number; clerkT: number; clerkTurn: number; panicT: number; callT: number; called: boolean; looting: number; looted: boolean;
 }
-interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number; life: ShopLife }
+interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number; life: ShopLife; /** game time the hands went up */ upAt?: number }
 const _v0 = new THREE.Vector3();
 const ROB_TIME = 7; // seconds of covering the clerk to empty the till
 const REOPEN = 240; // seconds until a robbed store reopens
@@ -93,6 +93,7 @@ export class Robberies {
       if (!s.n.alive) continue;
       const r = i++ % 3; s.n.char.human.stopAction();
       s.act = r === 0 ? 'handsUp' : r === 1 ? 'cower' : 'flee';
+      s.upAt = g.time;
       if (s.caller) s.act = 'cower';
     }
     g.audio.play('heatUp', { pos: k.pos, volume: 0.7 });
@@ -123,6 +124,8 @@ export class Robberies {
         c.faceTowards(Math.atan2(g.player.pos.x - c.pos.x, g.player.pos.z - c.pos.z), 8, dt);
         if (h.actionName !== 'hands_up') h.playAction('hands_up', { hold: true });
         if (k.panicT > 9 && dist > 12) s.act = 'flee';
+        // shots fired in the store: nobody keeps their hands up waiting for the next one
+        if (g.time - n.shotAt < 1.5 && n.shotAt > (s.upAt ?? 0)) { h.stopAction('hands_up'); s.act = Math.random() < 0.25 ? 'cower' : 'flee'; }
       } else if (s.act === 'cower') {
         if (h.currentState !== 'cower') h.setState('cower');
         if (k.panicT > 14 && dist > 14) { h.setState('loco'); s.act = 'flee'; }
@@ -310,12 +313,12 @@ export class Robberies {
       k.uncoveredT += dt;
       if (k.uncoveredT > 2.5 || this.customerDist(k) > 16) { this.end(false, 'You let the clerk off the hook.'); return; }
     }
-    k.cash = Math.round(k.def.cash * k.progress);
+    k.cash = Math.round(this.till(k) * k.progress);
     this.ui.robberyMeter({ label: k.uncoveredT > 0 ? 'Keep the clerk covered!' : `Holding up ${k.def.name}`, progress: k.progress, cash: k.cash });
     if (k.progress >= 1) {
-      g.spawnPickup('cash', k.def.cash, k.frame.bag.clone());
+      g.spawnPickup('cash', this.till(k), k.frame.bag.clone());
       n.char.human.setState('crouch');
-      this.end(true, `Grab the cash: $${k.def.cash}`);
+      this.end(true, `Grab the cash: $${this.till(k)}`);
     }
   }
   private shotClip: number[] = [];
@@ -326,10 +329,10 @@ export class Robberies {
       if (!this.canLoot(k, k.looting > 0)) { k.looting = 0; this.ui.robberyMeter(null); return; }
       if (k.looting === 0) { k.looting = 0.001; this.panic(k); g.player.human.playOnce('PickUp_Table', 'full', 0.15); }
       k.looting = Math.min(1, k.looting + dt / 4);
-      this.ui.robberyMeter({ label: 'Emptying the register', progress: k.looting, cash: Math.round(k.def.cash * 0.7 * k.looting) });
+      this.ui.robberyMeter({ label: 'Emptying the register', progress: k.looting, cash: Math.round(this.till(k) * 0.7 * k.looting) });
       if (k.looting >= 1) {
         k.looting = 0; k.looted = true; this.ui.robberyMeter(null);
-        g.spawnPickup('cash', Math.round(k.def.cash * 0.7), k.frame.bag.clone());
+        g.spawnPickup('cash', Math.round(this.till(k) * 0.7), k.frame.bag.clone());
         g.police.alarm('robbery', new THREE.Vector3(k.def.x, 0, k.def.z)); g.pop.danger(k.pos, 20, g.player);
         this.ui.toast('Register cleaned out. Grab the cash and go.', 'money');
         k.phase = 'closed'; k.reopenAt = g.time + REOPEN;
@@ -344,8 +347,13 @@ export class Robberies {
     this.ui.toast('Hold-up! Keep the clerk covered.', 'warning');
     g.audio.setMusicMood('tension');
   }
+  /** Holdups completed this session (milestones). */
+  completed = 0;
+  /** A till's take: Regular mode pays 1.6x so that cars and guns are within reach of an honest criminal career. */
+  private till(k: Kiosk) { return Math.round(k.def.cash * (this.game.mode === 'regular' ? 1.6 : 1)); }
   private end(success: boolean, msg: string | null) {
     const k = this.active; if (!k) return;
+    if (success) this.completed++;
     this.active = null; this.ui.robberyMeter(null); this.game.audio.setMusicMood('none');
     if (msg) this.ui.toast(msg, success ? 'money' : 'warning');
     if (!success && k.alarmT <= 3 && k.clerk?.alive && k.clerk.role === 'civilian') { this.game.police.alarm('robbery', new THREE.Vector3(k.def.x, 0, k.def.z)); }

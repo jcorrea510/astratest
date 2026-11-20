@@ -22,9 +22,17 @@ test('probe stumbles', async ({ page }) => {
     g.prewarm?.();
     for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
     log.length = 0;
-    for (let i = 0; i < 60 * 30; i++) g.frame(1 / 30, false);
-    return { npcs: g.pop.npcs.length, cars: g.traffic.cars.length, log };
+    const hops: any[] = []; const lastY = new Map<any, number>(); let onRoadOff = 0;
+    for (let i = 0; i < 60 * 30; i++) {
+      g.frame(1 / 30, false);
+      for (const n of g.pop.npcs) {
+        if (n.far || !n.alive || n.char.inVehicle || n.brain === 'inside' || n.activity === 'sitting') continue;
+        const y = n.pos.y, ly = lastY.get(n); lastY.set(n, y);
+        if (ly !== undefined && Math.abs(y - ly) > 0.12 && n.pos.y < 0.8) { let nd = 99; for (const m of g.pop.npcs) if (m !== n && m.alive) nd = Math.min(nd, m.pos.distanceTo(n.pos)); hops.push({ t: i, dy: +(y - ly).toFixed(2), y: +y.toFixed(2), nearPed: +nd.toFixed(2) }); }
+      }
+    }
+    return { npcs: g.pop.npcs.length, cars: g.traffic.cars.length, log, hops };
   });
-  console.log('DBG', r.npcs, r.cars, r.log.length);
+  console.log('DBG', r.npcs, r.cars, r.log.length, 'hops', r.hops.length, JSON.stringify(r.hops.slice(0, 8)));
   for (const l of r.log.slice(0, 12)) console.log('DBG', JSON.stringify(l));
 });

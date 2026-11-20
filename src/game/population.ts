@@ -5,7 +5,7 @@ import { Npc, NpcBrainRunner, streetClock, type NpcEnv, type Role } from '../act
 import { pedActivity, districtNightFactor } from './schedule';
 import { randomLook, type HumanTemplate, type Look } from '../actors/human';
 import type { CityMap } from '../world/citymap';
-import { DISTRICT_INFO, districtAt } from '../world/citymap';
+import { DISTRICT_INFO, districtAt, surfaceAt } from '../world/citymap';
 import type { Character } from '../actors/character';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { WeaponId } from '../combat/weapons';
@@ -48,10 +48,11 @@ export class Population {
     for (const n of this.npcs) {
       if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.far) continue;
       const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
-      if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender') {
-        // shoulder-checked: stumble, glare
-        if (d < 0.8 && p.speed > 5 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
-        else c.yaw = Math.atan2(-dx, -dz);
+      if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender' && n.brain !== 'fight') {
+        // only a runner heading straight at them gets the shoulder-check; a near miss (passing alongside) is not contact, just a glance
+        const into = (-dx * p.vel.x - dz * p.vel.z) / (d * p.speed || 1);
+        if (d < 0.62 && p.speed > 5 && into > 0.6 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
+        else if (into > 0.3) c.faceTowards(Math.atan2(-dx, -dz), 7, 0.1);
       }
       if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower') {
         const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
@@ -95,9 +96,12 @@ export class Population {
   danger(at: THREE.Vector3, radius: number, source: Character | null) {
     const from = source ? source.pos : at;
     for (const n of this.npcs) {
+      if (n.alive && n.role === 'civilian' && n.pos.distanceTo(at) <= radius) n.shotAt = this.env.time(); // store shoppers (scripted) read this to drop their hands
       if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside') continue;
       const d = n.pos.distanceTo(at);
       if (d > radius) continue;
+      // hands up but the shooting has started: they stop waiting to be robbed and bolt (a beat later when it is further off)
+      if (n.brain === 'surrender') { if (n.alertT <= 0) { n.alertT = 0.15 + Math.random() * 0.45 + Math.min(1.5, Math.max(0, d - 6) * 0.05); n.alertFrom.copy(from); } continue; }
       if (n.brain === 'flee') { n.fleeFrom.copy(from); n.stateT = Math.min(n.stateT, 2); continue; }
       if (n.brain === 'cower' || n.alertT > 0) continue;
       if (d > 9) { n.alertT = Math.min(3, (d - 9) * 0.06) + Math.random() * 0.5; n.alertFrom.copy(from); continue; }
@@ -106,10 +110,11 @@ export class Population {
   }
   private panic(n: Npc, from: THREE.Vector3, d: number) {
     if (n.activity || n.brain === 'idle') this.runner.endAct(n);
-    if (d > 24 && Math.random() < 0.4) { // too far to be scared: stop and stare / film
+    if (n.brain !== 'surrender' && d > 24 && Math.random() < 0.4) { // too far to be scared: stop and stare / film
       this.runner.startAct(n, 'film', 8 + Math.random() * 14, Math.atan2(from.x - n.pos.x, from.z - n.pos.z)); return;
     }
-    n.brain = Math.random() < (d > 8 ? 0.3 : 0.1) ? 'cower' : 'flee'; n.stateT = 0;
+    const cornered = n.brain === 'surrender' && d < 2.5; // hands up right in front of the gun: nowhere to run
+    n.brain = cornered || Math.random() < (d > 8 ? 0.3 : 0.1) ? 'cower' : 'flee'; n.stateT = 0;
     n.fleeFrom.copy(from);
     if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
   }
@@ -175,11 +180,13 @@ export class Population {
         const ahead = (dx * f.x + dz * f.z) * Math.sign(sp);
         if (ahead < 2 || ahead > Math.abs(sp) * 1.1) continue;
         const lat = dx * f.z - dz * f.x;
-        if (Math.abs(lat) > 2.2) continue;
+        // only people actually in the car's path (its width plus a margin) jump: a pedestrian on the footpath beside the lane is not
+        const hw = v.tpl.layout.half[0] + 0.55;
+        if (Math.abs(lat) > hw || (Math.abs(lat) > hw - 0.5 && surfaceAt(this.city, n.pos.x, n.pos.z) !== 'road')) continue;
         if (n.brain !== 'flee') {
           n.brain = 'flee'; n.stateT = 4; // short dash
           n.fleeFrom.set(n.pos.x - f.z * Math.sign(lat || 1) * 5, 0, n.pos.z + f.x * Math.sign(lat || 1) * 5);
-          if (Math.random() < 0.4 && !n.char.human.busy) n.char.human.playOnce('Roll', 'full', 0.05);
+          if (ahead < 6 && Math.abs(lat) < hw - 0.3 && Math.random() < 0.5 && !n.char.human.busy) n.char.human.playOnce('Roll', 'full', 0.05); // a real dive, only when it is about to hit
         }
       }
     }

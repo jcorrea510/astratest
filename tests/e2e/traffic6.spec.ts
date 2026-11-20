@@ -19,10 +19,11 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
       const p = prev.get(key);
       if (p && p.lane !== lane && lane.connector && !p.lane.connector && speed > 2) {
         const I = g.city.intersections[p.lane.intersection], t = g.time;
-        if (sig(I, p.lane.axis, t) === 'red' && sig(I, p.lane.axis, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id });
+        if (sig(I, p.lane.axis, t) === 'red' && sig(I, p.lane.axis, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id, h: p.h });
         if (!I.signalized && (approaches.get(I.id) ?? 0) >= 3 && speed > 5) rolled.push({ kind, t, v: speed, inter: I.id });
       }
-      prev.set(key, { lane });
+      const h = p ? p.h : []; if (!lane.connector) { h.push([+(lane.length - (key.s ?? 0) - 5.4).toFixed(1), +speed.toFixed(1), sig(g.city.intersections[lane.intersection], lane.axis, g.time)[0], lane.id, key.ox !== undefined ? +(key.ox).toFixed(1) : 0]); if (h.length > 24) h.shift(); }
+      prev.set(key, { lane, h });
     };
     const idle: Record<number, number> = {}, idleWorst: any[] = [];
     const farIdle: Record<number, number> = {}, farWorst: any[] = [];
@@ -34,7 +35,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
         if (c.persistent) continue;
         chk(c, c.lane, Math.abs(c.v.speed), 'real');
         const id = c.v.id;
-        if (c.mode === 'cruise' && Math.abs(c.v.speed) < 0.5 && !c.legitWait) { idle[id] = (idle[id] ?? 0) + 1 / 30; if (idle[id] > 8 && !idleWorst.some(w => w.id === id)) idleWorst.push({ id, lane: c.lane.id, t: idle[id] }); } else idle[id] = 0;
+        if (c.mode === 'cruise' && Math.abs(c.v.speed) < 0.5 && !c.legitWait) { idle[id] = (idle[id] ?? 0) + 1 / 30; if (idle[id] > 8 && !idleWorst.some(w => w.id === id)) idleWorst.push({ id, lane: c.lane.id, t: idle[id], s: c.s, len: c.lane.length, sig: c.lane.connector ? '-' : sig(g.city.intersections[c.lane.intersection], c.lane.axis, g.time), ss: c.ssWait, jam: c.jamT, blk: c.blockedBy?.id, stopT: c.stopT, inter: g.city.intersections[c.lane.intersection].signalized }); } else idle[id] = 0;
       }
       for (const c of g.crowd.cars) chk(c, c.lane, c.v, 'far');
       if (i % 30 === 0) {

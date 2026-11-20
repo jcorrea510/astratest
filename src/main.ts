@@ -16,7 +16,8 @@ import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } f
 import { MissionCtx } from './game/missions';
 import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
-import { readSave, writeSave, safeSavePos, type SaveData } from './game/save';
+import { readSave, writeSave, safeSavePos, saveSummary, type SaveData } from './game/save';
+import type { GameMode } from './game/modes';
 import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
@@ -64,9 +65,9 @@ function webglOk(): boolean {
 
 ui.init({
   city, settings, callbacks: {
-    onStart: cont => { void play(cont); },
+    onStart: (cont, mode) => { void play(cont, mode); },
     onHighway: () => { void openHighway(); },
-    onOpenSandbox: () => { if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
+    onOpenSandbox: () => { if (game?.mode === 'regular') { activities?.openGoals(); return; } if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
     onPauseRequest: () => { if (game && started && !game.paused && !ui.isMenuOpen()) pause(); },
     onQuitToTitle: () => quitToTitle(),
@@ -148,7 +149,7 @@ function stopAttract(g: Game) {
 }
 
 // ---------------- Starting play ----------------
-async function play(cont: boolean) {
+async function play(cont: boolean, newMode: GameMode = 'sandbox') {
   if (started) return;
   started = true;
   void audio?.resume();
@@ -163,13 +164,15 @@ async function play(cont: boolean) {
     activities.onSaveRequested = () => saveGame();
     activities.missionActive = () => false;
     sandbox = new Sandbox(g, ui);
-    ui.setMode('sandbox');
+
     wireGame(g);
     const save = cont ? readSave(storage) : null;
     g.police.clear();
     let loaded = false;
     if (save) { try { applySave(save); loaded = true; } catch (e) { console.error('save could not be applied', e); } }
-    if (!loaded) newGameSetup(); // a broken save falls back to a fresh start instead of a dead game
+    if (!loaded) newGameSetup(save ? save.mode : newMode); // a broken save falls back to a fresh start instead of a dead game
+    ui.setMode(g.mode);
+    activities.parkOwned();
     activities.spawnCards();
     g.cam.update(0.016, g.player.pos, 'foot');
     ui.showLoading(0.85, 'Waking up the city');
@@ -183,8 +186,8 @@ async function play(cont: boolean) {
     g.start();
     g.input.requestLock();
     if (!loaded) {
-      ui.missionCard('Port Meridian', 'Golden hour. The city is yours.', 'start');
-      setTimeout(() => ui.showControlsHint(`WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools (spawn cars, set the clock, wanted level, teleport) and saving.`, 10), 3200);
+      ui.missionCard('Port Meridian', g.mode === 'regular' ? 'Start with nothing. Rob, save up, buy guns at Tidewater Arms and cars at Redline Motors.' : 'Golden hour. The city is yours.', 'start');
+      setTimeout(() => ui.showControlsHint(g.mode === 'regular' ? `WASD to move, mouse to look, Shift to sprint, Space to jump. You have fists and $${g.money}. Hold up stores for cash, then buy guns at Tidewater Arms and cars at Redline Motors. Esc: map, goals and saving. Dying costs you a medical bill and every weapon.` : `WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools (spawn cars, set the clock, wanted level, teleport) and saving.`, 10), 3200);
     } else ui.toast('Welcome back to Port Meridian', 'info');
     exposeApi();
   } catch (e) {
@@ -193,17 +196,19 @@ async function play(cont: boolean) {
   }
 }
 
-function newGameSetup() {
+function newGameSetup(mode: GameMode) {
   const g = game!;
-  sandbox!.setup();
+  sandbox!.setup(mode);
   g.player.health = g.player.maxHealth;
   g.player.place(PLACES.safehouse.x + 4, 0.25, PLACES.safehouse.z, Math.PI * 0.5);
   g.cam.snapBehind(Math.PI * 0.5 + Math.PI);
 }
 function applySave(s: SaveData) {
   const g = game!, a = activities!;
+  g.mode = s.mode; a.loadOwned(s.cars, s.milestones, s.robberies);
   g.money = s.money; g.player.health = s.health; g.player.armor = s.armor; g.hour = s.hour;
   g.pcombat.inv.load({ weapons: s.weapons, current: s.current, medkits: s.medkits });
+  g.pcombat.inv.holster(); // resuming never puts a gun in your hand
   for (const c of s.collectibles) a.found.add(c);
   for (const j of s.jumps) a.jumpsDone.add(j);
   g.stats = { ...s.stats };
@@ -227,7 +232,7 @@ function saveGame(): boolean {
   // Never save a roof, a lot or the water: store the nearest street / pavement / park spot (or the safehouse).
   const pos = onFoot && !g.player.swimming ? safeSavePos({ x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw }, deckAwareSurface, home) : home;
   return writeSave(storage, {
-    version: 1, savedAt: Date.now(), money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
+    version: 2, savedAt: Date.now(), mode: g.mode, cars: activities.ownedCars, milestones: [...activities.milestones], robberies: activities.robberiesTotal, money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
     missions: [], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
     pos, hour: g.hour, stats: g.stats, tools: sandbox.tools(),
@@ -246,6 +251,7 @@ function wireGame(g: Game) {
   g.events.onRespawn = () => {
     g.respawnDelay = 4.2; g.targetTimeScale = 1; g.timeScale = 1; audio?.setSlowMo(0); setGrade(g, 0);
     ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info');
+    if (g.deathNotice) { const n = g.deathNotice; g.deathNotice = ''; setTimeout(() => ui.toast(n, 'warning'), 900); activities?.parkOwned(); }
   };
   document.addEventListener('pointerlockchange', () => {
     if (!document.pointerLockElement && started && game && !game.paused && !ui.isMenuOpen() && !ourUnlock && !activities?.shopIsOpen) pause();
@@ -272,6 +278,8 @@ function resume() {
   game.input.clearAll();
   game.input.requestLock();
 }
+/** Title menu: the Continue button describes the save (mode, cash, when). */
+function showTitle() { const s = readSave(storage); ui.showTitle(!!s, s ? saveSummary(s) : undefined); }
 function quitToTitle() {
   saveGame();
   location.href = location.pathname; // the title screen (drop debug query flags such as ?autostart)
@@ -384,7 +392,7 @@ async function openHighway(auto?: { kind?: string; time?: string; density?: numb
     g.start();
   };
   if (auto) { await start({ kind: (auto.kind ?? 'sedan') as never, time: (auto.time ?? 'night') as never, density: auto.density ?? 1 }); return; }
-  hw.showHighwayMenu(c => { void start(c); }, () => { ui.showTitle(!!readSave(storage)); });
+  hw.showHighwayMenu(c => { void start(c); }, () => { showTitle(); });
 }
 
 // ---------------- Boot ----------------
@@ -396,7 +404,7 @@ if (!webglOk()) {
   // direct boot into the highway (no city): ?highway=1&car=coupe&time=night&traffic=1
   void openHighway({ kind: params.get('car') ?? undefined, time: params.get('time') ?? undefined, density: Number(params.get('traffic') ?? '1') });
 } else if (params.get('autostart') === '1') {
-  void play(params.get('continue') === '1');
+  void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
 } else {
   // loading screen -> live city flyover behind the title menu
   ui.showLoading(0, 'Preparing the city');
@@ -408,7 +416,7 @@ if (!webglOk()) {
       startAttract(g);
       ui.setBackdropLive(true);
       ui.hideLoading();
-      ui.showTitle(!!readSave(storage));
+      showTitle();
       // title-screen debug: jump the flyover to shot i at t seconds (used for screenshots)
       const shot = (i: number, t = 0) => { if (attract) { attract.shot = i % ATTRACT_SHOTS.length; attract.t = t; attract.dipped = false; enterShot(g, attract.shot); } };
       (window as unknown as { __title?: unknown }).__title = { game: g, ui, settings, shot };

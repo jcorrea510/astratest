@@ -10,8 +10,11 @@ export const PLACES = {
   snack: { x: -46.5, z: 965.5, y: 1.2, yaw: 0, name: 'Pier 9 Snacks' },
   clinic: { x: -60, z: -110, yaw: Math.PI, name: 'Juniper Clinic' },
   precinct: { x: 40, z: 108, yaw: 0, name: 'Meridian PD' },
+  dealer: { x: -300, z: 111.5, yaw: Math.PI, name: 'Redline Motors' },
 } satisfies Record<string, Place>;
 export type PlaceId = keyof typeof PLACES;
+/** Where the cars you own are parked: a row on the pavement along 1st St north of Redline Motors (facing east). */
+export const GARAGE_SLOTS: { x: number; z: number; yaw: number }[] = Array.from({ length: 8 }, (_, i) => ({ x: -338 + i * 6.2, z: 91.5, yaw: Math.PI / 2 }));
 
 /**
  * Walk-in stores that can be held up. (x,z) = centre of the shop's footprint, yaw = direction the shop front faces

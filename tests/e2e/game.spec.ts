@@ -16,7 +16,7 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   expect(await page.evaluate(() => (window as any).__game.player.human.root.visible)).toBe(false);
   await page.screenshot({ path: 'test-results/shots/title.png' });
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New game' })).toBeVisible();
   // no save: no Continue, no story entries
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
   await expect(page.getByText('New game')).toHaveCount(0);
@@ -27,7 +27,8 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   await expect(page.getByText('Open assets (CC0)')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByText('Open assets (CC0)')).toBeHidden();
-  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'New game' }).click();
+  await page.getByRole('button', { name: 'Sandbox' }).click();
   await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
   await step(page, 1, { render: true });

@@ -1,9 +1,13 @@
 /** Versioned save data (localStorage). Pure functions are unit tested. */
 import type { WeaponId, WeaponState } from '../combat/weapons';
+import type { GameMode, OwnedCar } from './modes';
+import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 
 export const SAVE_KEY = 'meridian-afterglow.save.v1';
 export interface SaveData {
-  version: 1; savedAt: number;
+  /** 2 = game modes + owned cars (v1 saves migrate to a Sandbox game). */
+  version: 2; savedAt: number;
+  mode: GameMode; cars: OwnedCar[]; milestones: string[]; robberies: number;
   money: number; health: number; armor: number;
   weapons: Record<WeaponId, WeaponState>; current: WeaponId; medkits: number;
   missions: string[]; collectibles: number[]; jumps: number[];
@@ -18,9 +22,13 @@ export function parseSave(raw: string | null): SaveData | null {
   if (!raw) return null;
   try {
     const d = JSON.parse(raw) as Partial<SaveData>;
-    if (d.version !== 1 || typeof d.money !== 'number' || !d.pos || typeof d.pos.x !== 'number' || !Number.isFinite(d.pos.x) || !Number.isFinite(d.pos.z)) return null;
+    if ((d.version as number) !== 1 && (d.version as number) !== 2) return null;
+    if (typeof d.money !== 'number' || !d.pos || typeof d.pos.x !== 'number' || !Number.isFinite(d.pos.x) || !Number.isFinite(d.pos.z)) return null;
     return {
-      version: 1, savedAt: d.savedAt ?? 0, money: Math.max(0, Math.floor(d.money)), health: clamp(d.health ?? 100, 1, 100), armor: clamp(d.armor ?? 0, 0, 100),
+      version: 2, savedAt: d.savedAt ?? 0,
+      // v1 saves predate the modes: they were all sandbox games
+      mode: (d.version as number) === 2 && d.mode === 'regular' ? 'regular' : 'sandbox',
+      cars: parseCars(d.cars), milestones: Array.isArray(d.milestones) ? d.milestones.filter(x => typeof x === 'string') : [], robberies: Math.max(0, Math.floor(Number(d.robberies) || 0)), money: Math.max(0, Math.floor(d.money)), health: clamp(d.health ?? 100, 1, 100), armor: clamp(d.armor ?? 0, 0, 100),
       weapons: d.weapons as SaveData['weapons'], current: d.current ?? 'fists', medkits: Math.max(0, d.medkits ?? 0),
       missions: Array.isArray(d.missions) ? d.missions.filter(x => typeof x === 'string') : [],
       collectibles: Array.isArray(d.collectibles) ? d.collectibles.filter(x => typeof x === 'number') : [],
@@ -30,6 +38,22 @@ export function parseSave(raw: string | null): SaveData | null {
       ...(d.tools && typeof d.tools === 'object' ? { tools: { god: !!d.tools.god, ammo: !!d.tools.ammo, never: !!d.tools.never, clock: d.tools.clock !== false } } : {}),
     };
   } catch { return null; }
+}
+function parseCars(v: unknown): OwnedCar[] {
+  if (!Array.isArray(v)) return [];
+  const out: OwnedCar[] = [];
+  for (const c of v as { kind?: unknown; paint?: unknown }[]) {
+    if (!c || typeof c.kind !== 'string' || !Object.hasOwn(VEHICLES, c.kind)) continue;
+    out.push({ kind: c.kind as VehicleKind, paint: typeof c.paint === 'number' && Number.isFinite(c.paint) ? Math.max(0, Math.floor(c.paint)) : 0 });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+/** One-line description of a save for the title's Continue button. */
+export function saveSummary(d: SaveData, now = Date.now()): string {
+  const m = Math.floor(Math.max(0, now - d.savedAt) / 60000), h = Math.floor(m / 60);
+  const when = !d.savedAt ? 'earlier' : m < 2 ? 'just now' : m < 60 ? `${m} min ago` : h < 48 ? `${h} h ago` : `${Math.floor(h / 24)} days ago`;
+  return `${d.mode === 'regular' ? 'Regular' : 'Sandbox'}, $${d.money.toLocaleString('en-US')}, ${when}`;
 }
 const clamp = (v: number, a: number, b: number) => (Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : a);
 export function readSave(storage: Pick<Storage, 'getItem'> | null): SaveData | null {

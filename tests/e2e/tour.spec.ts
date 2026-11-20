@@ -70,7 +70,8 @@ test('tour: every feature in one session, clean console and sane world after eve
     await page.goto('./');
     await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
     await page.keyboard.press('Enter');
-    await page.getByRole('button', { name: 'Play' }).click();
+    await page.getByRole('button', { name: 'New game' }).click();
+  await page.getByRole('button', { name: 'Sandbox' }).click();
     await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
     await page.evaluate(() => (window as any).__game.stop());
     await step(page, 1);

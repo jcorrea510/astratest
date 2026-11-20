@@ -986,3 +986,6 @@
 .ma-title-mode { display: flex; align-items: center; gap: calc(12 * var(--u)); margin: calc(-6 * var(--u)) 0 calc(10 * var(--u)); }
 .ma-title-mode-badge { font-family: var(--display); font-weight: 800; font-size: calc(15 * var(--u)); letter-spacing: 0.22em; text-transform: uppercase; color: #fff; background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.5); padding: calc(3 * var(--u)) calc(12 * var(--u)); }
 .ma-title-mode-text { font-family: var(--display); font-weight: 500; font-size: calc(15 * var(--u)); letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255, 255, 255, 0.78); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
+
+/* R6-M: game mode badge (subtle, bottom-left of the HUD) */
+.ma-mode-badge { position: absolute; left: calc(14 * var(--u)); bottom: calc(10 * var(--u)); font-family: var(--display); font-weight: 600; font-size: calc(11 * var(--u)); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); pointer-events: none; }

@@ -32,6 +32,7 @@ import { BENCHES } from '../world/benches';
 import { Police, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
+import { downPenalty, type GameMode } from './modes';
 import { CarEntry, type Enterable } from './carEntry';
 import { COP_LOOK } from './dispatch';
 import { getTemplate } from '../vehicles/models/build';
@@ -91,10 +92,14 @@ export class Game {
   /** the car the player last got out of (kept out of mission clean-ups) */
   lastPlayerVehicle: Vehicle | null = null;
   money = 250;
+  /** Regular (earn everything, losses on death) or Sandbox (tools, no losses). Set when a game starts / loads. */
+  mode: GameMode = 'sandbox';
   pickups: Pickup[] = [];
   private pickupId = 0;
   deathT = -1;
   deathKind: 'down' | 'busted' = 'down';
+  /** [UI] regular mode: what the death cost (shown as a notice after respawning) */
+  deathNotice = '';
   /** [UI] seconds from going down to respawning (the UI stretches it while an arrest animation / title card plays) */
   respawnDelay = 4.2;
   /** [UI] title-screen flyover: the hidden player cannot be hit or go down */
@@ -205,13 +210,13 @@ export class Game {
       if (e.shooter === this.player) this.traffic.gunfire(e.origin, this.player.pos, e.hits); // drivers nearby floor it
       if (e.shooter === this.player) this.police.report('shooting', this.player.pos);
     };
-    this.combat.onHit = (target, _dmg, from, _head, killed) => {
+    this.combat.onHit = (target, _dmg, from, _head, killed, w) => {
       const npc = this.pop.npcs.find(n => n.char === target);
       if (from === this.player && npc) {
         if (npc.role === 'police') { this.police.report(killed ? 'copKill' : 'copAttack', this.player.pos); this.police.copHit(npc); }
         else this.police.report(killed ? 'kill' : 'assault', this.player.pos);
         if (npc.role === 'gang' && npc.alive) { npc.hostile = true; npc.brain = 'combat'; npc.target = this.player; npc.seenTime = this.time; npc.lastSeen.copy(this.player.pos); }
-        if (npc.role === 'civilian' && npc.alive) { npc.brain = 'flee'; npc.fleeFrom.copy(this.player.pos); npc.stateT = 0; }
+        if (npc.role === 'civilian' && npc.alive) this.pop.runner.provoke(npc, this.player, w.id === 'fists', killed); // bare-fisted: brave people fight back
         if (killed) { this.stats.kills++; this.onNpcKilled(npc, from); }
       } else if (npc && killed) this.onNpcKilled(npc, from);
       if (target === this.player && killed) this.playerDown('down');
@@ -537,16 +542,19 @@ export class Game {
     if (this.playerVehicle) this.exitVehicle(true);
     if (kind === 'busted') this.player.human.setState('crouch');
     else if (this.player.alive) this.player.kill();
-    const fee = Math.min(this.money, Math.max(50, Math.floor(this.money * 0.1)));
+    const pen = downPenalty(this.mode, kind, this.money), fee = pen.fee;
     this.addMoney(-fee);
     this.audio.play('down');
-    this.events.onDeath(kind, kind === 'down' ? `Medical bill  -$${fee}` : `Bail  -$${fee}`);
+    if (pen.loseGear) { this.pcombat.inv.strip(); this.player.armor = 0; }
+    this.deathNotice = pen.notice;
+    this.events.onDeath(kind, pen.loseGear ? (kind === 'down' ? `Medical bill  -$${fee}` : `Fined  -$${fee}`) : (kind === 'down' ? 'Patched up, no charge' : 'Released, no charge'));
   }
   private respawn() {
     const place = this.deathKind === 'down' ? CLINIC : PRECINCT;
     this.carEntry?.cancel();
     if (this.playerVehicle) this.exitVehicle(true);
     this.player.revive(this.player.maxHealth); this.player.armor = 0;
+    this.pcombat.inv.holster(); // never respawn with a gun in hand
     this.player.place(place.x, 0.25, place.z, place.yaw);
     this.player.setCollision(true);
     this.renderer.scene.add(this.player.human.root);

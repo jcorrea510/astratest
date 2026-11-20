@@ -33,12 +33,12 @@ describe('inventory', () => {
   });
 });
 describe('save data', () => {
-  const base: SaveData = { version: 1, savedAt: 1, money: 1234, health: 80, armor: 10, weapons: new Inventory().weapons, current: 'fists', medkits: 2, missions: ['m1'], collectibles: [1, 3], jumps: [0], pos: { x: -300, z: -106, yaw: 1 }, hour: 18, stats: { kills: 1, distance: 2, crashes: 3 } };
+  const base: SaveData = { version: 2, savedAt: 1, mode: 'regular', cars: [{ kind: 'coupe', paint: 2 }], milestones: ['cash10k'], robberies: 2, money: 1234, health: 80, armor: 10, weapons: new Inventory().weapons, current: 'fists', medkits: 2, missions: ['m1'], collectibles: [1, 3], jumps: [0], pos: { x: -300, z: -106, yaw: 1 }, hour: 18, stats: { kills: 1, distance: 2, crashes: 3 } };
   it('round-trips', () => { expect(parseSave(serialize(base))).toEqual(base); });
   it('keeps sandbox tool toggles', () => { const t = { ...base, tools: { god: true, ammo: false, never: true, clock: false } }; expect(parseSave(serialize(t))).toEqual(t); });
   it('rejects corrupt or foreign data', () => {
     expect(parseSave('not json')).toBeNull();
-    expect(parseSave(JSON.stringify({ ...base, version: 2 }))).toBeNull();
+    expect(parseSave(JSON.stringify({ ...base, version: 3 }))).toBeNull();
     expect(parseSave(JSON.stringify({ ...base, pos: { x: NaN, z: 0 } }))).toBeNull();
   });
   it('clamps values', () => { const p = parseSave(JSON.stringify({ ...base, money: -5, health: 999 }))!; expect(p.money).toBe(0); expect(p.health).toBe(100); });

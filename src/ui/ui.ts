@@ -41,8 +41,11 @@ const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', sandbox: 'sandb
 const DOCKABLE = new Set<LayerId>(['map', 'sandbox', 'settings', 'controls']);
 export const GAME_VERSION = 'v0.3.0';
 const TITLE_ITEMS: Record<string, string> = {
-  play: 'Sandbox: a pistol, some cash and a whole city. Spawn cars, set the wanted level or time, teleport: Esc, then the Sandbox tab.',
-  continue: 'Pick up where you left off: your cash, guns, spot in the city and the time of day.',
+  newgame: 'Start over. You choose the mode next: Regular or Sandbox.',
+  regular: 'Regular: start with fists and a little cash. Rob stores, buy guns and cars, and pay the hospital when you go down. No cheats.',
+  sandbox: 'Sandbox: a pistol, cash and a whole city. Spawn cars, set the wanted level or time, teleport. Nothing is ever lost.',
+  back: 'Back to the main menu.',
+  continue: 'Pick up your saved game exactly where you left off: cash, guns, cars, spot in the city and the time of day.',
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
   highway: 'Endless multi-lane highway at speed: weave through traffic, pass close for points. Pick your car and the time of day.',
@@ -130,6 +133,9 @@ export class UI implements GameUI {
   private padRepeat = new Map<string, number>();
   private padLast = 0;
   private hasSave = false;
+  private saveSummary = '';
+  private gameMode: 'regular' | 'sandbox' = 'sandbox';
+  private modeBadge: HTMLDivElement | null = null;
 
   constructor() {
     this.root = h('div', 'ma-root');
@@ -237,7 +243,7 @@ export class UI implements GameUI {
     const content = h('div', 'ma-title-content');
     content.appendChild(logo('ma-logo-title'));
     const tag = h('div', 'ma-title-mode');
-    tag.append(h('span', 'ma-title-mode-badge', 'Sandbox'), h('span', 'ma-title-mode-text', 'Open-world sandbox'));
+    tag.append(h('span', 'ma-title-mode-badge', 'Open world'), h('span', 'ma-title-mode-text', 'Regular or Sandbox'));
     content.appendChild(tag);
     const menu = h('div', 'ma-menu ma-title-menu');
     content.appendChild(menu);
@@ -275,8 +281,8 @@ export class UI implements GameUI {
     if (key && TITLE_ITEMS[key]) b.addEventListener('focus', () => { this.titleDesc.textContent = TITLE_ITEMS[key]; });
     return b;
   }
-
-  showTitle(hasSave: boolean): void {
+  showTitle(hasSave: boolean, saveSummary = ''): void {
+    this.hasSave = hasSave; this.saveSummary = saveSummary;
     this.hasSave = hasSave;
     this.closeAllLayers();
     this.wheel.hide();
@@ -285,14 +291,14 @@ export class UI implements GameUI {
     this.hud?.robbery(null);
     this.session = freshSession();
     this.titleMenu.textContent = '';
-    const start = (cont: boolean) => { this.sound('click'); this.closeAllLayers(); this.titleEl.classList.add('is-starting'); this.callbacks.onStart(cont); };
-    const play = this.menuItem('Play', () => {
-      if (this.hasSave) this.confirm('Start a new game? Your saved game will be replaced the next time you save.', 'Start new game', () => start(false));
-      else start(false);
-    }, false, 'play');
+    const start = (cont: boolean, mode?: 'regular' | 'sandbox') => { this.sound('click'); this.closeAllLayers(); this.titleEl.classList.add('is-starting'); this.callbacks.onStart(cont, mode); };
+    const play = this.menuItem('New game', () => {
+      if (this.hasSave) this.confirm('Start a new game? Your saved game will be replaced the next time you save.', 'Start new game', () => this.pickMode(start));
+      else this.pickMode(start);
+    }, false, 'newgame');
     const items = [play, this.menuItem('Highway', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onHighway?.(); }, false, 'highway')];
     let cont: HTMLButtonElement | null = null;
-    if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue'); items.unshift(cont); }
+    if (hasSave) { cont = this.menuItem(`Continue — ${saveSummary || 'saved game'}`, () => start(true), false, 'continue'); items.unshift(cont); }
     items.push(
       this.menuItem('Settings', () => { this.sound('click'); this.openSettings(); }, false, 'settings'),
       this.menuItem('Controls', () => { this.sound('click'); this.openControls(); }, false, 'controls'),
@@ -304,6 +310,15 @@ export class UI implements GameUI {
     setClass(this.titleEl, 'is-pressed', this.titlePressed);
     this.pushLayer({ id: 'title', el: this.titleEl, back: () => {} }, this.titlePressed ? (cont ?? play) : undefined);
     if (!this.titlePressed) { (document.activeElement as HTMLElement | null)?.blur?.(); this.titleEl.tabIndex = -1; this.titleEl.focus({ preventScroll: true }); }
+  }
+  /** Second step of New game: Regular or Sandbox. */
+  private pickMode(start: (cont: boolean, mode?: 'regular' | 'sandbox') => void) {
+    this.titleMenu.textContent = '';
+    const regular = this.menuItem('Regular', () => start(false, 'regular'), false, 'regular');
+    const sandbox = this.menuItem('Sandbox', () => start(false, 'sandbox'), false, 'sandbox');
+    const back = this.menuItem('Back', () => { this.sound('click'); this.showTitle(this.hasSave, this.saveSummary); }, false, 'back');
+    this.titleMenu.append(regular, sandbox, back);
+    regular.focus({ preventScroll: true });
   }
   /** "Press any key" -> the logo settles and the menu slides in. */
   private revealTitleMenu() {
@@ -486,7 +501,12 @@ export class UI implements GameUI {
   }
 
   /** The game is sandbox-only; kept for the GameUI contract. */
-  setMode(_mode: 'story' | 'sandbox'): void { /* sandbox only */ }
+  setMode(mode: 'story' | 'sandbox' | 'regular'): void {
+    this.gameMode = mode === 'regular' ? 'regular' : 'sandbox';
+    const tab = this.pauseTabs.get('sandbox'); if (tab) tab.textContent = this.gameMode === 'regular' ? 'Goals' : 'Sandbox';
+    if (!this.modeBadge) { this.modeBadge = h('div', 'ma-mode-badge'); this.hudLayer.appendChild(this.modeBadge); }
+    this.modeBadge.textContent = this.gameMode === 'regular' ? 'Regular' : 'Sandbox';
+  }
 
   setPaused(paused: boolean): void {
     if (paused) {
