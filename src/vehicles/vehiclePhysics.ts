@@ -211,6 +211,8 @@ export class VehiclePhysics {
       if (fwdSpeed > 0.8) brakeForce = spec.mass * spec.brake * -thr;
       else drive = spec.engine * 0.6 * thr * power * Math.max(0, 1 - (-fwdSpeed / spec.reverseSpeed) ** 2);
     }
+    // R6-D stability control: when the tail steps out (sideslip > ~0.15 rad) outside a deliberate drift, trim the throttle
+    if (!drifting && this.hb < 0.1 && drive > 0) drive *= 1 - 0.9 * smooth(0.15, 0.4, Math.abs(this.beta));
     if (input.brake) brakeForce = Math.max(brakeForce, spec.mass * spec.brake * input.brake);
     const coasting = Math.abs(thr) <= 0.05;
     if (dt > 0) { this.longAcc += ((fwdSpeed - this.prevFwd) / dt - this.longAcc) * Math.min(1, dt * 6); this.prevFwd = fwdSpeed; }
