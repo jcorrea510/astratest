@@ -292,10 +292,13 @@ export class Police {
       const v = car.v, pp = this.lastPlayerPos;
       const side: 1 | -1 = v.doorPoint(1).distanceTo(pp) >= v.doorPoint(-1).distanceTo(pp) ? 1 : -1; // exit on the far side: the car is the cover
       v.setDoor(v.doorIndex(side === 1 ? 'left' : 'right'), 1);
+      let ci = 0;
       for (const cop of this.dispatch.bail(car, side)) {
         this.dispatch.arm(cop, 'police', Math.max(2, this.state.heat), true); this.foot.push(cop);
         cop.char.human.playAction('exit_car', { rate: 2 });
-        cop.coverPoint = cop.goal = v.doorPoint(side).clone(); cop.crouching = true;
+        // cover = the car's far side as seen from the player, spread a little so the crew does not stack up
+        const ax = v.position.x - pp.x, az = v.position.z - pp.z, al = Math.hypot(ax, az) || 1, k = ci++ === 0 ? 0 : 0.8;
+        cop.coverPoint = cop.goal = new THREE.Vector3(v.position.x + ax / al * 2.3 - az / al * k, v.position.y, v.position.z + az / al * 2.3 + ax / al * k); cop.crouching = true;
       }
     }
   }

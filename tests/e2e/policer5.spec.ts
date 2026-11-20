@@ -94,4 +94,42 @@ test.describe('police R5', () => {
     expect(lost).toBeGreaterThan(2);
     clean(p);
   });
+
+  test('shoot-out: the crew returns fire within 2.5 s and uses the car as cover', async ({ page }) => {
+    const p = watch(page);
+    await scene(page, 15);
+    await page.evaluate(() => {
+      const g = (window as any).__game, c = (window as any).__r5, w: any = window;
+      w.__copShots = 0; const prev = g.combat.onShot;
+      g.combat.onShot = (e: any) => { if (e.shooter !== g.player) w.__copShots++; prev?.(e); };
+      g.player.health = 100000; // keep the target alive: we only count their fire
+      g.pcombat.give('pistol', 50); g.pcombat.inv.select('pistol');
+      const o = g.player.pos.clone(); o.y += 1.4; const t = c.v.position.clone(); t.y += 0.6;
+      g.combat.shoot(g.player, g.pcombat.inv.def, o, t.sub(o).normalize(), 0);
+      w.__far = 0; w.__near = 0; w.__n = 0;
+    });
+    // sample the officers every 0.25 s for 2.5 s
+    for (let i = 0; i < 10; i++) {
+      await page.evaluate(() => {
+        const g = (window as any).__game;
+        for (let k = 0; k < 8; k++) g.frame(1 / 30, false);
+      }).catch(() => { });
+      await page.evaluate(() => {
+        const g = (window as any).__game, c = (window as any).__r5, w: any = window, pp = g.player.pos, cp = c.v.position;
+        for (const n of g.police.foot) {
+          if (!n.alive) continue;
+          const d = Math.hypot(n.pos.x - cp.x, n.pos.z - cp.z);
+          const ux = pp.x - cp.x, uz = pp.z - cp.z, l = Math.hypot(ux, uz);
+          const along = ((n.pos.x - cp.x) * ux + (n.pos.z - cp.z) * uz) / l; // < 0: behind the car as seen from the player
+          w.__n++; if (d <= 2.8) w.__near++; if (along <= 0.3) w.__far++;
+        }
+      });
+    }
+    const r = await page.evaluate(() => { const w: any = window; return { shots: w.__copShots, n: w.__n, near: w.__near, far: w.__far }; });
+    expect(r.shots).toBeGreaterThan(0);
+    expect(r.n).toBeGreaterThan(5);
+    expect(r.near / r.n).toBeGreaterThan(0.8);
+    expect(r.far / r.n).toBeGreaterThan(0.8);
+    clean(p);
+  });
 });
