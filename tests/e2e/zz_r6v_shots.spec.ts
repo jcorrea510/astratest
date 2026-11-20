@@ -27,7 +27,7 @@ test('lod shots', async ({ page }) => {
       const ox = P0.x, oz = P0.z, yaw = Math.atan2(fx, fz);
       const pt = (d: number, side: number) => ({ x: ox + fx * d + rx * side, z: oz + fz * d + rz * side });
       const kinds = ['sedan', 'suv', 'hatch', 'pickup'];
-      const dists = [10, 30, 60, 100];
+      const dists = [10, 30, 60, 120];
       if (view === 'real') {
         dists.forEach((d, i) => { const p = pt(d, i % 2 ? 3 : -0.5); const v = g.vehicles.spawn(kinds[i], p.x, p.z, yaw + 0.5); v.persistent = true; v.__made = true; v.settleParked?.(0); });
         dists.forEach((d, i) => { const p = pt(d + 2, i % 2 ? -4 : 6.5); const n = g.pop.spawn('civilian', p.x, p.z, 0.2); n.persistent = true; n.__made = true; n.brain = 'scripted'; n.char.yaw = yaw + 2.2; });

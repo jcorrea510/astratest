@@ -103,7 +103,7 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     // (clustering a body down to a few hundred triangles tears it into spiky blobs) and only lightly clustered.
     const bake = (b: Soup, g: Soup | null) => ({ body: b.toGeometry(), glass: g && g.tris ? g.toGeometry() : null });
     const entries = lod === 0 ? [bake(body, glass)] : lod === 1 ? [bake(body.decimateTo(s.type === 'tank' ? 2200 : 3000), glass?.decimateTo(220) ?? null)]
-      : [bake(body.decimateTo(s.type === 'tank' ? 1100 : FAR_TRIS), glass?.decimateTo(90) ?? null)];
+      : [bake(body.decimateTo(s.type === 'tank' ? 1100 : FAR_TRIS), glass?.decimateTo(240) ?? null)];
     for (const e of entries) {
       lods.push(e);
       if (lods.length === 3) far = farGeometry(e.body, e.glass);

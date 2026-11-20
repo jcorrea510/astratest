@@ -71,7 +71,7 @@ export const ACTIONS: Record<string, ActionDef> = {
   get_up: { clip: 'Death01', layer: 'full', reverse: true, rate: 1.1, fade: 0.12 },
   // --- reactions / civilians
   cower: { clip: 'Crouch_Idle_Loop', layer: 'full', loop: true, hold: true, fade: 0.2, poses: [[0, sym({ chest: [18, 0, 0], neck: [15, 0, 0], head: [20, 0, 0], armL: [-120, 0, 30], foreL: [-110, 0, 0] })]] },
-  hands_up: { layer: 'upper', hold: true, dur: 0.35, fade: 0.2, poses: [[0, {}], [1, sym({ armL: [-18, 0, 62], foreL: [0, 0, 105], handL: [-10, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
+  hands_up: { layer: 'upper', hold: true, dur: 0.35, fade: 0.2, poses: [[0, {}], [1, sym({ armL: [-35, 0, 34], foreL: [0, 0, 105], handL: [-10, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
   // fist-fight stance: fists up by the chin, elbows tucked, slight forward lean
   guard: { layer: 'upper', hold: true, dur: 0.25, fade: 0.15, poses: [[0, {}], [1, sym({ armL: [-38, 0, 12], foreL: [-118, 0, 0], head: [6, 0, 0], chest: [8, 0, 0] })]] },
   // covering up: forearms in front of the face

@@ -555,7 +555,7 @@ export class Traffic {
     const seen = (p: THREE.Vector3, d: number) => d < 230 && this.frustum.containsPoint(p);
     for (const car of [...this.cars]) {
       if (car.persistent) continue;
-      const dd = car.v.position.distanceTo(focus), jam = (car.jamT ?? 0) > 20 && dd > 30 && !seen(car.v.position, dd) || (car.jamT ?? 0) > 60 && dd > 70;
+      const dd = car.v.position.distanceTo(focus), jam = (car.jamT ?? 0) > 20 && dd > 30 && !seen(car.v.position, dd); // never pop a jammed car the player can see (R6-V)
       if (jam) this.stats.jamDespawns++;
       if (jam || dd > 150 && !seen(car.v.position, dd)) { this.cars.splice(this.cars.indexOf(car), 1); this.pop.remove(car.driver); for (const p of car.passengers ?? []) if (p.char.inVehicle === car.v) this.pop.remove(p); this.vehicles.remove(car.v); }
     }

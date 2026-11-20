@@ -5,6 +5,16 @@ import { VEHICLES, type VehicleKind } from '../specs';
 import { wheelSoup } from './parts';
 import { SHAPES } from '../shapes';
 
+function area(g: import('three').BufferGeometry | null): number {
+  if (!g) return 0;
+  const p = g.attributes.position.array as Float32Array; let a = 0;
+  for (let i = 0; i < p.length; i += 9) {
+    const ux = p[i + 3] - p[i], uy = p[i + 4] - p[i + 1], uz = p[i + 5] - p[i + 2], vx = p[i + 6] - p[i], vy = p[i + 7] - p[i + 1], vz = p[i + 8] - p[i + 2];
+    a += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+  }
+  return a;
+}
+
 describe('procedural vehicle models', () => {
   for (const kind of Object.keys(VEHICLES) as VehicleKind[]) {
     it(`${kind} builds three LODs with doors, panes and seats`, { timeout: 60000 }, () => {
@@ -16,7 +26,9 @@ describe('procedural vehicle models', () => {
       expect(lo).toBeLessThan(hi * 0.5);
       expect(lo).toBeLessThan(3200);
       const far = t.lods[2].body.attributes.position.count / 3;
-      expect(far).toBeLessThan(kind === 'tank' ? 1000 : 700); expect(far).toBeGreaterThan(40);
+      expect(far).toBeLessThan(kind === 'tank' ? 1200 : 1400); expect(far).toBeGreaterThan(40);
+      // the far model keeps (nearly) all its glass: decimating it too hard left see-through cabins on far-crowd cars (R6-V)
+      if (t.lods[1].glass) expect(area(t.lods[2].glass)).toBeGreaterThan(area(t.lods[1].glass) * 0.8);
       expect(t.doors.length).toBe(SHAPES[kind].doors.length * 2);
       if (kind !== 'tank') {
         expect(t.panes.some(p => p.name === 'windshield')).toBe(true);

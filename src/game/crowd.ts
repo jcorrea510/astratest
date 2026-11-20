@@ -121,7 +121,7 @@ export class Crowd {
         const a = road.from + 8, b = road.to - 8;
         for (const side of [1, -1]) {
           for (let s = a; s <= b; s += 6.4) {
-            if (!r.chance(0.42)) continue;
+            if (!r.chance(0.3)) continue; // R6-T: fewer kerbside slots so moving cars outnumber parked ones
             const off = side * (road.half - 0.45), along = s + r.range(-0.5, 0.5);
             const x = road.axis === 'x' ? along : road.coord + off, z = road.axis === 'x' ? road.coord + off : along;
             r.chance(0.5); // (keeps the seeded colours / kinds below unchanged)

@@ -78,9 +78,8 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
         if (ok) continue;
         bySrc[e.src] = (bySrc[e.src] ?? 0) + 1;
         if (events.length < 40) events.push({ f: i, src: e.src, d: +e.d.toFixed(1), x: +e.x.toFixed(1), z: +e.z.toFixed(1), why: g.crowd.debug.filter((r: any) => Math.hypot(r.x - e.x, r.z - e.z) < 3).map((r: any) => r.why + (r.inView ? '/v' : '')).join(',') });
-      g.crowd.debug.length = 0;
       }
-      prev = cur; if (g.crowd.debug.length > 200) g.crowd.debug.length = 0;
+      prev = cur; g.crowd.debug.length = 0;
     }
     function snapshotHas(k: string): boolean {
       // the entity still exists and is drawn (it only left the 60 m / view window)

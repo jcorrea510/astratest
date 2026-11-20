@@ -11,7 +11,7 @@ test('hands up shots', async ({ page }) => {
       if (pose) (window as any).__ACTIONS.hands_up.poses = [[0, {}], [1, pose]];
       g.clockRunning = false; g.hour = 13;
       g.player.place(-41, 0.25, 9, 0);
-      for (const n of [...g.pop.npcs]) g.pop.remove(n);
+      const gd = new Set(g.armyGuards.guards.map((q: any) => q.npc)); for (const n of [...g.pop.npcs]) if (!gd.has(n)) g.pop.remove(n);
       const n = g.pop.spawn('civilian', -41, 12, 0.2); n.persistent = true; n.brain = 'scripted'; n.char.yaw = Math.PI;
       (window as any).__t = n;
       for (let i = 0; i < 20; i++) g.frame(1 / 30, false);

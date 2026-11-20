@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { boot, step } from './helpers';
 
 /* R6-M: Regular vs Sandbox mode, death penalty, dealership and the title menu wording. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type W = any;
 
 test.describe('game modes', () => {
@@ -104,9 +103,14 @@ test('title: New game then pick a mode; Continue describes the save', async ({ p
   expect(await page.evaluate(() => (window as W).__game.mode)).toBe('regular');
   const hud = await page.locator('.ma-mode-badge').textContent();
   expect(hud).toBe('Regular');
-  await page.evaluate(() => { (window as W).__game.stop(); (window as W).__meridian.save(); });
+});
+
+test('title: Continue describes the saved game (mode, cash, last played)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const save = { version: 2, savedAt: Date.now() - 5 * 60_000, mode: 'regular', money: 12345, health: 100, armor: 0, weapons: {}, current: 'fists', medkits: 0, missions: [], collectibles: [], jumps: [], pos: { x: -300, z: -106, yaw: 1 }, hour: 18, stats: { kills: 0, distance: 0, crashes: 0 }, cars: [], milestones: [], robberies: 0 };
+  await page.addInitScript(sv => { try { localStorage.setItem('meridian-afterglow.save.v1', JSON.stringify(sv)); } catch { /* ignore */ } }, save);
   await page.goto('./');
   await page.waitForFunction(() => !!(window as W).__title, null, { timeout: 180_000 });
   await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: /Continue — Regular, \$400, just now/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continue — Regular, \$12,345, 5 min ago/ })).toBeVisible();
 });
