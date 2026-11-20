@@ -165,6 +165,7 @@ export class Vehicle {
       this.beam = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 3.6), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
       this.beam.renderOrder = 2; this.visual.add(this.beam);
     }
+    this.visual.userData.floorY = GROUND + t.shape.clear + 0.14; // cabin carpet top: seated humans plant their feet here
     this.group.add(this.visual);
     this.syncTransform();
   }
@@ -264,11 +265,11 @@ export class Vehicle {
     return true;
   }
   /** Pane whose glass is within `tol` metres of a world point (e.g. a bullet hit), or null. Broken panes are skipped. */
-  glassAt(worldPoint: THREE.Vector3, tol = 0.12): number | null {
+  glassAt(worldPoint: THREE.Vector3, tol = 0.12, includeBroken = false): number | null {
     let best: number | null = null, bd = tol;
     this.group.updateMatrixWorld();
     for (const p of this.tpl.panes) {
-      if (this.isGlassBroken(p.id)) continue;
+      if (!includeBroken && this.isGlassBroken(p.id)) continue;
       // into the rest pose of the pane's bone
       const inv = this.boneMatrix(p.bone, _m).invert();
       const lp = _v.copy(worldPoint).applyMatrix4(inv);
@@ -277,6 +278,8 @@ export class Vehicle {
     }
     return best;
   }
+  /** True if a world point lies over a window opening (broken or not): bullet holes must never be stamped there (the physics hull is coarser than the body, so they would hang in the air). */
+  overGlass(worldPoint: THREE.Vector3, tol = 0.3) { return this.glassAt(worldPoint, tol, true) !== null; }
   /** World matrix that maps rest-pose (body frame) points of a bone's vertices into the world. */
   private boneMatrix(bone: number, out: THREE.Matrix4) { const b = this.bones[bone]; b.updateWorldMatrix(true, false); return out.multiplyMatrices(b.matrixWorld, this.skeleton.boneInverses[bone]); }
 

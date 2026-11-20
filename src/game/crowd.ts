@@ -12,7 +12,7 @@ import type { Traffic } from './traffic';
 import type { Population } from './population';
 import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX, VEHICLES } from '../vehicles/specs';
-import { yieldsToSiren } from './trafficRules';
+import { yieldsToSiren, signalCap, stopSignCap } from './trafficRules';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
@@ -127,7 +127,7 @@ function makeInstanced(base: THREE.BufferGeometry, n: number, walk: boolean): { 
 
 interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
-  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
+  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; ssLane?: number; ssWait?: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
 interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; /** height on a bridge walkway */ y?: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
 /** Paint of a parked car: the same for the far instanced copy and the real car, so the swap is invisible. */
@@ -285,9 +285,13 @@ export class Crowd {
       if (!lane.connector) {
         const inter = this.city.intersections[lane.intersection];
         const dStop = lane.length - c.s - 5.4;
-        if (inter.signalized && dStop > -1) {
-          const st = signalState(inter, lane.axis, t);
-          if (st !== 'green' && !(st === 'yellow' && dStop < c.v * 0.45)) target = Math.min(target, Math.max(0, dStop) * 0.9);
+        if (inter.signalized) target = Math.min(target, signalCap(signalState(inter, lane.axis, t), dStop, c.v));
+        else if (dStop > -1) { // stop sign: halt, wait a beat, go once nobody else is in the junction (R6-T)
+          if (c.ssLane !== lane.id) { c.ssLane = lane.id; c.ssWait = 0; }
+          if (dStop < 1.8 && c.v < 0.4) c.ssWait = (c.ssWait ?? 0) + dt;
+          let clear = true;
+          if (dStop < 14) for (const o of cars) if (o !== c && o.lane.intersection === lane.intersection && o.lane.connector && o.v > 0.3) { clear = false; break; }
+          target = Math.min(target, stopSignCap(dStop, c.v, c.ssWait ?? 0, clear));
         }
       } else target = Math.min(target, 8);
       // kerb lane: hold clear of kerbside parked cars; a siren behind / oncoming: tuck to the kerb and slow down

@@ -17,6 +17,7 @@ import { ARMY_MOUNTS } from '../vehicles/helicopterModel';
 import type { Vehicle } from '../vehicles/vehicle';
 import { ARMY_BASE } from '../world/citymap';
 import { armyLayout } from '../world/armybase';
+import { Gunner, rayMiss } from './gunnery';
 
 export const ROCKET_SPEED = 55;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -97,7 +98,7 @@ export interface ArmyAirHooks {
 export interface ArmyTarget { pos: THREE.Vector3; vel: THREE.Vector3; vehicle: { damage(a: number, p?: THREE.Vector3, d?: THREE.Vector3, by?: unknown): boolean; maxHealth?: number; spec?: { health: number } } | null; onFoot: boolean }
 
 interface Unit {
-  heli: Helicopter; state: 'spool' | 'attack' | 'rtb'; t: number; burst: number; gunCd: number; missileCd: number; idx: number; shooter: Character; acc: number; leaveT: number;
+  heli: Helicopter; state: 'spool' | 'attack' | 'rtb'; t: number; burst: number; gunCd: number; missileCd: number; idx: number; shooter: Character; acc: number; leaveT: number; gunner: Gunner;
 }
 
 /** Hostile army gunships (AI). Call update() every frame. */
@@ -105,7 +106,7 @@ export class ArmyAir {
   units: Unit[] = [];
   trespassT = 0; respawnT = 4;
   /** counters for tests / HUD */
-  stats = { launched: 0, missiles: 0, bursts: 0, shot: 0 };
+  stats = { launched: 0, missiles: 0, bursts: 0, shot: 0, /** rounds whose line passed within hit distance of the target (what a hit-scan round would strike) */ onTarget: 0 };
   private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3(); private tmpC = new THREE.Vector3(); private tmpD = new THREE.Vector3();
   constructor(private hooks: ArmyAirHooks) { }
 
@@ -134,7 +135,7 @@ export class ArmyAir {
     if (!heli) heli = this.hooks.spawn(pad.x, 0.12, pad.z, Math.PI);
     heli.aiOwned = true; heli.engineOn = true; heli.persistent = true; heli.parked = false;
     const shooter = this.makePilot(heli);
-    this.units.push({ heli, state: 'spool', t: 0, burst: 0, gunCd: 2, missileCd: 6, idx: this.units.length, shooter, acc: 0, leaveT: 0 });
+    this.units.push({ heli, state: 'spool', t: 0, burst: 0, gunCd: 2, missileCd: 6, idx: this.units.length, shooter, acc: 0, leaveT: 0, gunner: new Gunner() });
     this.stats.launched++;
   }
   /** Minimal stand-in for the pilot so combat can attribute shots (team police, not the player). */
@@ -181,41 +182,40 @@ export class ArmyAir {
       if (u.leaveT > 45 || d < 40) { this.drop(u); }
       return;
     }
-    // ---- weapons
+    // ---- weapons: a gunner who needs ~1.6 s to react after he sees the target, lags a moving one, drifts and scatters (gunnery.ts)
     const eye = h.gunMuzzle(this.tmpB);
     const dist = eye.distanceTo(tg.pos);
     const shooter = u.shooter;
     const seen = dist < 190 && this.los(eye, this.tmpC.copy(tg.pos).setY(tg.pos.y + 1), h);
-    // turret tracks the lead point even while manoeuvring
-    const lead = leadPoint(eye, tg.pos, tg.vel, 400, this.tmpC);
-    h.gunAim.yaw = Math.atan2(lead.x - eye.x, lead.z - eye.z); h.gunAim.pitch = Math.asin(THREE.MathUtils.clamp((lead.y - eye.y) / Math.max(1, dist), -1, 1));
+    const speed = tg.vel.length();
+    const ready = u.gunner.track(dt, seen && Math.abs(err) < 0.9, dist, speed);
+    // turret tracks the target smoothly (the visual gimbal); the rounds themselves get the gunner's error
+    const gl = this.tmpC.copy(tg.pos).addScaledVector(tg.vel, 0.12);
+    h.gunAim.yaw = Math.atan2(gl.x - eye.x, gl.z - eye.z); h.gunAim.pitch = Math.asin(THREE.MathUtils.clamp((gl.y - eye.y) / Math.max(1, dist), -1, 1));
     u.gunCd -= dt; u.missileCd -= dt;
-    if (seen && Math.abs(err) < 0.7) {
-      if (u.burst <= 0 && u.gunCd <= 0 && dist < 130) { u.burst = 0.9 + Math.random() * 0.5; u.gunCd = 2.2 + Math.random() * 1.8; this.stats.bursts++; }
+    if (seen && ready && Math.abs(err) < 0.7) {
+      if (u.burst <= 0 && u.gunCd <= 0 && dist < 130) { u.burst = 0.45 + Math.random() * 0.45; u.gunCd = 2.6 + Math.random() * 2; this.stats.bursts++; }
       if (u.burst > 0) {
-        u.burst -= dt; u.acc += dt * 12; const shots = Math.floor(u.acc); u.acc -= shots;
-        for (let n = 0; n < shots; n++) this.fireGun(u, eye, lead, dist, tg);
+        u.burst -= dt; u.acc += dt * 10; const shots = Math.floor(u.acc); u.acc -= shots;
+        for (let n = 0; n < shots; n++) this.fireGun(u, eye, dist, tg);
       }
       if (u.missileCd <= 0 && dist > 28 && dist < 175) {
-        u.missileCd = 7 + Math.random() * 3;
+        u.missileCd = 9 + Math.random() * 4;
         const mount = ARMY_MOUNTS.missiles[u.idx % 2 === 0 ? 0 : 1];
         const from = h.mountWorld(mount, this.tmpB);
-        const aim = leadPoint(from, tg.pos, tg.vel, ROCKET_SPEED, this.tmpC); aim.y += 0.6;
-        const dir = aim.sub(from).normalize();
-        this.hooks.combat.launch(shooter, WEAPONS.rpg, from, dir, 0.012 + dist * 0.00008);
+        const lf = u.gunner.leadFraction();
+        const aim = leadPoint(from, tg.pos, this.tmpD.copy(tg.vel).multiplyScalar(lf), ROCKET_SPEED, this.tmpC); aim.y += 0.6;
+        const dir = u.gunner.perturb(aim.sub(from).normalize(), u.gunner.missileError(dist, speed));
+        this.hooks.combat.launch(shooter, WEAPONS.rpg, from, dir, 0.006);
         this.stats.missiles++;
       }
     }
   }
-  private fireGun(u: Unit, eye: THREE.Vector3, lead: THREE.Vector3, dist: number, tg: ArmyTarget) {
-    const dir = this.tmpD.copy(lead).sub(eye).normalize();
-    const spread = 0.03 + dist * 0.0004;
-    this.hooks.combat.shoot(u.shooter, WEAPONS.lmg, eye, dir, spread, u.heli as unknown as Vehicle);
+  private fireGun(u: Unit, eye: THREE.Vector3, dist: number, tg: ArmyTarget) {
+    const dir = u.gunner.aim(eye, this.tmpC.copy(tg.pos).setY(tg.pos.y + 0.9), tg.vel, this.tmpD);
+    this.hooks.combat.shoot(u.shooter, WEAPONS.lmg, eye, dir, 0.004, u.heli as unknown as Vehicle);
     this.stats.shot++;
-    // tracers rarely connect with a vehicle that is moving: a share of rounds count as hits on whatever the player drives
-    if (tg.vehicle && Math.random() < 0.22) {
-      const hp = tg.vehicle.maxHealth ?? tg.vehicle.spec?.health ?? 1000;
-      tg.vehicle.damage(Math.max(18, hp * 0.0045), tg.pos.clone(), dir.clone(), u.shooter);
-    }
+    if (rayMiss(eye, dir, this.tmpC.copy(tg.pos).setY(tg.pos.y + 0.9)) < (tg.onFoot ? 0.7 : 2.3)) this.stats.onTarget++;
+    void dist;
   }
 }

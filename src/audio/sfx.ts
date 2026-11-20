@@ -50,7 +50,7 @@ export const SFX_META: Record<SfxName, SfxMeta> = {
   uiClick: U(0.5), uiHover: U(0.35, 2, 0.04), uiBack: U(0.5), missionStart: U(0.7, 1, 0.3), missionPass: U(0.7, 1, 0.3), missionFail: U(0.7, 1, 0.3),
   down: U(0.8, 1, 0.5), checkpoint: U(0.55, 2, 0.08), wheelOpen: U(0.45, 1, 0.08), wheelClose: U(0.45, 1, 0.08), heatUp: U(0.55, 1, 0.2), heatLost: U(0.55, 1, 0.3),
   purchase: U(0.6, 1, 0.1), whoosh: W(3, 3, 0.05, 0.05, 0.6), tireScreech: W(4, 2, 0.1, 0.1, 0.55, 0.05), engineStart: W(6, 2, 0.3, 0.05, 0.8, 0.02),
-  shellCasing: W(1, 5, 0.03, 0.03, 0.35, 0.08),
+  shellCasing: W(1, 5, 0.03, 0.03, 0.35, 0.08), taser: W(6, 2, 0.5, 0.1, 0.8, 0.02),
 };
 export const EXTRA_META: Record<ExtraSfx, SfxMeta> = {
   magOut: W(5, 1, 0.1, 0.03, 0.55, 0.03), magIn: W(5, 1, 0.1, 0.03, 0.65, 0.03), slideRelease: W(5, 1, 0.1, 0.05, 0.7, 0.03), boltRack: W(5, 1, 0.1, 0.05, 0.7, 0.03),
@@ -322,6 +322,13 @@ export const RECIPES: Record<SfxName, Recipe> = {
   },
   // brass bouncing on the pavement, a beat after the shot
   shellCasing: a => fol(a, 'casingBrass', R(a.kit, 0.32, 0.5)),
+  // dart launch pop, then ~1.6 s of electric crackle (rapid high clicks over a buzzing 60 Hz tone)
+  taser: ({ kit: k, out, t }) => {
+    let end = mx(click(k, out, t, 1800, 0.5, 0.03), burst(k, out, t, { type: 'lowpass', f: 900, a: 0.001, peak: 0.35, dec: 0.1 }));
+    end = mx(end, tone(k, out, t + 0.05, { type: 'sawtooth', f: 120, peak: 0.07, a: 0.02, dec: 1.5 }));
+    for (let i = 0; i < 26; i++) end = mx(end, click(k, out, t + 0.05 + i * 0.06 + (i % 3) * 0.013, 3200 + (i % 5) * 700, 0.16 + (i % 4) * 0.03, 0.012));
+    return end;
+  },
 };
 
 export const EXTRA_RECIPES: Record<ExtraSfx, Recipe> = {

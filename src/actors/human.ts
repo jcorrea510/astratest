@@ -89,6 +89,7 @@ const _chain: THREE.Object3D[] = [];
 /** One animated person. */
 /** wrist-to-palm-centre distance along the hand bone (m, before bone scale) */
 const GRIP_PALM = 0.062;
+const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
@@ -392,6 +393,7 @@ export class Human {
       if (this.reach.L) this.solveArm('L', this.reach.L, this.reach.w);
       if (this.reach.R) this.solveArm('R', this.reach.R, this.reach.w);
     }
+    if (this.state === 'drive') this.plantSeatedFeet();
   }
   /**
    * Weapon hold: after update(), puts each hand's palm centre on a world target with a world orientation (two-bone IK
@@ -433,7 +435,24 @@ export class Human {
   }
   /** Two-bone IK: bends the forearm to the target distance, then swings the whole arm onto it. */
   private solveArm(side: 'L' | 'R', target: THREE.Vector3, w: number) {
-    const A = this.bones.get(side === 'L' ? 'armL' : 'armR'), B = this.bones.get(side === 'L' ? 'foreL' : 'foreR'), C = this.bones.get(side === 'L' ? 'handL' : 'handR');
+    this.solveChain(this.bones.get(side === 'L' ? 'armL' : 'armR'), this.bones.get(side === 'L' ? 'foreL' : 'foreR'), this.bones.get(side === 'L' ? 'handL' : 'handR'), target, w);
+  }
+  /** Seated in a car: keeps the soles on the cabin floor (the driving clip hangs the feet below it). Floor height is `parent.userData.floorY` (the vehicle's visual space). */
+  private plantSeatedFeet() {
+    const par = this.root.parent, fy = par?.userData?.floorY;
+    if (typeof fy !== 'number') return;
+    par!.updateMatrixWorld(); this.root.updateMatrixWorld(true);
+    for (const side of ['L', 'R'] as const) {
+      const T = this.bones.get(side === 'L' ? 'thighL' : 'thighR'), K = this.bones.get(side === 'L' ? 'shinL' : 'shinR'), F = this.bones.get(side === 'L' ? 'footL' : 'footR');
+      if (!T || !K || !F) continue;
+      par!.worldToLocal(F.getWorldPosition(_ft));
+      const ankle = fy + 0.1; // ankle joint above the sole
+      if (_ft.y >= ankle) continue;
+      _ft.y = ankle; par!.localToWorld(_ft);
+      this.solveChain(T, K, F, _ft, 1);
+    }
+  }
+  private solveChain(A: THREE.Object3D | undefined, B: THREE.Object3D | undefined, C: THREE.Object3D | undefined, target: THREE.Vector3, w: number) {
     if (!A || !B || !C) return;
     const a = A.getWorldPosition(_ia), b = B.getWorldPosition(_ib), c = C.getWorldPosition(_ic);
     const l1 = a.distanceTo(b), l2 = b.distanceTo(c);

@@ -24,6 +24,8 @@ const SIT_BACK = 0.12, SIT_DY = 0.02;
 export const streetClock = { hour: 17 };
 
 const EYE = 1.55;
+/** Officers fire the taser at a non-violent suspect from this far (metres). */
+export const TASER_RANGE = 8;
 let NPC_ID = 0;
 export class Npc {
   id = NPC_ID++;
@@ -84,7 +86,7 @@ export class Npc {
 
 export interface NpcEnv {
   physics: Physics; city: CityMap; combat: Combat; scene: THREE.Scene; time: () => number;
-  player: Character; playerHeat: () => number; copsLethal?: () => boolean; others: () => Iterable<Character>;
+  player: Character; playerHeat: () => number; copsLethal?: () => boolean; /** an arrest is in progress: every other officer holds fire */ copsHoldFire?: () => boolean; /** the player is pointing a gun */ armedThreat?: () => boolean; others: () => Iterable<Character>;
   onArrest: (by: Npc) => void; onWitness: (npc: Npc, what: 'shot' | 'attack' | 'kill' | 'carjack') => void;
 }
 
@@ -193,9 +195,15 @@ export class NpcBrainRunner {
         const tgt = n.target ?? env.player;
         tv.copy(n.lastSeen).sub(c.pos); tv.y = 0; const d = tv.length();
         if (d > 1.2) { desired.copy(tv.normalize()); speed = n.role === 'police' ? (d > 25 ? 5.8 : d > 7 ? 4.4 : 2.2) : 5.2; }
-        if (n.role === 'police' && !this.lethal() && tgt.alive && !tgt.inVehicle && c.pos.distanceTo(tgt.pos) < 1.8) {
-          faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
-          if (tgt.speed < 2.5) { n.arrestT += dt; if (n.arrestT > 1.6) { n.arrestT = 0; env.onArrest(n); } } else n.arrestT = Math.max(0, n.arrestT - dt);
+        // non-violent suspect on foot: draw the taser from up to TASER_RANGE away (clear line, not just when touching), then arrest
+        if (n.role === 'police' && !this.lethal() && !env.armedThreat?.() && tgt.alive && !tgt.inVehicle && !n.char.inVehicle) {
+          const td = c.pos.distanceTo(tgt.pos);
+          if (td < TASER_RANGE && (td < 2.5 || n.losT > 0)) {
+            faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); aiming = true;
+            if (td > 2.5) speed = Math.min(speed, 1.2); // plant feet and aim
+            n.arrestT += dt * (tgt.speed > 4 ? 0.7 : 1);
+            if (n.arrestT > 1.0) { n.arrestT = 0; env.onArrest(n); }
+          } else n.arrestT = Math.max(0, n.arrestT - dt);
         } else n.arrestT = 0;
         if (n.role !== 'police' && WEAPONS[n.weapon].melee && c.pos.distanceTo(tgt.pos) < 1.6) this.meleeAttack(n, tgt);
         break;
@@ -236,8 +244,8 @@ export class NpcBrainRunner {
         }
         if (speed > 0) n.crouching = false;
         if (w.melee) { if (d < 1.6) this.meleeAttack(n, tgt); faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); break; }
-        // Shooting
-        if (seeing && d < w.range) {
+        // Shooting (nobody fires while a colleague is arresting the suspect: the bullets would hit the officer)
+        if (seeing && d < w.range && !(n.role === 'police' && env.copsHoldFire?.())) {
           aiming = true;
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           const facingOk = Math.abs(wrapAngle(faceYaw - c.yaw)) < 0.35;

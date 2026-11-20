@@ -76,6 +76,8 @@ export const ACTIONS: Record<string, ActionDef> = {
   point: { layer: 'upper', dur: 1.4, fade: 0.15, poses: [[0, {}], [0.2, { armR: [-85, 0, 0], foreR: [-5, 0, 0], head: [0, -8, 0] }], [0.8, { armR: [-85, 0, 0], foreR: [-5, 0, 0] }], [1, {}]] },
   wave: { layer: 'upper', dur: 1.6, fade: 0.15, poses: [[0, {}], [0.2, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.4, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [0.6, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.8, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [1, {}]] },
   // --- arrests
+  // taser: rigid, arms clawed up and in, back arched, head snapping side to side (stunned for ~1.2 s, then the caller drops to the knees)
+  tased: { layer: 'upper', loop: true, hold: true, dur: 0.16, fade: 0.04, poses: [[0, { chest: [-14, 6, 5], neck: [-10, 0, 0], head: [-14, 10, 8], ...sym({ shL: [8, 0, 0], armL: [-28, 0, 62], foreL: [-100, 0, 0] }) }], [0.5, { chest: [-8, -7, -5], neck: [-6, 0, 0], head: [-8, -10, -8], ...sym({ shL: [5, 0, 0], armL: [-20, 0, 52], foreL: [-86, 0, 0] }) }], [1, { chest: [-14, 6, 5], neck: [-10, 0, 0], head: [-14, 10, 8], ...sym({ shL: [8, 0, 0], armL: [-28, 0, 62], foreL: [-100, 0, 0] }) }]] },
   handcuffed: { layer: 'upper', hold: true, dur: 0.6, fade: 0.25, poses: [[0, {}], [1, sym({ shL: [10, 0, 0], armL: [28, 0, -6], foreL: [12, 0, -58], chest: [-4, 0, 0], head: [12, 0, 0] })]] },
   cuffing: { clip: 'Interact', layer: 'upper', rate: 0.8, fade: 0.15, poses: [[0, {}], [0.4, sym({ chest: [14, 0, 0], armL: [-45, 0, -5], foreL: [-40, 0, 0] })], [1, {}]] },
   // officer reaches down for both wrists from behind, then the suspect's arms are drawn down and back to the cuffs

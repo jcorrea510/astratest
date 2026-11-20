@@ -58,7 +58,15 @@ export class ArmyGuards {
   }
 
   /** Per frame / fixed step. `hostile` comes from guardsHostile(). */
-  update(dt: number, hostile: boolean, player: THREE.Vector3) {
+  update(dt: number, hostile: boolean, player: THREE.Vector3, ignore = false) {
+    if (ignore) { // sandbox 'Police ignore you': sentries and patrols treat the player as a civilian
+      this.alerted = false; hostile = false;
+      for (const g of this.guards) {
+        const n = g.npc; if (!n.alive) continue;
+        n.hostile = false; n.losT = 0;
+        if (n.brain === 'combat' || n.brain === 'chase') { n.brain = g.route ? 'scripted' : 'idle'; n.target = null; n.goal = null; n.coverPoint = null; }
+      }
+    }
     if (hostile && !this.alerted) this.alerted = true;
     if (!hostile && this.alerted && !this.guards.some(g => g.npc.alive && g.npc.hostile && g.npc.brain === 'combat')) this.alerted = false;
     for (const g of this.guards) {

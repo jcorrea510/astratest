@@ -27,3 +27,23 @@ describe('dispatch origins', () => {
     expect(CALL_DELAY.cop + DISPATCH_HOLD).toBeGreaterThanOrEqual(15);
   });
 });
+
+import { HELI_MIN_DIST, REINFORCE_MIN } from './dispatch';
+import { HeatState } from './police';
+describe('police helicopter arrival', () => {
+  it('enters far from the player, never inside the camera view, heading in from the precinct side', () => {
+    const cam = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 2000);
+    for (const [px, pz, yaw] of [[0, 0, 0], [300, -200, 2], [40, 108, 4], [-400, 500, 1]]) {
+      const p = new THREE.Vector3(px, 0, pz);
+      cam.position.set(px, 2, pz); cam.rotation.set(0, yaw, 0); cam.updateMatrixWorld(); cam.updateMatrixWorld(true);
+      const sp = D.heliSpawnPoint(p, cam);
+      expect(Math.hypot(sp.x - p.x, sp.z - p.z)).toBeGreaterThanOrEqual(HELI_MIN_DIST - 0.01);
+      const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+      expect(f.containsPoint(sp)).toBe(false);
+    }
+  });
+  it('reinforcements keep a minimum distance bigger than the street view', () => { expect(REINFORCE_MIN).toBeGreaterThanOrEqual(120); });
+});
+describe('brandishing a gun at an officer', () => {
+  it('is worth two stars straight away', () => { const h = new HeatState(); h.add('brandish'); expect(h.heat).toBe(2); });
+});

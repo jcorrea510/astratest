@@ -49,6 +49,7 @@ export class Sandbox {
   loadTools(t: SandboxTools | undefined) {
     if (!t) return;
     this.god = t.god; this.infiniteAmmo = t.ammo; this.neverWanted = t.never; this.clockRunning = t.clock;
+    this.game.police.ignoring = this.neverWanted;
     this.applyCaps();
   }
   actions(): SandboxAction[] {
@@ -64,7 +65,7 @@ export class Sandbox {
       { id: 'spawnUnit', group: 'Police', label: 'Spawn police unit', kind: 'button' },
       { id: 'heli', group: 'Police', label: 'Spawn helicopter', kind: 'button' },
       { id: 'armyheli', group: 'Police', label: 'Spawn army gunship', kind: 'button' },
-      { id: 'never', group: 'Police', label: 'Police ignore you', kind: 'toggle', value: this.neverWanted },
+      { id: 'never', group: 'Police', label: 'Police ignore you', detail: 'Cops, soldiers, base guards and gunships leave you alone', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
       { id: 'clock', group: 'World', label: 'Clock running', kind: 'toggle', value: this.clockRunning },
       { id: 'kind', group: 'Vehicles', label: 'Model', kind: 'select', value: this.kind, options: KINDS },
@@ -92,7 +93,7 @@ export class Sandbox {
       case 'spawnUnit': g.police.callUnit(this.unit, g.playerVehicle ? g.playerVehicle.position : g.player.pos, g.renderer.camera); break;
       case 'heli': g.spawnHelicopter('civilian'); break;
       case 'armyheli': g.spawnHelicopter('army'); break;
-      case 'never': this.neverWanted = !!v; if (this.neverWanted) g.police.clear(); break;
+      case 'never': this.neverWanted = !!v; g.police.ignoring = this.neverWanted; if (this.neverWanted) g.police.clear(); break;
       case 'hour': if (Number.isFinite(num)) g.hour = ((num % 24) + 24) % 24; break;
       case 'clock': this.clockRunning = !!v; g.clockRunning = this.clockRunning; break;
       case 'kind': if (KINDS.some(k => k.value === v)) this.kind = v as VehicleKind; break;
@@ -122,6 +123,7 @@ export class Sandbox {
     const g = this.game;
     if (this.god && g.player.alive) { g.player.health = g.player.maxHealth; g.player.armor = 100; }
     if (this.infiniteAmmo) for (const id of WEAPON_ORDER) { const w = g.pcombat.inv.weapons[id]; if (w.owned && !WEAPONS[id].melee && w.reserve < WEAPONS[id].clip * 4) w.reserve = WEAPONS[id].clip * 8; }
+    g.police.ignoring = this.neverWanted;
     if (this.neverWanted && g.police.heat > 0) g.police.clear();
   }
 }

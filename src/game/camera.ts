@@ -43,7 +43,7 @@ export class CameraRig {
   /** Landing impulse: the camera dips by roughly `amount` metres and springs back. */
   landDip(amount: number) { this.dipV -= Math.min(0.5, Math.max(0, amount)) * 11; }
 
-  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean } = {}) {
+  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean; free?: boolean } = {}) {
     this.lastInput += dt;
     if (mode === 'cinematic' && this.cinematic) {
       this.camera.position.lerp(this.cinematic.pos, 1 - Math.exp(-dt * 2));
@@ -58,7 +58,7 @@ export class CameraRig {
       const sp = Math.abs(opts.speed ?? 0);
       fovT = clamp(sp * 0.35, 0, 14);
       // Auto-align behind the car when the player is not steering the camera.
-      if (this.lastInput > 1.2 && sp > 3 && opts.vehicleYaw !== undefined) {
+      if (this.lastInput > 1.2 && sp > 3 && opts.vehicleYaw !== undefined && !opts.free) {
         this.yaw = dampAngle(this.yaw, opts.vehicleYaw, 2.2, dt);
         this.pitch = damp(this.pitch, -0.16, 2, dt);
       }

@@ -218,6 +218,8 @@ export class CarEntry {
     else if (v instanceof Vehicle) { v.input.throttle = 0; v.input.handbrake = true; }
     j.t = 0;
     const pane = v.paneOfDoor(j.door);
+    // R6-K: a locked car whose driver glass is already out is opened by reaching through the gap: no second smash
+    if (v.doorsLocked && pane >= 0 && v.isGlassBroken(pane)) v.doorsLocked = false;
     if (v.doorsLocked && !v.driver && !v.playerUsed && j.door >= 0) {
       j.phase = 'smash';
       h.playAction('smash_window', {

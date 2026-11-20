@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { curbShift, yieldsToSiren, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { curbShift, yieldsToSiren, signalCap, stopSignCap, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -39,7 +39,9 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** seconds panicking and boxed in (the driver bails out on foot) and health last seen (shot at) */
   boxedT?: number; hp?: number;
   /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
-  legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null }
+  legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null;
+  /** stop-sign / left-turn wait bookkeeping: lane it was counted on and seconds stood at the line */
+  ssLane?: number; ssWait?: number }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -163,6 +165,24 @@ export class Traffic {
     }
   }
   private honk(car: AiCar, t: number, vol = 0.65, gap = 4) { if (t - (car.lastHonk ?? -99) < gap) return; car.lastHonk = t; this.stats.honks++; this.audio.play('horn', { pos: car.v.position, volume: vol, pitch: 0.9 + this.rng.next() * 0.25 }); }
+  /** Any driven or moving vehicle inside the junction box (bodies parked beside it do not count). */
+  private boxBusy(inter: { x: number; z: number; halfX: number; halfZ: number }, self: Vehicle): boolean {
+    for (const o of this.vehicles.list) {
+      if (o === self || (!o.driver && Math.abs(o.speed) < 0.6)) continue;
+      if (Math.abs(o.position.x - inter.x) < inter.halfX + 2 && Math.abs(o.position.z - inter.z) < inter.halfZ + 2) return true;
+    }
+    return false;
+  }
+  /** A left turner waits while the box is busy or an oncoming car would reach the junction within a few seconds. */
+  private leftBlocked(inter: { x: number; z: number; halfX: number; halfZ: number }, self: Vehicle, f: { x: number; z: number }): boolean {
+    if (this.boxBusy(inter, self)) return true;
+    for (const o of this.vehicles.list) {
+      if (o === self) continue;
+      const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1;
+      if (oncomingConflict(o.position.x - inter.x, o.position.z - inter.z, of.x * sg, of.z * sg, Math.abs(o.speed), f.x, f.z)) return true;
+    }
+    return false;
+  }
   private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - 5.2; }
 
   fixedUpdate(dt: number, player: Character, playerVehicle: Vehicle | null) {
@@ -261,7 +281,25 @@ export class Traffic {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, car.lane.axis, t);
         const dStop = this.distToStop(car);
-        if (st !== 'green' && dStop > -1 && !(st === 'yellow' && dStop < speed * 0.45)) { targetSpeed = Math.min(targetSpeed, Math.max(0, dStop) * 0.9); legit = true; }
+        const cap = signalCap(st, dStop, Math.max(0, speed));
+        if (cap < Infinity) { targetSpeed = Math.min(targetSpeed, cap); legit = true; }
+        else if (dStop > -1 && dStop < 45) {
+          // no protection from the light: stop signs at plain junctions, yield for a left turn across oncoming traffic
+          if (car.ssLane !== car.lane.id) { car.ssLane = car.lane.id; car.ssWait = 0; }
+          const standing = dStop < 1.8 && Math.abs(speed) < 0.4;
+          if (!inter.signalized) {
+            if (standing) car.ssWait = (car.ssWait ?? 0) + dt;
+            const c2 = stopSignCap(dStop, speed, car.ssWait ?? 0, dStop > 14 || !this.boxBusy(inter, v));
+            if (c2 < Infinity) { targetSpeed = Math.min(targetSpeed, c2); legit = true; }
+          } else if (dStop < 22 && car.nextChoice !== undefined) {
+            const nl = this.city.lanes[car.nextChoice], a = nl.points[0], b = nl.points[nl.points.length - 1], p1 = nl.points[1] ?? b, pn = nl.points[nl.points.length - 2] ?? a;
+            const d0 = Math.hypot(p1.x - a.x, p1.z - a.z) || 1, d1 = Math.hypot(b.x - pn.x, b.z - pn.z) || 1;
+            if (nl.connector && turnSide((p1.x - a.x) / d0, (p1.z - a.z) / d0, (b.x - pn.x) / d1, (b.z - pn.z) / d1) === 1) {
+              if (standing) car.ssWait = (car.ssWait ?? 0) + dt;
+              if ((car.ssWait ?? 0) < 8 && this.leftBlocked(inter, v, f)) { targetSpeed = Math.min(targetSpeed, stopSpeed(dStop - 0.4)); legit = true; }
+            }
+          }
+        }
       }
       if (car.mode === 'cruise' && !car.persistent) { targetSpeed = this.curbStops(car, dt, targetSpeed, f, t); if ((car.stopT ?? 0) > 0 || car.stopPlan) legit = true; }
       // Following distance / obstacles ahead

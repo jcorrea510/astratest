@@ -9,11 +9,11 @@ import type { GameAudio, LoopVoice } from '../ui/contracts';
 import { signalState, nearestLane } from '../world/citymap';
 import { Dispatch, COP_LOOK, wantedUnits, wantsHelicopter, type UnitKind, type DispatchHooks } from './dispatch';
 
-export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft' | 'traffic';
+export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft' | 'traffic' | 'brandish';
 /** min = star level this crime guarantees once reported; further stars come from sustained fighting (see HeatState.tick). */
 const CRIME: Record<Crime, { min: number }> = {
   robbery: { min: 1 }, assault: { min: 1 }, shooting: { min: 1 }, kill: { min: 2 }, copAttack: { min: 2 }, copKill: { min: 2 },
-  carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 }, traffic: { min: 1 },
+  carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 }, traffic: { min: 1 }, brandish: { min: 2 },
 };
 export { COP_LOOK };
 export type { UnitKind };
@@ -90,6 +90,11 @@ export class Police {
   /** seconds left in which the player counts as violent (shot or killed someone): cops stop trying to arrest */
   violentT = 0;
   private lastPlayerPos = new THREE.Vector3();
+  /** set every frame by Game: the player is pointing a firearm (officers who see it open fire at once, no warning shot needed) */
+  armedThreat = false;
+  private player: Character | null = null;
+  /** Sandbox 'Police ignore you': no heat, no reactions to the player, no scans. */
+  ignoring = false;
   private seeT = 0; private seenNow = false; private eyeA = new THREE.Vector3(); private eyeB = new THREE.Vector3();
   private yieldT = 0; private yielded = new Set<AiCar>();
   /** Player drives a police car with the light bar on (and is not wanted): civilian traffic slows to a stop at the kerb. */
@@ -157,6 +162,7 @@ export class Police {
     return best;
   }
   report(crime: Crime, at: THREE.Vector3) {
+    if (this.ignoring) return;
     if (crime === 'copCarTheft') this.pendingStolen = true;
     // Officers on scene react to violence at once, but the heat only rises once somebody has seen it and called it in.
     if (Police.VIOLENT.includes(crime)) this.violentT = 30;
@@ -194,6 +200,7 @@ export class Police {
   }
   /** Sets the wanted level directly (sandbox tools). */
   setHeat(level: number, at: THREE.Vector3) {
+    if (this.ignoring) return;
     const before = this.state.heat, h = Math.max(0, Math.min(5, level));
     if (h === 0) { this.clear(); return; }
     this.state.heat = h; this.state.lastSeen.copy(at); this.state.unseenT = 0; this.spawnT = 0; this.holdT = 0;
@@ -209,6 +216,7 @@ export class Police {
   }
   /** A crime reported by an alarm or a phone call: no witness check. */
   alarm(crime: Crime, at: THREE.Vector3) {
+    if (this.ignoring) return;
     if (crime === 'copCarTheft') this.pendingStolen = true;
     this.call911(crime, at);
     if (crime === 'heliTheft' || crime === 'policeHeliTheft') { this.rushT = 40; this.spawnT = 0; this.violentT = 30; this.holdT = 0; } // a stolen aircraft is seen by the whole city: no dispatch delay
@@ -270,6 +278,7 @@ export class Police {
   }
   /** The player shot at a police car (or an officer inside it): the crew reacts at once. */
   onVehicleShot(v: unknown) {
+    if (this.ignoring) return;
     const car = this.traffic.carOf(v as never);
     if (!car || car.driver.role !== 'police' || !car.driver.alive || this.bails.some(b => b.car === car)) return;
     const pp = this.lastPlayerPos;
@@ -303,8 +312,37 @@ export class Police {
       }
     }
   }
+  private ignoreT = 0;
+  /** 'Police ignore you': wipe all heat and orders, stand every officer down, and keep them from re-acquiring the player. */
+  private ignoreTick(dt: number) {
+    this.ignoreT -= dt;
+    this.pending.length = 0; this.violentT = 0; this.armedThreat = false;
+    if (this.state.heat > 0 || this.units.length || this.foot.length || this.dispatch.heli) this.clear();
+    if (this.ignoreT > 0) return;
+    this.ignoreT = 0.25;
+    const p = this.player;
+    for (const n of this.pop.npcs) if (n.role === 'police' && n.target === p && (n.brain === 'combat' || n.brain === 'chase')) { n.brain = 'idle'; n.target = null; n.persistent = false; }
+  }
+  /** Puts an officer on foot into the fight against the player right now (weapon out, target acquired, no reaction delay). */
+  engage(n: Npc, aimed = false) {
+    const st = this.state, p = this.player; if (!p) return;
+    if (!this.foot.includes(n)) this.foot.push(n);
+    this.dispatch.arm(n, 'police', Math.max(st.heat, 1), this.lethal);
+    n.persistent = true; n.target = p; n.lastSeen.copy(p.pos); n.losT = 1; n.seenTime = this.clock(); n.think = 0;
+    if (aimed) n.aimT = Math.max(n.aimT, 0.75);
+  }
+  /** An officer sees the player pointing a gun: 2 stars at once (officers radio it faster than any 911 call) and everyone who sees it draws and fires. */
+  private brandish(cops: Npc[], pp: THREE.Vector3) {
+    const st = this.state;
+    this.violentT = Math.max(this.violentT, 30);
+    if (st.add('brandish')) { this.audio.play('heatUp'); this.onHeatChange?.(st.heat, false); if (this.units.length === 0) this.holdT = Math.min(this.holdT || 6, 6); }
+    st.lastSeen.copy(pp); st.unseenT = 0;
+    for (const n of cops) this.engage(n, true);
+  }
   update(dt: number, player: Character, playerInVehicle: boolean, camera: THREE.Camera) {
     const st = this.state;
+    this.player = player;
+    if (this.ignoring) { this.ignoreTick(dt); return; }
     // Line of sight from any officer (on foot or driving), any helicopter with eyes on the player; re-evaluated 4x per second, held in between
     this.seeT -= dt; this.violCool = Math.max(0, this.violCool - dt); this.violT = Math.max(0, this.violT - dt); this.heliSeeT = Math.max(0, this.heliSeeT - dt);
     const pp = player.pos;
@@ -315,7 +353,7 @@ export class Police {
       this.seeT = 0.25;
       let seen = false, strict = false;
       this.eyeB.set(pp.x, pp.y + 1.2, pp.z);
-      const watchers: AiCar[] = [];
+      const watchers: AiCar[] = [], sighted: Npc[] = [];
       for (const n of this.pop.npcs) {
         if (!n.alive || n.role !== 'police') continue;
         // an officer riding in a car is where the car is (their own position is not updated while seated)
@@ -327,7 +365,7 @@ export class Police {
         let ls = false;
         if (d < 8) ls = true;
         else if (d < (car ? 90 : 65)) { this.eyeA.set(at.x, at.y + (car ? 1.4 : 1.6), at.z); ls = this.pop.runner.hasLOS(this.eyeA, this.eyeB); }
-        if (ls) { sees = true; strict = true; if (car) { const ac = this.traffic.carOf(car as never); if (ac && !watchers.includes(ac)) watchers.push(ac); } }
+        if (ls) { sees = true; strict = true; if (!car && n.brain !== 'scripted' && n.brain !== 'dead' && n.brain !== 'inside') sighted.push(n); if (car) { const ac = this.traffic.carOf(car as never); if (ac && !watchers.includes(ac)) watchers.push(ac); } }
         if (sees) seen = true;
       }
       // a police helicopter keeps the player in its spotlight until something solid is between them
@@ -345,6 +383,9 @@ export class Police {
       this.seenNow = seen;
       this.strictSeen = strict;
       this.onScan(strict, watchers, pvAny, pp);
+      // pulling a gun on an officer: he fires at once. And while wanted, any officer on foot with a clear view is in the fight, never standing by.
+      if (this.armedThreat && !pvAny && sighted.length) this.brandish(sighted.filter(n => n.pos.distanceTo(pp) < 45), pp);
+      else if (st.heat > 0 && !this.dispatch.arrest) for (const n of sighted) if ((n.brain === 'idle' || n.brain === 'wander' || n.brain === 'flee') && n.pos.distanceTo(pp) < 60) this.engage(n);
     }
     const seen = this.seenNow;
     this.updateBails(dt);
@@ -403,7 +444,7 @@ export class Police {
         const car = D.spawnUnit(need, target, camera, st.heat);
         if (car) this.units.push(car);
       }
-      D.updateHeli(dt, player, st.heat, (wantsHelicopter(st.heat) || (inHeli && st.heat >= 3)) && !D.arrest, inHeli);
+      D.updateHeli(dt, player, st.heat, (wantsHelicopter(st.heat) || (inHeli && st.heat >= 3)) && !D.arrest, inHeli, camera);
       if (inHeli && lethal) D.attackHeli(dt, player.inVehicle as never, this.foot, st.heat);
       let fi = 0;
       for (const n of this.foot) {
@@ -434,7 +475,7 @@ export class Police {
       const pa = D.pendingArrest; pa.t -= dt;
       if (pa.t <= 0) {
         D.pendingArrest = null;
-        if (!playerInVehicle && player.alive && st.heat > 0 && st.heat <= 4 && pa.cop.alive && pa.cop.pos.distanceTo(pp) < 12) D.beginArrest(pa.cop, player);
+        if (!playerInVehicle && player.alive && st.heat > 0 && st.heat <= 4 && pa.cop.alive && pa.cop.pos.distanceTo(pp) < 12) D.beginArrest(pa.cop, player, false);
       }
     }
     this.lastPlayerPos.copy(pp);
@@ -446,3 +487,4 @@ export class Police {
   }
 }
 export { wantedUnits };
+

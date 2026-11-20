@@ -93,7 +93,10 @@ export class PlayerCombat {
     this.spine = player.human.spine ?? null;
   }
   get armed() { return !WEAPONS[this.inv.current].melee; }
-  get aiming() { return this.ctl.aiming || this.hipAimT > 0; }
+  get aiming() { return this.ctl.aiming || this.hipAimT > 0 || this.driveAim; }
+  /** R6-K drive-by: holding aim inside a car with a one-handed gun puts it out the window; fire then shoots along the camera aim point. */
+  driveAim = false;
+  private wasDriveAim = false;
   /** Aiming down a scope right now. */
   get scoped() { return this.ctl.aiming && this.inv.def.scope > 0 && !this.inv.reloading && this.player.alive && !this.player.inVehicle; }
   /** Vertical FOV of the scope (degrees) for the current zoom step. */
@@ -119,7 +122,7 @@ export class PlayerCombat {
   /** Reticle / weapon part of the HUD state. */
   hud(): Pick<HudState, 'crosshair' | 'reticleHot' | 'hitMarker' | 'killMarker' | 'headshotMarker' | 'scopeZoom' | 'ammoClip' | 'ammoReserve'> {
     const def = this.inv.def, st = this.inv.state, c = this.player;
-    const show = c.alive && !c.inVehicle;
+    const show = c.alive && (!c.inVehicle || this.driveAim);
     const throwable = def.cat === 'throw';
     return {
       crosshair: !show ? 'none' : this.scoped ? 'scope' : this.armed || this.aiming ? (this.aiming ? 'aim' : 'dot') : 'none',
@@ -143,6 +146,13 @@ export class PlayerCombat {
     if (!blocked && !inv.def.melee && inv.def.cat !== 'throw' && (this.input.held('fire') || inv.reloading) && c.alive && !c.inVehicle) this.hipAimT = Math.max(this.hipAimT, HIP_HOLD);
     this.hipAimT = Math.max(0, this.hipAimT - dt);
     const onFoot = c.alive && !c.inVehicle;
+    const veh = c.inVehicle as Vehicle | null;
+    const inCar = c.alive && !!veh && typeof veh.kind === 'string' && veh.kind !== 'tank';
+    const def0 = inv.def;
+    this.driveAim = inCar && !blocked && this.input.held('aim') && !def0.melee && def0.cat !== 'throw' && !def0.twoHanded;
+    if (inCar && this.driveAim !== this.wasDriveAim) h.setUpperMode(this.driveAim ? 'pistol' : 'none');
+    this.wasDriveAim = this.driveAim;
+    if (this.driveAim && this.input.justPressed('reload')) inv.startReload();
     // Gun up from the hip (fire without the aim button): the body must keep facing the camera line, not the run direction.
     this.ctl.hipRaised = onFoot && this.armed && this.hipAimT > 0 && !inv.def.melee && inv.def.cat !== 'throw';
     // weapon cycling (the mouse wheel zooms instead while looking through a scope)
@@ -164,7 +174,7 @@ export class PlayerCombat {
     this.updateRecoil(dt, def);
     this.updateAim(onFoot);
     // Fire
-    if (!blocked && onFoot) {
+    if (!blocked && (onFoot || this.driveAim)) {
       if (def.cat === 'throw') this.updateThrow(dt, def);
       else {
         const pressed = this.input.justPressed('fire');
@@ -212,12 +222,13 @@ export class PlayerCombat {
 
   private fireRanged(def: WeaponDef) {
     const c = this.player;
-    if (!this.ctl.aiming) { this.hipAimT = HIP_HOLD; c.yaw = this.cam.yaw + Math.PI; }
-    c.human.root.rotation.y = c.yaw;
+    if (!this.ctl.aiming && !this.driveAim) { this.hipAimT = HIP_HOLD; c.yaw = this.cam.yaw + Math.PI; }
+    if (!this.driveAim) c.human.root.rotation.y = c.yaw; // seated in a car the body keeps its seat pose
     this.updateModel();
     const o = this.safeMuzzle(new THREE.Vector3());
     const dir = shotDirection(o, this.aimPoint, this.tmpD, new THREE.Vector3()) as THREE.Vector3;
-    const hits = this.combat.shoot(c, def, o, dir, this.cone);
+    const veh = this.driveAim ? c.inVehicle as Vehicle : null;
+    const hits = this.combat.shoot(c, def, o, dir, this.cone + (veh ? Math.min(0.05, Math.abs(veh.speed) * 0.0015) : 0), veh);
     for (const x of hits) if (x.kind === 'character') { this.hitMarker = 1; if (x.killed) { this.killMarker = 1; this.headshotMarker = !!x.headshot; } }
     if (def.mode === 'pump' || def.mode === 'bolt') { this.cycleKind = def.mode; setCycle(this, def); }
     // bloom / accuracy
@@ -297,7 +308,7 @@ export class PlayerCombat {
   private meleeCars: (() => Iterable<Vehicle>) | null = null;
 
   private updateSpread(dt: number, def: WeaponDef) {
-    const c = this.player, aimed = this.ctl.aiming;
+    const c = this.player, aimed = this.ctl.aiming || this.driveAim;
     const still = c.speed < 0.6 && c.grounded;
     if (aimed && still && this.time - this.lastShot > def.interval * 1.3) this.accuracy = Math.min(1, this.accuracy + dt / 0.3);
     else if (!still || !this.aiming) this.accuracy = Math.max(0, this.accuracy - dt * 4);
@@ -370,7 +381,7 @@ export class PlayerCombat {
   /** Places the held weapon and animates its parts; `final` (once per frame, after everything else) also applies the torso kick. */
   private updateModel(final = false) {
     const c = this.player, inv = this.inv, def = inv.def;
-    const onFoot = c.alive && !c.inVehicle;
+    const onFoot = c.alive && (!c.inVehicle || this.driveAim);
     const thrownAway = def.cat === 'throw' && (inv.state.clip === 0 || inv.reloading);
     const show = !(def.id === 'fists') && onFoot && !thrownAway && !this.scoped;
     for (const [id, m] of this.models) m.g.visible = show && id === inv.current;

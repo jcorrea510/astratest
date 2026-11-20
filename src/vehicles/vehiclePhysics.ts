@@ -152,6 +152,8 @@ export class VehiclePhysics {
 
   fixedUpdate(dt: number, input: DriveInput) {
     const spec = this.spec, c = this.ctrl, body = this.body;
+    // R6-K: a car settled asleep (parked) never wakes on its own when a driver asks for power or steering
+    if (body.isSleeping() && (Math.abs(input.throttle) > 0.05 || Math.abs(input.steer) > 0.05 || (input.brake ?? 0) > 0.05)) body.wakeUp();
     this.capturePrev();
     const lv = body.linvel(), av = body.angvel(), rot = body.rotation();
     const f = this.forward(), up = this.upVec(), left = this.leftVec();

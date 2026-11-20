@@ -49,3 +49,42 @@ export class ViolationMonitor {
     if (this.armed && (!on || lane!.id !== this.armedLane || lane!.toStop < -1)) { this.armed = false; if (p.speed > 3) fire('red_light', 6); }
   }
 }
+
+/** Comfortable braking (m/s²) AI drivers plan stops with, and the hardest they will brake for a late amber. */
+export const COMFORT_DECEL = 3.4, MAX_DECEL = 5.5;
+/** Fastest speed (m/s) from which a car can still halt `d` metres ahead at `decel`. */
+export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Math.sqrt(2 * decel * Math.max(0, d)); }
+/**
+ * Speed cap for a signalised stop line `dStop` metres ahead (<0 = already past it) at `speed`.
+ * Green: free. Amber: carry on only if the car cannot stop before the line at MAX_DECEL (dilemma zone), else stop.
+ * Red: stop at the line (a car already across it, dStop < -1, clears the box).
+ */
+export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, speed: number): number {
+  if (state === 'green' || dStop < -1) return Infinity;
+  if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) return Infinity;
+  return stopSpeed(dStop - 0.4);
+}
+/**
+ * Stop-sign rule: halt at the line, wait `waited` s (counted by the caller while standing), then go once `clear`
+ * (nobody in the junction). After 6 s the driver goes regardless so nobody deadlocks.
+ */
+export function stopSignCap(dStop: number, speed: number, waited: number, clear: boolean): number {
+  if (dStop < -1) return Infinity;
+  if (waited >= 1.5 && (clear || waited > 6)) return Infinity;
+  void speed;
+  return stopSpeed(dStop - 0.4);
+}
+/** +1 = left turn, -1 = right turn, 0 = straight, from unit heading before (d0) and after (d1) the turn. */
+export function turnSide(d0x: number, d0z: number, d1x: number, d1z: number): number {
+  const c = d0x * d1z - d0z * d1x; // x right / z forward world: left turn gives negative cross
+  return c < -0.5 ? 1 : c > 0.5 ? -1 : 0;
+}
+/** Is an oncoming car (position rel. to junction centre, heading, speed) close enough that a left-turner must wait? */
+export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: number, ospeed: number, afx: number, afz: number): boolean {
+  if (ospeed < 1.5) return false;
+  if ((ofx * afx + ofz * afz) > -0.7) return false; // not opposing our approach
+  const d = Math.hypot(ox, oz); if (d > 40) return false;
+  if ((-ox * ofx - oz * ofz) < 0) return false; // already past the junction
+  const lat = Math.abs(ox * afz - oz * afx); if (lat > 7) return false;
+  return d / ospeed < 4.5;
+}

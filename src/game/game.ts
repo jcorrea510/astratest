@@ -169,7 +169,7 @@ export class Game {
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
       physics: this.physics, city: this.city, combat: this.combat, scene: this.renderer.scene, time: () => this.time,
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
-      onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, onWitness: () => { },
+      onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: () => this.police.dispatch.arresting, armedThreat: () => this.police.armedThreat, onWitness: () => { },
     }, this.audio);
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
@@ -185,6 +185,7 @@ export class Game {
       busted: () => this.playerDown('busted'),
       spawnHeli: (x, z, yaw) => this.spawnHelicopter('police', x, z, yaw),
       removeHeli: h => this.helis.remove(h),
+      sfx: (name, at) => this.audio.play(name, { pos: at }),
     });
     this.events.arrestAnimationDone = this.police.dispatch.animHook; // [POLICE] the cop cuffs the player before the ARRESTED card
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
@@ -252,16 +253,18 @@ export class Game {
       this.heliArms.update(dt, ph, { fire: this.input.held('fire'), missile }, cam.position, dir, this.player);
     }
     this.armyLod.visible = armyLodVisible(this.renderer.camera.position.x, this.renderer.camera.position.z);
-    this.armyGuards.update(dt, guardsHostile(this.police.heat, this.player.pos.x, this.player.pos.z, this.armyAir.trespassT) && this.player.alive, this.player.pos);
+    const ignored = this.police.ignoring; // sandbox 'Police ignore you' covers the army too: guards, base defences and gunships
+    if (ignored) this.armyAir.trespassT = 0;
+    this.armyGuards.update(dt, guardsHostile(this.police.heat, this.player.pos.x, this.player.pos.z, this.armyAir.trespassT) && this.player.alive, this.player.pos, ignored);
     const on = inArmyBase(this.player.pos.x, this.player.pos.z, 4) && this.player.alive && this.deathT < 0;
     this.armyAir.trespassT = on ? this.armyAir.trespassT + dt : Math.max(0, this.armyAir.trespassT - dt * 0.4);
-    if (on && !this.trespassWarned) { this.trespassWarned = true; this.events.onToast('Fort Calder: restricted. Turn around.', 'warning'); }
+    if (on && !ignored && !this.trespassWarned) { this.trespassWarned = true; this.events.onToast('Fort Calder: restricted. Turn around.', 'warning'); }
     if (!on && this.armyAir.trespassT === 0) this.trespassWarned = false;
     const heat = this.police.heat;
     this.armyAir.wantedHeavy = heat >= 5;
     const v = (pv ?? ph) as { position: THREE.Vector3; phys: { body: { linvel(): { x: number; y: number; z: number } } }; damage: never } | null;
     const lv = v ? v.phys.body.linvel() : null;
-    this.armyAir.update(dt, this.player.alive && armyAirWanted(heat, this.armyAir.trespassT, !!ph?.armed), {
+    this.armyAir.update(dt, !ignored && this.player.alive && armyAirWanted(heat, this.armyAir.trespassT, !!ph?.armed), {
       pos: v ? v.position : this.player.pos, vel: lv ? new THREE.Vector3(lv.x, lv.y, lv.z) : this.player.vel, vehicle: v as never, onFoot: !v,
     });
   }
@@ -627,6 +630,7 @@ export class Game {
     this.crowd.sirens = this.traffic.sirenSources;
     this.buses.update(dt, this.player.pos);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
+    this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);
     this.updatePickups(dt);
@@ -636,7 +640,7 @@ export class Game {
     this.cam.baseFov = this.settings.fov;
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
-    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
+    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);
@@ -741,7 +745,7 @@ export class Game {
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
       clock: fmtClock12(this.hour),
-      ...this.pcombat.hud(), ...(pv || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
+      ...this.pcombat.hud(), ...((pv && !this.pcombat.driveAim) || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
       interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
       fps: this.settings.showFps ? Math.round(this.fps) : null,
     };

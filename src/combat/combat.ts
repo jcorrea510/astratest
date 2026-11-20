@@ -324,7 +324,7 @@ export class Combat {
       const wHit = tr.damageMul < 1 ? { ...w, damage: w.damage * tr.damageMul, playerDamage: w.playerDamage * tr.damageMul } : w;
       for (const ph of tr.pen) { // entry marks and damage on every panel the round went through
         this.particles.impact(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, ph.surface === 'vehicle' ? 'metal' : 'wood', strength0);
-        if (ph.vehicle) { ph.vehicle.damage(w.damage * 0.2, ph.point, d, shooter); ph.vehicle.flashT = 0.05; this.particles.decal(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, 'metal', ph.vehicle.visual); this.onVehicleHit?.(ph.vehicle, shooter); }
+        if (ph.vehicle) { ph.vehicle.damage(w.damage * 0.2, ph.point, d, shooter); ph.vehicle.flashT = 0.05; if (!ph.vehicle.overGlass(ph.point)) this.particles.decal(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, 'metal', ph.vehicle.visual); this.onVehicleHit?.(ph.vehicle, shooter); }
       }
       const end = tr.point.clone();
       const info: HitInfo = { point: end, target: null, kind: tr.kind, headshot: false, killed: false, throughGlass: tr.glass.length > 0 };
@@ -348,7 +348,7 @@ export class Combat {
         v.flashT = 0.05;
         info.target = v; info.surface = 'metal';
         this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, 'metal', strength);
-        this.particles.decal(end.x, end.y, end.z, n.x, n.y, n.z, 'metal', v.visual);
+        if (!tr.glass.includes(v) && !v.overGlass(end)) this.particles.decal(end.x, end.y, end.z, n.x, n.y, n.z, 'metal', v.visual); // never on a window opening or after the round came through the glass: the hull is coarser than the body and the hole would hang in the air
         if (loud) { if (Math.random() < 0.25) this.audio.play('ricochet', { pos: end, volume: 0.5 }); else this.sfx(IMPACT_SND.metal, end); impactSounds++; }
         this.onVehicleHit?.(v, shooter);
       } else if (tr.kind === 'static') {
