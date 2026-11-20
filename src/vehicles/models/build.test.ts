@@ -7,14 +7,16 @@ import { SHAPES } from '../shapes';
 
 describe('procedural vehicle models', () => {
   for (const kind of Object.keys(VEHICLES) as VehicleKind[]) {
-    it(`${kind} builds two LODs with doors, panes and seats`, () => {
+    it(`${kind} builds three LODs with doors, panes and seats`, { timeout: 60000 }, () => {
       const t = getTemplate(kind);
       const hi = t.lods[0].body.attributes.position.count / 3, lo = t.lods[1].body.attributes.position.count / 3;
       const glass = (t.lods[0].glass?.attributes.position.count ?? 0) / 3;
       process.stdout.write(`MODEL ${kind.padEnd(11)} hi ${hi} lo ${lo} glass ${glass} wheel ${wheelSoup(SHAPES[kind], 0).tris} doors ${t.doors.length} panes ${t.panes.map(p => p.name).join(',')}\n`);
       expect(hi).toBeLessThan(42000);
       expect(lo).toBeLessThan(hi * 0.5);
-      expect(lo).toBeLessThan(12000);
+      expect(lo).toBeLessThan(3200);
+      const far = t.lods[2].body.attributes.position.count / 3;
+      expect(far).toBeLessThan(kind === 'tank' ? 1000 : 700); expect(far).toBeGreaterThan(40);
       expect(t.doors.length).toBe(SHAPES[kind].doors.length * 2);
       if (kind !== 'tank') {
         expect(t.panes.some(p => p.name === 'windshield')).toBe(true);

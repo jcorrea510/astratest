@@ -87,6 +87,8 @@ export class VehicleManager {
       void time;
     }
   }
+  /** Max cars that cast shadows at once (nearest first); set from the graphics preset. */
+  shadowBudget = 10;
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
     this.updateSkidAudio(playerVehicle);
     this.updatePlayerSiren(playerVehicle);
@@ -134,6 +136,10 @@ export class VehicleManager {
         ev.update({ rpm: v.phys.rpm, throttle: Math.abs(v.input.throttle), pos: v.position, kind: v.spec.sound ?? 'car', damage: 1 - frac });
       } else if (ev) { ev.stop(); this.engines.delete(v.id); }
     }
+    // shadow caster budget: only the nearest few cars are drawn into the shadow map
+    const cast: { v: Vehicle; d: number }[] = [];
+    for (const v of this.list) if (v.bodyMesh.castShadow) cast.push({ v, d: v.position.distanceToSquared(listener) });
+    if (cast.length > this.shadowBudget) { cast.sort((a, b) => a.d - b.d); for (let i = this.shadowBudget; i < cast.length; i++) cast[i].v.bodyMesh.castShadow = false; }
   }
   /** Tyre squeal for the player's car (loop) plus a screech one-shot when a slide starts. */
   private updateSkidAudio(pv: Vehicle | null) {

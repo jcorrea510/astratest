@@ -617,6 +617,7 @@ export class Game {
     }
     this.pcombat.update(dt, blocked || this.paused || this.carEntry.active, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
+    this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);

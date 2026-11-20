@@ -150,6 +150,39 @@ export class Soup {
     }
     return best;
   }
+  /**
+   * Vertex-clustering decimation: vertices that share a grid cell (and bone + surface kind) merge into one averaged vertex;
+   * triangles that collapse are dropped. Used for the far LODs of the cars (the bones keep wheels and doors separate).
+   */
+  decimate(cell: number): Soup {
+    const d = this.d, n = this.verts, key = new Array<string>(n);
+    const acc = new Map<string, { s: number[]; c: number }>();
+    for (let i = 0; i < n; i++) {
+      const o = i * STRIDE, k = `${Math.floor(d[o] / cell)},${Math.floor(d[o + 1] / cell)},${Math.floor(d[o + 2] / cell)},${d[o + 12]},${d[o + 13]}`;
+      key[i] = k; let a = acc.get(k);
+      if (!a) { a = { s: d.slice(o, o + STRIDE), c: 1 }; acc.set(k, a); } else { a.c++; for (let j = 0; j < 6; j++) a.s[j] += d[o + j]; }
+    }
+    const out = new Soup();
+    for (let t = 0; t < n; t += 3) {
+      const k0 = key[t], k1 = key[t + 1], k2 = key[t + 2];
+      if (k0 === k1 || k1 === k2 || k0 === k2) continue;
+      for (const k of [k0, k1, k2]) {
+        const a = acc.get(k)!, v = a.s, nl = Math.hypot(v[3], v[4], v[5]) || 1;
+        out.vert(v[0] / a.c, v[1] / a.c, v[2] / a.c, v[3] / nl, v[4] / nl, v[5] / nl, v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13]);
+      }
+    }
+    return out;
+  }
+  /** Decimates until at most `target` triangles remain (binary search on the cluster size). */
+  decimateTo(target: number): Soup {
+    if (this.tris <= target) return this.clone();
+    let lo = 0.01, hi = 3, best = this.decimate(hi);
+    for (let i = 0; i < 7; i++) {
+      const mid = Math.sqrt(lo * hi), r = this.decimate(mid);
+      if (r.tris > target) lo = mid; else { hi = mid; best = r; }
+    }
+    return best;
+  }
   /** Bakes into a skinned BufferGeometry (rigid single-bone weights). */
   toGeometry(): THREE.BufferGeometry {
     const n = this.verts, d = this.d;

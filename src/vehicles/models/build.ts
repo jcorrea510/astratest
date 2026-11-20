@@ -1,6 +1,6 @@
 /**
  * Assembles a vehicle model from its shape: panels, greenhouse, doors (own bones), wheels (own bones), lamps,
- * plates, mirrors, interior, accessories, cargo bodies and the tank's tracks/turret. Two LODs share one bone layout.
+ * plates, mirrors, interior, accessories, cargo bodies and the tank's tracks/turret. Three LODs share one bone layout.
  * Templates are built lazily on first use and cached per kind.
  */
 import * as THREE from 'three';
@@ -71,9 +71,14 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     });
     if (s.type === 'tank') trackLen = tankParts(kit, body, lod, bl);
     body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0);
-    lods.push({ body: body.toGeometry(), glass: glass && glass.tris ? glass.toGeometry() : null });
-    // CPU copies are dead weight once uploaded (~7 MB per kind); only the lod-0 body keeps what dent deformation reads.
-    freeAfterUpload(lods[lod].body, lod === 0 ? ['position', 'normal', 'skinIndex'] : []); if (lods[lod].glass) freeAfterUpload(lods[lod].glass!);
+    // lod 0 = full model (~35k tris); lod 1 (~3k) and lod 2 (~600) are clustered down from the simple model, wheels/doors stay on their bones
+    const bake = (b: Soup, g: Soup | null) => ({ body: b.toGeometry(), glass: g && g.tris ? g.toGeometry() : null });
+    const entries = lod === 0 ? [bake(body, glass)] : [bake(body.decimateTo(s.type === 'tank' ? 2200 : 3000), glass?.decimateTo(220) ?? null), bake(body.decimateTo(s.type === 'tank' ? 900 : 600), glass?.decimateTo(40) ?? null)];
+    for (const e of entries) {
+      lods.push(e);
+      // CPU copies are dead weight once uploaded (~7 MB per kind); only the lod-0 body keeps what dent deformation reads.
+      freeAfterUpload(e.body, lods.length === 1 ? ['position', 'normal', 'skinIndex'] : []); if (e.glass) freeAfterUpload(e.glass);
+    }
     if (lod === 0) {
       lods[0].body.computeBoundingBox(); bbox = lods[0].body.boundingBox!.clone();
       // door hinges at the front edge of each door, on the outer skin

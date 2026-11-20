@@ -31,29 +31,36 @@ test('pedestrians walk across the bridge walkway at deck height', async () => {
 
 test('a pedestrian walks to a bench, sits for a while, then gets up and walks on', async () => {
   test.setTimeout(300_000);
-  const r = await page.evaluate(`(() => {
+  await page.evaluate(`(() => {
     const g = window.__game; g.pedCap = 20; const B = g.benches.filter(b => b.y < 1 && !b.occupied);
     const b = B[Math.floor(B.length / 2)];
     const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
-    g.player.place(b.x + fx * 4, 0.4, b.z + fz * 4, 0); g.cam.yaw = Math.atan2(-fx, -fz);
-    const n = g.pop.spawn('civilian', b.x + fx * 5, b.z + fz * 5, 0.2);
+    const px = b.x + fx * 3.2 - fz * 1.6, pz = b.z + fz * 3.2 + fx * 1.6;
+    g.player.place(px, 0.4, pz, 0); g.cam.yaw = Math.atan2(b.x - px, b.z - pz) + Math.PI;
+    const n = g.pop.spawn('civilian', b.x + fx * 6, b.z + fz * 6, 0.2);
     b.occupied = true; n.bench = b; n.activity = 'sit'; n.destPt = new g.player.pos.constructor(b.x + fx * 0.9, 0.2, b.z + fz * 0.9); n.brain = 'wander'; n.stateT = 0;
-    let sat = false, satFrames = 0, seatY = 0, dist = 99;
-    for (let i = 0; i < 20 * 30; i++) { g.frame(1 / 30, false); if (n.activity === 'sitting') { sat = true; satFrames++; seatY = n.pos.y; dist = Math.hypot(n.pos.x - b.x, n.pos.z - b.z); if (satFrames === 90) { g.frame(1 / 30, true); window.__shot = true; } } }
-    window.__bench = { n, b };
-    return { sat, satFrames, seatY, dist, benchY: b.y };
-  })()`) as any;
-  console.log('bench', JSON.stringify(r));
+    window.__bench = { n, b, satFrames: 0, sat: false, seatY: 0, dist: 99 };
+  })()`);
+  const stepUntil = (frames: number) => page.evaluate(`(() => {
+    const g = window.__game; const S = window.__bench; const n = S.n, b = S.b;
+    for (let i = 0; i < ${frames}; i++) { g.frame(1 / 30, false); if (n.activity === 'sitting') { S.sat = true; S.satFrames++; S.seatY = n.pos.y; S.dist = Math.hypot(n.pos.x - b.x, n.pos.z - b.z); } }
+    g.frame(1 / 30, true); return { sat: S.sat, frames: S.satFrames, seatY: S.seatY, dist: S.dist, benchY: b.y, act: n.activity };
+  })()`) as Promise<any>;
+  let r = await stepUntil(30);
+  for (let k = 0; k < 40 && r.frames < 60; k++) r = await stepUntil(30);
   await page.screenshot({ path: `${SHOTS}/ped-bench.png`, timeout: 120_000 });
+  console.log('bench', JSON.stringify(r));
   expect(r.sat).toBe(true);
   expect(r.dist).toBeLessThan(0.6);
   expect(Math.abs(r.seatY - r.benchY)).toBeLessThan(0.3);
-  // a scare gets them up straight away
+  // sat for a good while, then got up and walks on
+  for (let k = 0; k < 20 && r.act === 'sitting'; k++) r = await stepUntil(150);
+  expect(r.act).not.toBe('sitting');
+  expect(r.frames).toBeGreaterThan(300);
+  // a scare gets a sitter up straight away and frees the bench
   const up = await page.evaluate(`(() => {
-    const g = window.__game; const { n, b } = window.__bench;
-    n.activity = 'sit'; n.bench = b; b.occupied = true; n.destPt = null;
-    const f = n.pos.clone(); f.set(b.x, 0.2, b.z); g.pop.remove(n);
-    const m = g.pop.spawn('civilian', b.x, 0.2, b.z + 0.1); b.occupied = true; m.bench = b; m.char.place(b.x, 0.2, b.z, b.yaw); m.activity = 'sit'; m.destPt = f;
+    const g = window.__game; const { b } = window.__bench; b.occupied = true;
+    const m = g.pop.spawn('civilian', b.x, 0.2, b.z); m.bench = b; m.activity = 'sit'; m.destPt = m.pos.clone(); m.brain = 'wander';
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
     const sitting = m.activity === 'sitting';
     g.pop.danger(g.player.pos, 40, g.player);
@@ -61,6 +68,7 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
     return { sitting, brain: m.brain, collider: m.char.physicsEnabled, free: !b.occupied };
   })()`) as any;
   console.log('scare', JSON.stringify(up));
+  expect(up.sitting).toBe(true);
   expect(up.collider).toBe(true);
   expect(up.free).toBe(true);
 });

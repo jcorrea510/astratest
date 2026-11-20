@@ -24,7 +24,7 @@ import { GROUND } from './shapes';
 export const HIP_ABOVE_ROOT = 0.55;
 /** Swing angle of a fully open door (rad). */
 const DOOR_MAX = 1.15;
-const LOD_FAR = 28;
+const LOD_MID = 20, LOD_FAR = 65; // lod 0 (35k tris) inside 20 m, lod 1 (~3k) to 65 m, lod 2 (~600) beyond
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }
@@ -300,14 +300,14 @@ export class Vehicle {
     this.phys.settleAt(p.x, groundY, p.z, this.yaw);
     this.syncTransform();
   }
-  /** 0 = detailed, 1 = far (lighter body, no interior). */
+  /** 0 = detailed, 1 = mid (~3k tris), 2 = far (~600 tris). */
   setLod(l: number) {
     if (l === this.lod || this.ownGeo) return;
     this.lod = l;
     this.bodyMesh.geometry = this.tpl.lods[l].body;
     if (this.glassMesh) this.glassMesh.geometry = this.tpl.lods[l].glass ?? this.tpl.lods[0].glass!;
   }
-  updateLod(dist: number) { this.setLod(dist > LOD_FAR ? 1 : 0); }
+  updateLod(dist: number) { this.setLod(dist > LOD_FAR ? 2 : dist > LOD_MID ? 1 : 0); }
   update(dt: number, night: number, time: number, braking: boolean) {
     this.syncTransform();
     const t = this.tpl, c = this.phys.ctrl, spec = this.spec;

@@ -9,7 +9,7 @@ Resume: read CLAUDE.md, docs/BRIEF5.md, this file. Continue unfinished items. Ow
 - [x] R5-C Police (C2 running: shopper crash, army convoy after base move, visual shoot-out check): see traffic violations, stolen cop car always pursued on sight, shot cop car -> cops exit+pursue, heli chase holds heat.
 - [x] R5-E Player (+E2: walk through broken panes, NPC IK gun hold, finger curl + trigger finger): shot store glass clears + shoot-through, correct two-hand gun hold, store shoppers move/browse.
 - [x] R5-W World (W2 done: pier shoulder exact, denser quay, re-shoots, real precinct cars, bridge walkways, Eastbank signals): visible traffic lights, no posts in crosswalks/cross streets, pier road shoulder, East River volume, bridge top glitch, roof flicker from air, Precinct 4 looks like a precinct.
-- [x] R5-A Army (+A2 far LOD, guards, shed roof, sandbox gunship, heli seat teleport fix; A3: flash + wreck look): base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
+- [x] R5-A Army (+A2 far LOD, guards, shed roof, sandbox gunship, heli seat teleport fix; A3: flash whiteout bug fixed, smoke+debris, charred wreck): base further out, real base look, armed army helis (guns+missiles) attack + stealable; heli door opens outward.
 - [x] R5-M Map (+M2 declutter, collapsible legend, cached pan layer): 3D-looking map (extruded buildings, shading) for full map + minimap.
 - [ ] R5-G Gaps: [x] highway cockpit (rebuilt, all 12 cars, live mirrors/infotainment) [x] buses; T3 running: bus boarding, bench sitting, peds on bridge walkways; Eastbank signals; run soak.
 - [ ] R5-Z Gate + publish (soak included).
