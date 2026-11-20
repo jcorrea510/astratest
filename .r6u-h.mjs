@@ -1,0 +1,13 @@
+import { chromium } from '@playwright/test';
+const [,, query = '', out = 'h', ...acts] = process.argv;
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+p.on('pageerror', e => console.log('ERR', e.message));
+p.on('console', m => { if (m.type()==='error') console.log('CONSOLE', m.text()); });
+await p.goto('http://localhost:5210/astratest/r6u-harness.html' + query);
+await p.waitForFunction(() => window.__ready, null, { timeout: 120000 });
+await p.waitForTimeout(1200);
+await p.screenshot({ path: `/tmp/claude-0/shots/u-${out}-0.png` });
+await p.keyboard.press('Space'); await p.waitForTimeout(900);
+await p.screenshot({ path: `/tmp/claude-0/shots/u-${out}-1.png` });
+await b.close();
