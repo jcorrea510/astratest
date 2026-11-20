@@ -212,7 +212,7 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
 }
 
 /**
- * Far-crowd variant for instanced, rigid far models: the paint comes from a per-instance `aPaint` attribute and the merged
+ * Far-crowd variant for instanced, rigid far models: paint (rgb) and lamps-on (a) come from a per-instance `aPaint` attribute; the merged
  * glass (aKind FAR_GLASS = 60) is drawn opaque as dark, clear-coated reflective glass. One per vehicle kind (livery, grille
  * and body uniforms differ by kind); the program is shared.
  */
@@ -221,10 +221,12 @@ export function farCarMaterial(): ReturnType<typeof carMaterial> {
   m.side = THREE.FrontSide; // closed far bodies: no interior to see through windows
   m.onBeforeCompile = (sh, r) => {
     inner.call(m, sh, r);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aPaint; varying vec3 vPaint;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aPaint; varying vec4 vPaint;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaint = aPaint;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPaint;')
-      .replace('col = isK(K_PAINT2) ? uPaint2 : uPaint;', 'col = isK(K_PAINT2) ? uPaint2 : vPaint;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vPaint;')
+      .replace('col = isK(K_PAINT2) ? uPaint2 : uPaint;', 'col = isK(K_PAINT2) ? uPaint2 : vPaint.rgb;')
+      .replace('vec3(1.0, 0.93, 0.8) * uHead;', 'vec3(1.0, 0.93, 0.8) * uHead * vPaint.a;') // a = 1 driven (lamps on at night), 0 parked
+      .replace('gEmis = vec3(1.0, 0.04, 0.03) * uTail', 'gEmis = vec3(1.0, 0.04, 0.03) * uTail * vPaint.a')
       .replace('        // grime low on the body', `        if (abs(vKind - 60.0) < 0.5) { col = vec3(0.022, 0.026, 0.03); gRough = 0.04; gMetal = 0.0; gCoat = 1.0; gEmis = vec3(0.0); }
         // grime low on the body`);
   };
