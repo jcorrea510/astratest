@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { curbShift, yieldsToSiren, signalCap, stopSignCap, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -586,6 +586,7 @@ export class Traffic {
         if (d < (this.prewarming ? 20 : 45) || d > 125) continue;
         if (Math.random() > DISTRICT_INFO[districtAt(this.city, p.x, p.z)].trafficDensity) continue;
         if (!this.prewarming && d < 100 && this.frustum.containsPoint(p)) continue;
+        { const I = this.city.intersections[lane.intersection]; if (!this.prewarming && !spawnSafeAtSignal(signalState(I, lane.axis, this.time()), signalState(I, lane.axis, this.time() + 5), lane.length - s - 5.2)) continue; }
         if (this.vehicles.list.some(o => o.position.distanceTo(p) < 11) || this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 16)) continue;
         // now and then an ambient police cruiser rolls by on patrol (max two, only while the heat is off)
         if (!this.prewarming && ambient > 5 && Math.random() < 0.05 && this.cars.filter(c => c.patrol).length < 2) {

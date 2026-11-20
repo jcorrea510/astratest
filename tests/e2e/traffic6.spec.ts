@@ -19,10 +19,10 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
       const p = prev.get(key);
       if (p && p.lane !== lane && lane.connector && !p.lane.connector && speed > 2) {
         const I = g.city.intersections[p.lane.intersection], t = g.time;
-        if (sig(I, p.lane.axis, t) === 'red' && sig(I, p.lane.axis, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id, h: p.h, pl: p.lane.id, pll: p.lane.length, nl: lane.id, ps: p.s, ns: key.s, st: sig(I, p.lane.axis, t), st2: sig(I, p.lane.axis, t - 1), st3: sig(I, p.lane.axis, t - 3), sig: I.signalized });
+        if (sig(I, p.lane.axis, t) === 'red' && sig(I, p.lane.axis, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id, h: [...p.h], pl: p.lane.id, pll: p.lane.length, nl: lane.id, ps: p.s, ns: key.s, st: sig(I, p.lane.axis, t), st2: sig(I, p.lane.axis, t - 1), st3: sig(I, p.lane.axis, t - 3), sig: I.signalized });
         if (!I.signalized && (approaches.get(I.id) ?? 0) >= 3 && speed > 5) rolled.push({ kind, t, v: speed, inter: I.id });
       }
-      const h = p ? p.h : []; if (!lane.connector) { h.push([+(lane.length - (key.s ?? 0) - 5.4).toFixed(1), +speed.toFixed(1), sig(g.city.intersections[lane.intersection], lane.axis, g.time)[0], lane.id, key.ox !== undefined ? +(key.ox).toFixed(1) : 0]); if (h.length > 24) h.shift(); }
+      const h = p ? p.h : []; { h.push([+(lane.length - (key.s ?? 0) - 5.4).toFixed(1), +speed.toFixed(1), sig(g.city.intersections[lane.intersection], lane.axis, g.time)[0] + (lane.connector ? 'C' : ''), lane.id + '@' + Math.round(lane.length), key.ox !== undefined ? +(key.ox).toFixed(1) : 0]); if (h.length > 150) h.shift(); }
       prev.set(key, { lane, h, s: key.s });
     };
     const lastPos = new Map<any, any>(); const jumps: any[] = []; const idle: Record<number, number> = {}, idleWorst: any[] = [];
@@ -56,7 +56,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
     }
     return { jumps: jumps.slice(0, 6), reds, rolled, idleWorst, farWorst, moving: moving / samples, parked: parked / samples };
   });
-  console.log('TRAFFIC6', JSON.stringify({ ...r, reds: r.reds.length, rolled: r.rolled.length })); console.log('JUMPS', JSON.stringify(r.jumps)); if (r.reds.length) console.log('REDS', JSON.stringify(r.reds.map((x: any) => ({ ...x, h: x.h.slice(-14).map((e: any) => e.join('/')).join(' ') }))));
+  console.log('TRAFFIC6', JSON.stringify({ ...r, reds: r.reds.length, rolled: r.rolled.length })); console.log('JUMPS', JSON.stringify(r.jumps)); if (r.reds.length) console.log('REDS', JSON.stringify(r.reds.map((x: any) => ({ ...x, h: x.h.filter((_: any, i2: number, a: any[]) => (a.length - i2) % 5 === 0).map((e: any) => e.join('/')).join(' ') }))));
   expect(r.reds, JSON.stringify(r.reds)).toEqual([]);
   expect(r.rolled, JSON.stringify(r.rolled)).toEqual([]);
   expect(r.idleWorst, JSON.stringify(r.idleWorst)).toEqual([]);

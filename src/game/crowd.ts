@@ -18,7 +18,7 @@ import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX, TRAFFIC_MIX, type VehicleKind } from '../vehicles/specs';
 import { FarCars, kindPaint } from '../vehicles/farCars';
 import { hasTemplate } from '../vehicles/models/build';
-import { yieldsToSiren, signalCap, stopSignCap } from './trafficRules';
+import { yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal } from './trafficRules';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
@@ -236,6 +236,7 @@ export class Crowd {
       if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 11))) continue;
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
       // never appear already doing 40 km/h towards a red line it cannot stop at (R6-T)
+      if (!lane.connector && !spawnSafeAtSignal(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), signalState(this.city.intersections[lane.intersection], lane.axis, this.time() + 5), lane.length - s - 5.4)) continue;
       const sInter = this.city.intersections[lane.intersection], v0 = lane.connector ? lane.speed * 0.8 : Math.min(lane.speed * 0.8, signalCap(signalState(sInter, lane.axis, this.time()), lane.length - s - 5.4, lane.speed * 0.8));
       const kind: VehicleKind = bus ? 'bus' : this.pickKind(), paint = Math.floor(Math.random() * 64);
       if (bus && !hasTemplate('bus')) return false;

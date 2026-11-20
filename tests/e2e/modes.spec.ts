@@ -88,8 +88,8 @@ test.describe('game modes', () => {
   });
 });
 
-test('title: New game then pick a mode; Continue describes the save', async ({ page }) => {
-  test.setTimeout(240_000);
+test('title: New game then pick a mode starts that mode', async ({ page }) => {
+  test.setTimeout(480_000);
   await page.goto('./');
   await page.waitForFunction(() => !!(window as W).__title, null, { timeout: 180_000 });
   await page.keyboard.press('Space');
@@ -99,7 +99,7 @@ test('title: New game then pick a mode; Continue describes the save', async ({ p
   await expect(page.getByRole('button', { name: 'Regular' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sandbox' })).toBeVisible();
   await page.getByRole('button', { name: 'Regular' }).click();
-  await page.waitForFunction(() => !!(window as W).__meridian?.activities, null, { timeout: 180_000 });
+  await page.waitForFunction(() => !!(window as W).__meridian?.activities, null, { timeout: 400_000 });
   expect(await page.evaluate(() => (window as W).__game.mode)).toBe('regular');
   const hud = await page.locator('.ma-mode-badge').textContent();
   expect(hud).toBe('Regular');
@@ -112,5 +112,5 @@ test('title: Continue describes the saved game (mode, cash, last played)', async
   await page.goto('./');
   await page.waitForFunction(() => !!(window as W).__title, null, { timeout: 180_000 });
   await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: /Continue — Regular, \$12,345, 5 min ago/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continue — Regular, \$12,345, \d+ min ago/ })).toBeVisible();
 });

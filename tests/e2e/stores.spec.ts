@@ -3,7 +3,7 @@ import { watch, boot, clean } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
-test('about 50 walk-in stores of ten kinds with blips; interiors are built lazily', async ({ page }) => {
+test('about 50 walk-in stores of eleven kinds with blips; interiors are built lazily', async ({ page }) => {
   const p = watch(page);
   await boot(page);
   const r = await page.evaluate(() => {
@@ -13,7 +13,7 @@ test('about 50 walk-in stores of ten kinds with blips; interiors are built lazil
     return { n: R.kiosks.length, kinds: kinds.size, built: R.builtCount, shopBlips };
   });
   expect(r.n).toBeGreaterThanOrEqual(45);
-  expect(r.kinds).toBe(10);
+  expect(r.kinds).toBe(11);
   expect(r.shopBlips).toBeGreaterThanOrEqual(45);
   expect(r.built).toBeLessThan(r.n / 2); // only the stores near the spawn exist as meshes
   clean(p);
@@ -28,7 +28,7 @@ test('stores of every kind can be walked into and held up', async ({ page }) => 
     R.kiosks.forEach((k: any, i: number) => { if (!seen.has(k.def.kind)) { seen.add(k.def.kind); out.push(i); } });
     return out;
   });
-  expect(picks.length).toBe(10);
+  expect(picks.length).toBe(11);
   for (const i of picks) {
     const r = await page.evaluate((i: number) => {
       const g = (window as any).__game, R = (window as any).__meridian.activities.robberies, k = R.kiosks[i];

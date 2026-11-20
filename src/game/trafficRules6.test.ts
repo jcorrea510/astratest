@@ -63,3 +63,12 @@ d2('R6-T amber timing', () => {
     e2(sc2('yellow', 3, 12, 0.1)).toBe(Infinity); // genuinely too close to stop at any rate
   });
 });
+import { spawnSafeAtSignal as safeSpawn } from './trafficRules';
+d2('R6-T spawn at signals', () => {
+  i2('no spawning into a changing light close to the line', () => {
+    e2(safeSpawn('yellow', 'red', 30)).toBe(false);
+    e2(safeSpawn('green', 'red', 30)).toBe(false);
+    e2(safeSpawn('green', 'green', 30)).toBe(true);
+    e2(safeSpawn('red', 'red', 100)).toBe(true);
+  });
+});

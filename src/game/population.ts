@@ -232,7 +232,16 @@ export class Population {
         if (h.currentState !== 'crouch' && h.currentState !== 'cower' && h.currentState !== 'sit' && h.currentState !== 'talk') h.setState(c.swimming ? 'swim' : 'loco');
         h.setSpeed(c.speed);
       }
-      if (c.inVehicle) { h.mesh.visible = true; h.update(dt); continue; }
+      if (c.inVehicle) {
+        // occupants get the same distance LODs / culling as people on foot (they were all full-detail 15k-tri bodies, shadows
+        // included, in every car on the map: ~1.2M triangles a frame on high; R6-V)
+        const vp = (c.inVehicle as { position?: THREE.Vector3 }).position ?? c.pos, dv = vp.distanceTo(focus);
+        const vis = dv < 14 || dv < 150 && this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(vp.x, vp.y + 1, vp.z), 3));
+        h.mesh.visible = vis;
+        if (vis) { h.setBodyLod(dv > 36 ? 2 : dv > 13 ? 1 : 0); h.update(dt); }
+        h.setDetail(vis && dv < 40); h.mesh.castShadow = dv < 18; for (const e of h.extras) e.castShadow = dv < 12;
+        continue;
+      }
       const d = c.pos.distanceTo(focus);
       h.root.visible = d < 160;
       if (!h.root.visible) continue;

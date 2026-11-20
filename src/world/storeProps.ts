@@ -133,7 +133,7 @@ export function floorMaterial(kind: FloorKind, a: string, b: string): THREE.Mesh
     for (let k = 0; k < 260; k++) { g.fillStyle = `rgba(40,30,20,${0.02 + rnd() * 0.05})`; g.fillRect(rnd() * 256, rnd() * 256, 3 + rnd() * 16, 2 + rnd() * 5); }
     rough = 0.28;
   } else if (kind === 'wood' || kind === 'darkwood') {
-    const pw = 32; for (let i = 0; i < 8; i++) { let off = rnd() * 256; for (let j = 0; j < 3; j++) { const sh = (rnd() - 0.5) * 22; g.fillStyle = shade(i % 2 ? a : b, sh); const x0 = off % 256; g.fillRect(0, i * pw, 256, pw - 1); void x0; g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect((off + j * 90) % 256, i * pw, 1.5, pw); } for (let k = 0; k < 30; k++) { g.strokeStyle = `rgba(0,0,0,${0.03 + rnd() * 0.06})`; g.beginPath(); g.moveTo(rnd() * 256, i * pw + rnd() * pw); g.lineTo(rnd() * 256, i * pw + rnd() * pw); g.stroke(); } g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, i * pw + pw - 1.5, 256, 1.5); }
+    const pw = 32; for (let i = 0; i < 8; i++) { const off = rnd() * 256; for (let j = 0; j < 3; j++) { const sh = (rnd() - 0.5) * 22; g.fillStyle = shade(i % 2 ? a : b, sh); const x0 = off % 256; g.fillRect(0, i * pw, 256, pw - 1); void x0; g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect((off + j * 90) % 256, i * pw, 1.5, pw); } for (let k = 0; k < 30; k++) { g.strokeStyle = `rgba(0,0,0,${0.03 + rnd() * 0.06})`; g.beginPath(); g.moveTo(rnd() * 256, i * pw + rnd() * pw); g.lineTo(rnd() * 256, i * pw + rnd() * pw); g.stroke(); } g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, i * pw + pw - 1.5, 256, 1.5); }
     rough = kind === 'wood' ? 0.45 : 0.35;
   } else if (kind === 'marble') {
     g.fillStyle = a; g.fillRect(0, 0, 256, 256);

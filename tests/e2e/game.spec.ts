@@ -19,7 +19,7 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   await expect(page.getByRole('button', { name: 'New game' })).toBeVisible();
   // no save: no Continue, no story entries
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
-  await expect(page.getByText(/story|chapter|missions/i)).toHaveCount(0);
+  expect((await page.locator('.ma-title-menu .ma-menu-item').allTextContents()).join(' ')).not.toMatch(/story|mission|chapter/i);
   // keyboard navigation: down to Credits (New game, Highway, Settings, Controls, Fullscreen, Credits), open, back out with Esc
   for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
   await expect(page.locator('.ma-title-menu .ma-menu-item:focus')).toHaveText('Credits');

@@ -223,6 +223,19 @@ export class Decals {
     this.i = (this.i + 1) % this.max; this.mesh.count = Math.min(this.max, this.mesh.count + 1);
     this.mesh.instanceMatrix.needsUpdate = true; this.mesh.instanceColor!.needsUpdate = true;
   }
+  private zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  /** Removes the bullet holes that sit on / behind a pane (centre x,y,z, facing yaw, w x h) once it is shot out. Returns how many went. */
+  clearIn(x: number, y: number, z: number, yaw: number, w: number, h: number, behind = 2.0): number {
+    const nx = Math.sin(yaw), nz = Math.cos(yaw); let n = 0; const m = this.m, p = this.p;
+    for (let i = 0; i < this.mesh.count; i++) {
+      this.mesh.getMatrixAt(i, m); p.setFromMatrixPosition(m); if (m.elements[0] === 0 && m.elements[5] === 0) continue;
+      const dx = p.x - x, dz = p.z - z, along = dx * nx + dz * nz, lat = dx * nz - dz * nx;
+      if (along > 0.25 || along < -behind || Math.abs(lat) > w / 2 + 0.08 || Math.abs(p.y - y) > h / 2 + 0.08) continue;
+      this.mesh.setMatrixAt(i, this.zero); n++;
+    }
+    if (n) this.mesh.instanceMatrix.needsUpdate = true;
+    return n;
+  }
 }
 
 /** Ring buffer of quads for tyre marks. */

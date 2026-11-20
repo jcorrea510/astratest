@@ -8,9 +8,9 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
 import { trimMaterial, nightUniform } from '../render/materials';
-import { TrimBuilder, T_PAINT, T_METAL, T_PLASTIC, T_GLASS, T_GLOW, T_FABRIC, T_STONE, T_ROUGH, type TrimParams } from './builders';
+import { TrimBuilder, T_PAINT, T_METAL, T_PLASTIC, T_GLASS, T_GLOW, T_FABRIC, T_STONE, type TrimParams } from './builders';
 import { STORE_W, STORE_D, STORE_H, type Store } from '../game/places';
-import { NEW_KINDS, K, type Ctx, type Extras, type SmashCase, type VaultParts } from './storeKinds';
+import { NEW_KINDS, legacyBack, K, type Extras, type SmashCase, type VaultParts } from './storeKinds';
 import { ProdBuilder, productMaterial, floorMaterial, type FloorKind } from './storeProps';
 
 export interface StoreShell {
@@ -27,7 +27,7 @@ export interface StoreShell {
   register: { lx: number; lz: number };
   setDrawer: (open: number) => void; setBills: (frac: number) => void; burst: () => void; tick: (dt: number) => void;
   cases: SmashCase[]; vault: VaultParts | null; tellers: { x: number; z: number }[];
-  smashCase: (i: number) => void; setVault: (open: number) => void; drillRig: (on: boolean) => void;
+  smashCase: (i: number) => void; resetExtras: () => void; setVault: (open: number) => void; drillRig: (on: boolean) => void;
   clerk: THREE.Vector3; customer: THREE.Vector3; bag: THREE.Vector3; light: THREE.Vector3; counterZ: number;
 }
 
@@ -140,13 +140,10 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   // back wall behind the clerk: cigarette / lottery / liquor shelving
   const backZ = -0.9;
   const newKind = NEW_KINDS[def.kind];
-  const stocked = !newKind;
-  if (stocked) box(-3.0, 1.6, backZ, 4.0, 2.4, 0.4, C('#5a4a3c'));
-  if (stocked) for (let row = 0; row < 5; row++) for (let k = 0; k < 14; k++) { const pc = C(['#c0392b', '#f1c40f', '#ecf0f1', '#2980b9', '#27ae60', '#8e44ad', '#d35400'][r.int(0, 6)]); box(-4.85 + k * 0.28, 0.75 + row * 0.42, backZ + 0.24, 0.22, def.kind === 'liquor' ? 0.34 : 0.18, 0.08, pc, T_PLASTIC); }
-  if (stocked) col(-3.0, 1.6, backZ, 2.0, 1.2, 0.2);
   const extras: Extras = { cases: [], vault: null, tellers: [] };
   const prod = new ProdBuilder();
   const gMat = new THREE.MeshStandardMaterial({ color: '#bfe3ea', roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.16, depthWrite: false });
+  if (!newKind) legacyBack(def.kind, { def, r, accent, W, D, H, hw, hd, ceil, counterZ, backZ, doorX: 3.1, t, p: prod, root, extras, box: (x, y, z, sx, sy, sz, cc, tp = T_PAINT, pitch = 0) => box(x, y, z, sx, sy, sz, K(cc), tp, pitch), col, glassMat: gMat, trimMat });
   if (newKind) newKind({ def, r, accent, W, D, H, hw, hd, ceil, counterZ, backZ, doorX: 3.1, t, p: prod, root, extras, box: (x, y, z, sx, sy, sz, cc, tp = T_PAINT, pitch = 0) => box(x, y, z, sx, sy, sz, K(cc), tp, pitch), col, glassMat: gMat, trimMat });
   else if (def.kind === 'diner') {
     // booths along the right wall and stools at the counter
@@ -181,22 +178,6 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     box(4.4, 0.35, 1.8, 0.7, 0.7, 2.2, C('#3a3a3a'), T_FABRIC); col(4.4, 0.35, 1.8, 0.35, 0.35, 1.1);
     for (let k = 0; k < 6; k++) t.cyl(-4.8 + k * 0.28, 1.07, counterZ + 0.1, 0.06, 0.05, 0.3, 8, C(['#2c7fb8', '#e67e22', '#27ae60'][k % 3]), T_PLASTIC);
     for (let k = 0; k < 8; k++) t.cyl(-hw + 0.18, 0.2 + k * 0.45, -4.0, 0.14, 0.14, 0.4, 10, C(k % 2 ? '#c0392b' : '#f4f4f4'), T_PLASTIC);
-  } else {
-    // aisles of shelving with products
-    for (const ax of [0.6, 3.0]) {
-      box(ax, 0.8, -0.6, 0.9, 1.6, 4.6, C('#d9dcdf'), T_METAL);
-      col(ax, 0.8, -0.6, 0.45, 0.8, 2.3);
-      for (const side of [-1, 1]) for (let row = 0; row < 4; row++) for (let k = 0; k < 16; k++) {
-        const pc = C(['#e74c3c', '#f39c12', '#f1c40f', '#3498db', '#2ecc71', '#9b59b6', '#ecf0f1', '#e67e22', '#1abc9c'][r.int(0, 8)]);
-        const h = r.range(0.16, 0.3);
-        box(ax + side * 0.47, 0.22 + row * 0.38 + h / 2, -2.75 + k * 0.28, 0.06, h, 0.22, pc, T_PLASTIC);
-      }
-      box(ax, 1.75, 1.8, 0.95, 0.25, 0.05, accent, T_PAINT);
-    }
-    // wall shelving on the right wall
-    box(hw - 0.45, 1.1, -0.6, 0.5, 2.2, 6.0, C('#d9dcdf'), T_METAL);
-    for (let row = 0; row < 5; row++) for (let k = 0; k < 20; k++) box(hw - 0.72, 0.3 + row * 0.42, -3.4 + k * 0.28, 0.06, r.range(0.18, 0.3), 0.22, C(['#c0392b', '#f1c40f', '#2980b9', '#27ae60', '#ecf0f1', '#8e44ad'][r.int(0, 5)]), T_PLASTIC);
-    col(hw - 0.45, 1.1, -0.6, 0.25, 1.1, 3.0);
   }
   // fridges along the back wall with lit glass doors
   if (def.kind === 'diner') {
@@ -258,10 +239,14 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const toLocal = (p: THREE.Vector3) => p.clone().sub(root.position).applyAxisAngle(new THREE.Vector3(0, 1, 0), -def.yaw);
   const smashCase = (i: number) => { const c = extras.cases[i]; if (!c || c.broken) return; c.broken = true; c.glass.removeFromParent(); if (c.loot) c.loot.visible = false; };
   const setVault = (open: number) => { const v = extras.vault; if (!v) return; v.openA = open; v.door.rotation.y = open * 1.9; for (const cc of v.colliders) cc.setEnabled(open < 0.5); };
+  const resetExtras = () => {
+    for (const c of extras.cases) if (c.broken) { c.broken = false; root.add(c.glass); if (c.loot) c.loot.visible = true; }
+    const v = extras.vault; if (v) { v.door.rotation.y = 0; v.openA = 0; v.cash.visible = true; v.rig.visible = false; for (const cc of v.colliders) cc.setEnabled(true); }
+  };
   const burst = () => { for (const f of fly) { f.m.visible = true; f.t = 0; f.m.position.set(regX + (Math.random() - 0.5) * 0.2, 1.3, counterZ + 0.1); f.v.set((Math.random() - 0.5) * 1.6, 2.2 + Math.random() * 1.6, 0.4 + Math.random() * 1.4); f.w.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); } };
   return {
     root, shutter, doors, alarm, toWorld: toW, toLocal, counterZ,
-    register: { lx: regX, lz: counterZ - 0.05 }, cases: extras.cases, vault: extras.vault, tellers: extras.tellers, smashCase, setVault,
+    register: { lx: regX, lz: counterZ - 0.05 }, cases: extras.cases, vault: extras.vault, tellers: extras.tellers, smashCase, setVault, resetExtras,
     drillRig: (on: boolean) => { if (extras.vault) extras.vault.rig.visible = on; },
     setDrawer: (open: number) => { drawerState.target = open; }, setBills: (frac: number) => { billsMesh.visible = frac > 0.02; billsMesh.scale.y = Math.max(0.05, frac); },
     burst,

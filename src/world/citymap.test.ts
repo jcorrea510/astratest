@@ -131,9 +131,9 @@ describe('west extension + stores', () => {
     while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...c.lanes[id].next); }
     for (const l of c.lanes) if (l.points[0].x < -460) { expect(l.next.length).toBeGreaterThan(0); expect(seen.has(l.id), `lane ${l.id}`).toBe(true); }
   });
-  it('has ~50 stores of ten kinds, each on its own street-facing lot, spread over the map', () => {
+  it('has ~50 stores of eleven kinds, each on its own street-facing lot, spread over the map', () => {
     expect(STORES.length).toBeGreaterThanOrEqual(45);
-    expect(new Set(STORES.map(s => s.kind)).size).toBe(10);
+    expect(new Set(STORES.map(s => s.kind)).size).toBe(11);
     expect(new Set(STORES.map(s => s.name)).size).toBe(STORES.length);
     for (const s of STORES) {
       expect(s.cash).toBeGreaterThan(100);

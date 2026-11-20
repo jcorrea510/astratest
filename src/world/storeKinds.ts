@@ -92,7 +92,7 @@ function convenience(c: Ctx) {
   // aisles
   gondola(c, 0.6, -0.6, 4.6, [C_SNACK, C_BAGS, C_BOXES, C_CANS], [C_BAGS, [C_TIN, C_LOAF], C_BOXES, C_SNACK]);
   gondola(c, 3.0, -0.6, 4.6, [C_DRINK, C_SOFT, C_CANS, [C_TIN]], [C_SNACK, C_BAGS, C_BOXES, [C_CUP, C_TIN]]);
-  for (const ax of [0.6, 3.0]) { c.box(ax, 1.9, 1.75, 0.9, 0.3, 0.05, c.accent, T_PAINT); c.box(ax, 2.35, -0.6, 0.04, 0.5, 4.6, '#222', T_PLASTIC, 0); }
+  for (const ax of [0.6, 3.0]) c.box(ax, 1.9, 1.75, 0.9, 0.3, 0.05, c.accent, T_PAINT);
   // coolers on the back wall + side snack wall
   fridges(c, -1.0, 5, -hd + 0.5, [C_SOFT, C_CANS, C_DRINK, C_SOFT]);
   wallUnit(c, hw - 0.3, -0.9, -1, 0, 5.6, 2.1, [0.2, 0.62, 1.04, 1.46, 1.86], [C_SNACK, C_BAGS, C_BOXES, C_SNACK]);
@@ -102,10 +102,10 @@ function convenience(c: Ctx) {
   for (let k = 0; k < 6; k++) c.p.item(C_CUP, hw - 0.3, 1.0, 3.9 + (k % 2) * 0.1 - 0.3, 0);
   c.box(hw - 0.4, 2.3, 3.3, 0.06, 0.3, 1.8, '#d83a2e', T_GLOW(0.8)); neonPlane(c, 'HOT COFFEE', '#ff8a3d', hw - 0.1, 2.45, 3.3, 1.1, -Math.PI / 2);
   // counter clutter: candy rack, scratch dispenser, jerky
-  counterTopStuff(c, [...C_BAGS.slice(0, 3), C_CARTON, 24], -4.9, -3.4); c.box(-1.55, 1.3, c.counterZ + 0.05, 0.3, 0.45, 0.3, '#2b2f33', T_PLASTIC); c.box(-1.55, 1.6, c.counterZ + 0.05, 0.28, 0.14, 0.28, '#37d6a0', T_GLOW(0.9));
+  counterTopStuff(c, [...C_BAGS.slice(0, 3), C_CARTON, 24], -4.9, -3.4); c.box(-1.55, 1.2, c.counterZ + 0.05, 0.3, 0.2, 0.3, '#2b2f33', T_PLASTIC); c.box(-1.55, 1.34, c.counterZ + 0.05, 0.28, 0.06, 0.28, '#37d6a0', T_GLOW(0.9));
   camera(c, -4.4, -3.8); camera(c, 4.5, 3.8);
   c.box(-hw + 0.5, 0.65, 3.6, 0.45, 1.3, 0.5, '#243a52', T_METAL); c.box(-hw + 0.5, 1.4, 3.6, 0.46, 0.4, 0.04, '#a8e0ff', T_GLOW(0.7)); c.col(-hw + 0.5, 0.65, 3.6, 0.25, 0.65, 0.3); // ATM on the left wall
-  c.box(0, 3.0, -hd + 0.2, 4.6, 0.34, 0.06, c.accent, T_GLOW(0.5));
+  neonPlane(c, 'ICE COLD', '#6fd0ff', 1.6, 2.95, -hd + 0.2, 1.7);
 }
 
 /** Gas-station mart: green palette, car-care aisle, fountain + coffee island, roller grill. */
@@ -235,7 +235,7 @@ function bank(c: Ctx) {
   const gl = new THREE.Mesh(new THREE.BoxGeometry(4.1, 1.5, 0.04), c.glassMat); gl.position.set(-3.0, 1.9, c.counterZ + 0.2); c.root.add(gl);
   for (const x of [-5.0, -3.65, -2.35, -1.0]) c.box(x, 1.85, c.counterZ + 0.2, 0.08, 1.6, 0.1, '#6a5a3a', T_METAL);
   c.box(-3.0, 2.68, c.counterZ + 0.2, 4.2, 0.1, 0.12, '#6a5a3a', T_METAL); c.box(-3.0, 1.12, c.counterZ + 0.2, 4.2, 0.06, 0.14, '#6a5a3a', T_METAL);
-  for (const x of [-4.3, -3.0, -1.7]) { c.box(x, 1.12, c.counterZ + 0.38, 0.45, 0.03, 0.22, '#c9c9c9', T_METAL); c.box(x, 0.8, 0.4, 0.6, 0.04, 0.5, '#2a2a2a', T_PLASTIC); c.box(x, 1.0, 0.1, 0.4, 0.3, 0.04, '#1a1a1a', T_PLASTIC); c.box(x, 1.0, 0.075, 0.34, 0.24, 0.01, '#6fd0ff', T_GLOW(0.8)); }
+  for (const x of [-4.3, -3.0, -1.7]) { c.box(x, 1.12, c.counterZ + 0.38, 0.45, 0.03, 0.22, '#c9c9c9', T_METAL); c.box(x, 1.32, 0.98, 0.4, 0.3, 0.04, '#1a1a1a', T_PLASTIC); c.box(x, 1.32, 0.955, 0.34, 0.24, 0.01, '#6fd0ff', T_GLOW(0.8)); c.box(x, 1.14, 0.98, 0.1, 0.1, 0.06, '#1a1a1a', T_PLASTIC); }
   c.extras.tellers.push({ x: -4.3, z: 0.25 }, { x: -1.7, z: 0.25 });
   // safe-deposit wall behind the tellers
   c.box(-3.0, 1.45, c.backZ - 0.1, 4.2, 2.9, 0.3, '#4a5156', T_METAL); c.col(-3.0, 1.45, c.backZ - 0.1, 2.1, 1.45, 0.15);
@@ -274,5 +274,45 @@ function bank(c: Ctx) {
   camera(c, -4.6, -3.8); camera(c, 4.6, 3.9); camera(c, -0.1, 0.8);
 }
 
-export const NEW_KINDS: Partial<Record<Store['kind'], (c: Ctx) => void>> = { convenience, gas, liquor, pawn, jewelry, bank };
+/** Pharmacy: green cross, pharmacist's counter with locked cabinets, health aisles with boxed goods. */
+function pharmacy(c: Ctx) {
+  const { hd, hw } = c;
+  c.box(-3.0, 1.45, c.backZ - 0.1, 4.2, 2.9, 0.34, '#dfe7e2', T_PAINT); c.col(-3.0, 1.45, c.backZ - 0.1, 2.1, 1.45, 0.17);
+  face(c, -3.0, c.backZ, 0, 1, 4.0, [0.5, 0.95, 1.4, 1.85, 2.3], [C_BOXES, [C_TIN], C_BOXES], 0.15, '#9fb0a8');
+  c.box(-3.0, 2.8, c.backZ + 0.2, 4.0, 0.12, 0.08, '#1d8f6a', T_GLOW(1.2));
+  neonPlane(c, 'PHARMACY', '#47e0a0', -3.0, 3.1, c.backZ + 0.25, 1.5);
+  gondola(c, 0.6, -0.6, 4.6, [C_BOXES, [C_TIN], C_BOXES, [C_TIN, C_BAGS[6]]], [C_BAGS, C_BOXES, [C_TIN], C_BOXES], 1.55, '#1d8f6a');
+  gondola(c, 3.0, -0.6, 4.6, [[C_TIN], C_BOXES, [C_TIN], C_BOXES], [C_BOXES, C_BAGS, C_BOXES, [C_TIN]], 1.55, '#1d8f6a');
+  for (const ax of [0.6, 3.0]) c.box(ax, 1.9, 1.75, 0.9, 0.3, 0.05, '#1d8f6a', T_PAINT);
+  fridges(c, 0.2, 3, -hd + 0.5, [C_SOFT, C_CANS]);
+  wallUnit(c, hw - 0.3, -0.9, -1, 0, 5.6, 2.1, [0.2, 0.62, 1.04, 1.46, 1.86], [C_BOXES, [C_TIN], C_BAGS], '#dfe7e2');
+  c.box(-hw + 0.5, 0.5, 3.3, 0.5, 1.0, 0.8, '#e8f0ec', T_PLASTIC); c.box(-hw + 0.5, 1.15, 3.3, 0.5, 0.3, 0.7, '#1d8f6a', T_GLOW(0.6)); c.col(-hw + 0.5, 0.6, 3.3, 0.25, 0.6, 0.4); // blood-pressure kiosk
+  counterTopStuff(c, [C_TIN, C_BOXES[0], C_BOXES[3]], -4.9, -3.4);
+  camera(c, -4.4, -3.8); camera(c, 4.5, 3.8);
+}
+/** The remaining specialty shops: a back-of-counter display suited to the trade (no stacks of coloured blocks). */
+export function legacyBack(kind: Store['kind'], c: Ctx) {
+  if (kind === 'diner') {
+    c.box(-3.0, 1.0, c.backZ - 0.1, 4.2, 2.0, 0.34, '#6e2a22', T_PAINT); c.col(-3.0, 1.0, c.backZ - 0.1, 2.1, 1.0, 0.17);
+    for (let k = 0; k < 2; k++) { c.box(-4.2 + k * 2.2, 1.35, c.backZ + 0.2, 1.7, 0.04, 0.4, '#d9d4ca', T_METAL); c.box(-4.2 + k * 2.2, 1.65, c.backZ + 0.2, 1.7, 0.5, 0.42, '#bfe3ea', T_GLASS); for (let p = 0; p < 4; p++) { c.t.cyl(-4.8 + k * 2.2 + p * 0.4, 1.37, c.backZ + 0.2, 0.17, 0.17, 0.08, 12, K(['#d9a05a', '#e8c9a0', '#a8472a', '#f2e6c8'][p]), T_PAINT); } }
+    for (let k = 0; k < 8; k++) c.p.item(C_CUP, -4.8 + k * 0.28, 1.04, c.backZ + 0.3, 0, 1.2);
+    c.t.cyl(-1.9, 1.06, c.backZ + 0.25, 0.1, 0.1, 0.35, 10, K('#222'), T_METAL); c.t.cyl(-1.6, 1.06, c.backZ + 0.25, 0.1, 0.1, 0.35, 10, K('#222'), T_METAL);
+    for (let k = 0; k < 6; k++) c.p.item(C_LOAF, -4.8 + k * 0.5, 2.1, c.backZ + 0.25, 0);
+  } else if (kind === 'clothing') {
+    c.box(-3.0, 0.5, c.backZ - 0.1, 4.2, 1.0, 0.34, '#d9d0c4', T_PAINT); c.col(-3.0, 0.5, c.backZ - 0.1, 2.1, 0.5, 0.17);
+    for (let row = 0; row < 3; row++) for (let k = 0; k < 6; k++) { const hgt = 2 + c.r.int(0, 3); for (let n = 0; n < hgt; n++) c.t.box(-4.7 + k * 0.7, 1.2 + row * 0.55 + n * 0.07, c.backZ + 0.2, 0.5, 0.06, 0.38, 0, K(['#c0392b', '#2c3e50', '#d8c9a0', '#27ae60', '#ecf0f1', '#8e44ad', '#34495e'][(k + row + n) % 7]), T_FABRIC); }
+    for (let row = 0; row < 3; row++) c.box(-3.0, 1.12 + row * 0.55, c.backZ + 0.2, 4.2, 0.03, 0.42, '#b9a98f', T_ROUGH);
+    c.box(-3.0, 2.85, c.backZ + 0.2, 1.8, 0.4, 0.06, K(c.def.color), T_GLOW(0.5));
+  } else if (kind === 'barber') {
+    c.box(-3.0, 0.5, c.backZ - 0.1, 4.2, 1.0, 0.34, '#2a2a2e', T_PAINT); c.col(-3.0, 0.5, c.backZ - 0.1, 2.1, 0.5, 0.17);
+    c.box(-3.0, 1.7, c.backZ + 0.05, 3.6, 1.3, 0.05, '#b9d3dc', T_GLASS);
+    face(c, -3.0, c.backZ, 0, 1, 3.6, [1.1, 1.5], [C_SOFT, C_LIQ.slice(0, 2)], 0.1, '#444');
+    for (let k = 0; k < 5; k++) c.t.cyl(-4.6 + k * 0.2, 1.06, c.counterZ + 0.2, 0.05, 0.04, 0.28, 8, K(['#cfd6da', '#2c7fb8', '#e8e8e8', '#d4af37', '#cc3a2f'][k]), T_PLASTIC);
+  } else if (kind === 'electronics') {
+    c.box(-3.0, 0.6, c.backZ - 0.1, 4.2, 1.2, 0.34, '#1b1e24', T_METAL); c.col(-3.0, 0.6, c.backZ - 0.1, 2.1, 0.6, 0.17);
+    for (let k = 0; k < 4; k++) { c.t.box(-4.5 + k * 1.0, 1.9, c.backZ + 0.1, 0.9, 0.55, 0.05, 0, K('#0a0c10'), T_PLASTIC); c.t.box(-4.5 + k * 1.0, 1.9, c.backZ + 0.14, 0.8, 0.46, 0.01, 0, K(['#5fb4ff', '#ff8f5f', '#7fe0a0', '#c88fff'][k]), T_GLOW(1.1)); }
+    for (let k = 0; k < 10; k++) c.t.box(-4.8 + k * 0.4, 1.28, c.backZ + 0.15, 0.3, 0.14, 0.2, 0, K(k % 2 ? '#1f2a33' : '#cfd6da'), T_PLASTIC);
+  }
+}
+export const NEW_KINDS: Partial<Record<Store['kind'], (c: Ctx) => void>> = { convenience, gas, liquor, pawn, jewelry, bank, pharmacy };
 export { C_RING, C_VELVET };

@@ -93,3 +93,7 @@ export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: numbe
   const lat = Math.abs(ox * afz - oz * afx); if (lat > 7) return false;
   return d / ospeed < 4.5;
 }
+/** A car must not appear inside the dilemma zone of a signal: near a stop line (<70 m) the light has to stay green for the next 5 s. */
+export function spawnSafeAtSignal(now: 'green' | 'yellow' | 'red', in5s: 'green' | 'yellow' | 'red', dStop: number): boolean {
+  return dStop > 70 || (now === 'green' && in5s === 'green');
+}

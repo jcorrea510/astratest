@@ -169,6 +169,7 @@ export class Game {
     this.carEntry = new CarEntry(this);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.worldGlass = worldGlass;
+    worldGlass.onBreak = pane => { this.particles.decals.clearIn(pane.x, pane.y, pane.z, pane.yaw, pane.w, pane.h, pane.inst >= 0 ? 1.7 : 0.4); }; // shot-out glass loses its bullet holes
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {

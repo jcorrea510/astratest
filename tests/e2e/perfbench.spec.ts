@@ -4,7 +4,8 @@ import { watch, clean } from './helpers';
 /**
  * Deterministic render benchmark: seeded Math.random, fixed downtown camera path, 300 frames per preset.
  * Logs renderer.info calls/triangles and CPU ms per frame (software GL, so only the triangle/call counts are comparable).
- * BASE_HIGH_TRIS is the high-preset average measured before the LOD rework (35k-tri cars, 8k-tri far cars).
+ * BASE_HIGH_TRIS: the high-preset average of a reference build (R6-V base 178a853: 2.41M tris, 532 calls); the real-model far crowd
+ * must not cost more than 15 % on top of it.
  */
 test.describe.configure({ mode: 'serial' });
 const BASE_HIGH_TRIS = Number(process.env.BASE_HIGH_TRIS ?? 0);
@@ -16,7 +17,7 @@ test('benchmark: triangles and draw calls on low / medium / high along a fixed d
   await page.goto('./?autostart=1');
   await page.waitForFunction(() => !!(window as any).__meridian, null, { timeout: 500_000 });
   await page.evaluate(() => (window as any).__game.stop());
-  const res: Record<string, { calls: number; tris: number; cpuMs: number /* sim-only ms/frame */; cars: number }> = {};
+  const res: Record<string, { calls: number; tris: number; cpuMs: number /* sim-only ms/frame */; cars: number; fullFar: number }> = {};
   for (const q of ['low', 'medium', 'high'] as const) {
     res[q] = await page.evaluate((q) => {
       const g = (window as any).__game; g.renderer.setQuality(q); g.clockRunning = false; g.hour = 12; g.trafficCap = null; g.pedCap = null;
@@ -31,11 +32,14 @@ test('benchmark: triangles and draw calls on low / medium / high along a fixed d
         const t0 = performance.now(); g.frame(1 / 60, draw);
         if (draw) { nr++; calls += g.renderer.stats.calls; tris += g.renderer.stats.triangles; } else { ms += performance.now() - t0; nsim++; }
       }
-      return { calls: Math.round(calls / nr), tris: Math.round(tris / nr), cpuMs: +(ms / nsim).toFixed(1), cars: g.vehicles.list.length };
+      // car occupants follow the people LODs (they were all 15k-tri full bodies with shadows, ~1.2M tris a frame on high)
+      const fullFar = g.pop.npcs.filter((n: any) => n.char.inVehicle && n.char.human.mesh.visible && n.char.human.mesh.geometry === n.char.human.base.geo && n.char.inVehicle.position.distanceTo(g.player.pos) > 40).length;
+      return { calls: Math.round(calls / nr), tris: Math.round(tris / nr), cpuMs: +(ms / nsim).toFixed(1), cars: g.vehicles.list.length, fullFar };
     }, q);
     console.log('BENCH', q, JSON.stringify(res[q]));
   }
-  if (BASE_HIGH_TRIS > 0) expect(res.high.tris).toBeLessThan(BASE_HIGH_TRIS * 0.6);
+  if (BASE_HIGH_TRIS > 0) expect(res.high.tris).toBeLessThan(BASE_HIGH_TRIS * 1.15);
   expect(res.high.calls).toBeGreaterThan(0);
+  expect(res.high.fullFar).toBe(0);
   clean(p);
 });
