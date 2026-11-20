@@ -1072,7 +1072,7 @@
 .ma-root.has-menu .ma-fs-btn { display: flex; }
 .ma-root.has-menu .ma-fs-btn[hidden] { display: none; }
 .ma-map-head { padding-right: calc(76 * var(--u)); }
-.ma-map-mode { min-width: calc(58 * var(--u)); }
+.ma-map-mode { min-width: calc(112 * var(--u)); }
 .ma-sb-panel, .ma-panel { margin-top: 0; }
 /* controller glyphs replace keyboard caps in hint rows after a pad press */
 .ma-root.is-pad kbd[data-pad] { font-size: 0; }

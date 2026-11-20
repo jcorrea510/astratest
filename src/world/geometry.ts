@@ -96,20 +96,23 @@ export function palmGeometry(seed: number): THREE.BufferGeometry {
   return mergeColored(parts);
 }
 
+/** Where an added instance lives, so it can be hidden / restored later (breakable street furniture). `im` is set by build(). */
+export interface InstHandle { key: string; ck: string; idx: number; im: THREE.InstancedMesh | null }
 /** Groups instances into spatial chunks so frustum and distance culling stay effective. */
 export class ChunkInstancer {
-  private sets = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; shadow: boolean; receive: boolean; chunks: Map<string, { m: THREE.Matrix4[]; c: THREE.Color[] }> }>();
+  private sets = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; shadow: boolean; receive: boolean; chunks: Map<string, { m: THREE.Matrix4[]; c: THREE.Color[]; h: InstHandle[] }> }>();
   constructor(public chunkSize = 250) { }
   register(key: string, geo: THREE.BufferGeometry, mat: THREE.Material, castShadow = true, receiveShadow = true) {
     if (!this.sets.has(key)) this.sets.set(key, { geo, mat, shadow: castShadow, receive: receiveShadow, chunks: new Map() });
   }
-  add(key: string, x: number, y: number, z: number, yaw = 0, scale: number | THREE.Vector3 = 1, color?: THREE.Color) {
+  add(key: string, x: number, y: number, z: number, yaw = 0, scale: number | THREE.Vector3 = 1, color?: THREE.Color): InstHandle {
     const set = this.sets.get(key); if (!set) throw new Error(`unregistered instance key ${key}`);
     const ck = `${Math.floor(x / this.chunkSize)},${Math.floor(z / this.chunkSize)}`;
-    let ch = set.chunks.get(ck); if (!ch) { ch = { m: [], c: [] }; set.chunks.set(ck, ch); }
+    let ch = set.chunks.get(ck); if (!ch) { ch = { m: [], c: [], h: [] }; set.chunks.set(ck, ch); }
     const s = typeof scale === 'number' ? new THREE.Vector3(scale, scale, scale) : scale;
     ch.m.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), s));
     ch.c.push(color ?? new THREE.Color(1, 1, 1));
+    const h: InstHandle = { key, ck, idx: ch.m.length - 1, im: null }; ch.h.push(h); return h;
   }
   build(parent: THREE.Object3D): THREE.InstancedMesh[] {
     const out: THREE.InstancedMesh[] = [];
@@ -119,7 +122,7 @@ export class ChunkInstancer {
       im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
       im.castShadow = set.shadow; im.receiveShadow = set.receive;
       im.computeBoundingSphere(); im.computeBoundingBox();
-      im.name = `${key}@${ck}`;
+      im.name = `${key}@${ck}`; for (const h of ch.h) h.im = im;
       parent.add(im); out.push(im);
     }
     return out;

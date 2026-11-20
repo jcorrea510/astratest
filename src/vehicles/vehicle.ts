@@ -20,6 +20,7 @@ import { getTemplate, type CarTemplate } from './models/build';
 import { carMaterial, glassMaterial, type CarUniforms } from './models/carMaterial';
 import { GROUND } from './shapes';
 import { ragHulls } from './ragHull';
+import { Crumpler } from './crumple';
 
 /** Height of the rig's hips above its root in the sitting/driving clips. */
 export const HIP_ABOVE_ROOT = 0.55;
@@ -29,7 +30,7 @@ const DOOR_MAX = 1.15;
 const LOD_MID = 15, LOD_FAR = 65;
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
-export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }
+export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone; /** crash-bent: the door stays slightly ajar (0..1) */ jam?: number }
 /** Police-style strobe: each side fires a quick triple flash, then the other side answers (red, blue). Returns 0/1 per side. */
 export function barStrobe(time: number): [number, number] {
   const slot = Math.floor((time * 9) % 18); // 2 s cycle in 9 Hz slots: even slot = flash, odd = dark
@@ -47,6 +48,7 @@ const beamTex = (() => {
 })();
 const _sm = new THREE.Matrix4(), _sa = new THREE.Vector3(), _sb = new THREE.Vector3();
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
+const _m2 = new THREE.Matrix4(), _v3 = new THREE.Vector3();
 const POLICE_LIKE = new Set<VehicleKind>(['police', 'fbi', 'swat']);
 
 let VEH_ID = 0;
@@ -387,7 +389,7 @@ export class Vehicle {
       const lon = THREE.MathUtils.clamp(ax * f.x + az * f.z, -40, 40); lat = THREE.MathUtils.clamp(ax * f.z - az * f.x, -40, 40);
       for (const d of this.doors) {
         if (Math.abs(this.speed) > 7 && !d.hanging) d.open = 0;
-        const target = d.hanging ? Math.max(d.open, 0.15) : d.open;
+        const target = Math.max(d.hanging ? Math.max(d.open, 0.15) : d.open, (d.jam ?? 0) * 0.14);
         let acc = (target - d.amount) * 70 - d.vel * 11;
         if (d.hanging) acc += (-lon * 0.05 + (d.side === 'left' ? 1 : -1) * lat * 0.03);
         d.vel += acc * dt; d.amount += d.vel * dt;
@@ -432,13 +434,13 @@ export class Vehicle {
     void POLICE_LIKE;
   }
   /** Applies damage; deforms the body near the impact point (local space). Returns true when this destroyed it. */
-  damage(amount: number, worldPoint?: THREE.Vector3, worldDir?: THREE.Vector3, by?: unknown): boolean {
+  damage(amount: number, worldPoint?: THREE.Vector3, worldDir?: THREE.Vector3, by?: unknown, dent = true): boolean {
     if (this.destroyed) return false;
     if (by !== undefined) this.lastDamagedBy = by;
     this.health -= amount;
     if (worldPoint && amount > 25) {
       const sev = Math.min(1, amount / 300);
-      this.deform(worldPoint, worldDir, sev);
+      if (dent) this.deform(worldPoint, worldDir, sev);
       // hard hits shatter the nearest pane; a battered car's doors spring loose
       if (sev > 0.1) {
         const lp = this.visual.worldToLocal(worldPoint.clone());
@@ -465,30 +467,54 @@ export class Vehicle {
     return false;
   }
   private deform(worldPoint: THREE.Vector3, worldDir: THREE.Vector3 | undefined, severity: number) {
+    this.crumple(worldPoint, worldDir, severity * 1.1);
+  }
+  /** Crash state of the body panels (0..1): hood buckle, bumpers, ends, sides. Null until the first dent. */
+  crumpler: Crumpler | null = null;
+  private lastCrumple = -10;
+  /**
+   * Dents the body around a world-space contact. dirIn = direction the metal moves (into the car; omitted: towards the
+   * centre). energy ~ 0.1 (tap) .. 1+ (40 mph into a wall). Also cracks glass, jams doors and breaks headlights.
+   */
+  crumple(worldPoint: THREE.Vector3, dirIn: THREE.Vector3 | undefined, energy: number) {
+    if (energy <= 0.02) return;
     if (!this.ownGeo) {
       // private positions/normals, everything else shared with the template
       const src = this.tpl.lods[0].body, g = new THREE.BufferGeometry();
       for (const [k, a] of Object.entries(src.attributes)) g.setAttribute(k, k === 'position' || k === 'normal' ? (a as THREE.BufferAttribute).clone() : a);
-      this.bodyMesh.geometry = g; this.ownGeo = true; this.ownG = g; this.lod = 0;
+      this.bodyMesh.geometry = g; this.ownGeo = true; this.ownG = g; this.lod = 0; this.crumpler = null;
     }
-    const g = this.ownG!; const pos = g.attributes.position as THREE.BufferAttribute, si = g.attributes.skinIndex as THREE.BufferAttribute;
-    this.visual.updateMatrixWorld();
-    const inv = new THREE.Matrix4().copy(this.visual.matrixWorld).invert();
+    const g = this.ownG!;
+    const t = this.tpl;
+    if (!this.crumpler) {
+      const src = t.lods[0].body.attributes, orig = src.position.array as Float32Array;
+      if (orig.length === 0) return; // CPU copy already freed (should not happen for lod 0)
+      this.crumpler = new Crumpler({
+        orig, skin: src.skinIndex.array as Uint16Array, skip: new Set(t.wheelBones), front: t.front, rear: t.rear, halfW: t.shape.W / 2,
+        hoodZ0: t.shape.gh ? t.shape.gh.zA : 0.4, deckY: t.hood.y, bumperTop: GROUND + (t.shape.bumperF[1] || 0.5),
+      }, g.attributes.position as THREE.BufferAttribute, g.attributes.normal as THREE.BufferAttribute);
+    }
+    this.group.updateMatrixWorld(true);
+    const inv = _m2.copy(this.visual.matrixWorld).invert();
     const lp = worldPoint.clone().applyMatrix4(inv);
-    const center = new THREE.Vector3(0, (this.tpl.bbox.min.y + this.tpl.bbox.max.y) / 2, 0);
-    const dir = worldDir ? worldDir.clone().transformDirection(inv) : center.clone().sub(lp).normalize();
-    const radius = 1.3, push = 0.24 * severity;
-    const wheel = new Set(this.tpl.wheelBones);
-    for (let i = 0; i < pos.count; i++) {
-      if (wheel.has(si.getX(i))) continue;
-      const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
-      const d = Math.hypot(vx - lp.x, (vy - lp.y) * 1.4, vz - lp.z);
-      if (d > radius) continue;
-      const k = (1 - d / radius) ** 2 * push;
-      pos.setXYZ(i, vx + dir.x * k + (Math.random() - 0.5) * k * 0.3, vy + dir.y * k * 0.5 - k * 0.15, vz + dir.z * k);
+    const center = _v3.set(0, (t.bbox.min.y + t.bbox.max.y) / 2, 0);
+    const dir = dirIn ? dirIn.clone().transformDirection(inv) : center.clone().sub(lp);
+    dir.normalize();
+    const cr = this.crumpler;
+    cr.hit(lp, dir, energy);
+    cr.panels(lp.x >= 0 ? 1 : -1);
+    if (cr.bumperF > 0.5 || cr.front > 0.55) this.lightsBroken = true;
+    // doors beside the impact spring ajar and no longer shut fully
+    if (energy > 0.3 && Math.abs(lp.x) > t.shape.W * 0.3) for (let i = 0; i < this.doors.length; i++) {
+      const d = this.doors[i], dd = t.doors[i];
+      if (Math.sign(lp.x) === (d.side === 'left' ? 1 : -1) && lp.z < dd.z1 + 0.6 && lp.z > dd.z0 - 0.6) d.jam = Math.min(1, (d.jam ?? 0) + energy * 0.8);
     }
-    pos.needsUpdate = true;
-    if (lp.z > this.tpl.front - 0.8 && severity > 0.4) this.lightsBroken = true;
+    if (energy > 0.45 && this.glassMesh) {
+      let best = -1, bd = 1.7;
+      for (const p of t.panes) { if (this.isGlassBroken(p.id)) continue; const d = distToTris(lp, p.tris); if (d < bd) { bd = d; best = p.id; } }
+      if (best >= 0 && Math.random() < Math.min(1, energy * 1.2)) this.hitGlass(best, worldPoint, energy > 0.9 ? 2 : 1);
+    }
+    this.lastCrumple = performance.now();
   }
   /** New paint (liveried service vehicles keep their colours). */
   respray(color: THREE.ColorRepresentation) {
@@ -503,7 +529,8 @@ export class Vehicle {
     this.brokenMask = 0; for (const p of this.panes) p.broken = false;
     if (this.glassMat) { this.rolledMask = 0; this.glassMat.userData.broken.value = 0; for (const c of this.glassMat.userData.crack.value) c.w = 0; }
     for (const p of this.panes) p.crack = 0;
-    for (const d of this.doors) { d.hanging = false; d.open = 0; }
+    for (const d of this.doors) { d.hanging = false; d.open = 0; d.jam = 0; }
+    this.crumpler = null;
   }
   /** The dented copy shares most attributes with the template, whose CPU arrays were freed after upload: disposing them
    *  would drop the shared GPU buffers and the next re-upload would be empty (invisible car bodies). Only free the private ones. */

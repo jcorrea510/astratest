@@ -9,5 +9,6 @@ const noop = () => {};
 ui.init({ city, settings: loadSettings(null), callbacks: new Proxy({}, { get: () => noop }) });
 window.__ui = ui; window.__city = city;
 ui.showTitle(new URLSearchParams(location.search).get('save') === '1', 'Regular, $2,450, 12 min ago');
+if (new URLSearchParams(location.search).get('map')) { ui.hideTitle(); ui.openMap({ x: 0, z: 120, heading: 0.4, zoom: 1, blips: [] }); }
 window.__ready = true;
 </script></body></html>

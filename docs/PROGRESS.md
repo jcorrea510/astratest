@@ -11,7 +11,7 @@ Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Wav
 - [x] R6-P peds (wave 2): crosswalk walk signals, no jaywalking, no phantom collision/stumble anims, fight back when punched, hands-up pose natural + flee after shots.
 - [x] R6-M (game.spec/tour.spec full runs → R6-Z) modes (wave 2): Regular (earn money, no cheats; death = medical bill + lose inventory; buy guns/cars) vs Sandbox; no spawn holding gun; purpose loop (net worth, car showroom/garage goals).
 - [x] R6-D driving feel (wave 2): city steering quicker at speed, drift less endless, highway lane change fast.
-- [ ] R6-S stores (wave 2): distinct store types (convenience, jewelry, bank, liquor, pawn...), physical register robbing, staff/shopper reactions, KO workers with fists, glass bullet holes cleared, windshield holes in sky.
+- [x] R6-S stores (wave 2): distinct store types (convenience, jewelry, bank, liquor, pawn...), physical register robbing, staff/shopper reactions, KO workers with fists, glass bullet holes cleared, windshield holes in sky.
 - [ ] R6-F (restarted 22:2x after limit) combat extras (wave 3): orders (hold B: kneel/come here), grab/hostage/kidnap into car, blood, hit feedback when shot.
 - [ ] R6-X physics (wave 3): hit peds ride the hood/ragdoll, car body crumple, light posts knock over, molotov fire.
 - [ ] R6-A audio (wave 3): gunshots = loud pops, more ambient/vehicle sounds, stop random popping in city.

@@ -64,7 +64,7 @@ export class FullMap {
     head.appendChild(titles);
     this.readout = h('div', 'ma-map-readout');
     head.appendChild(this.readout);
-    this.modeBtn = h('button', 'ma-btn ma-btn-ghost ma-map-mode', '2D') as HTMLButtonElement;
+    this.modeBtn = h('button', 'ma-btn ma-btn-ghost ma-map-mode', 'Top-down') as HTMLButtonElement;
     this.modeBtn.type = 'button'; this.modeBtn.id = 'ma-map-pitch'; this.modeBtn.title = 'Switch between the angled 3D view and a straight top-down map (T)';
     this.modeBtn.addEventListener('click', () => { this.sound('click'); this.togglePitch(); this.modeBtn.blur(); });
     head.appendChild(this.modeBtn);
@@ -112,7 +112,7 @@ export class FullMap {
     this.el.appendChild(body);
 
     const foot = h('div', 'ma-map-foot');
-    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', '2D / 3D'], ['Right-drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
+    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', 'Top-down / 3D'], ['Right-drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       foot.appendChild(s);
@@ -346,7 +346,7 @@ export class FullMap {
     const ctx = this.ctx, v = this.view, s = this.state;
     const tilt = v.tilt ?? 0, pitch = v.pitch ?? 1;
     const td = pitch > 0.95;
-    if (this.modeBtn.textContent !== (td ? '3D' : '2D')) { this.modeBtn.textContent = td ? '3D' : '2D'; this.modeBtn.setAttribute('aria-pressed', String(td)); }
+    if (this.modeBtn.textContent !== (td ? '3D view' : 'Top-down')) { this.modeBtn.textContent = td ? '3D view' : 'Top-down'; this.modeBtn.setAttribute('aria-pressed', String(td)); }
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // ground + buildings live in an oversized offscreen layer rendered crisply only when the view has settled;
     // while panning / zooming / rotating it is just re-transformed (a single drawImage)

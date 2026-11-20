@@ -246,16 +246,33 @@ function bank(c: Ctx) {
   c.box(vx0, 1.8, (vz0 + vz1) / 2, 0.35, 3.6, vz1 - vz0, '#5a6268', T_METAL); c.box((gap0 + gap1) / 2, 3.45, vz1, gap1 - gap0, 0.3, 0.35, '#5a6268', T_METAL);
   c.col((vx0 + gap0) / 2, 1.8, vz1, (gap0 - vx0) / 2, 1.8, 0.18); c.col((gap1 + vx1) / 2, 1.8, vz1, (vx1 - gap1) / 2, 1.8, 0.18); c.col(vx0, 1.8, (vz0 + vz1) / 2, 0.18, 1.8, (vz1 - vz0) / 2);
   const cash = new THREE.Group(); const ct = new TrimBuilder();
-  for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) for (let l = 0; l < 4; l++) { ct.box(1.3 + k * 0.55, 0.12 + l * 0.2, -4.4 + j * 0.45, 0.45, 0.17, 0.32, 0, K(l % 2 ? '#5a9a62' : '#6fae72'), T_PAINT); ct.box(1.3 + k * 0.55, 0.12 + l * 0.2, -4.4 + j * 0.45, 0.46, 0.06, 0.1, 0, K('#e8e0c0'), T_PAINT); }
+  for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) for (let l = 0; l < 4; l++) { ct.box(1.3 + k * 0.55, 0.12 + l * 0.2, -3.55 + j * 0.4, 0.45, 0.17, 0.32, 0, K(l % 2 ? '#5a9a62' : '#6fae72'), T_PAINT); ct.box(1.3 + k * 0.55, 0.12 + l * 0.2, -3.55 + j * 0.4, 0.46, 0.06, 0.1, 0, K('#e8e0c0'), T_PAINT); }
   for (let k = 0; k < 10; k++) ct.box(4.3 + (k % 5) * 0.2, 0.08 + Math.floor(k / 5) * 0.08, -3.4, 0.18, 0.07, 0.07, 0, K('#e8c545'), T_METAL);
+  // cash racks along the vault back wall: steel uprights, shelves, banded bundles
+  for (const rx of [1.5, 2.9, 4.3]) {
+    for (const ux of [rx - 0.65, rx + 0.65]) c.box(ux, 1.2, vz0 + 0.3, 0.05, 2.4, 0.4, '#3c4348', T_METAL);
+    for (let l = 0; l < 4; l++) { c.box(rx, 0.35 + l * 0.6, vz0 + 0.3, 1.35, 0.04, 0.4, '#59636a', T_METAL); for (let b = 0; b < 4; b++) ct.box(rx - 0.45 + b * 0.3, 0.35 + l * 0.6 + 0.12, vz0 + 0.3, 0.26, 0.2, 0.32, 0, K((b + l) % 2 ? '#5a9a62' : '#6fae72'), T_PAINT); }
+  }
   const cashMesh = new THREE.Mesh(ct.build(), c.trimMat); cash.add(cashMesh); c.root.add(cash);
   c.box(2.9, 3.4, -3.7, 3.6, 0.1, 0.4, '#fff3d6', T_GLOW(2.2)); c.box(vx1 - 0.2, 1.4, -3.9, 0.3, 2.4, 2.4, '#4a5156', T_METAL);
-  const door = new THREE.Group(); door.position.set(gap1, 0, vz1 + 0.18); const dt = new TrimBuilder();
-  dt.cyl(-0.8, 0.0, 0, 0.0, 0.0, 0.001, 3, K('#000'), T_METAL);
-  dt.cyl(-0.8, 1.5, 0, 0.9, 0.9, 0.3, 24, K('#8a949b'), T_METAL, 0, Math.PI / 2, 0); dt.cyl(-0.8, 1.5, 0.18, 0.62, 0.62, 0.1, 20, K('#a9b2b8'), T_METAL, 0, Math.PI / 2, 0);
-  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; dt.box(-0.8 + Math.cos(a) * 0.4, 1.5 + Math.sin(a) * 0.4, 0.28, 0.07, 0.34, 0.07, 0, K('#d4af37'), T_METAL, 0, a + Math.PI / 2); }
-  dt.sphere(-0.8, 1.5, 0.3, 0.12, K('#d4af37'), T_METAL);
-  for (let k = 0; k < 4; k++) { dt.box(-1.6 + 0.02, 0.5 + k * 0.85, 0, 0.1, 0.2, 0.34, 0, K('#6a7278'), T_METAL); }
+  // recessed square steel frame around the opening (jamb + lintel + sill), bolt receivers
+  const vcx = (gap0 + gap1) / 2, vw = gap1 - gap0, vzf = vz1;
+  c.box(gap0 - 0.04, 1.6, vzf + 0.05, 0.16, 3.2, 0.5, '#3c4348', T_METAL); c.box(gap1 + 0.04, 1.6, vzf + 0.05, 0.16, 3.2, 0.5, '#3c4348', T_METAL);
+  c.box(vcx, 3.14, vzf + 0.05, vw + 0.3, 0.2, 0.5, '#3c4348', T_METAL); c.box(vcx, 0.05, vzf + 0.05, vw + 0.3, 0.1, 0.5, '#3c4348', T_METAL);
+  for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2 + Math.PI / 4; c.box(vcx + Math.cos(a) * 0.62, 1.5 + Math.sin(a) * 0.62, vzf - 0.1, 0.16, 0.16, 0.16, '#222a2e', T_METAL); }
+  // round door: 0.5 m thick steel, hinged on the right jamb; local origin = hinge axis
+  const door = new THREE.Group(); door.position.set(gap1 - 0.05, 0, vz1 - 0.25); const dt = new TrimBuilder();
+  const dcx = -(vw - 0.1) / 2, R = 0.8;
+  dt.cyl(dcx, 1.5 - 0, 0.0, R, R, 0.5, 32, K('#7d878d'), T_METAL, 0, Math.PI / 2, 0);
+  dt.cyl(dcx, 1.5, 0.5, R * 0.88, R * 0.88, 0.05, 32, K('#98a2a8'), T_METAL, 0, Math.PI / 2, 0);
+  dt.cyl(dcx, 1.5, 0.48, R * 0.99, R * 0.99, 0.03, 32, K('#4a5258'), T_METAL, 0, Math.PI / 2, 0);
+  for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; dt.cyl(dcx + Math.cos(a) * (R + 0.02), 1.5 + Math.sin(a) * (R + 0.02), -0.12, 0.07, 0.07, 0.3, 8, K('#c6cdd1'), T_METAL, 0, Math.PI / 2, 0); } // locking bolts around the rim
+  dt.cyl(dcx, 1.5, 0.55, 0.2, 0.2, 0.1, 16, K('#b9a46a'), T_METAL, 0, Math.PI / 2, 0); // hub
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; dt.box(dcx + Math.cos(a) * 0.26, 1.5 + Math.sin(a) * 0.26, 0.66, 0.06, 0.5, 0.06, 0, K('#d4af37'), T_METAL, 0, a + Math.PI / 2); } // wheel spokes
+  dt.cyl(dcx, 1.5, 0.62, 0.34, 0.34, 0.05, 24, K('#d4af37'), T_METAL, 0, Math.PI / 2, 0); // wheel rim (disc outline)
+  dt.cyl(dcx, 1.5, 0.64, 0.29, 0.29, 0.02, 24, K('#7d878d'), T_METAL, 0, Math.PI / 2, 0);
+  dt.box(0.02, 1.0, 0.25, 0.12, 0.3, 0.3, 0, K('#2b3236'), T_METAL); dt.box(0.02, 2.0, 0.25, 0.12, 0.3, 0.3, 0, K('#2b3236'), T_METAL); // hinge knuckles
+  dt.box(dcx / 2, 1.5, 0.58, Math.abs(dcx), 0.14, 0.12, 0, K('#2b3236'), T_METAL); // hinge arm
   door.add(new THREE.Mesh(dt.build(), c.trimMat)); c.root.add(door);
   const dcol = c.col((gap0 + gap1) / 2, 1.5, vz1 + 0.05, (gap1 - gap0) / 2, 1.5, 0.12);
   const rig = new THREE.Group(); const rt = new TrimBuilder();
@@ -268,7 +285,9 @@ function bank(c: Ctx) {
   for (const [x, z] of [[2.6, -1.4], [4.0, -0.6]] as const) { c.box(x, 0.25, z, 1.3, 0.1, 0.5, '#5a3a22', T_ROUGH); c.box(x, 0.5, z - 0.22, 1.3, 0.5, 0.08, '#5a3a22', T_ROUGH); c.box(x - 0.5, 0.12, z, 0.1, 0.24, 0.45, '#222', T_METAL); c.box(x + 0.5, 0.12, z, 0.1, 0.24, 0.45, '#222', T_METAL); c.col(x, 0.4, z, 0.65, 0.4, 0.3); }
   for (const z of [0.9, 1.6]) { c.box(hw - 0.4, 1.0, z, 0.6, 2.0, 0.6, '#2f3a46', T_METAL); c.box(hw - 0.09, 1.45, z, 0.02, 0.42, 0.44, '#a8e0ff', T_GLOW(0.9)); c.col(hw - 0.4, 1.0, z, 0.3, 1.0, 0.3); }
   c.box(4.6, 0.55, 3.2, 1.1, 1.1, 0.5, '#4a3a2a', T_ROUGH); c.col(4.6, 0.55, 3.2, 0.55, 0.55, 0.25); c.box(4.6, 1.12, 3.2, 1.2, 0.04, 0.6, '#d9d4ca', T_STONE);
-  c.t.cyl(-0.4, 0, 3.6, 0.22, 0.17, 0.4, 10, K('#6e4a2a'), T_ROUGH); c.t.sphere(-0.4, 0.8, 3.6, 0.38, K('#2f6a3a'), T_FABRIC, 1.2);
+  // potted plant: ceramic pot, soil, fan of leaf blades (matte, no blown-out sphere)
+  c.t.cyl(-0.4, 0, 3.6, 0.24, 0.18, 0.42, 12, K('#d8d2c6'), T_STONE); c.t.cyl(-0.4, 0.4, 3.6, 0.2, 0.2, 0.03, 12, K('#2a1d14'), T_ROUGH);
+  for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2, tilt = 0.35 + (k % 3) * 0.2; c.t.cyl(-0.4 + Math.sin(a) * 0.03, 0.42, 3.6 + Math.cos(a) * 0.03, 0.05, 0.005, 0.55 + (k % 3) * 0.15, 5, K(k % 2 ? '#2f5a2c' : '#3a6b34'), T_ROUGH, a, tilt); }
   neonPlane(c, 'BANK', '#8fd0ff', -3.0, 3.1, c.backZ + 0.25, 1.0);
   c.box(0, 3.1, -hd + 0.15, 4.0, 0.3, 0.05, teal, T_PAINT);
   camera(c, -4.6, -3.8); camera(c, 4.6, 3.9); camera(c, -0.1, 0.8);

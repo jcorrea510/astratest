@@ -65,6 +65,7 @@ export class VehicleManager {
     for (const v of this.list) { if (filter && !filter(v)) continue; const d = v.position.distanceTo(p); if (d < bd) { bd = d; best = v; } }
     return best;
   }
+  private qInv = new THREE.Quaternion(); private tmp2 = new THREE.Vector3(); private tmp3 = new THREE.Vector3();
   /** After the physics step: crashes and damage. */
   postStep(time: number) {
     for (const v of this.list) {
@@ -72,10 +73,19 @@ export class VehicleManager {
       const imp = v.phys.impact;
       if (imp > 4 && !v.destroyed) {
         const d = v.phys.impactDir;
-        const pt = this.tmp.copy(v.position).add(new THREE.Vector3(-d.x, 0.4, -d.z).multiplyScalar(2));
+        // contact: where the line from the centre towards the obstacle leaves the body box; metal moves the opposite way (into the car)
+        const L = v.tpl.layout, zc = L.zCenter ?? 0, qi = this.qInv.copy(v.group.quaternion).invert();
+        const dl = this.tmp2.set(d.x, 0, d.z).applyQuaternion(qi); if (dl.lengthSq() < 1e-4) dl.set(0, 0, 1);
+        dl.normalize();
+        const tt = Math.min(L.half[0] / Math.max(1e-3, Math.abs(dl.x)), L.half[2] / Math.max(1e-3, Math.abs(dl.z)));
+        const lp = this.tmp3.set(dl.x * tt, L.centerY - L.half[1] + 0.55, zc + dl.z * tt);
+        v.group.updateMatrixWorld(true);
+        const pt = v.group.localToWorld(lp.clone());
+        const into = new THREE.Vector3(-d.x, 0, -d.z).normalize();
         // sub-linear: ordinary knocks dent, only big hits wreck a car
         const dmg = Math.pow(imp - 3, 0.85) * 26;
-        const destroyed = v.damage(dmg, pt.clone(), new THREE.Vector3(d.x, d.y, d.z), v.driver ?? v.lastDamagedBy);
+        const destroyed = v.damage(dmg, pt.clone(), into, v.driver ?? v.lastDamagedBy, false);
+        v.crumple(pt, into, Math.min(1.4, (imp - 2.5) / 8));
         v.flashT = 0.15;
         this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);
         if (imp > 6) this.audio.play('glass', { pos: pt, volume: Math.min(1, imp / 14) });

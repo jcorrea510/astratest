@@ -15,6 +15,7 @@ import { buildQuay } from './quaybuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
 import { registerBench } from './benches';
 import { signalPosts } from './signals';
+import type { BreakableDef, BreakKind } from '../game/breakables';
 import { buildPedSignals, type PedSignals } from './pedsignals';
 import { buildPrecinct, precinctFootprint } from './precinct';
 import type { Physics } from '../core/physics';
@@ -22,7 +23,7 @@ import type { Assets } from './assets';
 import {
   type CityMap, type Lot, type Block, AVENUES, STREETS, ISLAND_LEFT, WEST_RIVER, MAINLAND_Z1, lanesForStreet, CURB_HEIGHT, SIDEWALK, LANE_WIDTH, COAST_Z, HARBOR_X, WATER_LEVEL, SEABED_Y, SEA_EDGE_X, SEA_EDGE_Z, halfWidth,
 } from './citymap';
-import { ChunkInstancer, colorize, mergeColored } from './geometry';
+import { ChunkInstancer, colorize, mergeColored, type InstHandle } from './geometry';
 import {
   asphaltSurface, pavementSurface, grassSurface, sandSurface, buildingMaterial, trimMaterial, signAtlas, billboardAtlas, paintWearTexture, leafTexture, addMacroVariation,
   nightUniform, timeUniform, BRANDS, type Surface,
@@ -49,6 +50,8 @@ export interface CityVisuals {
   ferris: THREE.Object3D | null;
   water: THREE.Mesh;
   helipads: Helipad[];
+  /** R6-X: street furniture a car can knock over */
+  breakables: BreakableDef[];
 }
 
 /** Non-indexed geometry builder with metre-space UVs and per-vertex colour (ground slabs, markings). */
@@ -459,15 +462,20 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // ---------- Street furniture ----------
 
-  props.register('streetlight', streetLightGeo(), tmat);
-  props.register('hydrant', hydrantGeo(), tmat);
+  const geoOf: Record<string, THREE.BufferGeometry> = { lamp: streetLightGeo(), hydrant: hydrantGeo(), bin: binGeo(), meter: meterGeo(), phone: phoneGeo(), mailbox: mailboxGeo() };
+  const breakables: BreakableDef[] = [];
+  const brk = (kind: BreakKind, x: number, z: number, yaw: number, handle: InstHandle, make: () => RAPIER.Collider, lampIdx = -1) => {
+    breakables.push({ kind, x, y: CURB_HEIGHT, z, yaw, handle, geo: geoOf[kind], mat: tmat, lampIdx, makeCollider: make, collider: make() });
+  };
+  props.register('streetlight', geoOf.lamp, tmat);
+  props.register('hydrant', geoOf.hydrant, tmat);
   props.register('bench', benchGeo(), tmat);
-  props.register('bin', binGeo(), tmat);
+  props.register('bin', geoOf.bin, tmat);
   props.register('busstop', busStopGeo(), tmat);
-  props.register('phone', phoneGeo(), tmat);
+  props.register('phone', geoOf.phone, tmat);
   for (let k = 0; k < 3; k++) props.register(`news${k}`, newsBoxesGeo(k * 7 + 1), tmat);
-  props.register('meter', meterGeo(), tmat);
-  props.register('mailbox', mailboxGeo(), tmat);
+  props.register('meter', geoOf.meter, tmat);
+  props.register('mailbox', geoOf.mailbox, tmat);
   for (let k = 0; k < 2; k++) props.register(`dumpster${k}`, dumpsterGeo(k), tmat);
   props.register('bollard', bollardGeo(), tmat);
   props.register('pole', powerPoleGeo(false), tmat); props.register('poleT', powerPoleGeo(true), tmat);
@@ -498,8 +506,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       for (let k = 0; k < nL; k++) {
         const s = e.from + (len / nL) * (k + 0.5);
         const p = P(s, 0.75);
-        props.add('streetlight', p.x, CURB_HEIGHT, p.z, yawRoad);
-        physics.addStaticCylinder(p.x, 2.5, p.z, 2.5, 0.14);
+        const hl = props.add('streetlight', p.x, CURB_HEIGHT, p.z, yawRoad);
+        brk('lamp', p.x, p.z, yawRoad, hl, () => physics.addStaticCylinder(p.x, 2.5, p.z, 2.5, 0.14), lampHeads.length);
         lampHeads.push(new THREE.Vector3(p.x + e.nx * LAMP.reach, LAMP.height + CURB_HEIGHT - 0.1, p.z + e.nz * LAMP.reach));
         used.push(s);
       }
@@ -518,13 +526,13 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       for (let k = 0; k < items; k++) {
         const s = r.range(e.from + 9, e.to - 9); if (!free(s, 2.5)) continue; used.push(s);
         const roll = r.next();
-        if (roll < 0.18) { const p = P(s, 0.7); props.add('hydrant', p.x, CURB_HEIGHT, p.z, yawRoad); physics.addStaticCylinder(p.x, 0.45, p.z, 0.45, 0.2); }
-        else if (roll < 0.38 && (b.district === 'midtown' || b.district === 'brickline' || b.district === 'heights')) { for (let m = 0; m < 3; m++) { const ps = s + m * 6 - 6; if (ps < e.from + 8 || ps > e.to - 8) continue; const p = P(ps, 0.6); props.add('meter', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticCylinder(p.x, 0.7, p.z, 0.7, 0.08); } }
-        else if (roll < 0.5) { const p = P(s, 1.2); props.add('bin', p.x, CURB_HEIGHT, p.z, r.range(0, 6)); physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.3); }
+        if (roll < 0.18) { const p = P(s, 0.7); const hh = props.add('hydrant', p.x, CURB_HEIGHT, p.z, yawRoad); brk('hydrant', p.x, p.z, yawRoad, hh, () => physics.addStaticCylinder(p.x, 0.45, p.z, 0.45, 0.2)); }
+        else if (roll < 0.38 && (b.district === 'midtown' || b.district === 'brickline' || b.district === 'heights')) { for (let m = 0; m < 3; m++) { const ps = s + m * 6 - 6; if (ps < e.from + 8 || ps > e.to - 8) continue; const p = P(ps, 0.6); const hm = props.add('meter', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); brk('meter', p.x, p.z, yawRoad + Math.PI, hm, () => physics.addStaticCylinder(p.x, 0.7, p.z, 0.7, 0.08)); } }
+        else if (roll < 0.5) { const p = P(s, 1.2); const by = r.range(0, 6); const hb = props.add('bin', p.x, CURB_HEIGHT, p.z, by); brk('bin', p.x, p.z, by, hb, () => physics.addStaticCylinder(p.x, 0.5, p.z, 0.5, 0.3)); }
         else if (roll < 0.62) { const p = P(s, 2.0); props.add('bench', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); registerBench(p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.45, p.z, e.ax === 'x' ? 0.95 : 0.35, 0.45, e.ax === 'x' ? 0.35 : 0.95); }
         else if (roll < 0.72) { const p = P(s, 1.0); props.add(`news${r.int(0, 2)}`, p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.5, p.z, e.ax === 'x' ? 0.85 : 0.25, 0.5, e.ax === 'x' ? 0.25 : 0.85); }
-        else if (roll < 0.8) { const p = P(s, 1.0); props.add('phone', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticCylinder(p.x, 1, p.z, 1, 0.2); }
-        else if (roll < 0.88) { const p = P(s, 1.0); props.add('mailbox', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); physics.addStaticBox(p.x, 0.7, p.z, 0.3, 0.7, 0.3); }
+        else if (roll < 0.8) { const p = P(s, 1.0); const hp = props.add('phone', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); brk('phone', p.x, p.z, yawRoad + Math.PI, hp, () => physics.addStaticCylinder(p.x, 1, p.z, 1, 0.2)); }
+        else if (roll < 0.88) { const p = P(s, 1.0); const hx = props.add('mailbox', p.x, CURB_HEIGHT, p.z, yawRoad + Math.PI); brk('mailbox', p.x, p.z, yawRoad + Math.PI, hx, () => physics.addStaticBox(p.x, 0.7, p.z, 0.3, 0.7, 0.3)); }
         else if (major && free(s, 5)) { const p = P(s, 1.4); props.add('busstop', p.x, CURB_HEIGHT, p.z, yawRoad); physics.addStaticBox(p.x - e.nx * 0.62, 1.3, p.z - e.nz * 0.62, e.ax === 'x' ? 1.9 : 0.1, 1.3, e.ax === 'x' ? 0.1 : 1.9); }
       }
       // bollards at plaza / tower frontage
@@ -725,7 +733,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
   void T_PAINT; void T_NIGHTGLOW;
   root.add(worldGlass.finishOverlay());
-  return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, ferris, water, helipads };
+  return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, ferris, water, helipads, breakables };
 }
 
 function mergeGeoms(gs: THREE.BufferGeometry[]): THREE.BufferGeometry {

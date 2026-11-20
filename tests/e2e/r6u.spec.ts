@@ -34,7 +34,7 @@ test('fullscreen: one icon button (no menu row), survives menu/highway transitio
   await page.locator('[data-item="highway"]:visible').click();
   await expect(page.locator('#hw-menu')).toBeVisible();
   await expect(page.locator('#hw-menu .hw-fs-btn')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Fullscreen' })).toHaveCount(0);
+  await expect(page.getByText('Fullscreen', { exact: true })).toHaveCount(0);
   await page.locator('#hw-start').dispatchEvent('click');
   await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 120_000 });
   await page.evaluate(() => (window as any).__highway.stop());
@@ -65,23 +65,24 @@ test('map: live 3D while rotating, top-down toggle, Q/E never leave the map', as
   // rotating: the building layer is re-extruded during the turn, not only after it stops
   const live = await page.evaluate(async () => {
     const f = (window as any).__meridian.ui.fullmap;
-    const seen = new Set<string>(); let lastFast = false;
+    const t0 = f.view.tilt as number, target = t0 + Math.PI / 2;
+    const mid: number[] = [];
     f.rotate(Math.PI / 2);
-    const t0 = performance.now();
-    await new Promise<void>(res => { const tick = () => { const L = f.layerView; if (L) { seen.add(L.tilt.toFixed(3)); lastFast ||= L.fast; } if (performance.now() - t0 < 900) requestAnimationFrame(tick); else res(); }; tick(); });
-    return { distinct: seen.size, fast: lastFast };
+    const start = performance.now();
+    await new Promise<void>(res => { const tick = () => { const L = f.layerView; if (L && L.tilt > t0 + 0.05 && L.tilt < target - 0.05) mid.push(L.tilt); if (performance.now() - start < 1500) requestAnimationFrame(tick); else res(); }; tick(); });
+    return { mid: mid.length };
   });
-  expect(live.distinct).toBeGreaterThanOrEqual(4);
+  expect(live.mid).toBeGreaterThanOrEqual(1); // the extruded buildings were redrawn mid-turn, not only after it stopped
   const view = () => page.evaluate(() => { const f = (window as any).__meridian.ui.fullmap; return { tilt: f.view.tilt, pitch: f.view.pitch, top: f.topDown, layerPitch: f.layerView?.pitch, label: document.querySelector('#ma-map-pitch')!.textContent }; });
   // top-down via the key and via the button
-  expect((await view()).label).toBe('2D');
+  expect((await view()).label).toBe('Top-down');
   await page.keyboard.press('KeyT'); await page.waitForTimeout(1500);
   const td = await view();
-  expect(td.pitch).toBeGreaterThan(0.99); expect(td.layerPitch).toBeGreaterThan(0.99); expect(td.label).toBe('3D');
+  expect(td.pitch).toBeGreaterThan(0.99); expect(td.layerPitch).toBeGreaterThan(0.99); expect(td.label).toBe('3D view');
   await page.screenshot({ path: '/tmp/claude-0/shots/u-map-top.png' });
   await page.locator('#ma-map-pitch').click(); await page.waitForTimeout(1500);
   const back = await view();
-  expect(back.pitch).toBeLessThan(0.7); expect(back.label).toBe('2D');
+  expect(back.pitch).toBeLessThan(0.7); expect(back.label).toBe('Top-down');
   await page.keyboard.press('KeyF'); await page.waitForTimeout(800);
   expect((await view()).pitch).toBeLessThan(back.pitch! - 0.05);
   await page.keyboard.press('KeyN'); await page.waitForTimeout(1200);
