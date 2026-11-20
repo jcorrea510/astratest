@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { boot } from './helpers';
+import { boot, quietStreets } from './helpers';
 
 /** R6-P pedestrians: walk signs, no jaywalking, no phantom stumbles, fist fights, hands-up pose. Screenshots to PED_SHOTS. */
 test.describe.configure({ mode: 'serial' });
@@ -63,9 +63,9 @@ test('a crowded street for 60 s: nobody crosses against the sign, jaywalks, or s
 
 test('walk / don\'t-walk heads show the signal phase and look right', async () => {
   test.setTimeout(300_000);
+  await quietStreets(page);
   const r = await page.evaluate(`(() => {
     const g = window.__game, P = g.visuals.pedSignals;
-    for (const n of [...g.pop.npcs]) g.pop.remove(n);
     g.pedCap = 0;
     // pick a crosswalk pole of a busy junction; face it from the street side
     const k = P.posts.findIndex(p => g.city.intersections[p.inter].ix >= 2 && g.city.intersections[p.inter].iz >= 2);
@@ -97,10 +97,10 @@ test('walk / don\'t-walk heads show the signal phase and look right', async () =
 
 test('a punched civilian fights back (brave) or runs (timid); gunfire and hits break hands-up', async () => {
   test.setTimeout(600_000);
+  await quietStreets(page);
   const r = await page.evaluate(`(() => {
     const g = window.__game, fists = { id: 'fists' }, pistol = { id: 'pistol' };
-    g.clockRunning = false; g.hour = 13; g.pedCap = 0; g.trafficCap = 0;
-    for (const n of [...g.pop.npcs]) g.pop.remove(n);
+    g.clockRunning = false; g.hour = 13;
     g.player.place(-41, 0.25, 9, 0);
     const mk = (dx, nerve) => { const n = g.pop.spawn('civilian', -41 + dx, 11, 0.2); n.persistent = true; n.nerve = nerve; n.brain = 'idle'; return n; };
     const brave = mk(0, 0.95), timid = mk(6, 0.02);
