@@ -36,7 +36,7 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
     const b = B[Math.floor(B.length / 2)];
     const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
     const px = b.x + fx * 3.2 - fz * 1.6, pz = b.z + fz * 3.2 + fx * 1.6;
-    g.player.place(px, 0.4, pz, 0); g.cam.yaw = Math.atan2(b.x - px, b.z - pz) + Math.PI;
+    g.player.place(px, 0.4, pz, 0); g.player.human.root.visible = false; g.cam.yaw = Math.atan2(b.x - px, b.z - pz) + Math.PI;
     const n = g.pop.spawn('civilian', b.x + fx * 6, b.z + fz * 6, 0.2);
     b.occupied = true; n.bench = b; n.activity = 'sit'; n.destPt = new g.player.pos.constructor(b.x + fx * 0.9, 0.2, b.z + fz * 0.9); n.brain = 'wander'; n.stateT = 0;
     window.__bench = { n, b, satFrames: 0, sat: false, seatY: 0, dist: 99 };
@@ -53,10 +53,12 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
   expect(r.sat).toBe(true);
   expect(r.dist).toBeLessThan(0.6);
   expect(Math.abs(r.seatY - r.benchY)).toBeLessThan(0.3);
-  // sat for a good while, then got up and walks on
-  for (let k = 0; k < 20 && r.act === 'sitting'; k++) r = await stepUntil(150);
+  // after its time it gets up and walks on (the sit time is 25-95 s in the game; shortened here)
+  await page.evaluate(`(() => { const n = window.__bench.n; n.actDur = 4; n.stateT = 0; })()`);
+  for (let k = 0; k < 12 && r.act === 'sitting'; k++) r = await stepUntil(30);
   expect(r.act).not.toBe('sitting');
-  expect(r.frames).toBeGreaterThan(300);
+  const stood = await page.evaluate(`(() => { const { n } = window.__bench; return { coll: n.char.physicsEnabled, brain: n.brain, free: !window.__bench.b.occupied }; })()`) as any;
+  expect(stood.coll).toBe(true); expect(stood.free).toBe(true);
   // a scare gets a sitter up straight away and frees the bench
   const up = await page.evaluate(`(() => {
     const g = window.__game; const { b } = window.__bench; b.occupied = true;
