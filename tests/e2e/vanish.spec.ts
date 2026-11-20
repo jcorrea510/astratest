@@ -27,6 +27,7 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
     const place = () => { const p = at(lane, s); g.player.place(p.x, 0.25, p.z, Math.atan2(p.dx, p.dz)); };
     place(); g.prewarm?.();
     for (let i = 0; i < 150; i++) { g.frame(1 / 30, false); } // let the city fill around the start
+    g.crowd.debug = [];
     const ids = new WeakMap<object, number>(); let nid = 1; const idOf = (o: object) => { let v = ids.get(o); if (!v) { v = nid++; ids.set(o, v); } return v; };
     const inView = (x: number, y: number, z: number) => {
       // camera-space test (no THREE import needed): project into clip space with a margin
@@ -76,9 +77,10 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
         for (const [k2, e2] of cur) if (!prev.has(k2) && e2.cls === e.cls && Math.hypot(e2.x - e.x, e2.z - e.z) < r) { ok = true; break; }
         if (ok) continue;
         bySrc[e.src] = (bySrc[e.src] ?? 0) + 1;
-        if (events.length < 40) events.push({ f: i, src: e.src, d: +e.d.toFixed(1), x: +e.x.toFixed(1), z: +e.z.toFixed(1) });
+        if (events.length < 40) events.push({ f: i, src: e.src, d: +e.d.toFixed(1), x: +e.x.toFixed(1), z: +e.z.toFixed(1), why: g.crowd.debug.filter((r: any) => Math.hypot(r.x - e.x, r.z - e.z) < 3).map((r: any) => r.why + (r.inView ? '/v' : '')).join(',') });
+      g.crowd.debug.length = 0;
       }
-      prev = cur;
+      prev = cur; if (g.crowd.debug.length > 200) g.crowd.debug.length = 0;
     }
     function snapshotHas(k: string): boolean {
       // the entity still exists and is drawn (it only left the 60 m / view window)
@@ -90,7 +92,7 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
     }
     function viewNear(x: number, z: number, y: number) { const d = Math.hypot(x - cam.position.x, z - cam.position.z); return d <= 60 && d >= 3 && inView(x, y, z); }
     const tot = Object.values(bySrc).reduce((a, b) => a + b, 0);
-    return { frames, vanished: tot, bySrc, events, maxSeen, real: { peds: g.pop.npcs.length, cars: g.traffic.cars.length, vehicles: g.vehicles.list.length }, crowd: { peds: g.crowd.peds.length, cars: g.crowd.cars.length } };
+    return { frames, vanished: tot, bySrc, events, maxSeen, real: { peds: g.pop.npcs.length, cars: g.traffic.cars.length, vehicles: g.vehicles.list.length }, crowd: { peds: g.crowd.peds.length, cars: g.crowd.cars.length }, stats: g.crowd.stats };
   }, opts);
 }
 

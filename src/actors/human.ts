@@ -21,10 +21,10 @@ export { randomLook, resolveLook, PLAYER_DEFAULT_LOOK, SKIN_TONES } from './look
 export type { Look, FullLook, HairStyle, HatStyle, TopStyle, BottomStyle, ShoeStyle, FacialHair, Sex } from './look';
 export { ACTIONS, UAL_CLIPS } from './actions';
 
-const LOW_BODY = new Map<string, THREE.BufferGeometry>(), BODY_IDS = new WeakMap<THREE.BufferGeometry, number>();
+const LOW_BODY = new Map<string, THREE.BufferGeometry>(), BODY_IDS = new WeakMap<THREE.BufferGeometry, number>(); let bodyIdN = 0;
 /** Vertex-clustering decimation of a (non-indexed or indexed) skinned body: position/normal/uv are averaged, all other attributes keep the first vertex and split clusters. */
-function lowBody(src: THREE.BufferGeometry, target: number): THREE.BufferGeometry {
-  if (!BODY_IDS.has(src)) BODY_IDS.set(src, BODY_IDS.size + 1);
+export function lowBody(src: THREE.BufferGeometry, target: number): THREE.BufferGeometry {
+  if (!BODY_IDS.has(src)) BODY_IDS.set(src, ++bodyIdN);
   const ck = `${BODY_IDS.get(src)}:${target}`, hit = LOW_BODY.get(ck); if (hit) return hit;
   const g = src.index ? src.toNonIndexed() : src, n = g.attributes.position.count, names = Object.keys(g.attributes);
   const others = ['skinIndex', 'region'].filter(k => g.attributes[k]); // discrete: clusters never mix bones / garment regions

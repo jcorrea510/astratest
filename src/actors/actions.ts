@@ -71,7 +71,11 @@ export const ACTIONS: Record<string, ActionDef> = {
   get_up: { clip: 'Death01', layer: 'full', reverse: true, rate: 1.1, fade: 0.12 },
   // --- reactions / civilians
   cower: { clip: 'Crouch_Idle_Loop', layer: 'full', loop: true, hold: true, fade: 0.2, poses: [[0, sym({ chest: [18, 0, 0], neck: [15, 0, 0], head: [20, 0, 0], armL: [-120, 0, 30], foreL: [-110, 0, 0] })]] },
-  hands_up: { layer: 'upper', hold: true, dur: 0.35, fade: 0.2, poses: [[0, {}], [1, sym({ armL: [0, 0, 150], foreL: [0, 0, -70], head: [-6, 0, 0] })]] },
+  hands_up: { layer: 'upper', hold: true, dur: 0.35, fade: 0.2, poses: [[0, {}], [1, sym({ armL: [-18, 0, 62], foreL: [0, 0, 105], handL: [-10, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
+  // fist-fight stance: fists up by the chin, elbows tucked, slight forward lean
+  guard: { layer: 'upper', hold: true, dur: 0.25, fade: 0.15, poses: [[0, {}], [1, sym({ armL: [-38, 0, 12], foreL: [-118, 0, 0], head: [6, 0, 0], chest: [8, 0, 0] })]] },
+  // covering up: forearms in front of the face
+  block: { layer: 'upper', dur: 0.6, fade: 0.08, soft: true, poses: [[0, {}], [0.2, sym({ armL: [-62, 0, -6], foreL: [-135, 0, 8], head: [12, 0, 0], chest: [12, 0, 0] })], [0.8, sym({ armL: [-62, 0, -6], foreL: [-135, 0, 8], head: [12, 0, 0], chest: [12, 0, 0] })], [1, {}]] },
   panic: { layer: 'upper', loop: true, hold: true, dur: 0.5, fade: 0.15, poses: [[0, sym({ armL: [-40, 0, 50], foreL: [-60, 0, 0], head: [-8, 0, 0] })], [0.5, sym({ armL: [-70, 0, 35], foreL: [-90, 0, 0], head: [-4, 0, 0] })], [1, sym({ armL: [-40, 0, 50], foreL: [-60, 0, 0], head: [-8, 0, 0] })]] },
   point: { layer: 'upper', dur: 1.4, fade: 0.15, poses: [[0, {}], [0.2, { armR: [-85, 0, 0], foreR: [-5, 0, 0], head: [0, -8, 0] }], [0.8, { armR: [-85, 0, 0], foreR: [-5, 0, 0] }], [1, {}]] },
   wave: { layer: 'upper', dur: 1.6, fade: 0.15, poses: [[0, {}], [0.2, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.4, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [0.6, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.8, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [1, {}]] },
@@ -132,3 +136,4 @@ export function samplePose(keys: [number, Pose][], u: number, out: Map<BoneKey, 
   }
   return out;
 }
+(globalThis as any).__ACTIONS = ACTIONS; // R6P-TEMP

@@ -51,6 +51,8 @@ export class Character {
   lastDamageFrom: Character | null = null;
   lastHitTime = -10;
   knockT = 0;
+  /** seconds left covering up in a fist fight: blows do a fraction of the damage and never knock the fighter down */
+  blockT = 0;
   private capStart = -10; private capUsed = 0;
   private controller: RAPIER.KinematicCharacterController;
   twist = 0;
@@ -237,6 +239,7 @@ export class Character {
       amount = Math.max(0, Math.min(amount, 45 - this.capUsed)); this.capUsed += amount;
       if (amount <= 0) return false;
     }
+    if (this.blockT > 0 && from) amount *= 0.2;
     if (this.armor > 0) { const absorbed = Math.min(this.armor, amount * 0.65); this.armor -= absorbed; amount -= absorbed; }
     this.health -= amount; this.lastDamageFrom = from; this.lastHitTime = time;
     this.human.flash();
@@ -328,6 +331,7 @@ export class Character {
   hitReact(dx: number, dz: number, power: number) {
     if (!this.alive || this.inVehicle) return;
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    if (this.blockT > 0 && power < 2) { this.vel.x += dx * 0.5; this.vel.z += dz * 0.5; return; } // guarded: the blow is soaked up
     if (power >= 1 && !(this.isPlayer && power < 1.2)) {
       this.yaw = Math.atan2(-dx, -dz); // face the attacker, fall backwards
       this.human.playAction('knockdown');

@@ -51,6 +51,8 @@ function farGeometry(body: THREE.BufferGeometry, glass: THREE.BufferGeometry | n
 const cache = new Map<VehicleKind, CarTemplate>();
 /** Triangle budget of the far model (lod 2, also the far-crowd impostor). */
 export const FAR_TRIS = 1300;
+/** True once the kind's template is built (far crowds only use kinds that are ready, so they never cause a build hitch). */
+export function hasTemplate(kind: VehicleKind): boolean { return cache.has(kind); }
 export function getTemplate(kind: VehicleKind): CarTemplate {
   let t = cache.get(kind);
   if (!t) { t = buildTemplate(kind); cache.set(kind, t); }

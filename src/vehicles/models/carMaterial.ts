@@ -218,7 +218,6 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
  */
 export function farCarMaterial(): ReturnType<typeof carMaterial> {
   const m = carMaterial(), inner = m.onBeforeCompile;
-  m.side = THREE.FrontSide; // closed far bodies: no interior to see through windows
   m.onBeforeCompile = (sh, r) => {
     inner.call(m, sh, r);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aPaint; varying vec4 vPaint;')

@@ -81,8 +81,9 @@ test('hold aim in a car with a pistol: gun comes out, fire shoots along the aim 
     g.pcombat.inv.select('fists');
     g.input.press('Mouse2'); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
     out.fistsAim = g.pcombat.driveAim; g.input.release('Mouse2');
-    const tryW = (id) => { g.pcombat.give(id, 40); g.pcombat.inv.select(id); g.input.press('Mouse2'); for (let i = 0; i < 20; i++) g.frame(1 / 30, false); const o = { aim: g.pcombat.driveAim, rolled: v.rolledMask !== 0 }; const m = g.pcombat.models?.get(id); o.gunOut = null; if (m && m.g.visible) { const l = v.visual.worldToLocal(m.g.position.clone()); o.gunOut = Math.abs(l.x) - v.tpl.shape.W / 2; } g.input.release('Mouse2'); for (let i = 0; i < 5; i++) g.frame(1 / 30, false); o.rolledBack = v.rolledMask === 0; return o; };
-    out.rifle = tryW('rifle'); out.smg = tryW('smg'); out.rpg = tryW('rpg'); out.grenade = tryW('grenade');
+    const camFor = side => { for (const y of [v.yaw + Math.PI / 2, v.yaw - Math.PI / 2]) { g.cam.yaw = y; g.cam.pitch = 0; for (let i = 0; i < 4; i++) g.frame(1 / 30, false); if (g.pcombat.driveSide(v) === side) return; } };
+    const tryW = (id, side = 1) => { g.pcombat.give(id, 40); g.input.press('Mouse2'); camFor(side); g.input.release('Mouse2'); g.pcombat.inv.select(id); g.input.press('Mouse2'); for (let i = 0; i < 20; i++) g.frame(1 / 30, false); const o = { aim: g.pcombat.driveAim, rolled: v.rolledMask !== 0 }; const m = g.pcombat.models?.get(id); o.gunOut = null; if (m && m.g.visible) { const l = v.visual.worldToLocal(m.g.position.clone()); o.gunOut = Math.abs(l.x) - v.tpl.shape.W / 2; } g.input.release('Mouse2'); for (let i = 0; i < 5; i++) g.frame(1 / 30, false); o.rolledBack = v.rolledMask === 0; return o; };
+    out.rifle = tryW('rifle'); out.rifleFar = tryW('rifle', -1); out.smg = tryW('smg'); out.rpg = tryW('rpg'); out.grenade = tryW('grenade');
     return out;
   })()`) as any;
   console.log(JSON.stringify(r));
@@ -95,6 +96,8 @@ test('hold aim in a car with a pistol: gun comes out, fire shoots along the aim 
   expect(r.fistsAim).toBe(false);
   for (const k of ['rifle', 'smg', 'grenade']) { expect(r[k].aim, k).toBe(true); expect(r[k].rolled, k).toBe(true); expect(r[k].rolledBack, k).toBe(true); }
   expect(r.rpg.aim).toBe(false);
+  expect(r.rifleFar.rolled).toBe(true);
+  expect(r.rifleFar.gunOut).toBeGreaterThan(-0.6); // far side: leaning and reaching over the dash
   expect(r.rifle.gunOut).toBeGreaterThan(-0.35); // the long gun is at the window plane, not inside the cabin
   clean(p);
 });
@@ -137,7 +140,7 @@ test('real shots at a car leave decals on its surface (<5 cm) that travel with t
     // nearest visible-surface distance along each decal's normal: Moller-Trumbore over the skinned body mesh
     const mesh = v.bodyMesh; mesh.updateMatrixWorld(true); v.syncTransform(); mesh.updateMatrixWorld(true);
     const geo = mesh.geometry, idx = geo.index, nV = geo.attributes.position.count;
-    const P = []; for (let i = 0; i < nV; i++) P.push(mesh.getVertexPosition(i, new V3()).applyMatrix4(mesh.matrixWorld));
+    const P = []; for (let i = 0; i < nV; i++) P.push(new V3(geo.attributes.position.getX(i), geo.attributes.position.getY(i), geo.attributes.position.getZ(i)).applyMatrix4(mesh.matrixWorld));
     const nT = idx ? idx.count / 3 : nV / 3;
     const surfDist = (o, dn) => {
       let best = Infinity; const e1 = new V3(), e2 = new V3(), h = new V3(), sv = new V3(), q = new V3();
@@ -151,18 +154,19 @@ test('real shots at a car leave decals on its surface (<5 cm) that travel with t
       return best;
     };
     const qd = new (g.cam.camera.quaternion.constructor)();
-    let worst = 0;
+    let worst = 0; const dbg = [];
+    const bb = P.reduce((m, q) => [Math.min(m[0], q.x), Math.max(m[1], q.x), Math.min(m[2], q.y), Math.max(m[3], q.y)], [9e9, -9e9, 9e9, -9e9]);
     for (const d of list) {
       const pos = d.getWorldPosition(new V3()); d.getWorldQuaternion(qd);
       const nrm = new V3(0, 0, 1).applyQuaternion(qd);
       const t1 = surfDist(pos.clone().addScaledVector(nrm, 0.3), nrm.clone().negate()), t2 = surfDist(pos.clone().addScaledVector(nrm, -0.3), nrm.clone());
-      const dist = Math.min(Math.abs(t1 - 0.3), Math.abs(t2 - 0.3)); worst = Math.max(worst, dist);
+      const dist = Math.min(Math.abs(t1 - 0.3), Math.abs(t2 - 0.3)); worst = Math.max(worst, dist); dbg.push([+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2), +t1.toFixed(3), +t2.toFixed(3)]);
     }
     const before = list.map(wp);
     v.phys.teleport(v.position.x + 10, v.position.y, v.position.z, v.yaw);
     for (let i = 0; i < 3; i++) g.frame(1 / 30, false);
     const moved = list.map((d, i) => wp(d).distanceTo(before[i]));
-    return { n: list.length, parentOk: list.every(d => d.parent === v.visual), worst, moveMin: Math.min(...moved), moveMax: Math.max(...moved) };
+    return { dbg, bb, car: [v.position.x, v.position.y, v.position.z], nT, n: list.length, parentOk: list.every(d => d.parent === v.visual), worst, moveMin: Math.min(...moved), moveMax: Math.max(...moved) };
   })()`) as any;
   expect(r.n).toBeGreaterThan(0);
   expect(r.parentOk).toBe(true);

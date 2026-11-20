@@ -15,6 +15,7 @@ import { buildQuay } from './quaybuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
 import { registerBench } from './benches';
 import { signalPosts } from './signals';
+import { buildPedSignals, type PedSignals } from './pedsignals';
 import { buildPrecinct, precinctFootprint } from './precinct';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
@@ -42,6 +43,8 @@ export interface CityVisuals {
   lampHeads: THREE.Vector3[];
   signalHeads: SignalHead[];
   signalLamps: THREE.InstancedMesh;
+  /** pedestrian walk / don't-walk heads at the signalized crosswalks */
+  pedSignals: PedSignals;
   chunkMeshes: THREE.Object3D[];
   ferris: THREE.Object3D | null;
   water: THREE.Mesh;
@@ -575,6 +578,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     dummy.updateMatrix(); signalLamps.setMatrixAt(i, dummy.matrix); signalLamps.setColorAt(i, new THREE.Color(0.1, 0.1, 0.1));
   });
   signalLamps.frustumCulled = false; root.add(signalLamps);
+  const pedSignals = buildPedSignals(city, physics); root.add(pedSignals.group);
 
   // Parks, plazas, backyards
   for (const b of city.blocks) {
@@ -721,7 +725,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
   void T_PAINT; void T_NIGHTGLOW;
   root.add(worldGlass.finishOverlay());
-  return { root, lampHeads, signalHeads, signalLamps, chunkMeshes, ferris, water, helipads };
+  return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, ferris, water, helipads };
 }
 
 function mergeGeoms(gs: THREE.BufferGeometry[]): THREE.BufferGeometry {

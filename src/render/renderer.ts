@@ -31,7 +31,8 @@ const GradeShader = {
       float v = smoothstep(0.85, 0.2, length(d * vec2(1.0, 0.85)));
       col *= mix(1.0 - uVignette, 1.0, v);
       col = mix(col, uFlashColor, uFlash * (1.0 - v * 0.7));
-      col += (hash(vUv * 1000.0 + uTime) - 0.5) * 0.018;
+      // fine per-pixel grain (screen-space UV grain read as blocky video compression at high resolutions)
+      col += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * 0.007;
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
     }`,
 };
@@ -42,7 +43,25 @@ export const LOOK = {
   stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
+/** Adaptive resolution floor (fraction of the preset's pixel ratio)... */
 const DYN_MIN = 0.7;
+const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+/**
+ * Stable shadow frame: the sun direction moves in small steps (a continuously turning light re-rasterises every shadow
+ * edge each frame = crawling, flickering edges) and the shadow centre snaps to whole texels *in light space* (snapping
+ * world x/z does not line up with an oblique light's texel grid, so edges still swam as the player moved).
+ */
+export function shadowFrame(wantDir: THREE.Vector3, cx: number, cz: number, texel: number, dir: THREE.Vector3, out: THREE.Vector3) {
+  if (dir.angleTo(wantDir) > 0.004) dir.copy(wantDir).normalize(); // ~0.23 degree steps
+  // the same basis three's shadow camera uses (lookAt from the sun towards the target, world up)
+  _r.crossVectors(_up, dir); if (_r.lengthSq() < 1e-8) _r.set(1, 0, 0); _r.normalize();
+  _u.crossVectors(dir, _r).normalize();
+  const c = out.set(cx, 0, cz);
+  const a = Math.round(c.dot(_r) / texel) * texel, b = Math.round(c.dot(_u) / texel) * texel, l = c.dot(dir);
+  return out.copy(_r).multiplyScalar(a).addScaledVector(_u, b).addScaledVector(dir, l);
+}
+/** ...but never below native CSS-pixel resolution unless the game is really struggling (sustained < ~30 fps). */
+const NATIVE_FLOOR_MS = 33;
 export class Renderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -64,7 +83,7 @@ export class Renderer {
     const u = this.grade.uniforms, n = look === 'natural';
     u.uSat.value = n ? LOOK.natural.sat : LOOK.stylised.sat; u.uSplit.value = n ? LOOK.natural.split : 1; u.uVignette.value = n ? LOOK.natural.vignette : LOOK.stylised.vignette;
   }
-  private shadowTarget = new THREE.Vector3();
+  private shadowTarget = new THREE.Vector3(); private lightDir = new THREE.Vector3(0, 1, 0);
   private _fwd = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator;
   private envScene = new THREE.Scene();
@@ -111,19 +130,25 @@ export class Renderer {
     this.resize();
   }
   /** Pixel ratio = preset cap x the adaptive resolution scale (dynScale drops under load and recovers when there is headroom). */
-  private applyPixelRatio() { this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio) * this.dynScale); }
+  private applyPixelRatio() { this.renderer.setPixelRatio(this.effectivePixelRatio()); }
+  /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames stay under ~33 ms. */
+  effectivePixelRatio() {
+    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio), r = cap * this.dynScale;
+    return this.frameEma < NATIVE_FLOOR_MS ? Math.max(r, Math.min(1, cap)) : r;
+  }
   /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
   dynScale = 1; adaptive = typeof navigator === 'undefined' || !navigator.webdriver;
-  private lastRender = 0; private frameEma = 16; private slowT = 0; private fastT = 0; private shadowTick = 0; shadowEvery = 1;
+  private lastRender = 0; private frameEma = 16; private slowT = 0; private fastT = 0;
   private adapt(now: number) {
     const dt = now - this.lastRender; this.lastRender = now;
     if (dt <= 0 || dt > 250) return; // first frame / tab was hidden
+    const was = this.frameEma < NATIVE_FLOOR_MS;
     this.frameEma += (dt - this.frameEma) * 0.08;
-    // shadow maps are the biggest GPU cost: when over budget refresh them every other frame (texel-snapped, so it is hardly visible)
-    this.shadowEvery = this.frameEma > 18.5 ? 2 : this.frameEma < 15 ? 1 : this.shadowEvery;
+    // (the shadow map is refreshed every frame: skipping frames made the shadow of a moving car trail behind it)
     if (!this.adaptive) return;
+    if (was !== this.frameEma < NATIVE_FLOOR_MS && this.dynScale < 1) { this.applyPixelRatio(); this.resize(); }
     if (this.frameEma > 20) { this.slowT += dt; this.fastT = 0; } else if (this.frameEma < 13.5) { this.fastT += dt; this.slowT = 0; } else { this.slowT = 0; this.fastT = 0; }
-    if (this.slowT > 1500 && this.dynScale > DYN_MIN) { this.dynScale = Math.max(DYN_MIN, +(this.dynScale - 0.1).toFixed(2)); this.slowT = 0; this.applyPixelRatio(); this.resize(); }
+    if (this.slowT > 1500 && this.dynScale > DYN_MIN) { const before = this.effectivePixelRatio(); this.dynScale = Math.max(DYN_MIN, +(this.dynScale - 0.1).toFixed(2)); this.slowT = 0; if (this.effectivePixelRatio() !== before) { this.applyPixelRatio(); this.resize(); } }
     else if (this.fastT > 5000 && this.dynScale < 1) { this.dynScale = Math.min(1, +(this.dynScale + 0.1).toFixed(2)); this.fastT = 0; this.applyPixelRatio(); this.resize(); }
   }
   private buildComposer() {
@@ -171,13 +196,12 @@ export class Renderer {
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
     (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(150, 70, s.night);
     this.renderer.toneMappingExposure = s.exposure * THREE.MathUtils.lerp(1, L.nightExposure, s.night);
-    // Snap the shadow camera to texels to avoid shimmering.
     const range = (this.quality.shadowRange || 60) * 1.6, texel = (range * 2) / (this.quality.shadowMap || 1024);
     const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;
     const fx = focus.x + (fwd.x / fl) * ahead, fz = focus.z + (fwd.z / fl) * ahead;
-    this.shadowTarget.set(Math.round(fx / texel) * texel, 0, Math.round(fz / texel) * texel);
+    shadowFrame(s.lightDir, fx, fz, texel, this.lightDir, this.shadowTarget);
     this.sun.target.position.copy(this.shadowTarget);
-    this.sun.position.copy(this.shadowTarget).addScaledVector(s.lightDir, 180);
+    this.sun.position.copy(this.shadowTarget).addScaledVector(this.lightDir, 180);
     this.bloom.strength = THREE.MathUtils.lerp(0.12, 0.26, s.night);
     this.bloom.threshold = THREE.MathUtils.lerp(0.95, 0.88, s.night);
     this.grade.uniforms.uNight.value = s.night;
@@ -186,8 +210,7 @@ export class Renderer {
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
   render() {
     this.adapt(performance.now());
-    const sm = this.renderer.shadowMap; sm.autoUpdate = false;
-    if (this.shadowEvery <= 1 || (++this.shadowTick % this.shadowEvery) === 0) sm.needsUpdate = true;
+    this.renderer.shadowMap.autoUpdate = true;
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;

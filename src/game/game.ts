@@ -709,6 +709,7 @@ export class Game {
       lamps.setColorAt(h.lamps[2], st === 'green' ? cols.green : off);
     }
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
+    this.visuals.pedSignals.update(this.time);
   }
   private cullChunks() {
     const cp = this.renderer.camera.position; const max = this.renderer.quality.drawDistance + 60;

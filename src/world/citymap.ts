@@ -155,11 +155,27 @@ export function signalState(inter: Intersection, axis: 'x' | 'z', time: number):
   if (!mine || p === 2) return 'red';
   return p === 0 ? 'green' : 'yellow';
 }
-/** Pedestrians may cross a road running along `roadAxis` when traffic on that road is red. */
-export function pedestrianMayCross(inter: Intersection, roadAxis: 'x' | 'z', time: number): boolean {
-  if (!inter.signalized) return true;
+/** Seconds of each green phase during which the walking person shows (nobody should start crossing after that). */
+export const PED_WALK_TIME = 5;
+export type PedSignal = 'walk' | 'flash' | 'dont';
+/**
+ * Pedestrian signal for a crosswalk over the road running along `roadAxis`: WALK for the first PED_WALK_TIME seconds of the
+ * cross street's green, then a flashing hand (finish crossing, do not start) through the rest of that green and the yellow,
+ * then a solid hand while the crossed road has (or is about to get) its green.
+ */
+export function pedSignal(inter: Intersection, roadAxis: 'x' | 'z', time: number): PedSignal {
+  if (!inter.signalized) return 'walk';
   const other = roadAxis === 'x' ? 'z' : 'x';
-  return signalState(inter, roadAxis, time) === 'red' && signalState(inter, other, time) === 'green';
+  let t = (((time + inter.offset) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD;
+  let phase = 0;
+  while (t >= SIGNAL_CYCLE[phase]) { t -= SIGNAL_CYCLE[phase]; phase++; }
+  const p = phase % 3, otherPhase = other === 'z' ? phase < 3 : phase >= 3;
+  if (!otherPhase || p === 2) return 'dont';
+  return p === 0 && t < PED_WALK_TIME ? 'walk' : 'flash';
+}
+/** Pedestrians may START crossing a road running along `roadAxis` only while the walk sign shows. */
+export function pedestrianMayCross(inter: Intersection, roadAxis: 'x' | 'z', time: number): boolean {
+  return pedSignal(inter, roadAxis, time) === 'walk';
 }
 
 function polyLength(points: V2[]): { length: number; cum: number[] } {

@@ -43,7 +43,8 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
           if (c.v > 0.3) { farIdle[id] = 0; continue; }
           const L = c.lane, I = g.city.intersections[L.intersection], dS = L.length - c.s - 5.4;
           const atLine = !L.connector && dS < 12 && (sig(I, L.axis, g.time) !== 'green' || !I.signalized);
-          const queued = g.crowd.cars.some((o: any) => o !== c && o.lane === L && o.s > c.s && o.s - c.s < 16);
+          const ahead = (o: any, rs: number, ln: any) => (ln === L ? rs > c.s && rs - c.s < 45 : L.next.includes(ln.id) && rs < 45 - (L.length - c.s));
+          const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane));
           if (atLine || queued || c.dwell > 0) farIdle[id] = 0; else { farIdle[id] = (farIdle[id] ?? 0) + 1; if (farIdle[id] > 10 && !farWorst.some(w => w.id === id)) farWorst.push({ id, lane: L.id, dS }); }
         }
         samples++;

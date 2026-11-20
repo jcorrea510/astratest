@@ -24,7 +24,8 @@ import { GROUND } from './shapes';
 export const HIP_ABOVE_ROOT = 0.55;
 /** Swing angle of a fully open door (rad). */
 const DOOR_MAX = 1.15;
-const LOD_MID = 20, LOD_FAR = 65; // lod 0 (35k tris) inside 20 m, lod 1 (~3k) to 65 m, lod 2 (~600) beyond
+// lod 0 (35k tris, interior) inside 15 m, lod 1 (~3k, looks the same from the street) to 65 m, lod 2 (~1.3k, the far-crowd model) beyond
+const LOD_MID = 15, LOD_FAR = 65;
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone }
@@ -43,6 +44,7 @@ const beamTex = (() => {
   const gr = g.createRadialGradient(32, 50, 2, 32, 40, 30); gr.addColorStop(0, 'rgba(255,238,200,0.55)'); gr.addColorStop(0.55, 'rgba(255,238,200,0.18)'); gr.addColorStop(1, 'rgba(255,240,200,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
 })();
+const _sm = new THREE.Matrix4(), _sa = new THREE.Vector3(), _sb = new THREE.Vector3();
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const POLICE_LIKE = new Set<VehicleKind>(['police', 'fbi', 'swat']);
 
@@ -285,6 +287,35 @@ export class Vehicle {
       const d = distToTris(lp, p.tris);
       if (d < bd) { bd = d; best = p.id; }
     }
+    return best;
+  }
+  /**
+   * Ray (world space) against the visible body mesh in its rest pose. The physics hull is much coarser than the paint,
+   * so bullet-hole decals are snapped here. Only front-facing triangles count. Returns the distance along `d`, or -1.
+   */
+  surfaceRay(o: THREE.Vector3, d: THREE.Vector3, t0: number, t1: number, outN: THREE.Vector3): number {
+    const mesh = this.bodyMesh, g = mesh.geometry, pos = g.attributes.position, idx = g.index;
+    mesh.updateWorldMatrix(true, false);
+    const inv = _sm.copy(mesh.matrixWorld).invert();
+    const lo = _sa.copy(o).applyMatrix4(inv), ld = _sb.copy(d).transformDirection(inv); // matrixWorld is rigid (scale 1)
+    const n = idx ? idx.count : pos.count;
+    let best = Infinity;
+    for (let i = 0; i < n; i += 3) {
+      const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
+      const ax = pos.getX(ia), ay = pos.getY(ia), az = pos.getZ(ia);
+      const e1x = pos.getX(ib) - ax, e1y = pos.getY(ib) - ay, e1z = pos.getZ(ib) - az;
+      const e2x = pos.getX(ic) - ax, e2y = pos.getY(ic) - ay, e2z = pos.getZ(ic) - az;
+      const hx = ld.y * e2z - ld.z * e2y, hy = ld.z * e2x - ld.x * e2z, hz = ld.x * e2y - ld.y * e2x;
+      const det = e1x * hx + e1y * hy + e1z * hz; if (det < 1e-9) continue; // front faces only (CCW normal opposes the ray)
+      const f = 1 / det, sx = lo.x - ax, sy = lo.y - ay, sz = lo.z - az;
+      const u = f * (sx * hx + sy * hy + sz * hz); if (u < 0 || u > 1) continue;
+      const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+      const w = f * (ld.x * qx + ld.y * qy + ld.z * qz); if (w < 0 || u + w > 1) continue;
+      const t = f * (e2x * qx + e2y * qy + e2z * qz);
+      if (t >= t0 && t <= t1 && t < best) { best = t; outN.set(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x); }
+    }
+    if (best === Infinity) return -1;
+    outN.transformDirection(mesh.matrixWorld).normalize();
     return best;
   }
   /** True if a world point lies over a window opening (broken or not): bullet holes must never be stamped there (the physics hull is coarser than the body, so they would hang in the air). */

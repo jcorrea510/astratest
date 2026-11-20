@@ -100,7 +100,7 @@ export class PlayerCombat {
   private wasDriveAim = false; private wasMode = 'none';
   private rolled: { v: Vehicle; pane: number } | null = null;
   /** Side of the car (+1 left / -1 right) the camera aim point lies on. */
-  private driveSide(v: Vehicle) {
+  driveSide(v: Vehicle) {
     const dx = this.aimPoint.x - v.position.x, dz = this.aimPoint.z - v.position.z;
     return dx * Math.cos(v.yaw) - dz * Math.sin(v.yaw) >= 0 ? 1 : -1;
   }
@@ -111,7 +111,14 @@ export class PlayerCombat {
     const r = this.rolled;
     if (r && (!want || want.v !== r.v || want.pane !== r.pane)) { r.v.rollWindow(r.pane, false); this.rolled = null; }
     if (want) { want.v.rollWindow(want.pane, true); this.rolled = want; }
+    if (!v) { this.lean = this.leanApplied = 0; return; } // left the car: the entry/exit animation owns the root again
+    // lean toward the open window (far side: across the seat) so the arm reaches it
+    const tgt = this.driveAim ? (this.driveSide(v) === 1 ? 0.08 : -0.3) : 0;
+    this.lean += (tgt - this.lean) * 0.25;
+    const root = this.player.human.root, dl = this.lean - this.leanApplied;
+    if (Math.abs(dl) > 1e-5 && root.parent) { root.position.x += dl; this.leanApplied = this.lean; }
   }
+  private lean = 0; private leanApplied = 0;
   /** Drive-by hold: moves the gun so its grip sits in the open window (barrel out), within reach of the shoulder. */
   private driveHold(H: ReturnType<typeof makeHoldOut>, an: ReturnType<typeof weaponAnchors>, shoulder: THREE.Vector3, armLen: number) {
     const v = this.player.inVehicle as Vehicle; const side = this.driveSide(v);

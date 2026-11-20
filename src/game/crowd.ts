@@ -1,17 +1,23 @@
 /**
- * Cheap far crowds: instanced low-poly pedestrians (vertex-animated walk, no skinning, no physics) walking the sidewalk graph,
- * instanced simplified cars following the lane graph (queue at lights, no physics), and static curbside parked cars that turn
- * into real stealable vehicles when the player comes close. Everything is 3 draw calls. Real (skinned/physics) actors live in
- * Population/Traffic near the player; this layer fills the distance so the city feels like Manhattan.
+ * Cheap far crowds: instanced pedestrians (the real body, decimated and vertex-animated, dressed from each person's look)
+ * walking the sidewalk graph, instanced cars (each kind's real far model and paint) following the lane graph (queue at
+ * lights and behind real traffic, no physics), and curbside parked cars that turn into real stealable vehicles up close.
+ * One draw call per car kind in use and per sex. Real (skinned/physics) actors live in Population/Traffic near the player:
+ * a far car/person coming within PROMOTE_R is handed over to a real one (same kind/paint or same person), far real ones are
+ * handed back (demoted) so the real budgets stay near the player, and nothing in view is ever just removed.
  */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane } from '../world/citymap';
+import { samplePath, signalState, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane, CURB_HEIGHT } from '../world/citymap';
+import { CrowdPeople, type CrowdLook } from '../actors/crowdBody';
+import { randomLook, type FullLook } from '../actors/look';
 import type { VehicleManager } from './vehicles';
 import type { Traffic } from './traffic';
 import type { Population } from './population';
 import type { Vehicle } from '../vehicles/vehicle';
-import { PARKED_MIX, VEHICLES } from '../vehicles/specs';
+import { PARKED_MIX, TRAFFIC_MIX, type VehicleKind } from '../vehicles/specs';
+import { FarCars, kindPaint } from '../vehicles/farCars';
+import { hasTemplate } from '../vehicles/models/build';
 import { yieldsToSiren, signalCap, stopSignCap } from './trafficRules';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
@@ -19,170 +25,91 @@ import { carActivity, pedActivity, districtNightFactor } from './schedule';
 export interface CrowdCaps { farCars: number; farPeds: number; parked: number }
 
 const CAR_PAINT = [0xb8bcc2, 0x1d1f24, 0xe8e8e8, 0x7a1f26, 0x24406b, 0x6b7a86, 0xc9a227, 0x3d5a3a, 0x8a8f95, 0xd8d0c0, 0x2f2f33];
-const BUS_PAINT = [0x2a5f9e, 0x3d7a4a, 0xb8bcc2, 0xc9a227];
 const SHIRTS = [0x2b4a7a, 0xb23a3a, 0x3a7a4a, 0xd8d8d0, 0x1d1d22, 0x8a5a9a, 0xd89a2b, 0x5a6a7a, 0x9a3a1a, 0x4aa0b0, 0xe0c8c0];
 const PANTS = [0x23262f, 0x3a4a6a, 0x4a3a2a, 0x1a1a1a, 0x6a6a70, 0x2f3a2f];
 const SKIN = [0xf0c8a0, 0xd9a577, 0xb07a4f, 0x7a4a2f, 0x4f2f20, 0xe8b890];
 
-/** Per-instance tint attributes + optional leg/arm swing, injected into a Lambert material. */
-function patchMaterial(mat: THREE.MeshLambertMaterial, walk: boolean) {
-  const uniforms = { uTime: { value: 0 } };
-  mat.userData.crowdUniforms = uniforms;
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-        attribute float aMask; attribute vec3 aTint; attribute vec3 aTint2; attribute vec3 aSkin;
-        ${walk ? 'attribute float aSwing; attribute float aPhase; attribute float aAmp; uniform float uTime;' : ''}`)
-      .replace('#include <color_vertex>', `#include <color_vertex>
-        vec3 tintSel = aMask < 0.5 ? vec3(1.0) : aMask < 1.5 ? aTint : aMask < 2.5 ? aTint2 : aSkin;
-        vColor = color.rgb * tintSel;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        ${walk ? 'transformed.z += aSwing * sin(uTime * 6.2 + aPhase) * 0.34 * aAmp;' : ''}`);
-  };
-}
-const hex = (c: number, out: THREE.Color) => out.setHex(c);
-
-function box(w: number, h: number, d: number, x: number, y: number, z: number, col: number, mask: number, swing = 0): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-  g.translate(x, y, z);
-  const n = g.attributes.position.count, c = new THREE.Color(col);
-  const colors = new Float32Array(n * 3), masks = new Float32Array(n), sw = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    // darken lower faces a touch for cheap ambient occlusion
-    const shade = g.attributes.normal.getY(i) < -0.5 ? 0.6 : 1;
-    colors[i * 3] = c.r * shade; colors[i * 3 + 1] = c.g * shade; colors[i * 3 + 2] = c.b * shade; masks[i] = mask;
-    sw[i] = swing === 0 ? 0 : swing * Math.min(1, Math.max(0, (1.5 - g.attributes.position.getY(i)) / 0.8));
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(colors, 3)); g.setAttribute('aMask', new THREE.BufferAttribute(masks, 1)); g.setAttribute('aSwing', new THREE.BufferAttribute(sw, 1));
-  g.deleteAttribute('uv');
-  return g;
-}
-function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const out = new THREE.BufferGeometry();
-  for (const name of ['position', 'normal', 'color', 'aMask', 'aSwing']) {
-    const size = parts[0].attributes[name].itemSize; let total = 0; for (const p of parts) total += p.attributes[name].count;
-    const arr = new Float32Array(total * size); let o = 0;
-    for (const p of parts) { arr.set(p.attributes[name].array as Float32Array, o); o += p.attributes[name].count * size; }
-    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
-  }
-  return out;
-}
-function carGeometry(): THREE.BufferGeometry {
-  return merge([
-    box(1.85, 0.62, 4.5, 0, 0.62, 0, 0xffffff, 1),
-    box(1.6, 0.52, 2.4, 0, 1.18, -0.2, 0x2a323a, 0),
-    box(1.5, 0.08, 1.9, 0, 1.46, -0.2, 0xffffff, 1),
-    box(0.22, 0.56, 0.62, 0.9, 0.28, 1.4, 0x111111, 0), box(0.22, 0.56, 0.62, -0.9, 0.28, 1.4, 0x111111, 0),
-    box(0.22, 0.56, 0.62, 0.9, 0.28, -1.4, 0x111111, 0), box(0.22, 0.56, 0.62, -0.9, 0.28, -1.4, 0x111111, 0),
-    box(1.5, 0.12, 0.06, 0, 0.78, -2.27, 0xc02020, 0),
-  ]);
-}
-/** Head and tail light blocks, drawn unlit (bright) at night through a second instanced mesh that shares the car matrices. */
-function carLightGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  for (const sx of [-1, 1]) {
-    parts.push(box(0.38, 0.2, 0.08, sx * 0.62, 0.74, 2.27, 0xfff0c0, 0), box(0.34, 0.16, 0.08, sx * 0.66, 0.78, -2.28, 0xff2418, 0));
-  }
-  return merge(parts);
-}
-function busGeometry(): THREE.BufferGeometry {
-  const L = 11.6;
-  const parts = [
-    box(2.5, 2.5, L, 0, 1.75, 0, 0xffffff, 1),
-    box(2.54, 0.85, L - 1.2, 0, 2.15, 0, 0x28323c, 0),
-    box(2.52, 0.14, L, 0, 0.78, 0, 0xe8e8e8, 0),
-    box(1.6, 0.3, 3, 0, 3.1, -1.5, 0xb8bcc2, 0),
-    box(2.4, 0.5, 0.1, 0, 2.0, L / 2 + 0.01, 0x1a1f26, 0),
-    box(2.3, 0.2, 0.1, 0, 3.1, L / 2 + 0.02, 0xffd060, 0),
-  ];
-  for (const z of [-3.8, 3.4]) for (const sx of [-1, 1]) parts.push(box(0.3, 1.0, 1.0, sx * 1.2, 0.5, z, 0x111111, 0));
-  return merge(parts);
-}
-function pedGeometry(): THREE.BufferGeometry {
-  return merge([
-    box(0.4, 0.58, 0.24, 0, 1.18, 0, 0xffffff, 1),
-    box(0.17, 0.82, 0.18, 0.1, 0.41, 0, 0xffffff, 2, 1), box(0.17, 0.82, 0.18, -0.1, 0.41, 0, 0xffffff, 2, -1),
-    box(0.09, 0.56, 0.1, 0.27, 1.17, 0, 0xffffff, 1, -0.8), box(0.09, 0.56, 0.1, -0.27, 1.17, 0, 0xffffff, 1, 0.8),
-    box(0.2, 0.24, 0.22, 0, 1.62, 0, 0xffffff, 3),
-  ]);
-}
-function addInstanceAttrs(g: THREE.InstancedBufferGeometry, n: number, walk: boolean) {
-  g.setAttribute('aTint', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
-  g.setAttribute('aTint2', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
-  g.setAttribute('aSkin', new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3));
-  if (walk) { g.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(n), 1)); g.setAttribute('aAmp', new THREE.InstancedBufferAttribute(new Float32Array(n), 1)); }
-}
-function makeInstanced(base: THREE.BufferGeometry, n: number, walk: boolean): { mesh: THREE.InstancedMesh; geo: THREE.InstancedBufferGeometry } {
-  const geo = new THREE.InstancedBufferGeometry();
-  geo.index = base.index; for (const k of Object.keys(base.attributes)) geo.setAttribute(k, base.attributes[k]);
-  addInstanceAttrs(geo, n, walk);
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  patchMaterial(mat, walk);
-  const mesh = new THREE.InstancedMesh(geo, mat, n);
-  mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.count = 0;
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  return { mesh, geo };
-}
-
 interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
+  /** vehicle kind and paint index: drawn with that kind's real far model, and promoted into exactly that car */ kind: VehicleKind; pc: THREE.Color;
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
   bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; ssLane?: number; ssWait?: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
-interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; /** height on a bridge walkway */ y?: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean }
+interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; /** height on a bridge walkway */ y?: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean;
+  /** who this is: the same look is used by the real person it turns into up close */ lk?: FullLook; data?: CrowdLook; seed?: number; road?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
-/** Paint of a parked car: the same for the far instanced copy and the real car, so the swap is invisible. */
-const parkedPaint = (s: { kind: number; paint: number }) => { const p = VEHICLES[PARKED_MIX[s.kind % PARKED_MIX.length]].paints; return p[s.paint % p.length]; };
-
 const sp = { x: 0, z: 0, dx: 0, dz: 0, y: 0 as number | undefined };
-const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+const col = new THREE.Color();
 
 /** Cheap crowd members are only removed this close to the player (behind the camera lens); real ones take over from PROMOTE_R. */
 const NEAR_KILL = 9, PROMOTE_R = 60;
+/** Real cars / people allowed over the preset cap for hand-overs (far real ones are demoted back to the crowd meanwhile). */
+const PROMOTE_SLACK = 10, PROMOTE_SLACK_PEDS = 16;
+/** Real cars / people this far away (and out of view, or much further) go back to the cheap crowd. */
+const DEMOTE_R = 128, DEMOTE_PED_R = 82; // cars: just beyond Traffic's own spawn ring (no spawn/demote churn)
+/** Look seeds for far people (distinct from Population's). */
+let LOOK_SEED = 500000;
 /** Instance capacity of the far-car meshes (R6-T: raised from 400 for denser city traffic). */
 const MAX_FAR_CARS = 600;
 export class Crowd {
+  private nearLaneIdx: number[] = []; private nearT = 0;
   readonly cars: GCar[] = []; readonly peds: GPed[] = [];
   /** siren vehicles (set by the game from Traffic.sirenSources): far cars pull over for them */
   sirens: { x: number; z: number; fx: number; fz: number; speed: number }[] = [];
   caps: CrowdCaps = { farCars: 0, farPeds: 0, parked: 0 };
   hour = 17; busCount = 0;
-  private lightMesh: THREE.InstancedMesh; private busMesh: ReturnType<typeof makeInstanced>;
-  private carMesh: ReturnType<typeof makeInstanced>; private pedMesh: ReturnType<typeof makeInstanced>; private parkMesh: ReturnType<typeof makeInstanced>;
+  /** far cars (driving + parked) drawn with each kind's real far model */ readonly far: FarCars;
+  /** far pedestrians: the real body, decimated and vertex-animated, dressed from each person's look */ people: CrowdPeople | null = null;
+  /** the render camera (set by the game): far crowds are culled per instance and never removed while in view */
+  camera: THREE.Camera | null = null;
+  private frustum = new THREE.Frustum(); private pm = new THREE.Matrix4(); private sph = new THREE.Sphere(); private v3 = new THREE.Vector3();
+  private traffic: Traffic | null = null; private pop: Population | null = null; private demoteT = 0;
+  /** hand-over bookkeeping for tests / debugging */
+  stats = { promotedCars: 0, promotedPeds: 0, demotedCars: 0, demotedPeds: 0, heldCars: 0, heldPeds: 0, removedInView: 0 };
   private slots: Slot[] = []; private visSlots: Slot[] = [];
   private rng = new Rng(4242); private nextId = 1; private t = 0; private slowT = 0; private parkT = 0; private slowIdx = 0;
   private carLaneIdx: number[] = [];
   prewarming = false;
+  /** tests: hold every far car/person where it is (still drawn) */
+  freeze = false;
+  /** tests: when set, removals of far cars are logged here */
+  debug: { x: number; z: number; why: string; d: number; inView: boolean }[] | null = null;
   /**
    * Hand-over hooks (wired by the game): a far-crowd car/pedestrian that comes within PROMOTE_R of the player is replaced
    * in place by a real, fully simulated one (return true) instead of vanishing. When the hook declines (real caps full)
    * the cheap one keeps walking/driving until it is almost beside the camera, so nobody blinks out at mid range.
    */
-  promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number) => boolean) | null = null;
-  promotePed: ((x: number, z: number, from: number, to: number, yaw: number) => boolean) | null = null;
+  promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number, kind: VehicleKind, paint: THREE.Color) => boolean) | null = null;
+  promotePed: ((x: number, z: number, from: number, to: number, yaw: number, look?: FullLook) => boolean) | null = null;
   /** Connects the hand-over hooks to the real traffic / pedestrian systems; `caps` returns the current real-population caps. */
   wire(traffic: Traffic, pop: Population, caps: () => { traffic: number; peds: number }) {
-    this.promoteCar = (lane, s, bus, speed) => {
-      if (bus || traffic.cars.length >= caps().traffic) return false;
+    this.traffic = traffic; this.pop = pop;
+    this.promoteCar = (lane, s, bus, speed, kind, paint) => {
+      // soft cap: a car about to be seen up close is always handed over (far real cars are demoted to make room)
+      if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK) return false;
       samplePath(lane, s, sp);
-      for (const o of this.vehicles.list) if (Math.abs(o.position.x - sp.x) < 8 && Math.abs(o.position.z - sp.z) < 8) return false; // never spawn inside a real car
-      traffic.spawnOnLane(traffic.pickKind(), lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
+      // never spawn inside a real car: footprint overlap only (a car queued 2 m behind another is fine)
+      const len = bus ? 12.5 : 5.2;
+      for (const o of this.vehicles.list) {
+        const dx = o.position.x - sp.x, dz = o.position.z - sp.z, along = dx * sp.dx + dz * sp.dz, side = dx * sp.dz - dz * sp.dx;
+        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) return false;
+      }
+      const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
+      car.v.respray(col.copy(paint).convertLinearToSRGB());
+      this.stats.promotedCars++;
       return true;
     };
-    this.promotePed = (x, z, from, to, yaw) => {
-      if (pop.npcs.filter(n => n.role === 'civilian' && !n.persistent).length >= caps().peds) return false;
-      const n = pop.spawn('civilian', x, z, 0.2);
+    pop.reserve = 10; pop.spawnMax = DEMOTE_PED_R - 6; // real people are spawned only where they would stay real
+    try { this.people = new CrowdPeople(this.scene, pop.tpl); } catch (e) { console.warn('far crowd bodies unavailable', e); this.people = null; }
+    this.promotePed = (x, z, from, to, yaw, look) => {
+      // soft cap (far real people are demoted to make room); never refused for a person walking into view
+      if (pop.npcs.filter(n => n.role === 'civilian' && !n.persistent).length >= caps().peds + PROMOTE_SLACK_PEDS) return false;
+      const n = pop.spawn('civilian', x, z, 0.2, look);
       n.node = from; n.nextNode = to; n.char.yaw = yaw;
+      this.stats.promotedPeds++;
       return true;
     };
   }
-  constructor(scene: THREE.Scene, private city: CityMap, private vehicles: VehicleManager, private time: () => number) {
-    this.carMesh = makeInstanced(carGeometry(), MAX_FAR_CARS, false); this.parkMesh = makeInstanced(carGeometry(), 1200, false);
-    this.pedMesh = makeInstanced(pedGeometry(), 900, true);
-    this.busMesh = makeInstanced(busGeometry(), 16, false);
-    const lg = carLightGeometry(), lm = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    this.lightMesh = new THREE.InstancedMesh(lg, lm, MAX_FAR_CARS); this.lightMesh.instanceMatrix = this.carMesh.mesh.instanceMatrix;
-    this.lightMesh.frustumCulled = false; this.lightMesh.castShadow = false; this.lightMesh.count = 0; this.lightMesh.visible = false;
-    scene.add(this.carMesh.mesh, this.parkMesh.mesh, this.pedMesh.mesh, this.busMesh.mesh, this.lightMesh);
+  constructor(private scene: THREE.Scene, private city: CityMap, private vehicles: VehicleManager, private time: () => number) {
+    this.far = new FarCars(scene);
     this.carLaneIdx = city.lanes.filter(l => !l.connector && l.length > 30).map(l => l.id);
     this.buildSlots();
   }
@@ -218,23 +145,87 @@ export class Crowd {
     for (const s of this.visSlots) if (!s.taken && (s.x - x) ** 2 + (s.z - z) ** 2 < r2) parked++;
     return { cars, peds, parked };
   }
-  clear() { this.cars.length = 0; this.peds.length = 0; this.carMesh.mesh.count = 0; this.pedMesh.mesh.count = 0; }
+  clear() { this.cars.length = 0; this.peds.length = 0; }
+  /** Bounding-sphere test against the render camera's view (last frame's; the margin grows with distance for fast turns). */
+  private seen(x: number, y: number, z: number, r: number) {
+    if (!this.camera) return true;
+    const c = this.camera.position, d = Math.hypot(x - c.x, z - c.z);
+    return this.frustum.intersectsSphere(this.sph.set(this.v3.set(x, y, z), r + d * 0.08 + 1));
+  }
 
   update(dt: number, focus: THREE.Vector3, caps: CrowdCaps) {
     caps = { farCars: Math.round(caps.farCars * carActivity(this.hour)), farPeds: Math.round(caps.farPeds * pedActivity(this.hour)), parked: caps.parked };
     this.caps = caps; this.t += dt;
-    this.lightMesh.visible = this.hour >= 18.8 || this.hour < 6.2;
+    if (!this.camera && this.pop?.camera) this.camera = this.pop.camera;
+    if (this.camera) { this.camera.updateMatrixWorld(); this.pm.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.pm); }
+    this.far.begin(this.camera ?? new THREE.PerspectiveCamera());
     const nowT = this.time();
-    (this.pedMesh.mesh.material as THREE.MeshLambertMaterial).userData.crowdUniforms.uTime.value = this.t;
-    this.updateCars(dt, nowT, focus);
-    this.updatePeds(dt, nowT, focus);
-    this.parkT -= dt; if (this.parkT <= 0) { this.parkT = 0.6; this.updateParked(focus); }
+    this.people?.begin(this.camera, this.t);
+    if (!this.freeze) {
+      this.updateCars(dt, nowT, focus);
+      this.updatePeds(dt, nowT, focus);
+      this.parkT -= dt; if (this.parkT <= 0) { this.parkT = 0.6; this.updateParked(focus); }
+      this.demoteT -= dt; if (this.demoteT <= 0 && !this.prewarming) { this.demoteT = 0.5; this.demote(focus); }
+    }
+    this.drawCars(); this.drawPeds(); this.drawParked();
+    const h = this.hour, night = h >= 19.5 || h < 5.5 ? 1 : h >= 18.3 ? (h - 18.3) / 1.2 : h < 6.7 ? (6.7 - h) / 1.2 : 0;
+    this.far.end(night); this.people?.end();
+  }
+  /** The person a far pedestrian is (built on first use and kept, so they look the same when they turn real). */
+  private lookOf(p: GPed): FullLook {
+    if (!p.lk) { p.lk = randomLook(p.seed ?? LOOK_SEED++); p.data = this.people?.pack(p.lk); }
+    return p.lk;
+  }
+  /** Kind for a new far car: the traffic mix, restricted to kinds whose model is already built (never a build hitch). */
+  private pickKind(): VehicleKind {
+    const total = TRAFFIC_MIX.reduce((a, b) => a + b.weight, 0); let r = Math.random() * total;
+    for (const m of TRAFFIC_MIX) { r -= m.weight; if (r <= 0) return hasTemplate(m.kind) ? m.kind : 'sedan'; }
+    return 'sedan';
+  }
+  /**
+   * Hands far-away real traffic back to the cheap crowd (same kind, paint, lane, speed) so the real-car budget is spent
+   * where the player is: promotion of the cars ahead never runs out of slots.
+   */
+  private demote(focus: THREE.Vector3) {
+    const tr = this.traffic; if (!tr) return;
+    for (const car of [...tr.cars]) {
+      const v = car.v, d = Math.hypot(v.position.x - focus.x, v.position.z - focus.z);
+      if (d < DEMOTE_R || car.persistent || car.mode !== 'cruise' || car.patrol || car.driver.role !== 'civilian' || !car.driver.alive || v.destroyed || car.stopPlan || car.passengers?.some(p => !p.alive)) continue;
+      if (v.health < v.spec.health * 0.97 || v.lastDamagedBy || Math.abs(v.speed) > 22 || this.cars.length >= MAX_FAR_CARS - 1) continue;
+      if (d < DEMOTE_R + 30 && this.seen(v.position.x, v.position.y + 1, v.position.z, 3)) continue; // in plain view: keep the real one a while longer
+      const lane = car.lane; if (!lane) continue;
+      tr.cars.splice(tr.cars.indexOf(car), 1);
+      this.pop?.remove(car.driver); for (const p of car.passengers ?? []) this.pop?.remove(p);
+      const pc = v.paint.clone(), bus = v.kind === 'bus';
+      this.vehicles.remove(v);
+      samplePath(lane, Math.min(car.s, lane.length - 0.01), sp);
+      this.cars.push({ lane, s: Math.min(car.s, lane.length - 0.01), v: Math.max(0, Math.abs(v.speed)), paint: 0, len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: 6, bus, dwell: 0, stopS: -1, planLane: lane.id, kind: v.kind, pc });
+      this.stats.demotedCars++;
+    }
+    // far real pedestrians who are just walking go back to the crowd (same person, same route)
+    const pop = this.pop; if (!pop || !this.people) return;
+    const nodes = this.city.pedNodes;
+    for (const n of [...pop.npcs]) {
+      if (n.role !== 'civilian' || n.persistent || !n.alive || n.brain !== 'wander' || n.activity || n.buddy || n.char.inVehicle || n.node < 0 || n.nextNode < 0 || n.alertT > 0) continue;
+      const c = n.char, d = Math.hypot(c.pos.x - focus.x, c.pos.z - focus.z);
+      if (d < DEMOTE_PED_R || this.peds.length >= 899) continue;
+      if (d < DEMOTE_PED_R + 30 && this.seen(c.pos.x, c.pos.y + 1, c.pos.z, 1.2)) continue;
+      const a = nodes[n.node], b = nodes[n.nextNode]; if (!a || !b || !a.edges.some(e => e.to === b.id)) continue;
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1;
+      const t = THREE.MathUtils.clamp(((c.pos.x - a.x) * dx + (c.pos.z - a.z) * dz) / L2, 0, 1);
+      const L = Math.sqrt(L2), off = THREE.MathUtils.clamp(((c.pos.x - a.x) * dz - (c.pos.z - a.z) * dx) / L * -1, -0.9, 0.9);
+      const lk = c.human.look;
+      this.peds.push({ from: a.id, to: b.id, t, speed: Math.max(1, Math.min(1.8, c.speed || 1.3)), wait: 0, off, look: 0, x: c.pos.x, z: c.pos.z, yaw: c.yaw, tint: 0, tint2: 0, skin: 0, phase: Math.random(), lk, data: this.people.pack(lk) });
+      pop.remove(n);
+      this.stats.demotedPeds++;
+    }
   }
 
   // ---------------------------------------------------------------- cars
   private spawnCar(focus: THREE.Vector3, bus = false) {
     for (let tries = 0; tries < 10; tries++) {
-      const lane = this.city.lanes[this.carLaneIdx[Math.floor(Math.random() * this.carLaneIdx.length)]];
+      const pool = this.nearLaneIdx.length > 20 && !bus ? this.nearLaneIdx : this.carLaneIdx; // R6-T: pick lanes near the player, not city-wide
+      const lane = this.city.lanes[pool[Math.floor(Math.random() * pool.length)]];
       if (bus && lane.length < 70) continue;
       const s = 6 + Math.random() * (lane.length - 12);
       samplePath(lane, s, sp);
@@ -245,22 +236,33 @@ export class Crowd {
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
       // never appear already doing 40 km/h towards a red line it cannot stop at (R6-T)
       const sInter = this.city.intersections[lane.intersection], v0 = lane.connector ? lane.speed * 0.8 : Math.min(lane.speed * 0.8, signalCap(signalState(sInter, lane.axis, this.time()), lane.length - s - 5.4, lane.speed * 0.8));
-      this.cars.push({ lane, s, v: v0, paint: bus ? BUS_PAINT[Math.floor(Math.random() * BUS_PAINT.length)] : CAR_PAINT[Math.floor(Math.random() * CAR_PAINT.length)], len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1 });
+      const kind: VehicleKind = bus ? 'bus' : this.pickKind(), paint = Math.floor(Math.random() * 64);
+      if (bus && !hasTemplate('bus')) return false;
+      this.cars.push({ lane, s, v: v0, paint, len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1, kind, pc: kindPaint(kind, paint) });
       return true;
     }
     return false;
   }
   private updateCars(dt: number, t: number, focus: THREE.Vector3) {
     const cars = this.cars, cap = Math.min(this.caps.farCars, MAX_FAR_CARS);
+    this.nearT -= dt;
+    if (this.nearT <= 0 || this.prewarming) {
+      this.nearT = 1; this.nearLaneIdx.length = 0;
+      for (const id of this.carLaneIdx) { const l = this.city.lanes[id], a = l.points[0], b = l.points[l.points.length - 1]; if (Math.hypot((a.x + b.x) / 2 - focus.x, (a.z + b.z) / 2 - focus.z) < 200 + l.length / 2) this.nearLaneIdx.push(id); }
+    }
     // recycle: too close (the real traffic takes over), too far, or on top of a real vehicle
     this.slowT -= dt;
     const checkReal = this.slowT <= 0; if (checkReal) this.slowT = 0.4;
     for (let i = cars.length - 1; i >= 0; i--) {
       const c = cars[i], d = Math.hypot(c.x - focus.x, c.z - focus.z);
-      let kill = d < NEAR_KILL || d > 215 || i >= cap;
-      if (!kill && d < PROMOTE_R && !this.prewarming && this.promoteCar?.(c.lane, c.s, c.bus, c.v)) kill = true;
-      if (!kill && checkReal && d < 140) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 6 && Math.abs(o.position.z - c.z) < 6) { kill = true; break; }
-      if (kill) cars.splice(i, 1);
+      // never removed while it can be seen up close: over the cap / on top of a real car it waits until it is out of view
+      const inView = d < 120 && this.seen(c.x, 1.2, c.z, c.bus ? 7 : 3.5);
+      let kill = d > 215 || (i >= cap && !inView);
+      if (!kill && d < PROMOTE_R && !this.prewarming) { if (this.promoteCar?.(c.lane, c.s, c.bus, c.v, c.kind, c.pc)) kill = true; else this.stats.heldCars++; }
+      if (!kill && d < NEAR_KILL && !inView) kill = true; // beside / behind the camera and still not handed over
+      let why = kill ? 'promoted' : '';
+      if (!kill && checkReal && d < 140 && (!inView || d > 90)) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 4 && Math.abs(o.position.z - c.z) < 4) { kill = true; why = 'real'; break; }
+      if (kill) { if (this.debug) this.debug.push({ x: c.x, z: c.z, why: why || (d > 215 ? 'far' : i >= cap ? 'cap' : 'near'), d, inView }); cars.splice(i, 1); }
     }
     let spawns = this.prewarming ? 60 : 4;
     while (cars.length < cap && spawns-- > 0) if (!this.spawnCar(focus)) break;
@@ -271,6 +273,9 @@ export class Crowd {
     // per-lane ordering for leader lookup
     const byLane = new Map<number, GCar[]>();
     for (const c of cars) { const l = byLane.get(c.lane.id); if (l) l.push(c); else byLane.set(c.lane.id, [c]); }
+    // real traffic on the same lanes: far cars queue behind it instead of driving into it (and being culled for it)
+    const realOn = new Map<number, number[]>();
+    for (const rc of this.traffic?.cars ?? []) { const l = realOn.get(rc.lane.id); if (l) l.push(rc.s); else realOn.set(rc.lane.id, [rc.s]); }
     for (const c of cars) {
       const lane = c.lane;
       let target = lane.speed * (c.bus ? 0.7 : 0.85);
@@ -308,6 +313,8 @@ export class Crowd {
         if (o === c) continue; const gap = o.s - c.s - (o.len + c.len) * 0.5 - 0.5;
         if (gap > -2 && gap < 40) { target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); if (gap < leadGap) { leadGap = gap; lead = o; } }
       }
+      const reals = realOn.get(lane.id);
+      if (reals) for (const rs of reals) { const gap = rs - c.s - (4.6 + c.len) * 0.5 - 0.5; if (gap > -2 && gap < 40) target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); }
       // overtake / even out: move to the neighbouring lane when it is free (a stopped bus ahead makes it likely)
       if (!lane.connector && c.lcCool <= 0 && c.v > 3 && c.s > 12 && lane.length - c.s > 32 && !c.bus) {
         const stuck = lead !== null && (lead as GCar).dwell > 0 && leadGap < 24;
@@ -335,22 +342,12 @@ export class Crowd {
       samplePath(c.lane, c.s, sp);
       const ks = c.ks ?? 0; c.x = sp.x + c.ox + sp.dz * ks; c.z = sp.z + c.oz - sp.dx * ks; const yaw = Math.atan2(sp.dx, sp.dz); c.yaw = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 8);
     }
-    const mesh = this.carMesh.mesh, geo = this.carMesh.geo;
-    const tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;
-    const bm = this.busMesh.mesh, btint = this.busMesh.geo.attributes.aTint as THREE.InstancedBufferAttribute;
-    let n = 0, nb = 0;
-    for (let i = 0; i < cars.length && n < MAX_FAR_CARS; i++) {
-      const c = cars[i];
-      if (c.bus && nb >= 16) continue;
+  }
+  private drawCars() {
+    for (const c of this.cars) {
       samplePath(c.lane, c.s, sp); const y = c.lane.ys ? (sp.y ?? 0) : 0;
-      q.setFromAxisAngle(up, c.yaw); pos.set(c.x, y + 0.05, c.z); m4.compose(pos, q, scl);
-      hex(c.paint, col);
-      if (c.bus) { bm.setMatrixAt(nb, m4); btint.setXYZ(nb, col.r, col.g, col.b); nb++; }
-      else { mesh.setMatrixAt(n, m4); tint.setXYZ(n, col.r, col.g, col.b); n++; }
+      this.far.add(c.kind, c.x, y, c.z, c.yaw, c.pc, true);
     }
-    mesh.count = n; mesh.instanceMatrix.needsUpdate = true; tint.needsUpdate = true;
-    this.lightMesh.count = n;
-    bm.count = nb; bm.instanceMatrix.needsUpdate = true; btint.needsUpdate = true;
   }
 
   // ---------------------------------------------------------------- pedestrians
@@ -367,11 +364,11 @@ export class Crowd {
       const dist = districtAt(this.city, x, z);
       if (Math.random() > Math.min(1, DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour))) continue;
       const rnd = (n: number) => Math.floor(Math.random() * n);
-      const lead: GPed = { from: nd.id, to: e.to, t, speed: 1.1 + Math.random() * 0.7, wait: 0, off: (Math.random() - 0.5) * 1.6, look: 0, x, z, yaw: 0, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)], phase: Math.random() * 6.28 };
+      const lead: GPed = { from: nd.id, to: e.to, t, speed: 1.1 + Math.random() * 0.7, wait: 0, off: (Math.random() - 0.5) * 1.6, look: 0, x, z, yaw: 0, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)], phase: Math.random(), seed: LOOK_SEED++ };
       this.peds.push(lead);
       // friends walk side by side: pairs and the odd trio
       if (Math.random() < 0.3) for (let k = 1, cnt = Math.random() < 0.25 ? 2 : 1; k <= cnt; k++) {
-        this.peds.push({ ...lead, leader: lead, off: lead.off + 0.72 * k, phase: lead.phase + k * 1.3, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)] });
+        this.peds.push({ ...lead, leader: lead, off: lead.off + 0.72 * k, phase: (lead.phase + k * 0.37) % 1, tint: SHIRTS[rnd(SHIRTS.length)], tint2: PANTS[rnd(PANTS.length)], skin: SKIN[rnd(SKIN.length)], seed: LOOK_SEED++, lk: undefined, data: undefined });
       }
       return true;
     }
@@ -381,8 +378,11 @@ export class Crowd {
     const peds = this.peds, cap = Math.min(this.caps.farPeds, 900), nodes = this.city.pedNodes;
     for (let i = peds.length - 1; i >= 0; i--) {
       const p = peds[i], d = Math.hypot(p.x - focus.x, p.z - focus.z);
-      let gone = d < NEAR_KILL || d > 235 || i >= cap;
-      if (!gone && d < PROMOTE_R && !this.prewarming && this.promotePed?.(p.x, p.z, p.from, p.to, p.yaw)) gone = true;
+      // never removed while it can be seen: over the cap it waits until it is out of view; up close it becomes a real person
+      const inView = d < 120 && this.seen(p.x, 1 + (p.y ?? 0), p.z, 1.2);
+      let gone = d > 235 || (i >= cap && !inView);
+      if (!gone && d < PROMOTE_R && !this.prewarming) { if (this.promotePed?.(p.x, p.z, p.from, p.to, p.yaw, this.lookOf(p))) gone = true; else this.stats.heldPeds++; }
+      if (!gone && d < NEAR_KILL && !inView) gone = true;
       if (gone) { p.dead = true; peds.splice(i, 1); }
     }
     let spawns = this.prewarming ? 120 : 10;
@@ -411,22 +411,18 @@ export class Crowd {
       }
       const a2 = nodes[p.from], b2 = nodes[p.to];
       const dx = b2.x - a2.x, dz = b2.z - a2.z, l = Math.hypot(dx, dz) || 1;
-      const crossing = a2.edges.find(e => e.to === p.to)?.crossing;
+      const crossing = a2.edges.find(e => e.to === p.to)?.crossing; p.road = !!crossing;
       const off = crossing ? (lead ? p.off - lead.off : 0) : p.off;
       p.x = a2.x + dx * p.t - dz / l * off; p.z = a2.z + dz * p.t + dx / l * off; p.y = (a2.y ?? 0) + ((b2.y ?? 0) - (a2.y ?? 0)) * p.t;
       const yaw = Math.atan2(dx, dz); if (p.wait <= 0) p.yaw = yaw;
     }
-    const mesh = this.pedMesh.mesh, geo = this.pedMesh.geo;
-    const a1 = geo.attributes.aTint as THREE.InstancedBufferAttribute, a2 = geo.attributes.aTint2 as THREE.InstancedBufferAttribute, a3 = geo.attributes.aSkin as THREE.InstancedBufferAttribute;
-    const ph = geo.attributes.aPhase as THREE.InstancedBufferAttribute, amp = geo.attributes.aAmp as THREE.InstancedBufferAttribute;
-    const n = Math.min(peds.length, 900);
-    for (let i = 0; i < n; i++) {
-      const p = peds[i];
-      q.setFromAxisAngle(up, p.yaw); pos.set(p.x, 0.12 + (p.y ?? 0), p.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
-      hex(p.tint, col); a1.setXYZ(i, col.r, col.g, col.b); hex(p.tint2, col); a2.setXYZ(i, col.r, col.g, col.b); hex(p.skin, col); a3.setXYZ(i, col.r, col.g, col.b);
-      ph.setX(i, p.phase); amp.setX(i, p.wait > 0 ? 0 : 1);
+  }
+  private drawPeds() {
+    const people = this.people; if (!people) return;
+    for (const p of this.peds) {
+      const lk = this.lookOf(p);
+      people.add(lk, p.data!, p.x, (p.y ?? 0) + (p.road ? 0 : CURB_HEIGHT), p.z, p.yaw, p.wait > 0 ? 0 : p.speed, p.phase);
     }
-    mesh.count = n; mesh.instanceMatrix.needsUpdate = true; a1.needsUpdate = a2.needsUpdate = a3.needsUpdate = ph.needsUpdate = amp.needsUpdate = true;
   }
 
   // ---------------------------------------------------------------- parked
@@ -442,21 +438,25 @@ export class Crowd {
         else continue; // the real car stands here
       }
       if (s.taken || d > 230) continue;
-      if (d < 55 && !this.prewarming) { this.promote(s); continue; }
+      if (d < 55 && !this.prewarming) { this.promote(s); if (s.real) continue; }
       vis.push(s);
     }
     vis.sort((a, b) => (a.x - focus.x) ** 2 + (a.z - focus.z) ** 2 - ((b.x - focus.x) ** 2 + (b.z - focus.z) ** 2));
     if (vis.length > cap) vis.length = cap;
     this.visSlots = vis;
-    const mesh = this.parkMesh.mesh, geo = this.parkMesh.geo, tint = geo.attributes.aTint as THREE.InstancedBufferAttribute;
-    for (let i = 0; i < vis.length; i++) {
-      const s = vis[i]; q.setFromAxisAngle(up, s.yaw); pos.set(s.x, 0.05, s.z); m4.compose(pos, q, scl); mesh.setMatrixAt(i, m4);
-      col.set(parkedPaint(s)).convertSRGBToLinear(); tint.setXYZ(i, col.r, col.g, col.b);
+  }
+  /** Parked cars are drawn every frame (culled per instance) with the real far model and the slot's real paint. */
+  private drawParked() {
+    for (const s of this.visSlots) {
+      if (s.taken || s.real) continue;
+      const kind = PARKED_MIX[s.kind % PARKED_MIX.length]; if (!hasTemplate(kind)) continue;
+      this.far.add(kind, s.x, 0, s.z, s.yaw, kindPaint(kind, s.paint, col), false);
     }
-    mesh.count = vis.length; mesh.instanceMatrix.needsUpdate = true; tint.needsUpdate = true;
   }
   private promote(s: Slot) {
-    if (this.vehicles.list.some(o => Math.abs(o.position.x - s.x) < 3 && Math.abs(o.position.z - s.z) < 3)) { s.taken = true; return; }
+    // something stands on the spot: a stopped/parked car takes the slot for good; a car driving past only delays the swap
+    const o = this.vehicles.list.find(o => Math.abs(o.position.x - s.x) < 3 && Math.abs(o.position.z - s.z) < 3);
+    if (o) { if (!o.driver && Math.abs(o.speed) < 0.5) s.taken = true; return; } // a car waiting at the lights beside the slot is not parked there
     const v = this.vehicles.spawn(PARKED_MIX[s.kind % PARKED_MIX.length], s.x, s.z, s.yaw, s.paint, 0.25);
     v.settleParked(0); // settled at rest height and asleep: tall trucks neither drop nor tip
     if (s.hp !== undefined) v.health = Math.max(1, v.spec.health * s.hp);

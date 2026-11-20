@@ -22,12 +22,18 @@ export class Population {
   hour = 17;
   private lastSpeed = new WeakMap<Vehicle, number>(); private crashT = 0;
   prewarming = false;
+  /** last render camera seen (the far crowd culls with it) */
+  camera: THREE.Camera | null = null;
+  /** civilian slots the off-screen spawner leaves free for far-crowd people walking into view (set by Crowd.wire) */
+  reserve = 0;
+  /** furthest an off-screen civilian is spawned (the far crowd covers beyond; set by Crowd.wire) */
+  spawnMax = 120;
   private spawnT = 0;
   private frustum = new THREE.Frustum();
   private projScreen = new THREE.Matrix4();
   private cullSphere = new THREE.Sphere(); private cullCentre = new THREE.Vector3();
   onKilled: ((n: Npc, by: Character | null, how: 'shot' | 'melee' | 'vehicle' | 'explosion') => void) | null = null;
-  constructor(private scene: THREE.Scene, private tpl: HumanTemplate, private city: CityMap, private env: NpcEnv, private audio: GameAudio) {
+  constructor(private scene: THREE.Scene, readonly tpl: HumanTemplate, private city: CityMap, private env: NpcEnv, private audio: GameAudio) {
     this.runner = new NpcBrainRunner(env);
   }
   /** Where the player is pointing a gun (set by the game each frame; null when not aiming). */
@@ -204,6 +210,7 @@ export class Population {
     }
   }
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, quality: number) {
+    this.camera = camera;
     this.maxCivilians = Math.round(quality * pedActivity(this.hour)); streetClock.hour = this.hour;
     // Visuals (throttled animation far away). The skinned meshes are not frustum-culled by three (their bounds are the bind
     // pose), so people outside the view are hidden here: that saves two draw calls (plus shadows) per person behind the camera.
@@ -223,7 +230,8 @@ export class Population {
       h.root.visible = d < 160;
       if (!h.root.visible) continue;
       n.animAcc += dt;
-      const every = d > 90 ? 0.2 : d > 60 ? 0.1 : d > 32 ? 0.05 : 0;
+      // animation rate by distance: smooth near the player (the old 5-10 Hz far rates read as lagging people)
+      const every = d > 90 ? 0.1 : d > 65 ? 0.05 : d > 40 ? 0.033 : 0;
       if (n.animAcc >= every || !c.alive) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 32;
@@ -244,7 +252,7 @@ export class Population {
     // Spawn civilians off-screen on sidewalks
     this.spawnT -= dt;
     const civ = this.npcs.filter(n => n.role === 'civilian' && !n.persistent).length;
-    if (this.spawnT <= 0 && civ < this.maxCivilians) {
+    if (this.spawnT <= 0 && civ < this.maxCivilians - this.reserve) {
       this.spawnT = 0.05;
       this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
       const nodes = this.city.pedNodes;
@@ -255,7 +263,7 @@ export class Population {
         const to = nodes[e.to]; const t = Math.random();
         const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2 + (nd.y ?? 0) + ((to.y ?? 0) - (nd.y ?? 0)) * t, nd.z + (to.z - nd.z) * t);
         const d = p.distanceTo(focus);
-        if (d < (this.prewarming ? 10 : 35) || d > 120) continue;
+        if (d < (this.prewarming ? 10 : 35) || d > this.spawnMax) continue;
         const dist = districtAt(this.city, p.x, p.z), dens = DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour);
         if (Math.random() > dens) continue;
         if (!this.prewarming && d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
