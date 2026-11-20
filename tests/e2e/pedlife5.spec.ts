@@ -128,14 +128,15 @@ test('a pedestrian routed from the west sidewalk crosses Harbor Way and reaches 
     const cross = path.some((id, i) => i && N[id].edges.some(e => e.to === path[i - 1] && e.crossing));
     g.player.place(start.x + 6, 0.4, start.z + 8, 0);
     const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6;
-    let reached = false, minX = 1e9, frames = 0;
+    let reached = false, frames = 0; const trace = [];
     for (let i = 0; i < 300 * 30 && !reached; i++) {
       g.frame(1 / 30, false); frames++;
       if (!n.alive || n.disposed) break;
       const k = path.indexOf(n.node); if (k >= 0 && k < path.length - 1) n.nextNode = path[k + 1];
+      if (frames % 45 === 0) trace.push([Math.round(n.pos.x), +n.pos.y.toFixed(1), Math.round(n.pos.z), n.node]);
       if (n.node === goal.id) reached = true;
     }
-    return { reached, hops: path.length, cross, y: n.pos.y, alive: n.alive, sec: frames / 30, x: n.pos.x };
+    return { reached, hops: path.length, cross, y: n.pos.y, alive: n.alive, sec: frames / 30, x: n.pos.x, trace: trace.join(' '), path: path.map(id => (N[id].x | 0) + ',' + (N[id].z | 0) + ',' + (N[id].y ?? 0).toFixed(1)).join(' > ') };
   })()`) as any;
   console.log('approach', JSON.stringify(r));
   expect(r.cross).toBe(true);

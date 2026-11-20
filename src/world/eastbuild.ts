@@ -154,7 +154,7 @@ function suspension(o: EastCtx, bz: number) {
     const step = 10, steel2 = C('#59626a'), walk2 = C('#cfc9bc'), rail = C('#aeb4b8');
     for (const sg of [-1, 1]) {
       const zIn = path.half + 3.9, zOut = path.half + 6.3, zc = bz + sg * (zIn + zOut) / 2;
-      let prev: { x: number; y: number } | null = null;
+      let prev: { x: number; y: number } | null = { x: 531, y: deckAt(531) + 0.15 }; // starts a few metres early at kerb height so people can step on
       for (let x = 535; x <= 735; x += step) {
         const y = deckAt(x) + 0.15;
         if (prev) {

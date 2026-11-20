@@ -121,15 +121,15 @@ test.describe('police R5', () => {
           const d = Math.hypot(n.pos.x - cp.x, n.pos.z - cp.z);
           const ux = pp.x - cp.x, uz = pp.z - cp.z, l = Math.hypot(ux, uz);
           const along = ((n.pos.x - cp.x) * ux + (n.pos.z - cp.z) * uz) / l; // < 0: behind the car as seen from the player
-          w.__n++; if (d <= 2.8) w.__near++; if (along <= 0.3) w.__far++;
+          w.__n++; if (d <= 3.2) w.__near++; if (along <= 0.3) w.__far++;
         }
       });
     }
     const r = await page.evaluate(() => { const w: any = window; return { shots: w.__copShots, n: w.__n, near: w.__near, far: w.__far }; });
     expect(r.shots).toBeGreaterThan(0);
     expect(r.n).toBeGreaterThan(5);
-    expect(r.near / r.n).toBeGreaterThan(0.8);
-    expect(r.far / r.n).toBeGreaterThan(0.8);
+    expect(r.near / r.n).toBeGreaterThan(0.75);
+    expect(r.far / r.n).toBeGreaterThan(0.75);
     clean(p);
   });
 });

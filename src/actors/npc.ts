@@ -267,6 +267,7 @@ export class NpcBrainRunner {
     } else tv.set(0, 0, 0);
     if (n.far) { // cheap movement without collision when far from the player
       c.pos.addScaledVector(tv, dt); c.vel.copy(tv);
+      { const nd = n.nextNode >= 0 ? this.env.city.pedNodes[n.nextNode] : undefined; if (nd && (nd.y !== undefined || c.pos.y > 0.6)) { const ty = (nd.y ?? 0) + 0.2; c.pos.y += THREE.MathUtils.clamp(ty - c.pos.y, -dt * 1.2, dt * 1.2); } } // bridge walkways: follow the deck height
       c.body.setNextKinematicTranslation({ x: c.pos.x, y: c.pos.y + 0.87, z: c.pos.z });
     } else c.move(tv, dt, false);
     if (speed > 0) {
