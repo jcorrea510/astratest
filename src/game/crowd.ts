@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, yellowLeft, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane, CURB_HEIGHT } from '../world/citymap';
 import { CrowdPeople, type CrowdLook } from '../actors/crowdBody';
 import { randomLook, type FullLook } from '../actors/look';
 import type { VehicleManager } from './vehicles';
@@ -295,7 +295,7 @@ export class Crowd {
       if (!lane.connector) {
         const inter = this.city.intersections[lane.intersection];
         const dStop = lane.length - c.s - 5.4;
-        if (inter.signalized) target = Math.min(target, signalCap(signalState(inter, lane.axis, t), dStop, c.v));
+        if (inter.signalized) target = Math.min(target, signalCap(signalState(inter, lane.axis, t), dStop, c.v, yellowLeft(inter, lane.axis, t)));
         else if (dStop > -1) { // stop sign: halt, wait a beat, go once nobody else is in the junction (R6-T)
           if (c.ssLane !== lane.id) { c.ssLane = lane.id; c.ssWait = 0; }
           if (dStop < 1.8 && c.v < 0.4) c.ssWait = (c.ssWait ?? 0) + dt;

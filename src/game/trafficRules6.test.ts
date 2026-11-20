@@ -52,3 +52,14 @@ describe('left turns', () => {
     expect(oncomingConflict(0, 25, 0, 1, 12, 0, 1)).toBe(false); // same direction
   });
 });
+
+import { describe as d2, it as i2, expect as e2 } from 'vitest';
+import { signalCap as sc2 } from './trafficRules';
+d2('R6-T amber timing', () => {
+  i2('late amber that would turn red before the line: brakes hard instead of running it', () => {
+    // 20 m out at 8 m/s cannot stop comfortably, would need 2.5 s but only 0.5 s of amber is left
+    e2(sc2('yellow', 5.5, 8, 0.4)).toBeLessThan(Infinity);
+    e2(sc2('yellow', 4, 8, 2)).toBe(Infinity); // reaches the line in time
+    e2(sc2('yellow', 3, 12, 0.1)).toBe(Infinity); // genuinely too close to stop at any rate
+  });
+});

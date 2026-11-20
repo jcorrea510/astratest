@@ -51,7 +51,7 @@ export class ViolationMonitor {
 }
 
 /** Comfortable braking (m/s²) AI drivers plan stops with, and the hardest they will brake for a late amber. */
-export const COMFORT_DECEL = 3.4, MAX_DECEL = 5.5;
+export const COMFORT_DECEL = 3.4, MAX_DECEL = 5.5, PANIC_DECEL = 8;
 /** Fastest speed (m/s) from which a car can still halt `d` metres ahead at `decel`. */
 export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Math.sqrt(2 * decel * Math.max(0, d)); }
 /**
@@ -59,10 +59,14 @@ export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Mat
  * Green: free. Amber: carry on only if the car cannot stop before the line at MAX_DECEL (dilemma zone), else stop.
  * Red: stop at the line (a car already across it, dStop < -1, clears the box).
  */
-export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, speed: number): number {
+export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, speed: number, yellowLeft = Infinity): number {
   // across the line and rolling (or well inside the box): keep going; a car that merely overshot and stands still stays put
   if (state === 'green' || dStop < -6 || (dStop < -1 && speed > 2.5)) return Infinity;
-  if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) return Infinity;
+  if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
+    // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
+    if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;
+    return stopSpeed(dStop - 0.4, PANIC_DECEL);
+  }
   return stopSpeed(dStop - 0.4);
 }
 /**

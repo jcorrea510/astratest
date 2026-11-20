@@ -1,7 +1,7 @@
 /** Ambient traffic and police driving: lane following, signals, spacing, reactions, parked cars, pursuit. */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, nearestLane, routeField, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, yellowLeft, nearestLane, routeField, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
@@ -284,7 +284,7 @@ export class Traffic {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, car.lane.axis, t);
         const dStop = this.distToStop(car);
-        const cap = signalCap(st, dStop, Math.max(0, speed));
+        const cap = signalCap(st, dStop, Math.max(0, speed), yellowLeft(inter, car.lane.axis, t));
         if (cap < Infinity) { targetSpeed = Math.min(targetSpeed, cap); legit = true; }
         else if (dStop > -1 && dStop < 45) {
           // no protection from the light: stop signs at plain junctions, yield for a left turn across oncoming traffic

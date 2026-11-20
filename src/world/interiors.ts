@@ -10,6 +10,8 @@ import type { Physics } from '../core/physics';
 import { trimMaterial, nightUniform } from '../render/materials';
 import { TrimBuilder, T_PAINT, T_METAL, T_PLASTIC, T_GLASS, T_GLOW, T_FABRIC, T_STONE, T_ROUGH, type TrimParams } from './builders';
 import { STORE_W, STORE_D, STORE_H, type Store } from '../game/places';
+import { NEW_KINDS, K, type Ctx, type Extras, type SmashCase, type VaultParts } from './storeKinds';
+import { ProdBuilder, productMaterial, floorMaterial, type FloorKind } from './storeProps';
 
 export interface StoreShell {
   root: THREE.Group;
@@ -21,6 +23,11 @@ export interface StoreShell {
   alarm: THREE.Mesh;
   toWorld: (lx: number, ly: number, lz: number) => THREE.Vector3;
   toLocal: (p: THREE.Vector3) => THREE.Vector3;
+  /** register on the counter: drawer slides out (0..1), bills inside fill it (0..1), a burst of flying notes */
+  register: { lx: number; lz: number };
+  setDrawer: (open: number) => void; setBills: (frac: number) => void; burst: () => void; tick: (dt: number) => void;
+  cases: SmashCase[]; vault: VaultParts | null; tellers: { x: number; z: number }[];
+  smashCase: (i: number) => void; setVault: (open: number) => void; drillRig: (on: boolean) => void;
   clerk: THREE.Vector3; customer: THREE.Vector3; bag: THREE.Vector3; light: THREE.Vector3; counterZ: number;
 }
 
@@ -71,7 +78,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const r = new Rng(Math.round(def.x * 7 + def.z * 13));
   const t = new TrimBuilder();
   const W = STORE_W, D = STORE_D, H = STORE_H, ceil = 3.6, hw = W / 2, hd = D / 2;
-  const WALLS: Partial<Record<Store['kind'], string>> = { diner: '#e8dcc4', pawn: '#2d2a28', liquor: '#3a4660', pharmacy: '#eef4f0', clothing: '#e9dfe8', electronics: '#262b33', barber: '#d8c9b0', bank: '#e6e0d2' };
+  const WALLS: Partial<Record<Store['kind'], string>> = { convenience: '#efe9dc', gas: '#f1f4f1', jewelry: '#1c1c20', diner: '#e8dcc4', pawn: '#4a3f35', liquor: '#2b2f45', pharmacy: '#eef4f0', clothing: '#e9dfe8', electronics: '#262b33', barber: '#d8c9b0', bank: '#e6e0d2' };
   const wallC = C(WALLS[def.kind] ?? '#ece8e0');
   const outC = C(def.kind === 'gas' ? '#e9e5dc' : '#4b4743');
   const accent = C(def.color);
@@ -85,7 +92,9 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   // ceiling + lights
   box(0, ceil + 0.05, 0, W, 0.1, D, C('#e6e4de'), [0.9, 0, 0, 0]);
   box(0, (ceil + H) / 2, hd - 0.15, W, H - ceil, 0.3, outC, T_STONE);
-  for (const lx of [-2.6, 0, 2.6]) for (const lz of [-2.8, 0, 2.8]) box(lx, ceil - 0.02, lz, 1.2, 0.04, 0.3, C('#fffaf0'), T_GLOW(2.2));
+  const LIGHT: Partial<Record<Store['kind'], [string, number, number]>> = { liquor: ['#ffcf8a', 1.5, 0.7], pawn: ['#f2e6a8', 1.3, 1.0], jewelry: ['#fff4dc', 2.6, 0.4], bank: ['#fffdf2', 2.0, 1.4], gas: ['#f2fbff', 2.4, 1.2], convenience: ['#f6fbff', 2.4, 1.2] };
+  const [lightC, lightI, lightW] = LIGHT[def.kind] ?? ['#fffaf0', 2.2, 1.2];
+  for (const lx of [-2.6, 0, 2.6]) for (const lz of [-2.8, 0, 2.8]) box(lx, ceil - 0.02, lz, lightW, 0.04, 0.3, C(lightC), T_GLOW(lightI));
   if (def.standalone) { box(0, H + 0.1, 0, W + 0.3, 0.2, D + 0.3, C('#5c5a57'), T_STONE); box(0, H + 0.55, hd + 0.05, W + 0.3, 0.9, 0.2, accent, T_PAINT); }
   // shop front: kick plates, mullions, header, door gap at lx in [2.2, 4.0]
   const doorX = 3.1, doorW = 1.8;
@@ -100,34 +109,50 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.8, 0.62), signMat(def.name, def.color)); sign.position.set(0, 4.05, hd + 0.08); root.add(sign);
   // interior: counter, register, back shelf, aisles, fridges, per kind
   const counterZ = 1.2;
-  const wood = C(def.kind === 'diner' ? '#b23a3a' : def.kind === 'pawn' ? '#1c1c1c' : '#6b4a32');
-  box(-3.0, 0.52, counterZ, 4.0, 1.04, 0.7, wood, [0.5, 0.1, 0, 0]);
-  box(-3.0, 1.06, counterZ, 4.1, 0.05, 0.8, C(def.kind === 'diner' ? '#d9d4ca' : '#2b2b2b'), [0.3, 0.2, 0, 0]);
+  const COUNTERS: Partial<Record<Store['kind'], [string, string]>> = { diner: ['#b23a3a', '#d9d4ca'], pawn: ['#1c1c1c', '#3a3028'], convenience: ['#2f6f8f', '#e8e6df'], gas: ['#115e44', '#d8dcd9'], liquor: ['#3b2a1f', '#6b4a32'], jewelry: ['#0e0e12', '#1b1b22'], bank: ['#5a3d28', '#d9d4c4'] };
+  const [wood0, top0] = COUNTERS[def.kind] ?? ['#6b4a32', '#2b2b2b'];
+  box(-3.0, 0.52, counterZ, 4.0, 1.04, 0.7, C(wood0), [0.5, 0.1, 0, 0]);
+  box(-3.0, 1.06, counterZ, 4.1, 0.05, 0.8, C(top0), [0.3, 0.2, 0, 0]);
+  if (def.kind === 'bank' || def.kind === 'jewelry') box(-3.0, 0.52, counterZ + 0.36, 4.0, 0.9, 0.03, C('#d4af37'), T_METAL);
   col(-3.0, 0.52, counterZ, 2.0, 0.52, 0.35);
-  // register
-  box(-2.6, 1.2, counterZ - 0.05, 0.45, 0.22, 0.4, C('#2f3133'), T_PLASTIC); box(-2.6, 1.42, counterZ - 0.12, 0.38, 0.25, 0.04, C('#7fe0a0'), T_GLOW(1.2), -0.3);
+  // register: body + screen on the counter, a drawer that slides out towards the customer, bills inside (see setDrawer / setBills)
+  const regX = -2.6, regG = new THREE.Group(); regG.position.set(regX, 1.085, counterZ - 0.05); root.add(regG);
+  const rt = new TrimBuilder();
+  rt.box(0, 0.11, 0, 0.46, 0.22, 0.4, 0, C('#2f3133'), T_PLASTIC); rt.box(0.05, 0.4, -0.12, 0.34, 0.22, 0.04, 0, C('#0e1a14'), T_PLASTIC, -0.25); rt.box(0.05, 0.4, -0.098, 0.3, 0.18, 0.01, 0, C('#7fe0a0'), T_GLOW(1.4), -0.25);
+  rt.cyl(0.05, 0.2, -0.12, 0.03, 0.03, 0.12, 6, C('#555'), T_METAL);
+  for (let k = 0; k < 12; k++) rt.box(-0.12 + (k % 4) * 0.075, 0.222, 0.08 + Math.floor(k / 4) * 0.055, 0.06, 0.012, 0.045, 0, C(k === 11 ? '#3aa05a' : '#b9bcbf'), T_PLASTIC);
+  regG.add(new THREE.Mesh(rt.build(), trimMat));
+  const drawer = new THREE.Group(); drawer.position.set(0, 0.05, 0.02); regG.add(drawer);
+  const dr = new TrimBuilder();
+  dr.box(0, 0.0, 0, 0.42, 0.02, 0.34, 0, C('#8f949a'), T_METAL); dr.box(0, 0.045, 0.17, 0.42, 0.09, 0.02, 0, C('#8f949a'), T_METAL); dr.box(-0.21, 0.045, 0, 0.02, 0.09, 0.34, 0, C('#8f949a'), T_METAL); dr.box(0.21, 0.045, 0, 0.02, 0.09, 0.34, 0, C('#8f949a'), T_METAL); dr.box(0, 0.045, -0.17, 0.42, 0.09, 0.02, 0, C('#8f949a'), T_METAL);
+  dr.box(0.0, 0.02, 0.0, 0.01, 0.04, 0.32, 0, C('#6a6f75'), T_METAL);
+  drawer.add(new THREE.Mesh(dr.build(), trimMat));
+  const bt = new TrimBuilder();
+  for (let k = 0; k < 4; k++) for (let l = 0; l < 3; l++) { bt.box(-0.15 + k * 0.1, 0.045 + l * 0.018, -0.06, 0.085, 0.016, 0.17, 0, C(k % 2 ? '#7fb98a' : '#8cc596'), T_PAINT); bt.box(-0.15 + k * 0.1, 0.045 + l * 0.018, -0.06, 0.087, 0.018, 0.03, 0, C('#e8e0c0'), T_PAINT); }
+  bt.box(0.17, 0.04, 0.08, 0.06, 0.02, 0.14, 0, C('#b8b4a8'), T_METAL);
+  const billsMesh = new THREE.Mesh(bt.build(), trimMat); drawer.add(billsMesh);
+  const drawerState = { open: 0, target: 0 };
+  const flyMat = new THREE.MeshBasicMaterial({ color: '#7fc98a', side: THREE.DoubleSide, toneMapped: true });
+  const flyGeo = new THREE.PlaneGeometry(0.16, 0.07);
+  const fly: { m: THREE.Mesh; v: THREE.Vector3; w: THREE.Vector3; t: number }[] = [];
+  for (let k = 0; k < 14; k++) { const m = new THREE.Mesh(flyGeo, flyMat); m.visible = false; root.add(m); fly.push({ m, v: new THREE.Vector3(), w: new THREE.Vector3(), t: 0 }); }
   box(-3.9, 1.25, counterZ, 0.3, 0.35, 0.3, C('#cfd2d4'), T_PLASTIC);
   // back wall behind the clerk: cigarette / lottery / liquor shelving
   const backZ = -0.9;
-  const stocked = def.kind !== 'bank';
+  const newKind = NEW_KINDS[def.kind];
+  const stocked = !newKind;
   if (stocked) box(-3.0, 1.6, backZ, 4.0, 2.4, 0.4, C('#5a4a3c'));
   if (stocked) for (let row = 0; row < 5; row++) for (let k = 0; k < 14; k++) { const pc = C(['#c0392b', '#f1c40f', '#ecf0f1', '#2980b9', '#27ae60', '#8e44ad', '#d35400'][r.int(0, 6)]); box(-4.85 + k * 0.28, 0.75 + row * 0.42, backZ + 0.24, 0.22, def.kind === 'liquor' ? 0.34 : 0.18, 0.08, pc, T_PLASTIC); }
-  col(-3.0, 1.6, backZ, 2.0, 1.2, 0.2);
-  if (def.kind === 'diner') {
+  if (stocked) col(-3.0, 1.6, backZ, 2.0, 1.2, 0.2);
+  const extras: Extras = { cases: [], vault: null, tellers: [] };
+  const prod = new ProdBuilder();
+  const gMat = new THREE.MeshStandardMaterial({ color: '#bfe3ea', roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.16, depthWrite: false });
+  if (newKind) newKind({ def, r, accent, W, D, H, hw, hd, ceil, counterZ, backZ, doorX: 3.1, t, p: prod, root, extras, box: (x, y, z, sx, sy, sz, cc, tp = T_PAINT, pitch = 0) => box(x, y, z, sx, sy, sz, K(cc), tp, pitch), col, glassMat: gMat, trimMat });
+  else if (def.kind === 'diner') {
     // booths along the right wall and stools at the counter
     for (let k = 0; k < 3; k++) { const z = -3.6 + k * 2.3; box(4.2, 0.75, z, 1.4, 0.06, 0.9, C('#d9d4ca'), [0.3, 0.1, 0, 0]); box(4.2, 0.37, z, 0.12, 0.74, 0.12, C('#888'), T_METAL); for (const dz of [-0.8, 0.8]) { box(4.2, 0.45, z + dz, 1.4, 0.45, 0.5, C('#a3242b'), [0.6, 0, 0, 0]); box(4.2, 0.95, z + dz * 1.2, 1.4, 0.8, 0.15, C('#a3242b'), [0.6, 0, 0, 0]); } col(4.2, 0.6, z, 0.7, 0.6, 1.2); }
     for (let k = 0; k < 4; k++) { const x = -4.6 + k * 1.0; t.cyl(x, 0, counterZ + 0.8, 0.05, 0.05, 0.7, 6, C('#999'), T_METAL); t.cyl(x, 0.7, counterZ + 0.8, 0.2, 0.2, 0.08, 10, C('#a3242b'), [0.6, 0, 0, 0]); }
     box(0.5, 1.8, -hd + 0.3, 4.5, 0.9, 0.1, C('#202020'), T_PLASTIC); box(0.5, 1.8, -hd + 0.36, 4.3, 0.7, 0.02, C('#ffe6b0'), T_GLOW(0.8));
-  } else if (def.kind === 'pawn') {
-    // glass jewelry cases and wall racks (guitars, TVs, tools)
-    for (const [x, z, rot] of [[1.0, -0.5, 0], [3.4, -0.5, 0], [4.4, 2.2, 1]] as const) {
-      const sx = rot ? 0.8 : 2.0, sz = rot ? 2.0 : 0.8;
-      box(x, 0.45, z, sx, 0.9, sz, C('#1f1f1f'), T_METAL); box(x, 1.0, z, sx, 0.2, sz, C('#bfe3ea'), T_GLASS);
-      for (let k = 0; k < 8; k++) box(x + (rot ? 0 : -0.8 + k * 0.22), 0.93, z + (rot ? -0.8 + k * 0.22 : 0), 0.08, 0.04, 0.08, C(k % 2 ? '#e9c46a' : '#dfe6ea'), [0.2, 1, 0, 0]);
-      col(x, 0.55, z, sx / 2, 0.55, sz / 2);
-    }
-    for (let k = 0; k < 5; k++) { const x = -4.0 + k * 1.9; box(x, 2.1, -hd + 0.35, 1.2, 0.8, 0.1, C('#111'), T_PLASTIC); box(x, 2.1, -hd + 0.41, 1.05, 0.65, 0.02, C('#2b3a4a'), [0.1, 0.3, 0, 0]); }
-    for (let k = 0; k < 4; k++) { const x = 1.5 + k * 0.6; box(x, 1.3, -hd + 0.3, 0.35, 1.0, 0.08, C(['#a0522d', '#d2691e', '#222', '#8b0000'][k]), [0.4, 0, 0, 0]); }
   } else if (def.kind === 'clothing') {
     // hanging rails, folded stacks on the wall, mirror and fitting room
     for (const ax of [0.6, 3.0]) {
@@ -156,14 +181,6 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     box(4.4, 0.35, 1.8, 0.7, 0.7, 2.2, C('#3a3a3a'), T_FABRIC); col(4.4, 0.35, 1.8, 0.35, 0.35, 1.1);
     for (let k = 0; k < 6; k++) t.cyl(-4.8 + k * 0.28, 1.07, counterZ + 0.1, 0.06, 0.05, 0.3, 8, C(['#2c7fb8', '#e67e22', '#27ae60'][k % 3]), T_PLASTIC);
     for (let k = 0; k < 8; k++) t.cyl(-hw + 0.18, 0.2 + k * 0.45, -4.0, 0.14, 0.14, 0.4, 10, C(k % 2 ? '#c0392b' : '#f4f4f4'), T_PLASTIC);
-  } else if (def.kind === 'bank') {
-    // teller line behind glass, vault door at the back, rope queue, ATM
-    box(-3.0, 1.95, counterZ, 4.0, 1.7, 0.05, C('#bfe3ea'), T_GLASS);
-    { const vx = -3.0, vz = backZ - 0.2; t.cyl(vx, 1.5, vz, 1.3, 1.3, 0.35, 24, C('#7d868c'), T_METAL, 0, Math.PI / 2, 0); t.cyl(vx, 1.5, vz + 0.2, 0.9, 0.9, 0.15, 20, C('#9aa3a8'), T_METAL, 0, Math.PI / 2, 0); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; t.cyl(vx, 1.5, vz + 0.3, 0.05, 0.05, 0.1, 6, C('#444'), T_METAL, 0, Math.PI / 2, 0); box(vx + Math.cos(a) * 0.45, 1.5 + Math.sin(a) * 0.45, vz + 0.36, 0.1, 0.1, 0.1, C('#d4af37'), T_METAL); } }
-    box(-3.0, 1.2, backZ - 0.1, 3.4, 2.6, 0.5, C('#4a5156'), T_METAL); col(-3.0, 1.3, backZ - 0.1, 1.7, 1.3, 0.25);
-    for (let k = 0; k < 4; k++) { const z = 3.4 - k * 0.9; box(0.4, 0.5, z, 0.08, 1.0, 0.08, C('#d4af37'), T_METAL); box(1.8, 0.5, z, 0.08, 1.0, 0.08, C('#d4af37'), T_METAL); box(1.1, 0.8, z, 1.4, 0.04, 0.03, C('#7a1f2b'), T_FABRIC); }
-    box(4.4, 1.0, -2.5, 0.8, 2.0, 0.8, C('#2f3a46'), T_METAL); box(4.4, 1.4, -2.09, 0.6, 0.4, 0.02, C('#a8e0ff'), T_GLOW(0.8)); col(4.4, 1.0, -2.5, 0.4, 1.0, 0.4);
-    box(2.8, 0.45, -3.4, 2.2, 0.9, 1.0, C('#5a4a3c'), T_ROUGH); col(2.8, 0.45, -3.4, 1.1, 0.45, 0.5);
   } else {
     // aisles of shelving with products
     for (const ax of [0.6, 3.0]) {
@@ -182,7 +199,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     col(hw - 0.45, 1.1, -0.6, 0.25, 1.1, 3.0);
   }
   // fridges along the back wall with lit glass doors
-  if (def.kind === 'convenience' || def.kind === 'liquor' || def.kind === 'gas' || def.kind === 'diner') {
+  if (def.kind === 'diner') {
     const fx0 = def.kind === 'diner' ? -1.6 : -1.2, n = def.kind === 'diner' ? 2 : 5;
     for (let k = 0; k < n; k++) {
       const x = fx0 + k * 1.2;
@@ -194,14 +211,14 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     col(0, 1.1, -hd + 0.6, hw - 0.3, 1.1, 0.45);
   }
   // posters, mat, ATM / lottery stand / ice chest
-  box(-1.4, 2.2, -hd + 0.26, 1.0, 0.7, 0.02, accent, T_PAINT);
+  if (!newKind) box(-1.4, 2.2, -hd + 0.26, 1.0, 0.7, 0.02, accent, T_PAINT);
   box(doorX, 0.015, hd - 1.0, 1.8, 0.03, 1.2, C('#2b2b2b'), [0.95, 0, 0, 0]);
   if (def.kind === 'pharmacy') { box(0, 3.0, -hd + 0.3, 1.4, 0.4, 0.05, C('#1d8f6a'), T_GLOW(1.4)); box(0, 3.0, -hd + 0.3, 0.4, 1.4, 0.05, C('#1d8f6a'), T_GLOW(1.4)); }
   if (def.kind === 'barber') { t.cyl(-4.6, 0.6, hd + 0.35, 0.12, 0.12, 2.0, 10, C('#f4f4f4'), T_PLASTIC); for (let k = 0; k < 5; k++) t.cyl(-4.6, 0.7 + k * 0.38, hd + 0.35, 0.125, 0.125, 0.14, 10, C('#c0392b'), T_PLASTIC); }
-  if (def.kind === 'gas' || def.kind === 'convenience') { box(-0.6, 0.85, hd - 1.0, 0.7, 1.7, 0.6, C('#1d4f8c'), T_PLASTIC); box(-0.6, 1.25, hd - 0.69, 0.5, 0.35, 0.02, C('#a8e0ff'), T_GLOW(0.6)); col(-0.6, 0.85, hd - 1.0, 0.35, 0.85, 0.3); }
   const mesh = new THREE.Mesh(t.build(), trimMat); mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.4, D - 0.3).rotateX(-Math.PI / 2), floorTiles());
-  (floor.material as THREE.MeshStandardMaterial).map!.repeat.set(1, 1);
+  if (prod.count) { const pm = new THREE.Mesh(prod.build(), productMaterial()); pm.castShadow = false; pm.receiveShadow = true; root.add(pm); }
+  const FLOORS: Partial<Record<Store['kind'], [FloorKind, string, string]>> = { convenience: ['vinyl', '#e9e6dc', '#bfd2d8'], gas: ['concrete', '#8e9490', '#8e9490'], liquor: ['darkwood', '#4a2f1c', '#3b2414'], pawn: ['concrete', '#6e675c', '#6e675c'], jewelry: ['marble', '#ece8e0', '#2a2a30'], bank: ['marble', '#e4dccb', '#c9bfa6'], diner: ['checker', '#d9d4ca', '#a3242b'], barber: ['checker', '#f2f2f2', '#222222'], clothing: ['wood', '#c9a77a', '#b8946a'], electronics: ['concrete', '#3a3d42', '#3a3d42'], pharmacy: ['vinyl', '#eef2ee', '#cfe0d6'] };
+  const fl = FLOORS[def.kind]; const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.4, D - 0.3).rotateX(-Math.PI / 2), fl ? floorMaterial(fl[0], fl[1], fl[2]) : floorTiles());
   const fuv = floor.geometry.attributes.uv; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * (W - 0.4) / 2.4, fuv.getY(i) * (D - 0.3) / 2.4);
   floor.position.y = 0.02; floor.receiveShadow = true; root.add(floor);
   // glazing
@@ -239,8 +256,19 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const alarm = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false }));
   alarm.position.set(doorX, 3.2, hd - 0.3); alarm.visible = false; root.add(alarm);
   const toLocal = (p: THREE.Vector3) => p.clone().sub(root.position).applyAxisAngle(new THREE.Vector3(0, 1, 0), -def.yaw);
+  const smashCase = (i: number) => { const c = extras.cases[i]; if (!c || c.broken) return; c.broken = true; c.glass.removeFromParent(); if (c.loot) c.loot.visible = false; };
+  const setVault = (open: number) => { const v = extras.vault; if (!v) return; v.openA = open; v.door.rotation.y = open * 1.9; for (const cc of v.colliders) cc.setEnabled(open < 0.5); };
+  const burst = () => { for (const f of fly) { f.m.visible = true; f.t = 0; f.m.position.set(regX + (Math.random() - 0.5) * 0.2, 1.3, counterZ + 0.1); f.v.set((Math.random() - 0.5) * 1.6, 2.2 + Math.random() * 1.6, 0.4 + Math.random() * 1.4); f.w.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); } };
   return {
     root, shutter, doors, alarm, toWorld: toW, toLocal, counterZ,
+    register: { lx: regX, lz: counterZ - 0.05 }, cases: extras.cases, vault: extras.vault, tellers: extras.tellers, smashCase, setVault,
+    drillRig: (on: boolean) => { if (extras.vault) extras.vault.rig.visible = on; },
+    setDrawer: (open: number) => { drawerState.target = open; }, setBills: (frac: number) => { billsMesh.visible = frac > 0.02; billsMesh.scale.y = Math.max(0.05, frac); },
+    burst,
+    tick: (dt: number) => {
+      drawerState.open += (drawerState.target - drawerState.open) * Math.min(1, dt * 9); drawer.position.z = 0.02 + drawerState.open * 0.3;
+      for (const f of fly) if (f.m.visible) { f.t += dt; f.v.y -= 7 * dt; f.m.position.addScaledVector(f.v, dt); f.m.rotation.x += f.w.x * dt; f.m.rotation.y += f.w.y * dt; if (f.m.position.y < 0.05 || f.t > 2.5) f.m.visible = false; }
+    },
     setClosed: (closed: boolean) => { shutter.visible = closed; gapCol.setEnabled(closed); },
     setDoor: (open: number) => { for (const d of doors) d.position.x = d.userData.closedX + d.userData.dir * open * (doorW / 2 - 0.05); },
     clerk: toW(-3.0, 0.05, 0.25), customer: toW(-3.0, 0.05, 3.0), bag: toW(-3.0, 0.35, counterZ + 1.0), light: toW(0, 3.2, 0),

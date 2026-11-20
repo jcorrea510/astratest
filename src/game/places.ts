@@ -21,7 +21,7 @@ export const GARAGE_SLOTS: { x: number; z: number; yaw: number }[] = Array.from(
  * (front = (sin yaw, cos yaw)). Each one is a real interior (counter, register, shelves, fridges) entered through
  * a sliding door; cash = a full till. `standalone` shops have no building above (the gas station).
  */
-export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn' | 'pharmacy' | 'clothing' | 'electronics' | 'barber' | 'bank';
+export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn' | 'pharmacy' | 'clothing' | 'electronics' | 'barber' | 'bank' | 'jewelry';
 export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number; kind: StoreKind; standalone?: boolean; generated?: boolean }
 export const STORE_W = 10.4, STORE_D = 9.8, STORE_H = 4.4;
 export const STORES: Store[] = [
@@ -29,7 +29,7 @@ export const STORES: Store[] = [
   { x: -122.8, z: -113.9, yaw: 0, name: 'Harbor Liquor', color: '#29335c', cash: 600, kind: 'liquor' },
   { x: -206, z: 128, yaw: -Math.PI / 2, name: 'Fuel Stop', color: '#0f7b4f', cash: 380, kind: 'gas', standalone: true },
   { x: 131.5, z: 286.1, yaw: 0, name: 'Hot Plate Diner', color: '#8c1c22', cash: 450, kind: 'diner' },
-  { x: -379, z: -213.9, yaw: 0, name: 'Goldleaf Pawn & Jewelry', color: '#141414', cash: 900, kind: 'pawn' },
+  { x: -379, z: -213.9, yaw: 0, name: 'Goldleaf Pawn', color: '#141414', cash: 900, kind: 'pawn' },
 ];
 const HANDMADE_STORES = STORES.length;
 /** Replaces the generated shops (the city generator picks lots for ~45 more; handmade ones above stay first). */

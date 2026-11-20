@@ -155,6 +155,14 @@ export function signalState(inter: Intersection, axis: 'x' | 'z', time: number):
   if (!mine || p === 2) return 'red';
   return p === 0 ? 'green' : 'yellow';
 }
+/** Seconds until the amber for `axis` ends (Infinity unless it is amber now). */
+export function yellowLeft(inter: Intersection, axis: 'x' | 'z', time: number): number {
+  if (!inter.signalized) return Infinity;
+  let t = (((time + inter.offset) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD, phase = 0;
+  while (t >= SIGNAL_CYCLE[phase]) { t -= SIGNAL_CYCLE[phase]; phase++; }
+  const mine = axis === 'z' ? phase < 3 : phase >= 3;
+  return mine && phase % 3 === 1 ? SIGNAL_CYCLE[phase] - t : Infinity;
+}
 /** Seconds of each green phase during which the walking person shows (nobody should start crossing after that). */
 export const PED_WALK_TIME = 5;
 export type PedSignal = 'walk' | 'flash' | 'dont';
