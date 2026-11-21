@@ -14,7 +14,7 @@ test('every cut and beard renders as cards without errors', async ({ page }) => 
     await page.evaluate(({ patch, yaw }) => {
       const g = (window as any).__game, h = g.player.human, V = g.cam.camera.position.constructor;
       h.applyLook({ ...h.look, hairStyle: 'short', facial: 'none', hatStyle: 'none', ...patch });
-      g.player.place(-300, 0.3, -90, Math.PI); g.player.updateVisual(0);
+      g.player.place(0, 0.3, -215, Math.PI); g.player.updateVisual(0);
       const p = g.player.pos;
       g.cam.preview = { focus: new V(p.x, p.y + 1.6, p.z), yaw: Math.PI + yaw, dist: 1.9, pitch: 0.03, fov: 30 };
       for (let f = 0; f < 6; f++) g.frame(1 / 30, f === 5);

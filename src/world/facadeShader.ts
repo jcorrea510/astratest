@@ -96,6 +96,77 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
 }
 
 // interior mapping: trace a view ray into a box room behind the window; returns lit interior colour
+vec3 gGlow;
+// shop dressing by store style: 0 convenience 1 gas 2 liquor 3 jewelry 4 pawn 5 bank 6 clothing 7 barber 8 diner 9 electronics 10 office lobby
+vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool side){
+  vec3 c = base; float u = hp.x; float h = hp.y; if (side) u = hp.z;
+  float cell = floor(u * 5.0); float fx = fract(u * 5.0); float hs = fH(vec2(cell, st + rs));
+  if (st < 1.5) { // fridge wall + snack racks, lit sign band
+    vec3 tint = st < 0.5 ? vec3(0.8, 0.12, 0.15) : vec3(0.05, 0.5, 0.3);
+    if (h > 2.3 && h < 2.75) { c = tint; gGlow += tint * 0.9; }
+    else if (!side && h < 2.2) { float door = fract(u / 1.0); float frame = step(0.06, door) * step(door, 0.94);
+      float row = fract(h * 3.4); vec3 drink = 0.25 + 0.7 * vec3(fH(vec2(cell, floor(h * 3.4))), fH(vec2(cell + 3.0, floor(h * 3.4))), fH(vec2(cell, floor(h * 3.4) + 5.0)));
+      vec3 fr = mix(vec3(0.7, 0.85, 0.95), drink, step(0.2, row) * step(0.25, fx) * step(h, 2.0));
+      c = mix(vec3(0.12), fr, frame); gGlow += c * 0.5 * frame; }
+    else if (side && h < 2.1) { float row = fract(h * 2.6); vec3 pk = 0.3 + 0.65 * vec3(fH(vec2(cell, floor(h * 2.6))), fH(vec2(cell, floor(h * 2.6) + 9.0)), 0.3 + 0.5 * hs);
+      c = mix(vec3(0.5), pk, step(0.18, row) * step(0.2, fx)); }
+  } else if (st < 2.5) { // liquor: bottle shelves, warm
+    if (h < 2.5 && h > 0.2) { float row = fract(h * 3.2); float bi = floor(h * 3.2); float amber = fH(vec2(cell, bi + 1.0));
+      vec3 bottle = amber < 0.4 ? vec3(0.45, 0.22, 0.06) : amber < 0.7 ? vec3(0.12, 0.35, 0.16) : vec3(0.75, 0.8, 0.85);
+      float bw = step(0.28, fx) * step(fx, 0.72) * step(0.2, row);
+      c = mix(vec3(0.16, 0.1, 0.06), bottle * (0.7 + 0.5 * row), bw); gGlow += bottle * bw * 0.35; }
+  } else if (st < 3.5) { // jewelry: dark wall, glittering lit cases
+    c = vec3(0.04, 0.035, 0.04);
+    float caseM = step(0.12, fract(u / 1.6)) * step(fract(u / 1.6), 0.88) * step(0.7, h) * step(h, 1.15);
+    c = mix(c, vec3(0.9, 0.8, 0.5), caseM); gGlow += vec3(1.0, 0.85, 0.5) * caseM * 0.9;
+    float gem = step(0.93, fH(floor(vec2(u * 12.0, h * 12.0)))) * caseM; gGlow += vec3(1.0) * gem * 1.5;
+    if (h > 1.5 && h < 2.4) { float spot = step(0.35, fract(u / 0.9)) * step(fract(u / 0.9), 0.65); c = mix(c, vec3(0.5, 0.42, 0.3), spot * 0.7); gGlow += vec3(0.9, 0.75, 0.4) * spot * 0.35; }
+  } else if (st < 4.5) { // pawn: guitars and TVs
+    c = vec3(0.3, 0.22, 0.16);
+    float g = fract(u / 0.7); float gx = abs(g - 0.5);
+    float body = step(gx, 0.2 * smoothstep(1.1, 1.5, h) + 0.09 * step(1.5, h)) * step(0.9, h) * step(h, 1.55);
+    float neck = step(gx, 0.035) * step(1.55, h) * step(h, 2.4);
+    vec3 gc = hs < 0.33 ? vec3(0.7, 0.15, 0.1) : hs < 0.66 ? vec3(0.8, 0.6, 0.2) : vec3(0.15, 0.2, 0.5);
+    if (fract(u / 3.2) > 0.45) c = mix(c, gc, max(body, neck)); else { float tv = step(0.1, fract(u / 1.6)) * step(fract(u / 1.6), 0.9) * step(1.0, h) * step(h, 2.0); c = mix(c, vec3(0.02, 0.03, 0.05), tv); gGlow += vec3(0.1, 0.25, 0.4) * tv * 0.6; }
+  } else if (st < 5.5) { // bank: marble wall, teller counter with glass partition
+    c = vec3(0.8, 0.78, 0.72);
+    float counter = step(h, 1.05) * step(0.2, hp.z) ; c = mix(c, vec3(0.35, 0.22, 0.12), counter * step(h, 1.0));
+    float glassP = step(1.05, h) * step(h, 2.1) * step(0.1, fract(u / 2.0)) ; c = mix(c, vec3(0.55, 0.7, 0.75), glassP * 0.5);
+    float bar = step(fract(u / 2.0), 0.05) * step(1.0, h) * step(h, 2.2); c = mix(c, vec3(0.6, 0.5, 0.2), bar);
+    gGlow += vec3(0.5, 0.6, 0.7) * glassP * 0.15;
+  } else if (st < 6.5) { // clothing: mannequins and rails
+    c = vec3(0.86, 0.84, 0.82);
+    float railY = step(abs(h - 1.7), 0.03); c = mix(c, vec3(0.6), railY);
+    vec3 cl = hs < 0.25 ? vec3(0.7, 0.15, 0.2) : hs < 0.5 ? vec3(0.15, 0.3, 0.6) : hs < 0.75 ? vec3(0.9, 0.8, 0.5) : vec3(0.15);
+    float garment = step(abs(fract(u / 0.3) - 0.5), 0.35) * step(1.0, h) * step(h, 1.68); c = mix(c, cl, garment * step(0.5, fract(u / 4.0)));
+    float mq = fract(u / 4.0); float mx = abs(mq - 0.25); // mannequin silhouette
+    float torso = step(mx, 0.14) * step(1.1, h) * step(h, 1.75) + step(mx, 0.05) * step(1.75, h) * step(h, 1.98) + step(mx, 0.12) * step(0.0, h) * step(h, 1.1) * 0.6;
+    if (mq < 0.5) { c = mix(c, hs < 0.5 ? vec3(0.8, 0.75, 0.7) : cl, clamp(torso, 0.0, 1.0)); } gGlow += vec3(0.4) * 0.15;
+  } else if (st < 7.5) { // barber: mirror wall with chair
+    c = vec3(0.7, 0.62, 0.55);
+    float mir = step(0.15, fract(u / 2.2)) * step(fract(u / 2.2), 0.85) * step(0.9, h) * step(h, 2.1);
+    c = mix(c, vec3(0.65, 0.78, 0.85), mir); gGlow += vec3(0.7, 0.85, 0.95) * mir * 0.5;
+    float chairX = abs(fract(u / 2.2) - 0.5); float chair = (step(chairX, 0.22) * step(0.4, h) * step(h, 0.75) + step(chairX, 0.2) * step(0.75, h) * step(h, 1.4)); c = mix(c, vec3(0.65, 0.08, 0.08), chair * (mir + step(h, 0.75)));
+    float pole = step(abs(fract(u / 4.4) - 0.9), 0.04) * step(h, 1.8); c = mix(c, mix(vec3(0.9), vec3(0.8, 0.1, 0.1), step(0.5, fract(h * 6.0))), pole);
+  } else if (st < 8.5) { // diner: red booths, counter stools
+    c = vec3(0.9, 0.86, 0.75);
+    float booth = step(h, 1.15) * step(0.0, 1.0); vec3 vinyl = vec3(0.65, 0.08, 0.1);
+    c = mix(c, vinyl, booth * step(0.12, fract(u / 1.8)) * step(fract(u / 1.8), 0.9));
+    float tbl = step(0.72, h) * step(h, 0.78) * step(0.2, fract(u / 1.8)) * step(fract(u / 1.8), 0.8); c = mix(c, vec3(0.85), tbl);
+    float sgn = step(1.9, h) * step(h, 2.4) * step(0.2, fract(u / 5.0)) * step(fract(u / 5.0), 0.8); c = mix(c, vec3(1.0, 0.3, 0.2), sgn); gGlow += vec3(1.0, 0.3, 0.2) * sgn * 0.8;
+  } else if (st < 9.5) { // electronics: banks of screens
+    c = vec3(0.08, 0.09, 0.11);
+    vec2 sc = vec2(fract(u / 1.1), fract((h - 0.5) / 0.7)); float scr = step(0.06, sc.x) * step(sc.x, 0.94) * step(0.08, sc.y) * step(sc.y, 0.92) * step(0.5, h) * step(h, 2.3);
+    float sid = fH(floor(vec2(u / 1.1, (h - 0.5) / 0.7)) + rs); vec3 pic = mix(vec3(0.1, 0.4, 0.9), mix(vec3(0.9, 0.35, 0.15), vec3(0.2, 0.8, 0.5), step(0.5, sid)), step(0.33, sid));
+    c = mix(c, pic, scr); gGlow += pic * scr * 0.9;
+  } else { // office lobby: pale wall, reception desk, plants
+    c = vec3(0.82, 0.82, 0.8);
+    float desk = step(h, 1.1) * step(0.2, fract(u / 6.0)) * step(fract(u / 6.0), 0.75); c = mix(c, vec3(0.3, 0.26, 0.22), desk);
+    float logo = step(1.8, h) * step(h, 2.3) * step(0.35, fract(u / 6.0)) * step(fract(u / 6.0), 0.6); c = mix(c, vec3(0.2, 0.3, 0.45), logo); gGlow += vec3(0.2, 0.35, 0.6) * logo * 0.4;
+    float pl = step(abs(fract(u / 6.0) - 0.9), 0.05) * step(h, 1.2); c = mix(c, vec3(0.15, 0.4, 0.2), pl);
+  }
+  return c;
+}
 vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, float night){
   v.z = max(v.z, 0.05);
   float tx = v.x > 0.0 ? (room.x - p0.x) / max(v.x, 1e-4) : -p0.x / min(v.x, -1e-4);
@@ -106,9 +177,18 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
   vec3 wallC = mix(vec3(0.78, 0.74, 0.66), vec3(0.62, 0.7, 0.72), step(0.5, fH(vec2(rs, 1.7))));
   if (type > 0.5) wallC = vec3(0.82, 0.83, 0.82);
   if (type > 1.5) wallC = mix(vec3(0.9, 0.9, 0.86), vec3(0.95, 0.88, 0.8), fH(vec2(rs, 5.3)));
+  float st = type - 2.0; gGlow = vec3(0.0);
   vec3 floorC = mix(vec3(0.42, 0.3, 0.2), vec3(0.35, 0.36, 0.38), step(0.6, fH(vec2(rs, 3.1))));
   if (type > 0.5) floorC = vec3(0.28, 0.3, 0.33);
-  if (type > 1.5) floorC = vec3(0.75, 0.74, 0.7);
+  if (type > 1.5) { floorC = vec3(0.75, 0.74, 0.7); vec2 fc = floor(hp.xz * 1.6); float chk = mod(fc.x + fc.y, 2.0);
+    if (st < 1.5) floorC = mix(vec3(0.82, 0.86, 0.88), vec3(0.5, 0.58, 0.62), chk);
+    else if (st < 2.5) floorC = vec3(0.18, 0.11, 0.07);
+    else if (st < 3.5) floorC = mix(vec3(0.05), vec3(0.85), chk);
+    else if (st < 4.5) floorC = vec3(0.28, 0.27, 0.26);
+    else if (st < 5.5) floorC = mix(vec3(0.78, 0.74, 0.66), vec3(0.6, 0.57, 0.5), chk);
+    else if (st < 7.5) floorC = mix(vec3(0.6, 0.5, 0.4), vec3(0.2, 0.2, 0.22), chk * step(6.5, st));
+    else if (st < 8.5) floorC = mix(vec3(0.9), vec3(0.15), chk);
+    else if (st < 9.5) floorC = vec3(0.2, 0.21, 0.23); }
   vec3 c;
   float lightAt = 0.0;
   if (t == tz) {
@@ -126,13 +206,7 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
       float scr = boxMask(fract(q * vec2(3.0, 1.0)), vec2(0.35, 0.28), vec2(0.65, 0.42), 0.02);
       c = mix(c, vec3(0.1, 0.12, 0.16) + night * vec3(0.2, 0.3, 0.5) * lit, scr);
     } else {
-      // shop shelving with rows of products
-      float shelfRow = fract(q.y * 5.0);
-      vec2 pid = floor(vec2(hp.x * 6.0, q.y * 5.0));
-      vec3 prod = 0.35 + 0.6 * vec3(fH(pid + rs), fH(pid * 1.7 + rs), fH(pid * 2.3 + rs));
-      float onShelf = step(0.18, shelfRow) * step(q.y, 0.8) * step(0.12, fract(hp.x * 6.0));
-      c = mix(c, prod, onShelf);
-      c = mix(c, vec3(0.55), (1.0 - step(0.18, shelfRow)) * step(q.y, 0.8));
+      c = shopWall(q * room.xy, hp, room, st, rs, wallC, false);
     }
   } else if (t == ty) {
     if (v.y < 0.0) { c = floorC * (type > 1.5 ? 1.0 : (0.8 + 0.2 * fH(floor(hp.xz * 2.0)))); }
@@ -145,7 +219,7 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
     }
   } else {
     c = wallC * 0.85;
-    if (type > 1.5) { vec2 pid = floor(vec2(hp.z * 6.0, hp.y * 1.8)); c = mix(c, 0.35 + 0.5 * vec3(fH(pid + rs + 2.0), fH(pid + rs + 4.0), fH(pid + rs + 6.0)), step(0.25, fract(hp.y * 1.8)) * step(hp.y, room.y * 0.8)); }
+    if (type > 1.5) c = shopWall(vec2(0.0), hp, room, st, rs, wallC * 0.85, true) * 0.85;
   }
   // light falloff: brighter near the ceiling, darker deep in the room
   float depthK = mix(1.0, 0.55, clamp(hp.z / room.z, 0.0, 1.0));
@@ -155,7 +229,7 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
   float dayL = 0.22;
   float nightL = lit * 1.1;
   float L = mix(dayL, nightL, night);
-  return c * depthK * hk * L * mix(vec3(1.0), lightC, night) + lightC * lightAt * mix(0.4, 2.5 * lit, night);
+  return c * depthK * hk * L * mix(vec3(1.0), lightC, night) + lightC * lightAt * mix(0.4, 2.5 * lit, night) + gGlow * lit * mix(0.35, 1.0, night) * depthK;
 }
 `;
 
@@ -270,7 +344,7 @@ if (fKind < 0.5) {
     float rs = fH(vec2(fSeed, 3.0));
     float open = step(0.25, fH(vec2(fSeed, 8.0)));
     float lit = open * (0.85 + 0.15 * rs);
-    vec3 inter = roomColor(vec3(lp.x + mod(cell.x, 4.0) * fCs.x, lp.y, 0.0), fVt, vec3(fCs.x * 4.0, fCs.y + 0.3, 7.0), rs, 2.0, lit, fNight);
+    vec3 inter = roomColor(vec3(lp.x + mod(cell.x, 4.0) * fCs.x, lp.y, 0.0), fVt, vec3(fCs.x * 4.0, fCs.y + 0.3, 7.0), rs, 2.0 + floor(vFacade2.x + 0.5), lit, fNight);
     // closed shops at night show roll-down grilles
     float grille = (1.0 - open) * fNight * win;
     vec3 frameCol = mix(vec3(0.12, 0.12, 0.13), vec3(0.55, 0.4, 0.25), step(0.6, fract(fSeed * 0.71)));

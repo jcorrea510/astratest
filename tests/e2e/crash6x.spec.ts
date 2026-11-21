@@ -29,6 +29,7 @@ test('car at 30 mph hits a pedestrian: body rides the hood (>=0.3 s) and is neve
   const r = await page.evaluate(() => {
     const g = (window as any).__game;
     g.player.place(-250, 0.25, -80, 0);
+    for (const v of [...g.vehicles.list]) g.vehicles.remove(v);
     const car = g.vehicles.spawn('sedan', -345, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
     const ped = g.pop.spawn('civilian', -300, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
     const V = car.position.constructor;
@@ -144,8 +145,9 @@ test('screenshots', async () => {
   await page.evaluate(() => {
     const g = (window as any).__game;
     g.player.place(-250, 0.25, -80, 0);
-    const car = g.vehicles.spawn('sedan', -545, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
-    const ped = g.pop.spawn('civilian', -500, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
+    for (const v of [...g.vehicles.list]) g.vehicles.remove(v);
+    const car = g.vehicles.spawn('sedan', -345, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
+    const ped = g.pop.spawn('civilian', -300, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
     (window as any).__hc = car; (window as any).__hp = ped;
     for (let f = 0; f < 30; f++) g.frame(1 / 60, false);
     for (let f = 0; f < 205; f++) { const lv = car.phys.body.linvel(); car.phys.body.setLinvel({ x: 13.4, y: lv.y, z: 0 }, true); g.frame(1 / 60, false); }

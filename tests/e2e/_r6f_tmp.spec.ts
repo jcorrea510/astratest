@@ -5,7 +5,7 @@ test('lab', async ({ page }) => {
   await boot(page); await quietStreets(page);
   await page.evaluate(() => {
     const g = (window as any).__game; g.clockRunning = false; g.hour = 14;
-    for (const n of [...g.pop.npcs]) if (!n.char.inVehicle) g.pop.remove(n);
+    for (const n of [...g.pop.npcs]) if (!n.persistent && !n.char.inVehicle) g.pop.remove(n);
     g.player.place(-280, 0.25, -95.5, Math.PI / 2);
     const n = g.pop.spawn('civilian', -277, -95.5, g.player.pos.y + 0.2); n.persistent = true; n.brain = 'ordered'; n.order = 'kneel'; n.orderMax = 999; n.char.yaw = Math.PI / 2 + Math.PI; (window as any).__n = n;
   });

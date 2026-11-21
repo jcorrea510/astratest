@@ -100,9 +100,9 @@ function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
   const upper: WallSpec = { kind: 2, seed: s.seed % 9973, cellW: s.cellW, cellH: s.floorH, winW: s.winW, winH: s.winH, sill: s.sill, mat: s.mat, originV: s.groundH, baseY: s.base, lit: s.lit, floors: s.floors };
   const back: WallSpec = { ...upper, winW: Math.min(s.winW, 1.0), winH: s.winH * 0.85, cellW: Math.max(2.6, s.cellW) };
   const solid = SOLID(s.mat, s.seed % 9973, s.base);
-  const groundShop: WallSpec = { kind: 4, seed: s.seed % 9973, cellW: 2.6, cellH: s.groundH - 0.75, winW: 0, winH: 0, sill: 0, mat: s.mat, originV: 0, baseY: s.base, lit: 1, floors: 1 };
+  const groundShop: WallSpec = { kind: 4, seed: s.seed % 9973, cellW: 2.6, cellH: s.groundH - 0.75, winW: (s.seed * 7 + 3) % 10, winH: 0, sill: 0, mat: s.mat, originV: 0, baseY: s.base, lit: 1, floors: 1 };
   const groundResi: WallSpec = { kind: 2, seed: (s.seed + 7) % 9973, cellW: s.cellW, cellH: s.groundH, winW: s.winW, winH: Math.min(s.winH, s.groundH - 1.4), sill: 1.0, mat: s.mat, originV: 0, baseY: s.base, lit: s.lit, floors: 1 };
-  const groundLobby: WallSpec = { ...groundShop, cellW: 3.2, seed: (s.seed + 3) % 9973 };
+  const groundLobby: WallSpec = { ...groundShop, winW: 10, cellW: 3.2, seed: (s.seed + 3) % 9973 };
   const groundSpec = s.ground === 'shop' ? groundShop : s.ground === 'lobby' ? groundLobby : s.ground === 'resi' ? groundResi : solid;
   // faces: ground band and upper band per face
   const hw = s.w / 2, hd = s.d / 2;
@@ -298,7 +298,7 @@ export function tower(ctx: BuildCtx, t: TowerSpec) {
   const stone = C(r.pick(style === 'stone' ? STONE_COLORS : CONCRETE_COLORS));
   const seed = t.seed % 9973;
   const podiumH = 9.2;
-  const lobby: WallSpec = { kind: 4, seed, cellW: 3.4, cellH: 5.2, winW: 0, winH: 0, sill: 0, mat: 3, originV: 0, baseY: t.base, lit: 1, floors: 1 };
+  const lobby: WallSpec = { kind: 4, seed, cellW: 3.4, cellH: 5.2, winW: 10, winH: 0, sill: 0, mat: 3, originV: 0, baseY: t.base, lit: 1, floors: 1 };
   const podUpper: WallSpec = { kind: 2, seed, cellW: 3.0, cellH: 4.0, winW: 2.4, winH: 2.4, sill: 0.8, mat: 3, originV: 5.2, baseY: t.base, lit: 0.6, floors: 1 };
   fb.box(t.cx, t.cz, t.w, t.d, t.base, t.base + 5.2, yaw, stone, [lobby], null);
   fb.box(t.cx, t.cz, t.w, t.d, t.base + 5.2, t.base + podiumH, yaw, stone, [podUpper], { ...ROOF, seed }, C('#6a6763'));
