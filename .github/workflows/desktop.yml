@@ -10,7 +10,7 @@ permissions:
 concurrency: { group: desktop, cancel-in-progress: true }
 jobs:
   mac:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
