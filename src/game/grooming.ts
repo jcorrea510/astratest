@@ -11,8 +11,8 @@ const HAIR_LABEL: Record<HairStyle, string> = {
   crew: 'Crew cut', slick: 'Slick back', afro: 'Afro', braids: 'Braids', cornrows: 'Cornrows', bob: 'Bob', parted: 'Side part', buns: 'Twin buns', pixie: 'Pixie',
 };
 /** Cuts offered to a male / female player (the body model decides which sex the player is; both can pick any common cut). */
-const HAIR_M: HairStyle[] = ['short', 'fade', 'crew', 'buzz', 'slick', 'parted', 'curly', 'afro', 'cornrows', 'braids', 'long', 'bun', 'ponytail', 'bald'];
-const HAIR_F: HairStyle[] = ['long', 'ponytail', 'bun', 'buns', 'bob', 'pixie', 'parted', 'curly', 'afro', 'braids', 'cornrows', 'short', 'buzz', 'bald'];
+const HAIR_M: HairStyle[] = ['short', 'fade', 'crew', 'buzz', 'slick', 'parted', 'curly', 'afro', 'cornrows', 'long', 'bun', 'ponytail', 'bald'];
+const HAIR_F: HairStyle[] = ['long', 'ponytail', 'bun', 'buns', 'bob', 'pixie', 'parted', 'curly', 'afro', 'cornrows', 'short', 'buzz', 'bald'];
 export const HAIR_COLOURS: [string, string][] = [
   ['Jet black', '#151110'], ['Black brown', '#2a1d15'], ['Chestnut', '#4f3523'], ['Auburn', '#7b3a1e'], ['Copper', '#a95a2e'], ['Dark blond', '#8a6a43'],
   ['Honey blond', '#c9a56a'], ['Platinum', '#e6d2a4'], ['Silver', '#a9a59f'], ['White', '#e8e6e0'], ['Midnight blue', '#1f3a7a'], ['Teal', '#1fa89a'],

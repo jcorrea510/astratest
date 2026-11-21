@@ -7,13 +7,13 @@
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
 import { SHELL_HAIR, hairShellGeometry, shellThick, capLine } from './hairShells';
-import { SCAN_FILES, SCAN_HAIR, SCAN_FACIAL, scanGeometry, type ScanSrc, type ScanKey } from './hairScan';
+import { SCAN_FILES, SCAN_HAIR, SCAN_FACIAL, TIE_Y, scanGeometry, type ScanSrc, type ScanKey } from './hairScan';
 import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { FullLook, Sex, HairStyle } from './look';
+import type { FullLook, Sex } from './look';
 
 /** Vertex regions (shader branches on these). */
 export const R = { SKIN: 0, TORSO: 1, ARM: 2, LEG: 3, HAIR: 4, BROW: 5, CTOP: 6, CBOT: 7, HAIRP: 8, EYES: 9, HAT: 10, DETAIL: 11, SOLE: 12 } as const;
@@ -553,7 +553,7 @@ export function extrasGeometries(base: BodyBase, assets: HumanAssets, look: Full
   // scanned hair / beard meshes (shared by everyone with that style), else layered shells with a near and a far LOD
   const scan = SCAN_HAIR[look.hairStyle];
   if (scan) add(cached(`scan|${look.hairStyle}|${hatOn ? 1 : 0}`, () => scanGeometry(base, assets.hair.get(scan)!, look.hairStyle, hatOn)), 'scan');
-  else if (SHELL_HAIR.has(look.hairStyle)) for (const far of [false, true]) {
+  if (SHELL_HAIR.has(look.hairStyle)) for (const far of [false, true]) {
     add(cached(`hair|${look.hairStyle}|${hatOn ? 1 : 0}|${far ? 1 : 0}`, () => hairShellGeometry(base, look.hairStyle, hatOn, far)), far ? 'hairFar' : 'hair');
   }
   const fs = SCAN_FACIAL[look.facial];
@@ -567,7 +567,7 @@ function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, key: s
   const parts: Part[] = [];
   const hairThick = (hn: THREE.Vector3) => SHELL_HAIR.has(hairS) ? shellThick(hairS, hn) : 0.002;
   // ---- hair ties
-  if (hairS === 'ponytail') parts.push(headPart(base, new THREE.TorusGeometry(0.17, 0.05, 6, 14).rotateX(0.35).translate(0, 0.33, -1.06), R.HAT));
+  if (hairS === 'ponytail') parts.push(headPart(base, new THREE.TorusGeometry(0.13, 0.045, 6, 14).rotateX(Math.PI / 2).translate(0, TIE_Y - 0.06, -1.26), R.HAT));
   // ---- hats
   if (hat === 'cap' || hat === 'police') {
     parts.push(scalpShell(base, capLine, hn => hairThick(hn) * 0.6 + 0.009, R.HAT, 0.04));

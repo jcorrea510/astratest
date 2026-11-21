@@ -11,7 +11,7 @@ const CSS = `
 .ma-fx-low { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(40,0,0,0.65) 100%); }
 .ma-fx-ind { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
 .ma-fx-ind svg { position: absolute; left: -50vh; top: -50vh; width: 100vh; height: 100vh; overflow: visible; }
-.ma-fx-ind path { fill: none; stroke: rgba(235,28,24,0.95); stroke-width: 1.6; stroke-linecap: round; filter: drop-shadow(0 0 0.6vh rgba(120,0,0,0.8)); }
+.ma-fx-ind path { fill: none; stroke: rgba(235,28,24,0.95); stroke-width: 1.1; stroke-linecap: round; filter: drop-shadow(0 0 0.6vh rgba(120,0,0,0.8)); }
 .ma-fx-ind.is-on { animation: ma-fx-ind 1s ease-out forwards; }
 @keyframes ma-fx-ind { 0% { opacity: 1; } 60% { opacity: 0.75; } 100% { opacity: 0; } }
 .ma-fx-say { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); padding: 6px 14px; border-radius: 14px; background: rgba(12,14,18,0.72);

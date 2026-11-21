@@ -11,7 +11,7 @@ import type { BodyBase } from './humanAssets';
 export const TOP_IDS: Record<FullLook['topStyle'], number> = { tee: 0, tank: 1, longsleeve: 2, hoodie: 3, jacket: 4, suit: 5, shirt: 6, polo: 7, dress: 8, uniform: 9, blouse: 10 };
 const BOTTOM_IDS: Record<FullLook['bottomStyle'], number> = { jeans: 0, trousers: 1, shorts: 2, skirt: 3, sweats: 4 };
 const PATTERN_IDS: Record<FullLook['pattern'], number> = { plain: 0, stripes: 1, plaid: 2, graphic: 3, twotone: 4 };
-const HAIR_PAINT: Partial<Record<FullLook['hairStyle'], number>> = { buzz: 2, fade: 3, bald: 0, cornrows: 5, braids: 5, crew: 2 };
+const HAIR_PAINT: Partial<Record<FullLook['hairStyle'], number>> = { buzz: 2, fade: 3, bald: 0, cornrows: 5, braids: 5, crew: 2, long: 6, bob: 6, buns: 6, parted: 6, pixie: 6 };
 const FACIAL: Record<FullLook['facial'], number> = { none: 0, stubble: 1, beard: 2, moustache: 3, goatee: 4 };
 const SHOE_IDS: Record<FullLook['shoeStyle'], number> = { sneakers: 0, boots: 1, formal: 2 };
 
@@ -131,6 +131,7 @@ if (part == 0) {
     if (mode > 0.5 && mode < 1.5) a = scalp * 0.95;
     else if (mode > 1.5 && mode < 2.5) a = scalp * (0.72 + 0.2 * n);
     else if (mode > 2.5 && mode < 3.5) a = scalp * mix(0.25 + 0.15 * n, 0.85 + 0.1 * n, smoothstep(h + 0.05, h + 0.55, vHn.y));
+    else if (mode > 5.5) a = scalp * 0.9 * (1.0 - smoothstep(0.1, 0.5, vHn.z)); // under scanned hair: sides and back only
     else if (mode > 4.5) a = scalp * (0.55 + 0.45 * abs(sin(vHn.x * 22.0))) ;
     else if (mode > 3.5) a = scalp * 0.0;
     col = mix(col, hc * (0.75 + 0.5 * n), a);
@@ -142,7 +143,7 @@ if (part == 0) {
       float mous = smoothstep(0.42, 0.3, abs(vHn.x)) * smoothstep(-0.48, -0.42, vHn.y) * smoothstep(-0.22, -0.3, vHn.y) * smoothstep(0.7, 0.85, vHn.z);
       float chin = smoothstep(0.3, 0.18, abs(vHn.x)) * smoothstep(-0.6, -0.75, vHn.y) * smoothstep(0.3, 0.6, vHn.z);
       float b = 0.0;
-      if (fm < 1.5) b = jaw * 0.32 * (0.7 + 0.6 * n);
+      if (fm < 1.5) b = max(jaw, mous * 0.9) * (0.16 + 0.42 * smoothstep(0.35, 0.8, vnoise(vHn * 140.0))) * (0.8 + 0.4 * n); // short dark dots
       else if (fm < 2.5) b = jaw * 0.75;
       else if (fm < 3.5) b = max(mous * 0.9, jaw * 0.15);
       else b = max(max(mous, chin) * 0.85, jaw * 0.12);
@@ -272,7 +273,8 @@ if (mode < 0.5) {
   float lu = u / 8.0, l0 = mod(floor(lu), 90.0);
   float lw = lu + sin(v * 48.0 + h11(l0) * 6.283) * 0.3 + sin(v * 15.0 + l0 * 1.3) * 0.45;
   float lk = mod(floor(lw), 90.0), x = fract(lw) * 2.0 - 1.0;
-  float segL = 0.028 + 0.03 * h11(lk + 3.1), sv = v / segL + h11(lk + 9.7), sg = floor(sv);
+  float lenK = sc > 0.5 ? sc * 0.25 : 1.0; // short cuts: shorter, choppier locks
+  float segL = (0.028 + 0.03 * h11(lk + 3.1)) * lenK, sv = v / segL + h11(lk + 9.7), sg = floor(sv);
   float hg = mix(mix(0.5, 1.0, h21(vec2(lk, sg))), mix(0.5, 1.0, h21(vec2(lk, sg + 1.0))), smoothstep(0.0, 1.0, fract(sv)));
   float top = hg * mix(0.3, 1.0, sqrt(max(0.0, 1.0 - x * x))) * dens;
   farK = solidLod ? 1.0 : smoothstep(0.22, 0.55, fwidth(lw));
@@ -282,6 +284,7 @@ if (mode < 0.5) {
   r1 = h21(vec2(cell, lk)); float r3 = h21(vec2(cell + 41.3, sg));
   float stray = sf * step(r3, 0.05 * dens) * step(lay, top + 0.3) * (1.0 - smoothstep(0.18 - fu, 0.18 + fu, abs(fract(uu) - 0.5)));
   a = max(step(lay, top), stray);
+  a *= step(h21(vec2(lk, sg) + 5.3), dens * 1.6 - 0.2); // locks thin out towards the hairline: soft, ragged edge
   if (lay < 0.01) a = step(0.5 + 0.4 * (h11(lk + sg) - 0.5), dens);   // opaque core with ragged tips
   b = mix(1.0, mix(0.74, 1.2, r1), sf) * mix(0.85, 1.12, h11(lk + 21.0));
   hairTilt = x * 0.75;
@@ -299,6 +302,7 @@ if (mode < 0.5) {
   farK = solidLod ? 1.0 : smoothstep(0.3, 0.8, fg);
   float w = 0.36 * (1.0 - 0.5 * lay / max(len, 0.05));
   a = lay < 0.3 * dens ? 1.0 : step(lay, len) * (1.0 - smoothstep(w - fg, w + fg, length(o)));
+  a *= step(h21(c + 11.7), dens * 1.7 - 0.3); // sparse towards the hairline
   b = mix(0.72, 1.15, r3) * mix(0.9, 1.08, h21(pc + 1.7));
   hairTilt = o.x * 1.4;
 } else if (mode > 2.5) {
@@ -317,7 +321,7 @@ if (mode < 0.5) {
   // cornrows: raised braided rows running along v
   float ru = u / 16.0, rc = fract(ru) - 0.5;
   float prof = sqrt(max(0.0, 1.0 - rc * rc * 5.0));
-  a = step(lay, prof * dens);
+  a = step(lay, prof * max(dens, 0.6)) * step(0.55, dens); // rows end cleanly at the hairline
   float zz = fract(v / 0.0055 + abs(rc) * 1.8 + floor(ru) * 0.5);
   b = 0.55 + 0.6 * smoothstep(0.0, 0.6, zz) * (1.0 - smoothstep(0.85, 1.0, zz));
   farK = solidLod ? 1.0 : smoothstep(0.25, 0.6, fwidth(ru));
@@ -326,8 +330,8 @@ if (mode < 0.5) {
 a = mix(a, lay < 0.01 ? step(0.5, dens) : step(lay, 0.65 * dens), farK);
 if (a < 0.5) discard;
 b = mix(b, 1.0, farK * 0.7); hairTilt *= 1.0 - farK;
-float ao = lay < 0.01 ? 0.4 : mix(0.38, 1.0, smoothstep(0.0, 0.95, lay));
-hairSpec = mix(0.6, 1.3, r1) * mix(0.5, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : 1.0);
+float ao = lay < 0.01 ? 0.4 : mix(0.38, 1.0, smoothstep(0.0, 0.95, lay / max(dens, 0.3))); // depth relative to the local thickness: no dark rims
+hairSpec = mix(0.6, 1.3, r1) * mix(0.5, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : mode < 0.5 && sc > 0.5 ? 0.55 : 1.0);
 vec3 col = uC[6] * b * ao;
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)

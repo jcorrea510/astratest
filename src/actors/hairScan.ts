@@ -30,36 +30,25 @@ export function scanGeometry(base: BodyBase, src: ScanSrc, style: HairStyle | Fa
   const P = g0.attributes.position, N = g0.attributes.normal, U = g0.attributes.uv;
   const d = base.head.joint.clone().sub(src.headJoint), h = base.head;
   const n = P.count;
-  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), keep = new Uint8Array(n);
   const p = new THREE.Vector3(), q = new THREE.Vector3(), hn = new THREE.Vector3(), nn = new THREE.Vector3();
   const mirror = style === 'pixie';
   for (let i = 0; i < n; i++) {
     p.fromBufferAttribute(P, i).add(d); nn.fromBufferAttribute(N, i);
     if (mirror) { p.x = 2 * h.center.x - p.x; nn.x = -nn.x; }
     headCoords(h, p, hn);
+    keep[i] = keepVertex(style, hn) ? 1 : 0;
     if (style === 'bob') bob(hn);
     else if (style === 'ponytail') gather(hn);
+    if (hatOn && hn.y > capLineScan(hn.z) - 0.02) keep[i] = 0;
     p.set(h.center.x + hn.x * h.half.x, h.center.y + hn.y * h.half.y, h.center.z + hn.z * h.half.z);
     pos.set([p.x, p.y, p.z], i * 3);
     nor.set([nn.x, nn.y, nn.z], i * 3);
   }
   // keep / drop whole triangles
-  const keepV = (x: number, y: number, z: number) => {
-    q.set(x, y, z); headCoords(h, q, hn);
-    if (style === 'goatee') return Math.abs(x - h.center.x) < 0.028 && y < h.joint.y + 0.07;
-    if (style === 'moustache') return Math.abs(x - h.center.x) < 0.035 && y > h.joint.y + 0.045 && z > h.center.z + 0.06;
-    if (style === 'ponytail' && hn.z > 0.05 && hn.y < 0.1) return false; // face-framing strands are tied back
-    if (hatOn && hn.y > capLineScan(hn.z) - 0.02) return false;
-    return true;
-  };
   const tris: number[] = [];
-  for (let t = 0; t < n; t += 3) {
-    let ok = true;
-    for (let k = 0; k < 3 && ok; k++) ok = keepV(pos[(t + k) * 3], pos[(t + k) * 3 + 1], pos[(t + k) * 3 + 2]);
-    if (ok) tris.push(t);
-  }
+  for (let t = 0; t < n; t += 3) if (keep[t] && keep[t + 1] && keep[t + 2]) tris.push(t);
   if (!tris.length) return null;
-  // the normals of moved vertices (bob, ponytail) are recomputed from the new shape
   const m = tris.length * 3;
   const oPos = new Float32Array(m * 3), oNor = new Float32Array(m * 3), oUv = new Float32Array(m * 2), hs = new Float32Array(m * 4), hd = new Float32Array(m * 4);
   const flip = mirror;
@@ -73,7 +62,6 @@ export function scanGeometry(base: BodyBase, src: ScanSrc, style: HairStyle | Fa
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(oPos, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(oNor, 3));
-  if (style === 'bob' || style === 'ponytail') { g.computeVertexNormals(); }
   const NN = g.attributes.normal;
   // comb direction: away from a pole on the head (the parting / crown), in the surface plane; strand coordinate = angle round the pole
   const facial = style === 'beard' || style === 'goatee' || style === 'moustache';
@@ -115,16 +103,25 @@ export function scanGeometry(base: BodyBase, src: ScanSrc, style: HairStyle | Fa
 const capLineScan = (z: number) => THREE.MathUtils.lerp(0.02, 0.36, sstep(z, 0.1, 0.75));
 
 /** Bob: the long hair taken up to the jaw (a little longer at the front), strand tips kept (soft clamp, no clipping). */
-function bob(hn: THREE.Vector3) {
+export function bob(hn: THREE.Vector3) {
   const cut = THREE.MathUtils.lerp(-0.72, -0.95, sstep(hn.z, -0.6, 0.4));
   if (hn.y < cut) { const L = 0.12, e = cut - hn.y; hn.y = cut - L * (1 - Math.exp(-e / L)); }
 }
 
-/** Ponytail: long hair below the nape gathered into a tail at the back centre. */
-function gather(hn: THREE.Vector3) {
-  const tieY = -0.15;
-  if (hn.y > tieY + 0.35 || hn.z > 0.05) return;
-  const k = sstep(-hn.y, -tieY - 0.35, -tieY + 0.25); // 0 above the tie .. 1 below it
-  hn.x *= THREE.MathUtils.lerp(1, 0.2 + 0.12 * sstep(-hn.y, 0.6, 2.2), k);
-  hn.z = THREE.MathUtils.lerp(hn.z, Math.min(hn.z, -1.08) - 0.05 * sstep(-hn.y, 0.4, 1.5), k);
+/** Which vertices of the source mesh a style uses (head coordinates of the source position). */
+export function keepVertex(style: HairStyle | FacialHair, hn: THREE.Vector3) {
+  if (style === 'goatee') return Math.abs(hn.x) < 0.31 && hn.y < -0.2;
+  if (style === 'moustache') return Math.abs(hn.x) < 0.55 && hn.y > -0.64 && hn.z > 0.4;
+  if (style === 'ponytail') return hn.z < -0.3 && hn.y < 0.05; // the tail: the long hair's back below the tie (the top is a shell)
+  return true;
 }
+
+/** Ponytail: the back of the long hair (below the tie) gathered into a tail hanging from the tie at the back centre. */
+export function gather(hn: THREE.Vector3) {
+  const t = Math.max(0, 0.05 - hn.y); // distance below the tie in the source
+  hn.x *= 0.15 + 0.13 * sstep(t, 0.1, 1.8);
+  hn.z = Math.min(hn.z, -1.12) - 0.08 - 0.12 * sstep(t, 0.0, 0.6);
+  hn.y = TIE_Y - t * 1.15;
+}
+/** Height of the ponytail tie (head coordinates). */
+export const TIE_Y = -0.05;

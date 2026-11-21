@@ -51,4 +51,5 @@ function shoot(h: Human, views: [number, number, number][]) {
     r.setViewport(0, 0, W, H); r.render(scene, cam); cam.fov = 28;
   },
 };
+(window as any).labPeople = () => people;
 (window as any).labReady = true;
