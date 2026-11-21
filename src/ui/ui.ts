@@ -66,7 +66,7 @@ const NOOP_CALLBACKS: UICallbacks = {
 };
 
 /** Controller labels for the keyboard hints shown in menu footers (swapped in by CSS while the last input was a pad). */
-const PAD_FOR_KEY: Record<string, string> = { 'Enter': 'A', 'Esc': 'B', '\u2191\u2193': 'D-Pad', '\u2191\u2193\u2190\u2192': 'D-Pad', 'PgUp PgDn': 'LB / RB', 'Click': 'A' };
+const PAD_FOR_KEY: Record<string, string> = { 'Enter': 'A', 'Esc': 'B', '\u2191\u2193': 'D-Pad', '\u2191\u2193\u2190\u2192': 'D-Pad', 'PgUp PgDn': 'LT / RT', 'Click': 'A' };
 function footHints(pairs: [string, string][], cls = 'ma-foot-hints'): HTMLDivElement {
   const el = h('div', cls);
   for (const [k, t] of pairs) {
@@ -531,7 +531,7 @@ export class UI implements GameUI {
         id: 'pause', el: this.pauseEl, back: () => { this.sound('back'); this.resume(); },
         action: a => { if (a === 'tabPrev' || a === 'tabNext') { this.sound('click'); this.selectPauseTab(this.neighbourTab(this.pauseTab, a === 'tabPrev' ? -1 : 1)); return true; } return false; },
       }, this.pauseTabs.get('map'));
-      this.selectPauseTab('map'); // like the genre: pausing opens on the map
+      this.selectPauseTab(this.inputSource === 'pad' ? 'settings' : 'map'); // keyboard: opens on the map like the genre; controller: Start = settings (the View button opens the map)
     } else {
       const i = this.layers.findIndex(l => l.id === 'pause');
       if (i < 0) return;
@@ -629,8 +629,7 @@ export class UI implements GameUI {
       action: a => {
         if (a !== 'tabPrev' && a !== 'tabNext') return false;
         const dir = a === 'tabPrev' ? -1 : 1;
-        if (this.isDocked() && this.settingsPanel.atEdge(dir)) { this.sound('click'); this.selectPauseTab(this.neighbourTab('settings', dir)); }
-        else this.settingsPanel.cycleTab(dir);
+        this.sound('click'); this.settingsPanel.cycleTab(dir); // wraps inside Settings (LT / RT or PgUp+Ctrl change page)
         return true;
       },
     });
@@ -1032,6 +1031,11 @@ export class UI implements GameUI {
     this.padRaf = requestAnimationFrame(this.padLoop);
   }
 
+  /** Controller triggers: previous / next pause page from wherever the player is in the pause menu. */
+  private pageNav(dir: number) {
+    if (!this.isDocked()) return;
+    this.sound('click'); this.selectPauseTab(this.neighbourTab(this.pauseTab, dir));
+  }
   private padLoop = (t: number) => {
     this.padRaf = 0;
     if (!this.layers.length) { this.padPrev = null; this.padRepeat.clear(); return; }
@@ -1051,6 +1055,11 @@ export class UI implements GameUI {
         if (edge(1)) this.nav('back');
         if (edge(4)) this.nav('tabPrev');
         if (edge(5)) this.nav('tabNext');
+        // triggers: switch pause pages (Map / Goals / Settings / Controls / Quit); LB / RB stay inside the current page
+        if (!onMap && this.isDocked()) {
+          const lt = (gp.buttons[6]?.value ?? 0) > 0.5, rt = (gp.buttons[7]?.value ?? 0) > 0.5;
+          if (this.repeat('pp', lt, t)) this.pageNav(-1); else if (this.repeat('pn', rt, t)) this.pageNav(1);
+        }
         if (onMap) {
           this.fullmap?.pan(ax, ay, dt);
           if ((gp.buttons[7]?.value ?? 0) > 0.5 && this.repeat('zi', true, t)) this.nav('zoomIn');

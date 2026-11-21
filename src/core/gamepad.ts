@@ -87,3 +87,24 @@ export function readPad(getPads: PadSource = () => navigator.getGamepads?.()): P
 export function padActive(p: PadState): boolean {
   return p.buttons.some(Boolean) || Math.abs(p.lx) + Math.abs(p.ly) > 0.3 || Math.abs(p.rx) + Math.abs(p.ry) > 0.3 || p.lt > 0.3 || p.rt > 0.3;
 }
+
+// ---- prompt glyphs: on a controller, every "E  Do the thing" prompt shows the pad button for that action instead ----
+let promptSrc: 'kbm' | 'pad' = 'kbm';
+export function setPromptSource(s: 'kbm' | 'pad') { promptSrc = s; }
+export function promptSource(): 'kbm' | 'pad' { return promptSrc; }
+const PROMPT_FIRST: Action[] = ['interact', 'enter', 'orders', 'reload', 'jump', 'crouch', 'map', 'wheel'];
+function capOf(code: string): string { return code.replace(/^Key/, '').replace(/^Digit/, '').toUpperCase(); }
+/** The cap for a prompt's key: the keyboard label as given, or (playing on a pad) the button bound to the same action. */
+export function promptCap(label: string, bindings: Partial<Record<Action, string[]>>, ctx: PadContext = currentCtx): string {
+  if (promptSrc !== 'pad') return label;
+  const want = label.toUpperCase();
+  const order = [...PROMPT_FIRST, ...(Object.keys(bindings) as Action[]).filter(a => !PROMPT_FIRST.includes(a))];
+  for (const a of order) for (const c of bindings[a] ?? []) if (c && capOf(c) === want) { const g = padGlyph(a, ctx); if (g) return g; }
+  return label;
+}
+/** Rewrites "E  Enter the car" (key cap, two spaces, text) for the current input device. */
+export function promptFor(prompt: string | null, bindings: Partial<Record<Action, string[]>>): string | null {
+  if (!prompt || promptSrc !== 'pad') return prompt;
+  const m = /^(\S{1,12})(\s{2,}.+)$/.exec(prompt);
+  return m ? promptCap(m[1], bindings) + m[2] : prompt;
+}

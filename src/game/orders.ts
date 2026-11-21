@@ -16,6 +16,7 @@ import type { Vehicle } from '../vehicles/vehicle';
 import type { Game } from './game';
 import type { MenuItem } from '../ui/combatfx';
 import { keyLabel } from '../core/settings';
+import { promptCap } from '../core/gamepad';
 
 export type OrderId = 'kneel' | 'come' | 'hands' | 'car' | 'beat' | 'out';
 export const ORDER_LABEL: Record<OrderId, string> = { kneel: 'Get down', come: 'Come here', hands: 'Hands up', car: 'Get in the car', beat: 'Beat it', out: 'Get out' };
@@ -132,7 +133,7 @@ export class Orders {
     // key hint while aiming at somebody (the key is rebindable, so name it)
     if (can && !this.open && g.pcombat.armed && g.pcombat.aiming && !inp.held('orders') && (this.hintT -= dt) <= 0) {
       this.hintT = 0.3;
-      if (this.findTarget()) g.fx?.say(`Hold ${keyLabel(g.settings.bindings.orders[0] ?? 'KeyG')}  ·  give orders`, 500);
+      if (this.findTarget()) g.fx?.say(`Hold ${promptCap(keyLabel(g.settings.bindings.orders[0] ?? 'KeyG'), g.settings.bindings)}  ·  give orders`, 500);
     }
     if (can && inp.held('orders') && !this.menuLatch) {
       const t = this.findTarget();

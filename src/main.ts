@@ -24,6 +24,7 @@ import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut, rememberFullscreen } from './core/fullscreen';
+import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
 
 installFullscreenShortcut();
@@ -316,7 +317,7 @@ function closeWheel(discard = false) {
 function frame(raw: number) {
   const g = game!, a = activities!;
   const input = g.input;
-  ui.setInputSource(input.lastSource);
+  ui.setInputSource(input.lastSource); setPromptSource(input.lastSource);
   // pause / map
   if (input.justPressed('pause') && !a.shopIsOpen) { if (g.paused) { /* UI handles Esc in menus */ } else pause(); }
   if (mapByKey && g.paused && !ui.isMenuOpen()) { mapByKey = false; resume(); }
@@ -351,7 +352,7 @@ function frame(raw: number) {
   }
   // HUD
   const hud = g.hudState(null, null);
-  hud.interactPrompt = a.prompt() ?? hud.interactPrompt;
+  hud.interactPrompt = promptFor(a.prompt() ?? hud.interactPrompt, g.settings.bindings);
   ui.updateHud(hud);
   ui.updateMinimap(minimapState());
 }

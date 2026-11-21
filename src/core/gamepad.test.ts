@@ -114,3 +114,17 @@ describe('gamepad layouts by context', () => {
     input.padContext = 'foot';
   });
 });
+
+describe('prompts follow the input device', () => {
+  it('shows the controller button for the same action when playing on a pad', async () => {
+    const { setPromptSource, promptFor, setPadContext } = await import('./gamepad');
+    const bindings = { interact: ['KeyE'], enter: ['KeyF'], orders: ['KeyG'] } as never;
+    setPadContext('foot');
+    setPromptSource('kbm'); expect(promptFor('F  Enter the Sedan', bindings)).toBe('F  Enter the Sedan');
+    setPromptSource('pad');
+    expect(promptFor('F  Enter the Sedan', bindings)).toBe('Y  Enter the Sedan');
+    expect(promptFor('E  Smash the display case', bindings)).toBe('Y  Smash the display case');
+    expect(promptFor('Hotwiring...', bindings)).toBe('Hotwiring...');
+    setPromptSource('kbm');
+  });
+});
