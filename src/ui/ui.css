@@ -1102,3 +1102,6 @@
 .ma-groom-total { font-family: var(--display); font-weight: 800; font-size: calc(26 * var(--u)); line-height: 1; color: var(--money); }
 .ma-groom-note { font-size: calc(13 * var(--u)); color: #ff8a7a; min-height: calc(14 * var(--u)); }
 .ma-root .ma-groom-pay.is-disabled { opacity: 0.5; }
+
+/* PWA: HUD / menu margins grow to clear the iPad rounded corners and home indicator */
+.ma-root { --edge-x: max(calc(30 * var(--u)), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)); --edge-y: max(calc(24 * var(--u)), env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px)); }

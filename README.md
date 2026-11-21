@@ -38,19 +38,21 @@ Captured from the production build in software rendering (high preset); a real G
 | Move / steer | W A S D | Left stick |
 | Look | Mouse | Right stick |
 | Accelerate / brake & reverse (in a vehicle) | W / S | RT / LT |
-| Fire / punch | Left mouse | RT |
-| Aim | Right mouse | LT |
+| Fire / punch | Left mouse | RT (in a vehicle: hold LB to aim, then RT) |
+| Aim | Right mouse | LT (in a vehicle: LB) |
 | Sprint | Left Shift | A |
-| Jump · Handbrake (in a vehicle) | Space | B · A |
+| Jump | Space | X |
+| Handbrake (in a vehicle) | Space | RB |
 | Dodge roll | Left Ctrl or C | L3 |
 | Enter / exit vehicle | F | Y |
-| Interact / shop / save | E | X |
-| Reload | R | X |
+| Interact / shop / save | E | Y or D-pad ↓ |
+| Reload / melee | R | B |
 | Inventory wheel (hold) | Tab or Q | LB |
-| Next / previous weapon | Mouse wheel | RB |
-| Horn · Headlights · Radio | H · L · . | L3 · D-pad ↓ · D-pad ↑ |
-| Camera distance | B | D-pad → |
-| City map | M | View |
+| Give orders (hold) | G | RB |
+| Previous / next weapon | Mouse wheel | D-pad ← / → |
+| Horn · Headlights · Radio | H · N · . | L3 · D-pad ← · D-pad → |
+| Camera distance | B | B (in a vehicle) · D-pad ↑ (helicopter) |
+| City map | M | View or D-pad ↑ |
 | Pause | Esc or P | Menu |
 
 All keyboard and mouse bindings can be changed in **Settings → Key bindings**.
@@ -71,6 +73,13 @@ npm run test:soak                # 20 minutes (game time) of scripted chaos with
 ```
 
 The browser tests drive the real production build at the `/astratest/` subpath: title screen to gameplay, walking/driving/crashing, combat, the inventory wheel, gaining and losing heat, death and arrest, every mission start to finish, save and continue, settings persistence, and the mobile screen. `?autostart=1` skips the title screen (add `&sandbox=1` for sandbox mode); `?quality=low|medium|high` overrides the graphics preset.
+
+## Play on iPad
+
+1. Open https://jcorrea510.github.io/astratest/ in Safari, tap Share, then **Add to Home Screen**. It installs as a full-screen app (original sunset icon) and works offline after the first launch.
+2. Pair a controller (Xbox / PlayStation / MFi) or a keyboard and mouse in iPad Settings, then Bluetooth. Launch the game; the controller is detected on connect and prompts switch to controller buttons. Keyboard and mouse use the keys listed above; the mouse locks like on desktop (or falls back to a free cursor on older iPadOS).
+3. Quality starts on Low for iPad (tabs are killed near 1.4 GB). Medium is fine on an iPad Pro / Air with M-series chips; change it in Settings.
+4. Default pad layout: on foot LS move, RS camera, A sprint, X jump, B reload, Y enter vehicle / interact, LT aim, RT fire, LB weapon wheel, RB give orders. In a vehicle RT / LT accelerate / brake, RB handbrake, LB aim (RT fires), B camera, L3 horn. Full list under Controls.
 
 ## Run it locally
 

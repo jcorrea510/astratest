@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { readPad, deadzone, padGlyph, padActive, PAD_MAP } from './gamepad';
+import { readPad, deadzone, padGlyph, padActive, PAD_MAP, padHeld } from './gamepad';
 import { Input } from './input';
 import { DEFAULT_SETTINGS } from './settings';
 import { isIPad, isPhoneLike, defaultQualityFor } from './platform';
@@ -66,5 +66,51 @@ describe('iPad detection', () => {
   it('only phones are gated; iPad gets the low memory preset', () => {
     expect(isPhoneLike(ipadOS, 820)).toBe(false); expect(isPhoneLike(iphone, 390)).toBe(true);
     expect(defaultQualityFor(ipadOS)).toBe('low'); expect(defaultQualityFor(mac)).toBeNull();
+  });
+});
+
+describe('gamepad layouts by context', () => {
+  const pad = (b: Partial<Record<number, number>>) => readPad(() => [fakePad({ buttons: b })]);
+  it('on foot: RT fires, LT aims, A sprints, X jumps, Y enters / interacts, LB wheel, B reload', () => {
+    expect(padHeld('fire', pad({ 7: 1 }), 'foot')).toBe(true);
+    expect(padHeld('aim', pad({ 6: 1 }), 'foot')).toBe(true);
+    expect(padHeld('sprint', pad({ 0: 1 }), 'foot')).toBe(true);
+    expect(padHeld('jump', pad({ 2: 1 }), 'foot')).toBe(true);
+    expect(padHeld('enter', pad({ 3: 1 }), 'foot')).toBe(true);
+    expect(padHeld('interact', pad({ 3: 1 }), 'foot')).toBe(true);
+    expect(padHeld('wheel', pad({ 4: 1 }), 'foot')).toBe(true);
+    expect(padHeld('reload', pad({ 1: 1 }), 'foot')).toBe(true);
+    expect(padHeld('crouch', pad({ 10: 1 }), 'foot')).toBe(true);
+    expect(padHeld('jump', pad({ 0: 1 }), 'foot')).toBe(false);
+  });
+  it('in a vehicle: RB handbrake, B camera, LB aims, RT only fires while aiming, LT is not aim', () => {
+    expect(padHeld('handbrake', pad({ 5: 1 }), 'car')).toBe(true);
+    expect(padHeld('camera', pad({ 1: 1 }), 'car')).toBe(true);
+    expect(padHeld('aim', pad({ 4: 1 }), 'car')).toBe(true);
+    expect(padHeld('aim', pad({ 6: 1 }), 'car')).toBe(false);
+    expect(padHeld('fire', pad({ 7: 1 }), 'car')).toBe(false);
+    expect(padHeld('fire', pad({ 7: 1, 4: 1 }), 'car')).toBe(true);
+    expect(padHeld('wheel', pad({ 4: 1 }), 'car')).toBe(false);
+    expect(padHeld('sprint', pad({ 0: 1 }), 'car')).toBe(false);
+    expect(padHeld('radio', pad({ 15: 1 }), 'car')).toBe(true);
+    expect(padHeld('headlights', pad({ 14: 1 }), 'car')).toBe(true);
+  });
+  it('in a helicopter: RB climbs, LB descends, X guns, B missile; RT is pitch not fire', () => {
+    expect(padHeld('handbrake', pad({ 5: 1 }), 'heli')).toBe(true);
+    expect(padHeld('sprint', pad({ 4: 1 }), 'heli')).toBe(true);
+    expect(padHeld('fire', pad({ 2: 1 }), 'heli')).toBe(true);
+    expect(padHeld('fire', pad({ 7: 1 }), 'heli')).toBe(false);
+    expect(padHeld('reload', pad({ 1: 1 }), 'heli')).toBe(true);
+  });
+  it('Input follows its context, and glyphs follow the layout', () => {
+    const noop = { addEventListener() {}, removeEventListener() {} };
+    vi.stubGlobal('window', noop); vi.stubGlobal('document', { ...noop, pointerLockElement: null });
+    const input = new Input(structuredClone(DEFAULT_SETTINGS), noop as unknown as HTMLElement);
+    mockPads(fakePad({ buttons: { 5: 1 } })); input.padContext = 'car'; input.pollGamepad();
+    expect(input.held('handbrake')).toBe(true); expect(input.held('orders')).toBe(false);
+    input.padContext = 'foot'; expect(input.held('handbrake')).toBe(false); expect(input.held('orders')).toBe(true);
+    expect(padGlyph('handbrake', 'car')).toBe('RB'); expect(padGlyph('aim', 'car')).toBe('LB'); expect(padGlyph('fire', 'car')).toBe('LB + RT');
+    expect(padGlyph('jump', 'foot')).toBe('X'); expect(padGlyph('camera', 'car')).toBe('B');
+    input.padContext = 'foot';
   });
 });

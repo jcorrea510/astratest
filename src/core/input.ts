@@ -1,6 +1,6 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-import { PAD_MAP, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
+import { PAD_LAYOUTS, padHeld, setPadContext, type PadContext, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
 import { pointerLockSupported, isIPad } from './platform';
 export type { PadState };
 export type ActionSource = 'kbm' | 'pad';
@@ -17,6 +17,10 @@ export class Input {
   pad: PadState = { ...EMPTY_PAD, buttons: [] };
   private padPrev: boolean[] = [];
   lastSource: ActionSource = 'kbm';
+  /** What the gamepad buttons mean right now; the game sets it each frame (on foot / in a car / in a helicopter). */
+  private _padCtx: PadContext = 'foot';
+  get padContext(): PadContext { return this._padCtx; }
+  set padContext(c: PadContext) { this._padCtx = c; setPadContext(c); }
   enabled = true;
   /** Synthetic codes held by automated tests / scripted input. */
   scripted = new Set<string>();
@@ -70,16 +74,12 @@ export class Input {
   held(a: Action): boolean {
     if (!this.enabled) return false;
     if (this.codes(a).some(c => this.isCodeDown(c))) return true;
-    const pb = PAD_MAP[a];
-    if (pb && pb.some(b => this.pad.buttons[b])) return true;
-    if (a === 'fire' && this.pad.rt > 0.5) return true;
-    if (a === 'aim' && this.pad.lt > 0.5) return true;
-    return false;
+    return padHeld(a, this.pad, this._padCtx);
   }
   justPressed(a: Action): boolean {
     if (!this.enabled && a !== 'pause') return false;
     if (this.codes(a).some(c => this.pressed.has(c))) return true;
-    const pb = PAD_MAP[a];
+    const pb = PAD_LAYOUTS[this._padCtx].buttons[a];
     if (pb && pb.some(b => this.pad.buttons[b] && !this.padPrev[b])) return true;
     return false;
   }
@@ -87,7 +87,7 @@ export class Input {
   rawPressed(code: string): boolean { return this.enabled && this.pressed.has(code); }
   justReleased(a: Action): boolean {
     if (this.codes(a).some(c => this.released.has(c))) return true;
-    const pb = PAD_MAP[a];
+    const pb = PAD_LAYOUTS[this._padCtx].buttons[a];
     if (pb && pb.some(b => !this.pad.buttons[b] && this.padPrev[b])) return true;
     return false;
   }

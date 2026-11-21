@@ -20,3 +20,10 @@ export function pointerLockSupported(el: { requestPointerLock?: unknown }): bool
 export type QualityName = 'low' | 'medium' | 'high';
 /** iPad tabs are killed at roughly 1.4 GB: start on the lightest preset unless the player chose one. */
 export function defaultQualityFor(nav: NavLike = navigator): QualityName | null { return isIPad(nav) ? 'low' : null; }
+/** Launched from the iOS home screen / an installed PWA: there is no browser chrome, so the app is already "fullscreen". */
+export function isStandalone(): boolean {
+  try {
+    const n = navigator as Navigator & { standalone?: boolean };
+    return n.standalone === true || ['standalone', 'fullscreen'].some(m => window.matchMedia(`(display-mode: ${m})`).matches);
+  } catch { return false; }
+}

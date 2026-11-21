@@ -2,12 +2,16 @@
  * Entry point. In a normal browser tab the page becomes a thin shell that holds a full-window iframe running the game.
  * Quitting to the title or leaving the highway reloads only the iframe, so the top page — the element that is
  * fullscreen — never navigates and fullscreen survives mode switches. Automation (navigator.webdriver) and ?noshell
- * load the game directly, so tests and debug hooks keep working on the top window.
+ * load the game directly, as does an installed home-screen app (no browser fullscreen to preserve), so tests and debug hooks keep working on the top window.
  */
+import { registerServiceWorker } from './pwa';
+import { isStandalone } from './core/platform';
+
+registerServiceWorker();
 const params = new URLSearchParams(location.search);
 let isTop = false;
 try { isTop = window.top === window; } catch { isTop = false; }
-if (isTop && !navigator.webdriver && !params.has('noshell')) {
+if (isTop && !navigator.webdriver && !params.has('noshell') && !isStandalone()) {
   document.documentElement.style.cssText = 'height:100%;background:#000';
   document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#000';
   const f = document.createElement('iframe');
@@ -24,6 +28,7 @@ if (isTop && !navigator.webdriver && !params.has('noshell')) {
   window.addEventListener('focus', focus);
   window.addEventListener('keydown', focus, true);
 } else {
+  try { window.focus(); } catch { /* ignore */ }
   void import('./main');
 }
 export {};

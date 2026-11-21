@@ -3,3 +3,8 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0d2629; }
 #app { position: fixed; inset: 0; }
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+
+/* Installed-app / iPad behaviour: no rubber-band, zoom, selection or long-press callouts; content respects the notch / home bar. */
+html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+#view { touch-action: none; }

@@ -330,6 +330,7 @@ export class Game {
   /** Advances the simulation by real-time dt (seconds). Exposed for scripted tests. */
   frame(raw: number, render = true) {
     raw = Number.isFinite(raw) ? Math.max(0, Math.min(0.1, raw)) : 0;
+    this.input.padContext = this.playerHeli ? 'heli' : this.playerVehicle ? 'car' : 'foot';
     this.input.pollGamepad();
     this.timeScale += (this.targetTimeScale - this.timeScale) * Math.min(1, raw * 10);
     const dt = this.paused ? 0 : raw * this.timeScale;
