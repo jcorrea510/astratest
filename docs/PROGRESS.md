@@ -17,7 +17,7 @@ Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Wav
 - [x] R6-A audio (wave 3): gunshots = loud pops, more ambient/vehicle sounds, stop random popping in city.
 - [x] R6-U (+shell iframe keeps fullscreen across reloads: shellfs.spec) UI (wave 3): fullscreen persists (highway<->city, menus) + top-right button, front page/title not AI-looking, Play vs Continue clear, map Q/E live rotate + top-down toggle + E-opens-sandbox bug, iPad keyboard/mouse/gamepad, README run-locally.
 - [x] R6-B barber + clothing stores with map icons (wave 3). R6-W world: subway rails end, park blue slab with benches, one-hand gun left-hand lag.
-- [ ] R6-Z (Z1 leftovers done; R6-H hair done) full e2e + soak + publish + owner summary.
+- [~] R6-Z Published gh-pages 0aa819c (main fe9b587) 21:3x UTC 21 Nov: tsc+vitest green, e2e 89/100 so far (full run + soak still going; fixes → republish). Then full e2e + soak + publish + owner summary.
 
 ## Round 5 (owner notes BRIEF5 + "crazy realistic overhaul")
 - [x] R5-H Highway: snappy realistic steering (lane change ~1-2 s), no 0.2 s bounce, wheel turns in 1st person, realistic interior.
