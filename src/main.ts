@@ -269,6 +269,20 @@ function wireGame(g: Game) {
   canvas.addEventListener('click', () => { if (game && !game.paused && !ui.isMenuOpen()) game.input.requestLock(); void audio?.resume(); });
   window.addEventListener('blur', () => { if (game && !game.paused && started) pause(); });
 }
+/**
+ * Audio unlock: browsers (iPad above all) only start sound inside a tap / click / key press. Keep listening on every gesture
+ * until the context is really running (the first gesture may come before the audio system exists, e.g. on the title).
+ * A controller button is not a gesture on iPad, so a pad-only player gets a one-line hint to tap the screen once.
+ */
+function installAudioUnlock() {
+  const kick = () => { if (audio && !(audio as unknown as { running?: boolean }).running) void audio.resume(); };
+  for (const ev of ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'] as const) window.addEventListener(ev, kick, { capture: true, passive: true });
+  let hinted = false;
+  setInterval(() => {
+    const a = audio as unknown as { running?: boolean } | null;
+    if (!hinted && a && a.running === false && game && game.input.lastSource === 'pad' && started) { hinted = true; ui.toast?.('Tap the screen once to turn the sound on'); }
+  }, 2000);
+}
 function setGrade(g: Game, k: number) {
   const u = g.renderer.grade?.uniforms; if (!u) return;
   u.uSat.value = DEFAULT_SAT * (1 - k * 0.92);
@@ -419,8 +433,7 @@ if (!webglOk()) {
 } else {
   // loading screen -> live city flyover behind the title menu
   ui.showLoading(0, 'Preparing the city');
-  window.addEventListener('pointerdown', () => void audio?.resume(), { once: true, capture: true });
-  window.addEventListener('keydown', () => void audio?.resume(), { once: true, capture: true });
+  installAudioUnlock();
   bootWorld((f, l) => { if (!started) ui.showLoading(f, l); })
     .then(g => {
       if (started) return;

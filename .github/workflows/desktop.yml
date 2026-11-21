@@ -1,0 +1,30 @@
+name: Desktop app (macOS)
+# Builds the downloadable Mac app (universal: Apple silicon + Intel) from the same game code and publishes it on the
+# "desktop-latest" GitHub release. Runs on every push to main and on demand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: desktop, cancel-in-progress: true }
+jobs:
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Build the game for the app (served at app://game/)
+        run: MA_BASE=/ npx vite build --outDir desktop/game
+      - name: Package the app
+        working-directory: desktop
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+        run: npm install --no-audit --no-fund && npm run dist:mac
+      - name: Publish to the desktop-latest release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          ls desktop/release
+          gh release delete desktop-latest --yes --cleanup-tag || true
+          gh release create desktop-latest desktop/release/*.dmg desktop/release/*-mac.zip --title "Meridian Afterglow for Mac" --notes "Download the .dmg, open it and drag Meridian Afterglow to Applications. The app isn't signed by Apple yet, so the first time: right-click the app, choose Open, then Open again (or System Settings → Privacy & Security → Open Anyway). Built from ${{ github.sha }}." --target ${{ github.sha }}

@@ -74,11 +74,19 @@ npm run test:soak                # 20 minutes (game time) of scripted chaos with
 
 The browser tests drive the real production build at the `/astratest/` subpath: title screen to gameplay, walking/driving/crashing, combat, the inventory wheel, gaining and losing heat, death and arrest, every mission start to finish, save and continue, settings persistence, and the mobile screen. `?autostart=1` skips the title screen (add `&sandbox=1` for sandbox mode); `?quality=low|medium|high` overrides the graphics preset.
 
+## Mac app (download)
+
+1. Open the repo's **Releases** page and download the latest **Meridian Afterglow for Mac** `.dmg` (release `desktop-latest`, rebuilt automatically on every update; works on Apple silicon and Intel).
+2. Open the `.dmg` and drag **Meridian Afterglow** into Applications.
+3. The app isn't signed by Apple yet, so the first launch: right-click the app → **Open** → **Open** (or System Settings → Privacy & Security → **Open Anyway**).
+
+It's the same game as the website, packaged with its own built-in browser engine (no tabs, no browser UI, no background throttling, runs fullscreen). Saves are separate from the browser version.
+
 ## Play on iPad
 
 1. Open https://jcorrea510.github.io/astratest/ in Safari, tap Share, then **Add to Home Screen**. It installs as a full-screen app (original sunset icon) and works offline after the first launch.
 2. Pair a controller (Xbox / PlayStation / MFi) or a keyboard and mouse in iPad Settings, then Bluetooth. Launch the game; the controller is detected on connect and prompts switch to controller buttons. Keyboard and mouse use the keys listed above; the mouse locks like on desktop (or falls back to a free cursor on older iPadOS).
-3. Quality starts on Low for iPad (tabs are killed near 1.4 GB). Medium is fine on an iPad Pro / Air with M-series chips; change it in Settings.
+3. Quality uses the normal default (M-series iPads handle High). If an older iPad struggles, pick Low in Settings.
 4. Default pad layout: on foot LS move, RS camera, A sprint, X jump, B reload, Y enter vehicle / interact, LT aim, RT fire, LB weapon wheel, RB give orders. In a vehicle RT / LT accelerate / brake, RB handbrake, LB aim (RT fires), B camera, L3 horn. Full list under Controls.
 
 ## Run it locally

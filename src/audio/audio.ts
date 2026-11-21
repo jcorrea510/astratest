@@ -66,8 +66,15 @@ export class Audio implements GameAudio, AudioExtras {
       this.lastTick = performance.now();
       this.timer = setInterval(() => this.tick(), 25);
     }
-    if (this.ctx.state !== 'running') await this.ctx.resume();
+    if (this.ctx.state !== 'running') {
+      // iOS / iPadOS (incl. home-screen apps) only unlocks audio when a sound starts inside the gesture itself: play one
+      // silent sample synchronously, then resume
+      try { const b = this.ctx.createBuffer(1, 1, 22050), src = this.ctx.createBufferSource(); src.buffer = b; src.connect(this.ctx.destination); src.start(0); } catch { /* ignore */ }
+      await this.ctx.resume();
+    }
   }
+  /** True once the audio context is actually playing (iPad needs a tap or key press first). */
+  get running(): boolean { return !!this.ctx && this.ctx.state === 'running'; }
 
   private decodeSamples(ctx: AudioContext, core: AudioCore): void {
     for (const key of SAMPLE_KEYS) {

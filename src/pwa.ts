@@ -9,7 +9,7 @@ export function registerServiceWorker(): void {
       webdriver: !!navigator.webdriver,
       dev: import.meta.env.DEV,
       secure: window.isSecureContext,
-      optOut: new URLSearchParams(location.search).has('nosw'),
+      optOut: new URLSearchParams(location.search).has('nosw') || !/^https?:$/.test(location.protocol), // the desktop app (app://) serves files itself
     };
     if (!shouldRegisterSW(env)) return;
     const go = () => { navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => undefined); };

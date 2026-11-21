@@ -2,6 +2,7 @@
  * Highway mode: an endless multi-lane highway drive with AI traffic. Self-contained: own scene, camera, input, HUD, audio.
  * It renders with whatever WebGLRenderer it is handed (the city game's, paused, or a fresh one) and never touches the city.
  */
+import { viewportSize } from '../render/renderer';
 import * as THREE from 'three';
 import { roadAt, hash, laneU, NL, STEP } from './road';
 import { Traffic, type Npc } from './traffic';
@@ -171,9 +172,9 @@ export class HighwayGame {
     this.matExtras?.textures.forEach(t => t.dispose());
   }
   resize(): void {
-    const w = window.innerWidth, h = window.innerHeight;
+    const { w, h, full } = viewportSize();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setSize(w, h, false);
+    this.renderer.setSize(w, h, full);
     this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix();
   }
 

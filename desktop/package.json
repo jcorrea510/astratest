@@ -1,0 +1,23 @@
+{
+  "name": "meridian-afterglow-desktop",
+  "productName": "Meridian Afterglow",
+  "version": "0.3.0",
+  "description": "Meridian Afterglow desktop app (the same game, run locally with no browser in the way)",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac dmg zip --universal --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.meridian.afterglow",
+    "productName": "Meridian Afterglow",
+    "files": ["main.cjs", "game/**/*"],
+    "directories": { "output": "release" },
+    "mac": { "category": "public.app-category.action-games", "target": ["dmg", "zip"], "icon": "icon.png", "identity": null }
+  }
+}

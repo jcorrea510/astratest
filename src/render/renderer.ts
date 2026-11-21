@@ -62,6 +62,17 @@ export function shadowFrame(wantDir: THREE.Vector3, cx: number, cz: number, texe
 }
 /** ...but never below native CSS-pixel resolution unless the game is really struggling (sustained < ~30 fps). */
 const NATIVE_FLOOR_MS = 33;
+/** The size the game should fill. Launched from the home screen the app owns the whole screen, whatever the viewport claims. */
+export function viewportSize(): { w: number; h: number; full: boolean } {
+  let w = Math.max(window.innerWidth, document.documentElement.clientWidth || 0), h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
+  let standalone = false;
+  try { standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || ['standalone', 'fullscreen'].some(m => window.matchMedia(`(display-mode: ${m})`).matches); } catch { standalone = false; }
+  if (standalone && screen.width && screen.height) {
+    const land = w >= h, a = Math.max(screen.width, screen.height), b = Math.min(screen.width, screen.height);
+    w = land ? a : b; h = land ? b : a;
+  }
+  return { w, h, full: standalone };
+}
 export class Renderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -118,6 +129,10 @@ export class Renderer {
     ground.position.y = -2; this.envScene.add(ground);
     this.setQuality('medium');
     window.addEventListener('resize', () => this.resize());
+    // iPadOS home-screen apps report a short viewport at launch and settle later; re-measure on rotation / viewport changes
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 250));
+    window.visualViewport?.addEventListener('resize', () => this.resize());
+    for (const ms of [150, 600, 1500]) setTimeout(() => this.resize(), ms);
   }
   setQuality(name: QualityName) {
     this.qualityName = name; const q = this.quality = QUALITY[name];
@@ -172,8 +187,8 @@ export class Renderer {
     this.composer.addPass(this.grade);
   }
   resize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.setSize(w, h, false);
+    const { w, h, full } = viewportSize();
+    this.renderer.setSize(w, h, full); // home-screen app: size the canvas element itself to the whole screen (no bars)
     this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix();
     this.composer.setSize(w, h);
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
