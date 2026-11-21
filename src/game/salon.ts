@@ -12,10 +12,13 @@ import { tabsFor, optionPrice, lookCost, type ShopType } from './grooming';
 import type { GroomState } from '../ui/groom';
 
 /** Where the player stands while previewing (store-local metres, facing the mirror on the back wall) and how far the camera orbits. */
-const SPOT: Record<ShopType, { x: number; z: number; dist: number }> = { barber: { x: 1.9, z: -1.5, dist: 1.9 }, clothing: { x: -1.4, z: -2.6, dist: 2.6 } };
+const SPOT: Record<ShopType, { x: number; z: number; dist: number; focusY: number; fov: number; front: boolean }> = {
+  barber: { x: 1.9, z: -1.4, dist: 1.5, focusY: 1.66, fov: 34, front: false }, // head and shoulders, facing the mirror wall
+  clothing: { x: -1.8, z: 2.2, dist: 1.95, focusY: 0.98, fov: 56, front: true }, // full body, facing the street
+};
 const TITLE: Record<ShopType, string> = { barber: 'Barber chair', clothing: 'Fitting room' };
 
-interface Session { k: Kiosk; type: ShopType; owned: FullLook; pending: FullLook; back: THREE.Vector3; backYaw: number; angle: number; focus: THREE.Vector3 }
+interface Session { face: number; k: Kiosk; type: ShopType; owned: FullLook; pending: FullLook; back: THREE.Vector3; backYaw: number; angle: number; focus: THREE.Vector3 }
 
 export class Salon {
   private session: Session | null = null;
@@ -44,12 +47,12 @@ export class Salon {
   }
   private state(): GroomState {
     const s = this.session!, g = this.game, free = g.mode === 'sandbox';
-    const prices: Record<string, number> = {}, values: Record<string, string> = {};
+    const prices: Record<string, number> = {}, values: Record<string, string> = {}, ownedValues: Record<string, string> = {};
     for (const t of tabsFor(s.type, s.owned.sex)) {
-      values[t.id] = (s.pending as unknown as Record<string, string>)[t.id];
+      values[t.id] = (s.pending as unknown as Record<string, string>)[t.id]; ownedValues[t.id] = (s.owned as unknown as Record<string, string>)[t.id];
       for (const o of t.options) prices[`${t.id}:${o.id}`] = optionPrice(t, o.id, s.owned);
     }
-    return { values, prices, total: lookCost(s.type, s.owned, s.pending), money: g.money, free };
+    return { values, owned: ownedValues, prices, total: lookCost(s.type, s.owned, s.pending), money: g.money, free };
   }
   open() {
     const found = this.inside(); if (!found || this.session) return;
@@ -58,9 +61,10 @@ export class Salon {
     const owned = { ...g.player.human.look } as FullLook;
     const spot = SPOT[type], at = k.frame.toWorld(spot.x, 0.05, spot.z);
     const back = g.player.pos.clone(), backYaw = g.player.yaw;
-    g.player.place(at.x, at.y + 0.02, at.z, k.def.yaw + Math.PI); // face the back wall (the mirror)
+    const face = spot.front ? k.def.yaw : k.def.yaw + Math.PI;
+    g.player.place(at.x, at.y + 0.02, at.z, face);
     g.player.updateVisual(0);
-    this.session = { k, type, owned, pending: { ...owned }, back, backYaw, angle: 0, focus: new THREE.Vector3(at.x, at.y + 1.25, at.z) };
+    this.session = { k, type, owned, pending: { ...owned }, back, backYaw, angle: 0, face, focus: new THREE.Vector3(at.x, at.y + spot.focusY, at.z) };
     g.menuOpen = true; g.input.exitLock();
     window.addEventListener('mousemove', this.onMove);
     this.ui.openGroom({
@@ -104,8 +108,8 @@ export class Salon {
   update(dt: number) {
     const s = this.session; if (!s) return;
     s.angle += dt * 0.45;
-    // the camera starts in front of the face (between the player and the mirror) and slowly circles
-    this.game.cam.preview = { focus: s.focus, yaw: s.k.def.yaw + Math.PI + s.angle, dist: SPOT[s.type].dist, pitch: 0.05, fov: 40 };
+    // the camera starts in front of the player and slowly circles
+    this.game.cam.preview = { focus: s.focus, yaw: s.face + s.angle, dist: SPOT[s.type].dist, pitch: 0.04, fov: SPOT[s.type].fov };
   }
   /** Drag to spin the preview. */
   drag(dx: number) { if (this.session) this.session.angle -= dx * 0.01; }

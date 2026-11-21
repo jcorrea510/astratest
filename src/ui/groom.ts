@@ -3,7 +3,7 @@ import { h } from './dom';
 import { formatMoney } from './geometry';
 import type { GroomTab } from '../game/grooming';
 
-export interface GroomState { values: Record<string, string>; total: number; money: number; free: boolean; prices: Record<string, number> }
+export interface GroomState { values: Record<string, string>; owned: Record<string, string>; total: number; money: number; free: boolean; prices: Record<string, number> }
 export interface GroomConfig { title: string; subtitle: string; tabs: GroomTab[]; onPick: (tab: string, id: string) => void; onPay: () => void; onClose: () => void }
 
 export class GroomPanel {
@@ -62,7 +62,7 @@ export class GroomPanel {
         b.title = `${o.label}${price ? `  ${st.free ? 'free' : formatMoney(price)}` : ''}`; b.setAttribute('aria-label', o.label);
       } else {
         b.appendChild(h('span', 'ma-groom-name', o.label));
-        b.appendChild(h('span', `ma-groom-price${sel ? ' is-current' : ''}`, sel ? 'Selected' : st.free ? 'Free' : price ? formatMoney(price) : 'Free'));
+        b.appendChild(h('span', `ma-groom-price${sel ? ' is-current' : ''}`, sel && price > 0 ? 'Selected' : sel || st.owned[tab.id] === o.id ? 'Current' : st.free ? 'Free' : price ? formatMoney(price) : 'Free'));
       }
       b.addEventListener('click', () => { this.sound('click'); cfg.onPick(tab.id, o.id); });
       this.bodyEl.appendChild(b);

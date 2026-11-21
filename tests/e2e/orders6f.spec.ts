@@ -31,7 +31,10 @@ async function scene(dist = 5) {
     }
   });
 }
-const shot = async (name: string) => { await page.evaluate(() => (window as any).__game.frame(1 / 60, true)); await page.screenshot({ path: `${SHOTS}/r6f-${name}.png` }); };
+/** headless swiftshader barely ticks the CSS timeline, so screenshots pin the fades at their peak */
+const peak = () => page.addStyleTag({ content: '.ma-fx-menu.is-on{transition:none!important;opacity:1!important}.ma-fx-ind.is-on{animation:none!important;opacity:1!important}' });
+const shot = async (name: string) => {
+  if (name === 'orders-menu' || name === 'hit-indicator') await peak(); await page.evaluate(() => (window as any).__game.frame(1 / 60, true)); await page.screenshot({ path: `${SHOTS}/r6f-${name}.png` }); };
 
 test('aim + hold the orders key + "Get down": the person kneels within 2 s; police never comply', async () => {
   await scene(5);
@@ -181,6 +184,7 @@ test('damage feedback: the indicator points at the shooter; the screen reddens; 
   expect(r.vignette).toBeGreaterThan(0.3);
   await page.evaluate(() => { const g = (window as any).__game; g.onPlayerHurt({ pos: new g.player.pos.constructor(g.player.pos.x - 8, 0, g.player.pos.z + 4) }, 12); g.player.health = 18; });
   await step(page, 0.1, { dt: 1 / 60 });
+  await page.evaluate(() => { const g = (window as any).__game; g.onPlayerHurt({ pos: new g.player.pos.constructor(g.player.pos.x - 8, 0, g.player.pos.z + 4) }, 12); }); // fresh, so the 1.2 s fade is at its peak
   await shot('hit-indicator');
   await step(page, 2.5, { dt: 1 / 30 });
   expect(await page.evaluate(() => (window as any).__game.fx.lowHealth)).toBeGreaterThan(0.5);

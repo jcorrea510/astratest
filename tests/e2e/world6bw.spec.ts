@@ -19,6 +19,7 @@ test('rail terminals, park lake and the one-hand left arm', async ({ page }) => 
   };
   // elevated line: both ends are terminals (end wall + buffer stops), looked at from the open side
   await shot('rail-south', [250, 0.3, 755], [250, 8.5, 775], 0.5, 26, 0.12);
+  await shot('rail-south-open', [250, 0.3, 700], [250, 8.0, 770], Math.PI + 0.35, 24, 0.1);
   await shot('rail-north', [250, 0.3, -70], [250, 8.5, -90], Math.PI + 0.5, 26, 0.12);
   await shot('park-lake', [0, 0.3, -205], [0, 0.2, -250], 0.6, 62, 0.62);
   await shot('park-lake-close', [0, 0.3, -205], [0, 0.4, -226], 0.3, 14, 0.3);
