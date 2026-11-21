@@ -92,7 +92,7 @@ float vnoise(vec3 p) {
              mix(mix(hsh(i + vec3(0,0,1)), hsh(i + vec3(1,0,1)), f.x), mix(hsh(i + vec3(0,1,1)), hsh(i + vec3(1,1,1)), f.x), f.y), f.z);
 }
 float hairlineF(float x, float z) {
-  float front = smoothstep(0.15, 0.8, z); float h = -0.42 + 0.84 * front;
+  float front = smoothstep(0.15, 0.8, z); float h = -0.42 + 1.0 * front;
   float ear = smoothstep(0.55, 0.8, abs(x)) * (1.0 - smoothstep(0.3, 0.5, abs(z - 0.05)));
   return max(h, -0.42 + ear * 0.5);
 }`)
@@ -124,7 +124,7 @@ if (part == 0) {
   if (ri == 0 && vHn.y > -1.5) {
     vec3 hc = uC[6];
     float h = hairlineF(vHn.x, vHn.z);
-    float scalp = smoothstep(h - 0.04, h + 0.05, vHn.y);
+    float scalp = smoothstep(h - 0.03, h + 0.1, vHn.y);
     float mode = uPat.y;
     float n = vnoise(vHn * 60.0);
     float a = 0.0;
@@ -139,11 +139,12 @@ if (part == 0) {
     float fm = uPat.z;
     if (fm > 0.5) {
       float jaw = smoothstep(0.05, -0.2, vHn.y) * smoothstep(-0.05, 0.35, vHn.z) * smoothstep(-1.05, -0.8, vHn.y);
+      float jawS = smoothstep(-0.12, -0.34, vHn.y) * smoothstep(-0.05, 0.35, vHn.z) * smoothstep(-1.05, -0.8, vHn.y); // stubble sits lower on the cheeks
       float lips = smoothstep(0.42, 0.28, abs(vHn.x)) * smoothstep(-0.78, -0.66, vHn.y) * smoothstep(-0.3, -0.42, vHn.y) * smoothstep(0.7, 0.85, vHn.z);
       float mous = smoothstep(0.42, 0.3, abs(vHn.x)) * smoothstep(-0.48, -0.42, vHn.y) * smoothstep(-0.22, -0.3, vHn.y) * smoothstep(0.7, 0.85, vHn.z);
       float chin = smoothstep(0.3, 0.18, abs(vHn.x)) * smoothstep(-0.6, -0.75, vHn.y) * smoothstep(0.3, 0.6, vHn.z);
       float b = 0.0;
-      if (fm < 1.5) b = max(jaw, mous * 0.9) * (0.16 + 0.42 * smoothstep(0.35, 0.8, vnoise(vHn * 140.0))) * (0.8 + 0.4 * n); // short dark dots
+      if (fm < 1.5) b = max(jawS, mous * 0.9) * (0.34 + 0.3 * (vnoise(vHn * 170.0) - 0.5) + 0.08 * (n - 0.5)); // a fine, even shadow
       else if (fm < 2.5) b = jaw * 0.75;
       else if (fm < 3.5) b = max(mous * 0.9, jaw * 0.15);
       else b = max(max(mous, chin) * 0.85, jaw * 0.12);
@@ -332,6 +333,7 @@ if (a < 0.5) discard;
 b = mix(b, 1.0, farK * 0.7); hairTilt *= 1.0 - farK;
 float ao = lay < 0.01 ? 0.4 : mix(0.38, 1.0, smoothstep(0.0, 0.95, lay / max(dens, 0.3))); // depth relative to the local thickness: no dark rims
 hairSpec = mix(0.6, 1.3, r1) * mix(0.5, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : mode < 0.5 && sc > 0.5 ? 0.55 : 1.0);
+hairSpec *= 1.0 - 0.6 * farK; // solid (far) layers: no crisp band where the strands would have broken the highlight up
 vec3 col = uC[6] * b * ao;
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)

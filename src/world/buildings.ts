@@ -5,6 +5,7 @@
  * chunked TrimBuilders (cornices, sills, awnings, fire escapes, rooftop plant), plus sign/billboard placements.
  */
 import { worldGlass } from './glass';
+import { shopStyleOfBrand } from './shopStyle';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
@@ -100,7 +101,7 @@ function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
   const upper: WallSpec = { kind: 2, seed: s.seed % 9973, cellW: s.cellW, cellH: s.floorH, winW: s.winW, winH: s.winH, sill: s.sill, mat: s.mat, originV: s.groundH, baseY: s.base, lit: s.lit, floors: s.floors };
   const back: WallSpec = { ...upper, winW: Math.min(s.winW, 1.0), winH: s.winH * 0.85, cellW: Math.max(2.6, s.cellW) };
   const solid = SOLID(s.mat, s.seed % 9973, s.base);
-  const groundShop: WallSpec = { kind: 4, seed: s.seed % 9973, cellW: 2.6, cellH: s.groundH - 0.75, winW: (s.seed * 7 + 3) % 10, winH: 0, sill: 0, mat: s.mat, originV: 0, baseY: s.base, lit: 1, floors: 1 };
+  const groundShop: WallSpec = { kind: 4, seed: s.seed % 9973, cellW: 2.6, cellH: s.groundH - 0.75, winW: shopStyleOfBrand(s.brand), winH: 0, sill: 0, mat: s.mat, originV: 0, baseY: s.base, lit: 1, floors: 1 };
   const groundResi: WallSpec = { kind: 2, seed: (s.seed + 7) % 9973, cellW: s.cellW, cellH: s.groundH, winW: s.winW, winH: Math.min(s.winH, s.groundH - 1.4), sill: 1.0, mat: s.mat, originV: 0, baseY: s.base, lit: s.lit, floors: 1 };
   const groundLobby: WallSpec = { ...groundShop, winW: 10, cellW: 3.2, seed: (s.seed + 3) % 9973 };
   const groundSpec = s.ground === 'shop' ? groundShop : s.ground === 'lobby' ? groundLobby : s.ground === 'resi' ? groundResi : solid;

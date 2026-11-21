@@ -97,7 +97,7 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
 
 // interior mapping: trace a view ray into a box room behind the window; returns lit interior colour
 vec3 gGlow;
-// shop dressing by store style: 0 convenience 1 gas 2 liquor 3 jewelry 4 pawn 5 bank 6 clothing 7 barber 8 diner 9 electronics 10 office lobby
+// shop dressing by store style: 0 convenience 1 gas 2 liquor 3 jewelry 4 pawn 5 bank 6 clothing 7 barber 8 diner 9 electronics 10 office lobby 11 laundromat
 vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool side){
   vec3 c = base; float u = hp.x; float h = hp.y; if (side) u = hp.z;
   float cell = floor(u * 5.0); float fx = fract(u * 5.0); float hs = fH(vec2(cell, st + rs));
@@ -160,6 +160,19 @@ vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool si
     vec2 sc = vec2(fract(u / 1.1), fract((h - 0.5) / 0.7)); float scr = step(0.06, sc.x) * step(sc.x, 0.94) * step(0.08, sc.y) * step(sc.y, 0.92) * step(0.5, h) * step(h, 2.3);
     float sid = fH(floor(vec2(u / 1.1, (h - 0.5) / 0.7)) + rs); vec3 pic = mix(vec3(0.1, 0.4, 0.9), mix(vec3(0.9, 0.35, 0.15), vec3(0.2, 0.8, 0.5), step(0.5, sid)), step(0.33, sid));
     c = mix(c, pic, scr); gGlow += pic * scr * 0.9;
+  } else if (st > 10.5) { // laundromat: a row of front-load washers over a dryer stack, folding counter, pale tiles
+    c = vec3(0.8, 0.86, 0.9);
+    float wu = fract(u / 0.85); vec2 wc = vec2(wu - 0.5, h - 0.55); float wr = length(wc);
+    float washer = step(0.05, wu) * step(wu, 0.95) * step(0.0, h) * step(h, 1.05);
+    c = mix(c, vec3(0.88, 0.89, 0.9), washer);
+    float drum = step(wr, 0.3) * washer; c = mix(c, vec3(0.1, 0.12, 0.15), step(wr, 0.31) * washer); c = mix(c, vec3(0.45, 0.62, 0.78), step(wr, 0.26) * washer);
+    gGlow += vec3(0.35, 0.55, 0.75) * drum * 0.35;
+    float dryer = step(0.05, wu) * step(wu, 0.95) * step(1.1, h) * step(h, 2.0);
+    c = mix(c, vec3(0.78, 0.8, 0.82), dryer);
+    vec2 dc = vec2(wu - 0.5, h - 1.5); float dr = length(dc);
+    c = mix(c, vec3(0.12, 0.13, 0.15), step(dr, 0.27) * dryer); c = mix(c, vec3(0.62, 0.55, 0.4), step(dr, 0.22) * dryer);
+    float counter = step(0.0, hp.z) * step(0.9, h) * step(h, 0.97) * (1.0 - washer) ; c = mix(c, vec3(0.6, 0.45, 0.3), counter);
+    float sgn = step(2.1, h) * step(h, 2.5) * step(0.2, fract(u / 4.0)) * step(fract(u / 4.0), 0.8); c = mix(c, vec3(0.2, 0.5, 0.8), sgn); gGlow += vec3(0.2, 0.5, 0.9) * sgn * 0.6;
   } else { // office lobby: pale wall, reception desk, plants
     c = vec3(0.82, 0.82, 0.8);
     float desk = step(h, 1.1) * step(0.2, fract(u / 6.0)) * step(fract(u / 6.0), 0.75); c = mix(c, vec3(0.3, 0.26, 0.22), desk);

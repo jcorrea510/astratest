@@ -218,10 +218,12 @@ function scalpSurf(base: BodyBase, sp: ScalpSpec, hatOn: boolean): Surf {
   const param = poleParam(sp.pole, sp.strands ?? ROOT_STRANDS);
   return headSurf(base, hn => {
     const h = line(hn.x, hn.z);
-    let m = sstep(hn.y, h - 0.06, h + 0.1);
+    // the shell starts inside the painted scalp (the skin shader paints hair colour from the hairline up), so the
+    // visible hairline is the paint's soft edge plus the first sparse strands, never a hard shell rim
+    let m = sstep(hn.y, h + 0.01, h + 0.17);
     if (hatOn) m *= 1 - sstep(hn.y, capLine(hn.x, hn.z) - 0.04, capLine(hn.x, hn.z) + 0.02);
-    return hn.y < h - 0.06 ? 0 : m;
-  }, hn => sp.thick(hn) * sstep(hn.y, line(hn.x, hn.z) - 0.06, line(hn.x, hn.z) + fe), hn => param(hn), sp.strands ?? ROOT_STRANDS);
+    return hn.y < h + 0.01 ? 0 : m;
+  }, hn => sp.thick(hn) * sstep(hn.y, line(hn.x, hn.z) + 0.01, line(hn.x, hn.z) + fe), hn => param(hn), sp.strands ?? ROOT_STRANDS);
 }
 
 /** A ball of hair (bun) centred at `c` (head coordinates) with radius `r` (head units): strands wrap around it. */

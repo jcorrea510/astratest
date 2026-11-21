@@ -110,7 +110,7 @@ export function headCoords(h: HeadFrame, p: THREE.Vector3, out = new THREE.Vecto
 /** Normalised height of the hairline at a point on the head (same formula as the shader). */
 export function hairline(x: number, z: number) {
   const front = THREE.MathUtils.smoothstep(z, 0.15, 0.8);
-  let h = -0.42 + 0.84 * front;
+  let h = -0.42 + 1.0 * front;
   const ear = THREE.MathUtils.smoothstep(Math.abs(x), 0.55, 0.8) * (1 - THREE.MathUtils.smoothstep(Math.abs(z - 0.05), 0.3, 0.5));
   h = Math.max(h, -0.42 + ear * 0.5);
   return h;

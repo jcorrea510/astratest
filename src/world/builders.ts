@@ -46,7 +46,7 @@ export class FacadeBuilder {
       const n = Math.max(1, Math.round(len / spec.cellW));
       const cw = len / n;
       if (cw < spec.winW + 0.5 && spec.kind === 2) s = { ...spec, kind: 3 };
-      else s = { ...spec, cellW: cw, winW: Math.min(spec.winW, cw - 0.4) };
+      else s = { ...spec, cellW: cw, winW: spec.kind === 4 ? spec.winW : Math.min(spec.winW, cw - 0.4) }; // kind 4 stores the shop style in winW
     }
     const vb = y0 - spec.baseY, vt = y1 - spec.baseY;
     this.quad(_a.set(ax, y0, az).clone(), new THREE.Vector3(bx, y0, bz), new THREE.Vector3(bx, y1, bz), new THREE.Vector3(ax, y1, az), [uOff, vb, uOff + len, vb, uOff + len, vt, uOff, vt], color, s);
