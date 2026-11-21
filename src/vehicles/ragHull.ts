@@ -26,7 +26,13 @@ export function ragHulls(key: string, s: CarShape, layout: VehicleLayout): Float
     const [zr, zf] = bodyEnds(s);
     const pts: number[] = [];
     const zs = new Set<number>([zr, zf]); for (const [z] of s.top) if (z > zr && z < zf) zs.add(z);
-    for (const z of zs) { const y = GROUND + deckY(s, z) * 0.97; for (const sx of [-1, 1]) { pts.push(sx * hw * 0.97, y, z, sx * hw * 0.97, bottom, z); } }
+    const bumpTop = GROUND + (s.bumperF[1] > 0 ? s.bumperF[1] : 0.5);
+    for (const z of zs) {
+      const y = GROUND + deckY(s, z) * 0.97;
+      // the nose: a bumper block at full length, the hood's leading edge set back so a body slides up it instead of being shoved
+      const zt = z === zf ? zf - 0.5 : z;
+      for (const sx of [-1, 1]) { pts.push(sx * hw * 0.97, y, zt, sx * hw * 0.97, bottom, z); if (z === zf) pts.push(sx * hw * 0.97, bumpTop, zf); }
+    }
     if (s.cargo) { const c = s.cargo; for (const sx of [-1, 1]) for (const z of [c.z0, c.z1]) pts.push(sx * c.hw, GROUND + c.y1, z, sx * c.hw, GROUND + c.y0, z); }
     out.push(new Float32Array(pts));
     const g = s.gh, ya = GROUND + deckY(s, g.zA) * 0.97, yc = GROUND + deckY(s, g.zC) * 0.97, roof = GROUND + g.roof * 0.97;

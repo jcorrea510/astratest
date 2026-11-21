@@ -17,6 +17,7 @@ import { CULL_DISTANCE, MAX_DISTANCE, REF_DISTANCE, ROLLOFF, SPEED_OF_SOUND, air
 import { Ambience, type AmbienceState } from './ambience';
 import { MoodLayer, MusicFx, Radio } from './music';
 import { safe } from './theory';
+import { fadeOutParam } from './declick';
 
 export const CEILING = 0.95; // absolute output ceiling (-0.45 dBFS)
 const CEIL_RANGE = 4;
@@ -67,6 +68,9 @@ export class AudioCore {
   readonly engines = new SlotGroup<{ park(): void }>(6);
   readonly sirens = new SlotGroup<{ park(): void }>(3);
   readonly skids = new SlotGroup<{ park(): void }>(4);
+  /** counters for tests / dev tools (pop hunting): voices started, stolen, rejected by the pool or the burst limiter */
+  readonly diag = { started: 0, stolen: 0, rejected: 0, limited: 0, engineBuilds: 0 };
+  private recent: number[] = [];
   pitchMul = 1; slowMo = 0; paused = false;
   private laterQ: { at: number; fn: () => void }[] = [];
   private vols = { master: 1, music: 0.7, sfx: 1 };
@@ -149,6 +153,14 @@ export class AudioCore {
     });
   }
 
+  /** Building an engine graph is ~30 nodes: at most 3 per half second, so a crowd re-promotion can't stall the audio thread. */
+  private builds: number[] = [];
+  allowEngineBuild(): boolean {
+    const now = this.ctx.currentTime; while (this.builds.length && this.builds[0] < now - 0.5) this.builds.shift();
+    if (this.builds.length >= 3) return false;
+    this.builds.push(now); this.diag.engineBuilds++; return true;
+  }
+
   get now(): number { return this.ctx.currentTime; }
 
   later(at: number, fn: () => void): void { this.laterQ.push({ at, fn }); }
@@ -225,9 +237,10 @@ export class AudioCore {
     }
   }
 
-  makePanner(hrtf: boolean): PannerNode {
+  /** HRTF convolves every voice with head-related impulse responses (expensive: it starves the audio thread and crackles), so loops use equal-power panning. */
+  makePanner(_hrtf = false): PannerNode {
     const p = this.ctx.createPanner();
-    p.panningModel = hrtf ? 'HRTF' : 'equalpower'; p.distanceModel = 'inverse';
+    p.panningModel = 'equalpower'; p.distanceModel = 'inverse';
     p.refDistance = REF_DISTANCE; p.maxDistance = MAX_DISTANCE; p.rolloffFactor = ROLLOFF;
     return p;
   }
@@ -254,8 +267,15 @@ export class AudioCore {
     if (vol <= 0.001) return false;
     const r = this.kit.rand;
     const prio = meta.priority - Math.min(3, dist / 80);
+    // burst limiter: a pile-up of simultaneous low-priority starts (a crowd panic, a firefight) smears into a crackle
+    if (meta.priority < 8) {
+      const r0 = this.recent; while (r0.length && r0[0] < now - 0.1) r0.shift();
+      if (r0.length >= 12) { this.diag.limited++; return false; }
+      r0.push(now);
+    }
     const adm = this.pool.admit(name, prio, t);
-    if (!adm.ok) return false;
+    if (!adm.ok) { this.diag.rejected++; return false; }
+    this.diag.started++;
     for (const s of adm.steal) this.stealVoice(s, now);
 
     // far gunfire arrives late: you see the flash, then hear the report (speed of sound), capped for gameplay
@@ -286,8 +306,8 @@ export class AudioCore {
   }
 
   private stealVoice(v: OneShot, now: number): void {
-    v.out.gain.cancelScheduledValues(now); v.out.gain.setValueAtTime(v.out.gain.value, now); v.out.gain.linearRampToValueAtTime(0, now + 0.015);
-    v.end = Math.min(v.end, now + 0.03);
+    const silent = fadeOutParam(v.out.gain, now, 0.02);
+    v.end = Math.min(v.end, silent + 0.01); this.diag.stolen++;
   }
 }
 

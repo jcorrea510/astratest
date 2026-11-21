@@ -114,14 +114,11 @@ test('"Get in the car": the hostage sits in the passenger seat, rides 50 m with 
   expect(seated).toEqual({ inCar: true, seats: 1, brain: 'passenger' });
   // get in and drive
   const start = await page.evaluate(() => { const g = (window as any).__game, v = (window as any).__v; g.seatPlayer(v); return v.position.x; });
-  await page.evaluate(() => { const v = (window as any).__v; v.input.throttle = 1; });
-  await step(page, 7, { dt: 1 / 30 });
+  await step(page, 8, { dt: 1 / 30, hold: ['KeyW'] });
   const drive = await page.evaluate(() => { const g = (window as any).__game, n = (window as any).__n, v = (window as any).__v; return { dist: Math.hypot(v.position.x - -327, v.position.z - -98), inCar: n.char.inVehicle === v, alive: n.alive, seats: g.orders.seated.length, near: n.char.human.root.parent === v.visual }; });
   expect(start).toBeGreaterThan(-340);
   expect(drive.dist).toBeGreaterThan(50); expect(drive.inCar).toBe(true); expect(drive.seats).toBe(1); expect(drive.near).toBe(true);
-  await page.evaluate(() => { (window as any).__v.input.throttle = 0; (window as any).__v.input.handbrake = true; });
-  await step(page, 2, { dt: 1 / 30 });
-  await page.evaluate(() => { const g = (window as any).__game; (window as any).__v.input.handbrake = true; g.seatPlayer; });
+  await step(page, 3, { dt: 1 / 30, hold: ['KeyS'] });
   await shot('hostage-car');
   // out of the car, then order the hostage out
   await page.evaluate(() => { const g = (window as any).__game, v = (window as any).__v; g.exitVehicle(true); g.player.place(v.position.x + 2.5, 0.25, v.position.z, g.player.yaw); });
@@ -144,10 +141,13 @@ test('blood: spatter and pools appear, stay capped, and the Blood toggle turns t
   });
   expect(r.dead).toBe(true); expect(r.splats).toBeGreaterThan(0); expect(r.poolsAfterKill).toBe(1); expect(r.wounds).toBeGreaterThan(0);
   await step(page, 15, { dt: 1 / 30 });
-  const grown = await page.evaluate(() => { const g = (window as any).__game, m = new g.renderer.camera.position.constructor(); const mat = new (g.renderer.camera.matrixWorld.constructor)(); g.blood.pools.getMatrixAt(0, mat); return mat.elements[0]; });
-  expect(grown).toBeGreaterThan(0.6); // the pool grew from a puddle to ~1 m
-  await page.evaluate(() => { const g = (window as any).__game; (window as any).__camShot = 1; const p = (window as any).__n.pos; g.cam.cinematic = null; g.player.place(p.x - 2.2, 0.25, p.z - 0.6, Math.PI / 2); g.cam.snapBehind(Math.PI / 2); });
-  await step(page, 0.5, { dt: 1 / 30 });
+  const grown = await page.evaluate(() => { const g = (window as any).__game, m = new g.renderer.camera.position.constructor(); const mat = new (g.renderer.camera.matrixWorld.constructor)(); g.blood.pools.getMatrixAt(0, mat); const e = mat.elements; void m; return Math.hypot(e[0], e[1], e[2]); });
+  expect(grown).toBeGreaterThan(0.8); // the pool grew from a puddle (~0.12 m) to ~1 m across
+  await page.evaluate(() => {
+    const g = (window as any).__game, n = (window as any).__n, T = g.renderer.camera.position.constructor, p = n.pos;
+    g.player.place(p.x - 3.2, 0.25, p.z - 0.4, Math.PI / 2);
+    for (let i = 0; i < 6; i++) { const q = n.char.human.root.getWorldPosition(new T()); q.y += 0.2; g.frame(1 / 60, false); const cam = g.renderer.camera.getWorldPosition(new T()); const d = new T(q.x - cam.x, q.y - cam.y, q.z - cam.z).normalize(); g.cam.pitch = Math.asin(d.y); g.cam.yaw = Math.atan2(-d.x, -d.z); g.cam.update(0, g.player.pos, 'aim'); g.frame(1 / 60, false); }
+  });
   await shot('blood');
   const caps = await page.evaluate(() => {
     const g = (window as any).__game;

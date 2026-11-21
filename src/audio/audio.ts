@@ -12,8 +12,9 @@ import { EngineVoiceImpl, SirenVoice, SkidVoice } from './loops';
 import { STATIONS } from './composer';
 import { isFiniteVec } from './spatial';
 import type { Acoustics, AudioExtras, ExtraSfx } from './sfx';
+import type { StepSurface } from './sfx2';
 
-type AmbienceArg = { night: number; water: number; traffic: number; park: number; indoors?: number };
+type AmbienceArg = { night: number; water: number; traffic: number; park: number; indoors?: number; crowd?: number; altitude?: number };
 type Mood = 'none' | 'tension' | 'action';
 const SAMPLE_KEYS: readonly SampleName[] = ['engine', 'engineBike', 'impact', 'skid'];
 
@@ -49,7 +50,7 @@ export class Audio implements GameAudio, AudioExtras {
       // Avoid the browser's autoplay warning: only create the context once the page has had a user gesture.
       const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
       if (ua && !ua.hasBeenActive) return;
-      const ctx = new AC({ latencyHint: 'interactive' });
+      const ctx = new AC({ latencyHint: 'balanced' });
       this.ctx = ctx;
       const core = new AudioCore(ctx);
       this.core = core;
@@ -110,6 +111,24 @@ export class Audio implements GameAudio, AudioExtras {
     const core = this.core; if (!core || this.ctx?.state !== 'running') return;
     try { core.play(name, opts); } catch { /* ignore */ }
   }
+  /**
+   * Vehicle / body impact. `intensity` 0..1+ (0.1 scrape ... 1 head-on): scales loudness and picks the light or heavy
+   * crunch, the heaviest also get the recorded-style impact thump. Safe before resume(); feature-detect with `typeof a.crash`.
+   */
+  crash(intensity: number, pos?: Vec3Like): void {
+    const i = Math.min(1.5, Math.max(0, Number.isFinite(intensity) ? intensity : 0)); if (i < 0.04) return;
+    const o = { pos, volume: 0.35 + 0.65 * Math.min(1, i) };
+    this.playExtra(i < 0.4 ? 'crashLight' : 'crashHeavy', o);
+    if (i > 0.75) this.play('crash', { pos, volume: 0.5 * Math.min(1, i), pitch: 0.9 });
+  }
+  /** Footstep on a surface ('concrete' | 'grass' | 'gravel' | 'metal' | 'wood' | 'sand'); `vol` scales (run 1, sneak 0.4). */
+  footstep(surface: StepSurface, pos?: Vec3Like, vol = 1): void {
+    this.playExtra(`step${surface[0].toUpperCase()}${surface.slice(1)}` as ExtraSfx, { pos, volume: vol });
+  }
+  /** Shop door bell / cash drawer / car door: thin wrappers so callers don't need the extra names. */
+  storeBell(pos?: Vec3Like): void { this.playExtra('storeBell', { pos }); }
+  registerDrawer(pos?: Vec3Like): void { this.playExtra('registerDrawer', { pos }); }
+  carDoor(open: boolean, pos?: Vec3Like): void { this.playExtra(open ? 'carDoorOpen' : 'carDoorClose', { pos }); }
   setAcoustics(a: Acoustics): void {
     if (!a || !Array.isArray(a.walls)) return;
     this.acoustics = { walls: a.walls.map(w => ({ d: w.d, x: w.x, z: w.z })), open: a.open, indoors: a.indoors };
@@ -120,7 +139,7 @@ export class Audio implements GameAudio, AudioExtras {
   siren(): LoopVoice { return new SirenVoice(() => this.core); }
   skid(): LoopVoice { return new SkidVoice(() => this.core); }
 
-  setAmbience(a: { night: number; water: number; traffic: number; park: number; indoors?: number }): void {
+  setAmbience(a: AmbienceArg): void {
     if (!a) return; this.amb = { ...a }; this.core?.setAmbience(this.amb);
   }
 
@@ -139,9 +158,9 @@ export class Audio implements GameAudio, AudioExtras {
   /** Name of the currently selected station (null = off). */
   get stationName(): string | null { return this.station >= 0 ? STATIONS[this.station].name : null; }
   /** Diagnostics for dev tools / tests. */
-  stats(): { running: boolean; voices: number; engines: number; sirens: number; skids: number; samples: string[] } {
+  stats(): { running: boolean; voices: number; engines: number; sirens: number; skids: number; samples: string[]; diag: { started: number; stolen: number; rejected: number; limited: number; engineBuilds: number } | null } {
     const c = this.core;
-    return { running: this.ctx?.state === 'running', voices: c?.activeVoices ?? 0, engines: c?.engines.active.size ?? 0, sirens: c?.sirens.active.size ?? 0, skids: c?.skids.active.size ?? 0, samples: c ? Object.keys(c.kit.samples) : [] };
+    return { running: this.ctx?.state === 'running', voices: c?.activeVoices ?? 0, engines: c?.engines.active.size ?? 0, sirens: c?.sirens.active.size ?? 0, skids: c?.skids.active.size ?? 0, samples: c ? Object.keys(c.kit.samples) : [], diag: c ? { ...c.diag } : null };
   }
   /** Stop everything and close the context. */
   dispose(): void {
@@ -150,3 +169,6 @@ export class Audio implements GameAudio, AudioExtras {
     if (ctx) ctx.close().catch(() => undefined);
   }
 }
+
+// Debug / test hook: lets tests build the mix graph on an OfflineAudioContext and run click detection (see tests/e2e/audio6a.spec.ts).
+if (typeof window !== 'undefined') (window as unknown as { __audioLab?: unknown }).__audioLab = { AudioCore, registerSample, EngineVoiceImpl, SirenVoice, SkidVoice };

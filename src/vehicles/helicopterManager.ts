@@ -152,7 +152,7 @@ export class HeliManager {
       let ev = this.engines.get(h.id);
       if (h.rotor > 0.02 && dist < 160) {
         if (!ev) { ev = this.audio.engine(); this.engines.set(h.id, ev); }
-        ev.update({ rpm: 0.15 + h.rotor * 0.55, throttle: Math.min(1, 0.35 + Math.abs(h.input.lift) * 0.5 + Math.abs(h.input.pitch) * 0.2), pos: h.position, kind: 'truck', damage: 1 - h.health / h.maxHealth });
+        ev.update({ rpm: 0.15 + h.rotor * 0.55, throttle: Math.min(1, 0.35 + Math.abs(h.input.lift) * 0.5 + Math.abs(h.input.pitch) * 0.2), pos: h.position, kind: 'heli', damage: 1 - h.health / h.maxHealth });
       } else if (ev) { ev.stop(); this.engines.delete(h.id); }
       // smoking when hurt, burning and falling when destroyed, then the blast
       const frac = h.health / h.maxHealth;

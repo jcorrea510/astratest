@@ -112,7 +112,7 @@ export class FullMap {
     this.el.appendChild(body);
 
     const foot = h('div', 'ma-map-foot');
-    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Arrows', 'Pan'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', 'Top-down / 3D'], ['Right-drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
+    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', 'Top-down'], ['RMB drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       foot.appendChild(s);

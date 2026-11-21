@@ -31,7 +31,7 @@ function bloodTexture(kind: 'splat' | 'pool'): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; return tex;
 }
 
-interface PoolRec { x: number; y: number; z: number; age: number; rot: number; grow: number }
+interface PoolRec { x: number; y: number; z: number; age: number; rot: number; grow: number; follow?: { x: number; z: number } }
 export class Blood {
   /** Settings "Blood" toggle. */
   enabled = true;
@@ -99,16 +99,19 @@ export class Blood {
     bone.add(mesh); this.wounds.push(mesh);
   }
   /** A body went down at (x, y, z): a pool starts under it and grows over ~14 s. */
-  pool(x: number, y: number, z: number) {
+  pool(x: number, y: number, z: number, follow?: { x: number; z: number }) {
     if (!this.enabled) return;
     if (this.poolList.length >= BLOOD_POOL_MAX) this.poolList.shift();
-    this.poolList.push({ x, y: y + 0.012, z, age: 0, rot: Math.random() * Math.PI * 2, grow: 0.8 + Math.random() * 0.4 });
+    this.poolList.push({ x, y: y + 0.012, z, age: 0, rot: Math.random() * Math.PI * 2, grow: 0.8 + Math.random() * 0.4, follow });
     this.sync();
   }
   update(dt: number) {
     if (!this.poolList.length) return;
     let growing = false;
-    for (const r of this.poolList) if (r.age < POOL_GROW_S) { r.age += dt; growing = true; }
+    for (const r of this.poolList) if (r.age < POOL_GROW_S) {
+      r.age += dt; growing = true;
+      if (r.follow && r.age < 1.6) { r.x = r.follow.x; r.z = r.follow.z; } else r.follow = undefined; // the pool settles under the body once it has stopped sliding
+    }
     if (growing) this.sync();
   }
   private sync() {

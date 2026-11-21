@@ -15,7 +15,7 @@ Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Wav
 - [ ] R6-F (restarted 22:2x after limit) combat extras (wave 3): orders (hold B: kneel/come here), grab/hostage/kidnap into car, blood, hit feedback when shot.
 - [ ] R6-X physics (wave 3): hit peds ride the hood/ragdoll, car body crumple, light posts knock over, molotov fire.
 - [ ] R6-A audio (wave 3): gunshots = loud pops, more ambient/vehicle sounds, stop random popping in city.
-- [ ] R6-U UI (wave 3): fullscreen persists (highway<->city, menus) + top-right button, front page/title not AI-looking, Play vs Continue clear, map Q/E live rotate + top-down toggle + E-opens-sandbox bug, iPad keyboard/mouse/gamepad, README run-locally.
+- [x] R6-U (+shell iframe keeps fullscreen across reloads: shellfs.spec) UI (wave 3): fullscreen persists (highway<->city, menus) + top-right button, front page/title not AI-looking, Play vs Continue clear, map Q/E live rotate + top-down toggle + E-opens-sandbox bug, iPad keyboard/mouse/gamepad, README run-locally.
 - [ ] R6-B barber + clothing stores with map icons (wave 3). R6-W world: subway rails end, park blue slab with benches, one-hand gun left-hand lag.
 - [ ] R6-Z (also: find the one-off 1285 off-crosswalk peds run + restore a "some peds crossed" assertion in pedsr6p; flaky ped screenshot test; far-car spawn right behind a stopped real car; buses.test flake) full e2e + soak + publish + owner summary.
 

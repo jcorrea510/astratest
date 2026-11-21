@@ -26,6 +26,7 @@ import { Combat } from '../combat/combat';
 import { PlayerCombat } from './playerCombat';
 import { Population } from './population';
 import { RagdollSystem } from '../actors/ragdoll';
+import { Breakables } from './breakables';
 import { Traffic } from './traffic';
 import { Crowd } from './crowd';
 import { BusService } from './buses';
@@ -87,6 +88,8 @@ export class Game {
   pcombat!: PlayerCombat;
   pop!: Population;
   ragdolls!: RagdollSystem;
+  breakables!: Breakables;
+  private lampOrig: THREE.Vector3[] = [];
   traffic!: Traffic;
   crowd!: Crowd;
   buses!: BusService;
@@ -187,7 +190,12 @@ export class Game {
       player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
       onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: (by) => this.police.dispatch.arresting || (!!by && !this.orders.clearShot(by.pos)), armedThreat: () => this.police.armedThreat, onWitness: () => { },
     }, this.audio);
+    this.combat.onIgnite = c => this.pop.panicBurn(c);
     this.ragdolls = new RagdollSystem(this.physics); this.pop.ragdolls = this.ragdolls;
+    this.breakables = new Breakables(this.renderer.scene, this.physics, this.visuals.breakables, {
+      onLamp: (i, on) => this.setLamp(i, on), sfx: (n, at, vol) => this.audio.play(n as 'crash', { pos: at, volume: vol }),
+      splash: (x, y, z, n) => this.particles.splash(x, y, z, n), sparks: (x, y, z, n) => this.particles.sparks(x, y, z, n, 6),
+    });
     this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
@@ -370,6 +378,7 @@ export class Game {
     this.helis.postStep();
     this.pop.vehicleHits(this.vehicles.list, this.player, (v, sp) => this.hitByVehicle(v, sp));
     this.pop.dodge(this.vehicles.list);
+    this.breakables.update(dt, this.vehicles.list, this.player.pos);
     if (pv) { const p = pv.position; this.stats.distance += Math.abs(pv.speed) * dt; this.player.pos.set(p.x, p.y, p.z); }
     if (ph) { const p = ph.position; this.player.pos.set(p.x, p.y, p.z); if (p.y < -25 || !Number.isFinite(p.x)) { this.exitVehicle(true); ph.teleport(Number.isFinite(p.x) ? p.x : 0, 2, Number.isFinite(p.z) ? p.z : 0, 0); } }
     // Safety net: never fall out of the world
@@ -679,7 +688,7 @@ export class Game {
       const water = Math.max(0, 1 - Math.min(Math.max(0, 440 - p.z), p.z > -60 ? Math.max(0, 480 - p.x) : 999) / 90);
       const d = districtAt(this.city, p.x, p.z);
       const near = this.vehicles.list.filter(v => v.driver && v.position.distanceTo(p) < 90).length;
-      this.audio.setAmbience({ night: this.renderer.skyState.night, water, traffic: Math.min(1, near / 8 + (d === 'heights' ? 0.3 : 0.1)), park: d === 'juniper' ? 1 : d === 'hillside' ? 0.6 : d === 'strand' ? 0.3 : 0 });
+      this.audio.setAmbience({ night: this.renderer.skyState.night, water, traffic: Math.min(1, near / 8 + (d === 'heights' ? 0.3 : 0.1)), park: d === 'juniper' ? 1 : d === 'hillside' ? 0.6 : d === 'strand' ? 0.3 : 0, altitude: Math.min(1, Math.max(0, (this.renderer.camera.position.y - 25) / 70)) });
     }
     this.renderer.updateEnvironment(this.hour, this.time, this.player.pos);
     nightUniform.value = this.renderer.skyState.night;
@@ -721,6 +730,7 @@ export class Game {
   // ---------------- Street lamps ----------------
   private buildLamps() {
     const heads = this.visuals.lampHeads;
+    this.lampOrig = heads.map(h => h.clone());
     this.lampBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.6), toneMapped: false }), heads.length);
     this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.62, 0.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
     const m = new THREE.Matrix4();
@@ -729,6 +739,14 @@ export class Game {
     this.lampPools.renderOrder = 1;
     this.renderer.scene.add(this.lampBulbs, this.lampPools);
     for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffc98a, 0, 22, 1.6); this.renderer.scene.add(l); this.lampLights.push(l); }
+  }
+  /** A lamp head broken (on=false) or restored: bulb, light pool and the nearest-light pick all follow. */
+  private setLamp(i: number, on: boolean) {
+    const h = this.visuals.lampHeads[i], o = this.lampOrig[i]; if (!h || !o || !this.lampBulbs) return;
+    const m = new THREE.Matrix4();
+    if (on) { h.copy(o); m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, 0.21, h.z); this.lampPools.setMatrixAt(i, m); }
+    else { h.set(0, -5000, 0); m.makeScale(0, 0, 0); this.lampBulbs.setMatrixAt(i, m); this.lampPools.setMatrixAt(i, m); }
+    this.lampBulbs.instanceMatrix.needsUpdate = true; this.lampPools.instanceMatrix.needsUpdate = true;
   }
   private updateLamps(dt: number) {
     const night = this.renderer.skyState.night;

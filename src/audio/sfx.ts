@@ -4,6 +4,7 @@
  */
 import type { SfxName, Vec3Like } from '../ui/contracts';
 import { type Kit, type BankSpec, bq, gain, noise, osc, perc, ahr, glide, sample, variant, playBuf } from './dsp';
+import { EXTRA2_RECIPES, type Extra2Sfx } from './sfx2';
 import { GUNS, renderGun, renderFoley, type FoleyName, type GunSound } from './gunsynth';
 
 export interface SfxArgs { kit: Kit; out: AudioNode; t: number; /** pitch multiplier */ p: number }
@@ -15,7 +16,7 @@ type Recipe = (a: SfxArgs) => number;
  */
 export type GunKey = `gun_${GunSound}` | `gunFar_${GunSound}`;
 export type ExtraSfx = 'magOut' | 'magIn' | 'slideRelease' | 'boltRack' | 'shellInsert' | 'pump' | 'whizz' | 'crackBy' | 'hitWood' | 'hitDirt' | 'hitWater' | 'hitGlass' | 'casingHull'
-  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen' | 'swing' | 'hitThud' | 'earRing' | GunKey;
+  | 'pinPull' | 'grenadeBounce' | 'glassShatter' | 'cylinderOpen' | 'swing' | 'hitThud' | 'earRing' | Extra2Sfx | GunKey;
 export const GUN_SOUNDS = Object.keys(GUNS) as GunSound[];
 export type SfxKey = SfxName | ExtraSfx;
 /** Surroundings of the listener for gunshot reflections: nearby walls (distance + horizontal direction) and openness 0..1. */
@@ -60,6 +61,11 @@ export const EXTRA_META: Record<ExtraSfx, SfxMeta> = {
   pinPull: W(5, 1, 0.1, 0.02, 0.6, 0.03), grenadeBounce: W(4, 3, 0.05, 0.08, 0.6, 0.08), glassShatter: W(6, 3, 0.05, 0.2, 0.85, 0.06, 0.2),
   cylinderOpen: W(5, 1, 0.1, 0.03, 0.6, 0.03), swing: W(4, 2, 0.08, 0.02, 0.6, 0.06),
   hitThud: U(0.9, 2, 0.06), earRing: U(0.35, 1, 1.5),
+  // R6-A object sounds
+  storeBell: W(5, 2, 0.4, 0.06, 0.7, 0.01), registerDrawer: W(5, 2, 0.3, 0.05, 0.75, 0.03), carDoorOpen: W(4, 3, 0.08, 0.05, 0.7, 0.04), carDoorClose: W(5, 3, 0.08, 0.1, 0.9, 0.04),
+  crashLight: W(7, 4, 0.06, 0.25, 0.9, 0.06), crashHeavy: W(8, 3, 0.1, 0.4, 1, 0.05),
+  stepConcrete: W(1, 5, 0.06, 0.03, 0.5, 0.08), stepGrass: W(1, 5, 0.06, 0.01, 0.5, 0.08), stepGravel: W(1, 5, 0.06, 0.02, 0.55, 0.08),
+  stepMetal: W(1, 5, 0.06, 0.05, 0.5, 0.08), stepWood: W(1, 5, 0.06, 0.04, 0.5, 0.08), stepSand: W(1, 5, 0.06, 0.01, 0.45, 0.08),
   ...gunMeta(),
 };
 /** Gunshot voices: close (full report, environment send) and far (dull report heard across the city). */
@@ -69,7 +75,7 @@ function gunMeta(): Record<GunKey, SfxMeta> {
     const big = g === 'shotgun' || g === 'sawnoff' || g === 'sniper' || g === 'rpg' || g === 'revolver';
     const rapid = g === 'smg' || g === 'compactSmg' || g === 'machinePistol' || g === 'lmg' || g === 'rifle' || g === 'carbine';
     // generous echo / environment sends: the street, alley or open-air tail is what makes a shot sound like a real gunshot
-    m[`gun_${g}`] = W(big ? 7 : 6, rapid ? 7 : 4, rapid ? 0.025 : 0.05, rapid ? 0.42 : 0.55, 1, 0.035, big ? 1.8 : rapid ? 1.3 : 1.5);
+    m[`gun_${g}`] = W(big ? 7 : 6, rapid ? 7 : 4, rapid ? 0.025 : 0.05, rapid ? 0.42 : 0.55, 1.3, 0.035, big ? 1.8 : rapid ? 1.3 : 1.5);
     m[`gunFar_${g}`] = W(4, rapid ? 4 : 2, 0.04, 0.35, 0.9, 0.04, 1.3);
   }
   return m;
@@ -78,7 +84,7 @@ export const ALL_META: Record<SfxKey, SfxMeta> = { ...SFX_META, ...EXTRA_META };
 
 // ---------- building blocks ----------
 interface BurstOpts { type: BiquadFilterType; f: number; f2?: number; glideDur?: number; q?: number; a?: number; peak: number; dec: number; color?: 'white' | 'pink' | 'brown'; shape?: Float32Array<ArrayBuffer> }
-function burst(k: Kit, out: AudioNode, t: number, o: BurstOpts): number {
+export function burst(k: Kit, out: AudioNode, t: number, o: BurstOpts): number {
   const ctx = k.ctx; const end = t + (o.a ?? 0.001) + o.dec;
   const n = noise(k, t, end - t + 0.02, o.color ?? 'white');
   const f = bq(ctx, o.type, o.f, o.q ?? 0.707);
@@ -89,7 +95,7 @@ function burst(k: Kit, out: AudioNode, t: number, o: BurstOpts): number {
   g.connect(out); return end;
 }
 interface ToneOpts { type?: OscillatorType; f: number; f2?: number; glideDur?: number; a?: number; peak: number; dec: number; detune?: number }
-function tone(k: Kit, out: AudioNode, t: number, o: ToneOpts): number {
+export function tone(k: Kit, out: AudioNode, t: number, o: ToneOpts): number {
   const ctx = k.ctx; const end = t + (o.a ?? 0.002) + o.dec;
   const s = osc(ctx, o.type ?? 'sine', o.f, t, end - t + 0.02);
   if (o.detune) s.detune.value = o.detune;
@@ -102,18 +108,18 @@ function note(k: Kit, out: AudioNode, t: number, f: number, type: OscillatorType
   const s = osc(k.ctx, type, f, t, a + hold + rel + 0.03); s.detune.value = detune;
   const g = gain(k.ctx, 0); const end = ahr(g.gain, t, a, peak, hold, rel); s.connect(g); g.connect(out); return end;
 }
-function saturator(k: Kit, out: AudioNode, drive: number, curve: Float32Array<ArrayBuffer>, trim: number): AudioNode {
+export function saturator(k: Kit, out: AudioNode, drive: number, curve: Float32Array<ArrayBuffer>, trim: number): AudioNode {
   const pre = gain(k.ctx, drive); const ws = k.ctx.createWaveShaper(); ws.curve = curve; const post = gain(k.ctx, trim);
   pre.connect(ws); ws.connect(post); post.connect(out); return pre;
 }
-const mx = (...e: number[]) => Math.max(...e);
-const R = (k: Kit, lo: number, hi: number) => lo + (hi - lo) * k.rand();
+export const mx = (...e: number[]) => Math.max(...e);
+export const R = (k: Kit, lo: number, hi: number) => lo + (hi - lo) * k.rand();
 const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
-function click(k: Kit, out: AudioNode, t: number, f: number, amp: number, dec = 0.018): number {
+export function click(k: Kit, out: AudioNode, t: number, f: number, amp: number, dec = 0.018): number {
   return mx(burst(k, out, t, { type: 'bandpass', f, q: 3, peak: amp, a: 0.0004, dec }), tone(k, out, t, { f: f * 0.45, peak: amp * 0.25, a: 0.0005, dec: dec * 0.8 }));
 }
-function tinkles(k: Kit, out: AudioNode, t: number, n: number, spread: number, amp: number, lo = 2500, hi = 7500): number {
+export function tinkles(k: Kit, out: AudioNode, t: number, n: number, spread: number, amp: number, lo = 2500, hi = 7500): number {
   let end = t;
   for (let i = 0; i < n; i++) {
     const at = t + Math.pow(k.rand(), 1.6) * spread; const f = R(k, lo, hi);
@@ -342,6 +348,7 @@ export const EXTRA_RECIPES: Record<ExtraSfx, Recipe> = {
   // R6-F: you were hit: a dull body thump (low sine drop + muffled noise), and the high ring left in the ear after a bad one
   hitThud: ({ kit: k, out, t }) => mx(tone(k, out, t, { type: 'sine', f: 150, f2: 48, glideDur: 0.14, peak: 0.85, dec: 0.2 }), burst(k, out, t, { type: 'lowpass', f: 700, a: 0.001, peak: 0.55, dec: 0.12, color: 'brown' })),
   earRing: ({ kit: k, out, t }) => mx(tone(k, out, t, { type: 'sine', f: 3300, peak: 0.09, a: 0.05, dec: 2.4 }), tone(k, out, t, { type: 'sine', f: 4950, peak: 0.03, a: 0.05, dec: 1.6 })),
+  ...EXTRA2_RECIPES,
   ...gunRecipes(),
 };
 function gunRecipes(): Record<GunKey, Recipe> {

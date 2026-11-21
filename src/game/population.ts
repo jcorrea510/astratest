@@ -149,7 +149,7 @@ export class Population {
     }
     const fwd = Math.sign(v.speed) || 1;
     if (!lying) ch.yaw = Math.atan2(vel.x * fwd, vel.z * fwd) + Math.PI; // facing the car, so they fall back onto the hood
-    const k = lying ? 0.3 : 0.55 + Math.min(0.25, sp / 80);
+    const k = lying ? 0.25 : 0.12;
     this.ragdolls!.launch(ch, { vx: vel.x * k, vy: lying ? 0.8 : 1.6, vz: vel.z * k, spin: lateral * 2.2, getUp: !lying, lying, car: v });
   }
   private hitPt = new THREE.Vector3(); private hitDir = new THREE.Vector3();
@@ -192,6 +192,11 @@ export class Population {
       }
       if (player.alive && !player.inVehicle && player.knockT <= 0 && test(player)) { player.knockT = 1.2; onPlayerHit(v, sp); }
     }
+  }
+  /** A civilian whose clothes are on fire bolts around in a panic (R6-X). */
+  panicBurn(c: Character) {
+    const n = this.npcs.find(x => x.char === c); if (!n || n.role !== 'civilian') return;
+    n.brain = 'flee'; n.stateT = 0; n.fleeFrom.set(c.pos.x + (Math.random() - 0.5) * 4, 0, c.pos.z + (Math.random() - 0.5) * 4);
   }
   /** Civilians dodge vehicles heading straight at them. */
   dodge(vehicles: Iterable<Vehicle>) {

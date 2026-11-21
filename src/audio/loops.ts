@@ -4,9 +4,11 @@ import type { AudioCore } from './core';
 import { bq, gain, osc } from './dsp';
 import { CULL_DISTANCE, dopplerRatio, isFiniteVec } from './spatial';
 import { safe } from './theory';
+import { fadeOutParam } from './declick';
 
 type CoreRef = () => AudioCore | null;
 type Kind = 'car' | 'bike' | 'truck';
+type UpdateOpts = { rpm: number; throttle: number; pos: Vec3Like; kind: 'car' | 'bike' | 'truck' | 'heli'; damage: number };
 
 /** Engine voices farther than this are parked (no nodes). */
 export const ENGINE_RANGE = 120;
@@ -26,7 +28,7 @@ interface EngineNodes {
 
 function releaseNodes(c: AudioCore, out: GainNode, sources: AudioScheduledSourceNode[], all: AudioNode[], fade = 0.05): void {
   const now = c.ctx.currentTime;
-  out.gain.cancelScheduledValues(now); out.gain.setTargetAtTime(0, now, fade / 3);
+  fadeOutParam(out.gain, now, Math.max(fade, 0.03));
   for (const s of sources) { try { s.stop(now + fade + 0.1); } catch { /* already stopped */ } }
   c.later(now + fade + 0.2, () => { for (const n of all) { try { n.disconnect(); } catch { /* ignore */ } } });
 }
@@ -35,15 +37,17 @@ export class EngineVoiceImpl implements EngineVoice {
   private n: EngineNodes | null = null; private stopped = false; private kind: Kind = 'car'; private withSample = false;
   constructor(private core: CoreRef) {}
 
-  update(o: { rpm: number; throttle: number; pos: Vec3Like; kind: 'car' | 'bike' | 'truck'; damage: number }): void {
+  private rotor: RotorVoice | null = null;
+  update(o: UpdateOpts): void {
     if (this.stopped || !o) return; const c = this.core(); if (!c || !isFiniteVec(o.pos)) return;
+    if (o.kind === 'heli') { (this.rotor ??= new RotorVoice(this.core)).update(o); return; }
     const kind: Kind = o.kind === 'bike' || o.kind === 'truck' ? o.kind : 'car';
     const rpm = safe(o.rpm, 0, 1, 0), thr = safe(o.throttle, 0, 1, 0), dmg = safe(o.damage, 0, 1, 0);
     const d = c.distanceTo(o.pos);
     if (!(d < ENGINE_RANGE) || !c.engines.request(this, d, c.ctx.currentTime)) { this.park(); return; }
     const hasSample = !!c.kit.samples[kind === 'bike' ? 'engineBike' : 'engine'];
     if (this.n && (kind !== this.kind || hasSample !== this.withSample)) this.drop(c, 0.08);
-    if (!this.n) this.build(c, kind, hasSample, o.pos);
+    if (!this.n) { if (!c.allowEngineBuild()) return; this.build(c, kind, hasSample, o.pos); }
     const n = this.n; if (!n) return;
     const K = ENGINE_KIND[kind]; const now = c.ctx.currentTime; const tc = 0.06; const pm = c.pitchMul;
     c.placePanner(n.panner, o.pos, 0.03);
@@ -61,7 +65,7 @@ export class EngineVoiceImpl implements EngineVoice {
   private build(c: AudioCore, kind: Kind, hasSample: boolean, pos: Vec3Like): void {
     const ctx = c.ctx; const now = ctx.currentTime; const k = c.kit;
     this.kind = kind; this.withSample = hasSample;
-    const out = gain(ctx, 0); const panner = c.makePanner(true); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
+    const out = gain(ctx, 0); const panner = c.makePanner(false); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
     const tone = bq(ctx, 'lowpass', 2000, 0.9); tone.connect(out);
     const sources: AudioScheduledSourceNode[] = []; const all: AudioNode[] = [out, panner, tone];
     let src: AudioBufferSourceNode | null = null; const synth: OscillatorNode[] = [];
@@ -94,7 +98,7 @@ export class EngineVoiceImpl implements EngineVoice {
   /** Release nodes but stay usable (out of range or slot taken by a closer engine). */
   park(): void { const c = this.core(); if (!c) return; c.engines.release(this); this.drop(c, 0.08); }
 
-  stop(): void { if (this.stopped) return; this.stopped = true; const c = this.core(); if (!c) return; c.engines.release(this); this.drop(c, 0.15); }
+  stop(): void { if (this.stopped) return; this.stopped = true; this.rotor?.stop(); const c = this.core(); if (!c) return; c.engines.release(this); this.drop(c, 0.15); }
 }
 
 interface SirenNodes { out: GainNode; panner: PannerNode; oscs: OscillatorNode[]; lfo: OscillatorNode; depth: GainNode; all: AudioNode[]; sources: AudioScheduledSourceNode[] }
@@ -136,7 +140,7 @@ export class SirenVoice implements LoopVoice {
   }
   private build(c: AudioCore, pos: Vec3Like): void {
     const ctx = c.ctx; const now = ctx.currentTime;
-    const out = gain(ctx, 0); const panner = c.makePanner(true); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
+    const out = gain(ctx, 0); const panner = c.makePanner(false); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
     const bp = bq(ctx, 'bandpass', 1350, 0.55); const ws = ctx.createWaveShaper(); ws.curve = c.kit.soft; const post = gain(ctx, 0.7);
     bp.connect(ws); ws.connect(post); post.connect(out);
     const lfo = osc(ctx, 'sine', 0.27, now, 1e7); const depth = gain(ctx, 340); lfo.connect(depth);
@@ -177,7 +181,7 @@ export class SkidVoice implements LoopVoice {
   }
   private build(c: AudioCore, pos: Vec3Like): void {
     const ctx = c.ctx; const now = ctx.currentTime; const k = c.kit;
-    const out = gain(ctx, 0); const panner = c.makePanner(true); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
+    const out = gain(ctx, 0); const panner = c.makePanner(false); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
     const all: AudioNode[] = [out, panner]; const sources: AudioScheduledSourceNode[] = [];
     let src: AudioBufferSourceNode | null = null, o: OscillatorNode | null = null;
     const buf = k.samples.skid;
@@ -190,5 +194,50 @@ export class SkidVoice implements LoopVoice {
     this.n = { out, panner, src, osc: o, all, sources };
   }
   park(): void { const c = this.core(); if (!c) return; c.skids.release(this); const n = this.n; if (!n) return; this.n = null; this.quietSince = -1; releaseNodes(c, n.out, n.sources, n.all, 0.08); }
+  stop(): void { if (this.stopped) return; this.park(); this.stopped = true; }
+}
+
+interface RotorNodes { out: GainNode; panner: PannerNode; slap: OscillatorNode; slapG: GainNode; whine: OscillatorNode; whineG: GainNode; wash: GainNode; all: AudioNode[]; sources: AudioScheduledSourceNode[] }
+
+/**
+ * Helicopter: blade slap (a pulse train at blade-pass rate shaping low-passed noise, with the double "wop" of a two-blade
+ * rotor), a turbine whine that rises with power, and a broadband rotor wash. rpm 0..1 sets blade-pass 4..22 Hz.
+ */
+export class RotorVoice {
+  private n: RotorNodes | null = null; private stopped = false;
+  constructor(private core: CoreRef) {}
+  update(o: UpdateOpts): void {
+    if (this.stopped) return; const c = this.core(); if (!c) return;
+    const d = c.distanceTo(o.pos);
+    if (!(d < 220) || !c.engines.request(this, d, c.ctx.currentTime)) { this.park(); return; }
+    if (!this.n) { if (!c.allowEngineBuild()) return; this.build(c, o.pos); }
+    const n = this.n; if (!n) return; const now = c.ctx.currentTime; const tc = 0.08;
+    const rpm = safe(o.rpm, 0, 1, 0), thr = safe(o.throttle, 0, 1, 0), dmg = safe(o.damage, 0, 1, 0);
+    c.placePanner(n.panner, o.pos, 0.04);
+    const bpf = (4 + 18 * rpm) * c.pitchMul;
+    n.slap.frequency.setTargetAtTime(bpf, now, tc);
+    n.slapG.gain.setTargetAtTime(0.5 + 0.5 * thr + 0.3 * dmg, now, tc);
+    n.whine.frequency.setTargetAtTime((900 + 1900 * rpm) * c.pitchMul, now, tc);
+    n.whineG.gain.setTargetAtTime(0.02 + 0.07 * rpm * (0.5 + 0.5 * thr), now, tc);
+    n.wash.gain.setTargetAtTime(0.1 + 0.3 * thr * rpm, now, tc);
+    n.out.gain.setTargetAtTime(0.5 * (0.3 + 0.7 * rpm), now, tc);
+  }
+  private build(c: AudioCore, pos: Vec3Like): void {
+    const ctx = c.ctx; const now = ctx.currentTime; const k = c.kit;
+    const out = gain(ctx, 0); const panner = c.makePanner(false); c.placePanner(panner, pos); out.connect(panner); panner.connect(c.sfxIn);
+    const sources: AudioScheduledSourceNode[] = []; const all: AudioNode[] = [out, panner];
+    // blade slap: noise gated by a soft pulse (square LFO → low-pass makes rounded thumps), plus a body thump an octave under
+    const nz = ctx.createBufferSource(); nz.buffer = k.brown; nz.loop = true; nz.start(now, k.rand() * 2); sources.push(nz);
+    const nlp = bq(ctx, 'lowpass', 520, 0.8); const gate = gain(ctx, 0.5); const slap = osc(ctx, 'square', 10, now, 1e7); const sl = bq(ctx, 'lowpass', 40, 0.5); const slapG = gain(ctx, 0.5);
+    const slapTone = gain(ctx, 0.5); slap.connect(sl); sl.connect(slapG); slapG.connect(gate.gain); nz.connect(nlp); nlp.connect(gate); gate.connect(slapTone); slapTone.connect(out);
+    const thump = osc(ctx, 'sine', 55, now, 1e7); const tg = gain(ctx, 0.0); slapG.connect(tg.gain); thump.connect(tg); tg.connect(out); sources.push(slap, thump);
+    // turbine whine
+    const whine = osc(ctx, 'sawtooth', 1200, now, 1e7); const wbp = bq(ctx, 'bandpass', 2200, 3); const whineG = gain(ctx, 0.03); whine.connect(wbp); wbp.connect(whineG); whineG.connect(out); sources.push(whine);
+    // rotor wash: band-passed white noise
+    const wn = ctx.createBufferSource(); wn.buffer = k.white; wn.loop = true; wn.start(now, k.rand()); const wbp2 = bq(ctx, 'bandpass', 900, 0.5); const wash = gain(ctx, 0.2); wn.connect(wbp2); wbp2.connect(wash); wash.connect(out); sources.push(wn);
+    all.push(nlp, gate, sl, slapG, slapTone, tg, wbp, whineG, wbp2, wash);
+    this.n = { out, panner, slap, slapG, whine, whineG, wash, all, sources };
+  }
+  park(): void { const c = this.core(); if (!c) return; c.engines.release(this); const n = this.n; if (!n) return; this.n = null; releaseNodes(c, n.out, n.sources, n.all, 0.1); }
   stop(): void { if (this.stopped) return; this.park(); this.stopped = true; }
 }

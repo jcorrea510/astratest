@@ -76,11 +76,13 @@ test('map: live 3D while rotating, top-down toggle, Q/E never leave the map', as
   const view = () => page.evaluate(() => { const f = (window as any).__meridian.ui.fullmap; return { tilt: f.view.tilt, pitch: f.view.pitch, top: f.topDown, layerPitch: f.layerView?.pitch, label: document.querySelector('#ma-map-pitch')!.textContent }; });
   // top-down via the key and via the button
   expect((await view()).label).toBe('Top-down');
-  await page.keyboard.press('KeyT'); await page.waitForTimeout(1500);
+  await page.keyboard.press('KeyT');
+  await page.waitForFunction(() => (window as any).__meridian.ui.fullmap.layerView?.pitch > 0.99, null, { timeout: 40_000 });
   const td = await view();
   expect(td.pitch).toBeGreaterThan(0.99); expect(td.layerPitch).toBeGreaterThan(0.99); expect(td.label).toBe('3D view');
   await page.screenshot({ path: '/tmp/claude-0/shots/u-map-top.png' });
-  await page.locator('#ma-map-pitch').click(); await page.waitForTimeout(1500);
+  await page.locator('#ma-map-pitch').click();
+  await page.waitForFunction(() => (window as any).__meridian.ui.fullmap.layerView?.pitch < 0.7, null, { timeout: 40_000 });
   const back = await view();
   expect(back.pitch).toBeLessThan(0.7); expect(back.label).toBe('Top-down');
   await page.keyboard.press('KeyF'); await page.waitForTimeout(800);

@@ -2,21 +2,24 @@
 type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
 type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
 const KEY = 'ma.wantFullscreen';
+/** The game runs inside a same-origin shell iframe (src/shell.ts); fullscreen lives on the top document so reloads of the game keep it. */
+function fsDoc(): Document { try { if (window.top && window.top !== window) return window.top.document; } catch { /* cross-origin */ } return document; }
+function fsNav(): Navigator { try { if (window.top && window.top !== window) return window.top.navigator; } catch { /* cross-origin */ } return navigator; }
 
 export function fullscreenSupported(): boolean {
-  const d = document as FsDoc & { webkitFullscreenEnabled?: boolean };
+  const d = fsDoc() as FsDoc & { webkitFullscreenEnabled?: boolean };
   return !!(d.fullscreenEnabled || d.webkitFullscreenEnabled);
 }
-export function isFullscreen(): boolean { const d = document as FsDoc; return !!(d.fullscreenElement || d.webkitFullscreenElement); }
+export function isFullscreen(): boolean { const d = fsDoc() as FsDoc; return !!(d.fullscreenElement || d.webkitFullscreenElement); }
 export function enterFullscreen(): void {
   try {
-    const el = document.documentElement as FsEl;
+    const el = fsDoc().documentElement as FsEl;
     const r = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.();
     (r as Promise<void> | undefined)?.catch?.(() => {});
   } catch { /* fullscreen can be blocked by the browser or an iframe */ }
 }
 export function exitFullscreen(): void {
-  try { const d = document as FsDoc; const r = d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.(); (r as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* ignore */ }
+  try { const d = fsDoc() as FsDoc; const r = d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.(); (r as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* ignore */ }
 }
 export function toggleFullscreen(): void { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); }
 
@@ -32,9 +35,9 @@ export function installFullscreenShortcut(): void {
     if (e.altKey && (e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); toggleFullscreen(); }
   }, true);
   // While fullscreen, ask the browser to let the page have Esc (the pause key) so pausing never drops fullscreen; hold Esc to leave.
-  document.addEventListener('fullscreenchange', () => {
+  fsDoc().addEventListener('fullscreenchange', () => {
     try {
-      const kb = (navigator as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void>; unlock?: () => void } }).keyboard;
+      const kb = (fsNav() as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void>; unlock?: () => void } }).keyboard;
       if (isFullscreen()) void kb?.lock?.(['Escape'])?.catch?.(() => {}); else kb?.unlock?.();
     } catch { /* Keyboard Lock is Chromium-only */ }
   });
@@ -56,7 +59,7 @@ export function createFullscreenButton(cls: string, id = 'fs-toggle'): HTMLButto
   b.type = 'button'; b.className = cls; b.id = id;
   const sync = () => { const on = isFullscreen(); b.innerHTML = on ? FS_ICON_EXIT : FS_ICON_ENTER; b.title = on ? 'Exit fullscreen (Alt+Enter)' : 'Fullscreen (Alt+Enter)'; b.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen'); b.setAttribute('aria-pressed', String(on)); };
   sync();
-  document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
+  fsDoc().addEventListener('fullscreenchange', sync); fsDoc().addEventListener('webkitfullscreenchange', sync);
   b.addEventListener('click', e => { e.stopPropagation(); toggleFullscreen(); b.blur(); });
   if (!fullscreenSupported()) b.hidden = true;
   return b;

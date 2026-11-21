@@ -6,6 +6,7 @@
  * breaks the pane and carries on into the cabin, where it can hit the occupants (a killed driver slumps and the car
  * coasts). Launchers and throwables are simulated projectiles that explode (or burst into flames).
  */
+import { FireField } from './fire';
 import { bulletDrop, flightTime, isShallow, muzzleVelocity, penetration, reflect, roundPower } from './ballistics';
 import * as THREE from 'three';
 import { RAPIER, type Physics, type ColliderTag, groups, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
@@ -87,19 +88,39 @@ const IMPACT_SND: Record<ImpactKind, Snd> = {
 };
 const WORLD = groups(0xffff, G_STATIC | G_VEHICLE | G_PROP);
 
-interface Projectile { kind: WeaponDef['projectile']; pos: THREE.Vector3; vel: THREE.Vector3; owner: Character; w: WeaponDef; fuse: number; age: number; mesh: THREE.Object3D; bounces: number; trail: number }
-interface FireZone { pos: THREE.Vector3; r: number; t: number; by: Character; tick: number }
+interface Projectile { kind: WeaponDef['projectile']; pos: THREE.Vector3; vel: THREE.Vector3; owner: Character; w: WeaponDef; fuse: number; age: number; mesh: THREE.Object3D; bounces: number; trail: number; spin?: number }
 
 /** Lightweight shared projectile meshes. */
 let PROJ_GEO: Record<string, THREE.BufferGeometry> | null = null;
-function projMesh(kind: string): THREE.Mesh {
+function projMesh(kind: string): THREE.Object3D {
   PROJ_GEO ??= {
     frag: new THREE.SphereGeometry(0.035, 10, 8).scale(1, 1.25, 1), grenade40: new THREE.CylinderGeometry(0.02, 0.02, 0.08, 10).rotateX(Math.PI / 2),
-    rocket: new THREE.ConeGeometry(0.045, 0.32, 10).rotateX(Math.PI / 2), molotov: new THREE.CylinderGeometry(0.035, 0.037, 0.2, 10),
+    rocket: new THREE.ConeGeometry(0.045, 0.32, 10).rotateX(Math.PI / 2),
   };
-  const col = kind === 'molotov' ? '#5f8a6a' : kind === 'rocket' ? '#4d5638' : '#3a4030';
+  if (kind === 'molotov') return molotovBottle();
+  const col = kind === 'rocket' ? '#4d5638' : '#3a4030';
   const m = new THREE.Mesh(PROJ_GEO[kind] ?? PROJ_GEO.frag, new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.3 })); m.castShadow = true; return m;
 }
+/** Green glass bottle of fuel with a rag stuffed in the neck; local +Y is the neck, the rag tip sits at MOLOTOV_WICK. */
+const MOLOTOV_WICK = new THREE.Vector3(0, 0.255, 0);
+function molotovBottle(): THREE.Object3D {
+  const g = new THREE.Group();
+  const glass = new THREE.MeshStandardMaterial({ color: '#4f7a5a', roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.62 });
+  const fuel = new THREE.MeshStandardMaterial({ color: '#c8923a', roughness: 0.35, emissive: '#7a3a08', emissiveIntensity: 0.6 });
+  const rag = new THREE.MeshStandardMaterial({ color: '#d7c9a6', roughness: 0.95 });
+  const ember = new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.041, 0.15, 14), glass); body.position.y = 0;
+  const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.037, 0.05, 14), glass); shoulder.position.y = 0.1;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.016, 0.07, 10), glass); neck.position.y = 0.16;
+  const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.035, 0.1, 12), fuel); liquid.position.y = -0.02;
+  const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.013, 0.1, 8), rag); wick.position.y = 0.21;
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), ember); tip.position.copy(MOLOTOV_WICK);
+  g.add(body, shoulder, neck, liquid, wick, tip);
+  g.traverse(o => { (o as THREE.Mesh).castShadow = true; });
+  g.rotation.order = 'YXZ';
+  return g;
+}
+function disposeObject(o: THREE.Object3D) { o.traverse(c => { const m = (c as THREE.Mesh).material as THREE.Material | undefined; if (m) m.dispose(); }); }
 
 export class Combat {
   tracers: Tracers;
@@ -129,7 +150,12 @@ export class Combat {
   groundSurface: ((x: number, z: number) => string) | null = null;
   private pending: { at: number; fn: () => void }[] = [];
   private projectiles: Projectile[] = [];
-  private fires: FireZone[] = [];
+  /** R6-X: spreading molotov fire, people burning and cars heating up inside it */
+  fire: FireField;
+  burning = new Map<Character, { t: number; by: Character; tick: number; corpse: number }>();
+  private carHeat = new Map<Vehicle, number>();
+  /** called once when someone catches fire (the game makes civilians panic) */
+  onIgnite: ((c: Character, by: Character) => void) | null = null;
   /** world shop-glass registry (set by Game; see world/glass.ts) */
   worldGlass: GlassApi | null = null;
   /** fallback broken-pane memory when vehicles don't implement GlassApi */
@@ -139,6 +165,9 @@ export class Combat {
   constructor(private physics: Physics, private particles: Particles, private audio: GameAudio, private scene: THREE.Scene) {
     this.tracers = new Tracers(scene);
     this.flash = new THREE.PointLight(0xffb36b, 0, 12, 2); scene.add(this.flash);
+    this.fire = new FireField(scene);
+    this.fire.smoke = (x, y, z, d, a) => this.particles.smoke(x, y, z, d, a);
+    this.fire.ember = (x, y, z) => this.particles.sparks(x, y, z, 1, 2.5);
   }
   private get ax(): Partial<AudioExtras> { return this.audio as GameAudio & Partial<AudioExtras>; }
   private extra(name: ExtraSfx, pos: THREE.Vector3, volume = 1, pitch = 1, fallback?: SfxName) {
@@ -406,7 +435,7 @@ export class Combat {
     const wall = wr ? { x: end.x + d.x * wr.toi, y: end.y + d.y * wr.toi, z: end.z + d.z * wr.toi, nx: wr.normal.x, ny: wr.normal.y, nz: wr.normal.z } : null;
     const left = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
     b.hit(end, d, c.pos.y, strength, wall, zoneBone(c.human.model, zone, left));
-    if (killed && !c.inVehicle) b.pool(c.pos.x + d.x * 0.35, c.pos.y, c.pos.z + d.z * 0.35);
+    if (killed && !c.inVehicle) b.pool(c.pos.x + d.x * 0.35, c.pos.y, c.pos.z + d.z * 0.35, c.pos);
   }
 
   /** Applies zone damage and the hit reaction. */
@@ -526,21 +555,35 @@ export class Combat {
       if (!exploded && (p.fuse <= 0 || p.age > 12)) { this.detonate(p); exploded = true; }
       if (!exploded) {
         p.mesh.position.copy(p.pos);
-        if (p.kind === 'rocket' || p.kind === 'grenade40') p.mesh.lookAt(this.v2.copy(p.pos).add(p.vel)); else p.mesh.rotation.x += dt * 9;
-        if (p.kind === 'molotov') this.particles.fire(p.pos.x, p.pos.y + 0.12, p.pos.z, 0.25);
+        if (p.kind === 'rocket' || p.kind === 'grenade40') p.mesh.lookAt(this.v2.copy(p.pos).add(p.vel));
+        else if (p.kind === 'molotov') {
+          // end-over-end tumble about the travel axis, flaming rag trailing a streak of fire and smoke
+          p.mesh.rotation.y = Math.atan2(p.vel.x, p.vel.z); p.spin = (p.spin ?? 0) + dt * 15; p.mesh.rotation.x = p.spin;
+          p.mesh.updateMatrixWorld(true);
+          const w = this.v2.copy(MOLOTOV_WICK).applyMatrix4(p.mesh.matrixWorld);
+          this.particles.fire(w.x, w.y, w.z, 0.3); this.particles.fire(w.x - p.vel.x * 0.012, w.y - p.vel.y * 0.012, w.z - p.vel.z * 0.012, 0.22);
+          if (Math.random() < 0.5) this.particles.smoke(w.x, w.y, w.z, 0.8, 0.35);
+          this.particles.sparks(w.x, w.y, w.z, 1, 2);
+        } else p.mesh.rotation.x += dt * 9;
       }
     }
   }
-  private removeProjectile(p: Projectile) { const i = this.projectiles.indexOf(p); if (i >= 0) this.projectiles.splice(i, 1); p.mesh.removeFromParent(); ((p.mesh as THREE.Mesh).material as THREE.Material).dispose(); }
+  private removeProjectile(p: Projectile) { const i = this.projectiles.indexOf(p); if (i >= 0) this.projectiles.splice(i, 1); p.mesh.removeFromParent(); disposeObject(p.mesh); }
   private detonate(p: Projectile) {
     this.removeProjectile(p);
     if (p.kind === 'molotov') {
-      this.extra('glassShatter', p.pos, 0.8, 1.1, 'glass');
-      this.audio.play('whoosh', { pos: p.pos, volume: 0.9, pitch: 0.6 });
+      this.extra('glassShatter', p.pos, 1, 1.05, 'glass');
+      this.audio.play('whoosh', { pos: p.pos, volume: 1, pitch: 0.55 });
+      this.audio.play('explosion', { pos: p.pos, volume: 0.25, pitch: 1.7 });
       const ground = this.physics.ray(p.pos.x, p.pos.y + 0.3, p.pos.z, 0, -1, 0, 6, groups(0xffff, G_STATIC));
       const at = p.pos.clone(); if (ground) at.y = p.pos.y + 0.3 - ground.toi;
-      this.fires.push({ pos: at, r: 3.2, t: 9, by: p.owner, tick: 0 });
-      for (let i = 0; i < 20; i++) this.particles.fire(at.x + (Math.random() - 0.5) * 3, at.y + 0.2, at.z + (Math.random() - 0.5) * 3, 1.2);
+      this.fire.ignite(at, p.owner);
+      // the burst: a fireball puff, glass shards, and burning fuel flung out across the ground
+      this.flash.position.copy(at).y += 0.8; this.flashT = FLASH_T * 1.6; this.flashPeak = 12;
+      for (let i = 0; i < 16; i++) { const a = Math.random() * 6.283, sp = 2 + Math.random() * 4; this.particles.impact(at.x, at.y + 0.2, at.z, Math.cos(a) * 0.3, 0.8, Math.sin(a) * 0.3, 'glass', 1); void sp; }
+      for (let i = 0; i < 26; i++) this.particles.fire(at.x + (Math.random() - 0.5) * 2.4, at.y + 0.15, at.z + (Math.random() - 0.5) * 2.4, 1.1 + Math.random() * 0.8);
+      this.particles.sparks(at.x, at.y + 0.3, at.z, 30, 7);
+      for (let i = 0; i < 4; i++) this.particles.smoke(at.x, at.y + 0.6, at.z, 0.9, 1.4);
       return;
     }
     this.explode(p.pos, p.owner, p.kind === 'rocket' ? 1.35 : p.kind === 'grenade40' ? 1 : 1.1, p.w);
@@ -577,27 +620,60 @@ export class Combat {
     }
   }
   private updateFires(dt: number) {
-    for (const f of [...this.fires]) {
-      f.t -= dt; f.tick -= dt;
-      const life = Math.min(1, f.t / 2);
-      if (Math.random() < 0.9 * life) for (let i = 0; i < 2; i++) { const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * f.r; this.particles.fire(f.pos.x + Math.cos(a) * r, f.pos.y + 0.1, f.pos.z + Math.sin(a) * r, 0.9 + Math.random() * 0.5); }
-      if (Math.random() < 0.2 * life) this.particles.smoke(f.pos.x + (Math.random() - 0.5) * f.r, f.pos.y + 1.2, f.pos.z + (Math.random() - 0.5) * f.r, 0.6, 1.2);
-      if (f.tick <= 0) {
-        f.tick = 0.25;
-        for (const c of this.targets()) {
-          if (!c.alive || c.inVehicle) continue;
-          const d = Math.hypot(c.pos.x - f.pos.x, c.pos.z - f.pos.z); if (d > f.r || Math.abs(c.pos.y - f.pos.y) > 1.5) continue;
-          // burning: ~40 health/s for people, ~12/s for the player (ticks of 0.25 s)
-          const w = WEAPONS.molotov; const dmg = (c.isPlayer ? 12 : 40) * 0.25;
-          const killed = c.damage(dmg, f.by, this.time);
-          this.onHit?.(c, dmg, f.by, false, killed, w, 'leg');
+    this.fire.update(dt, this.listener);
+    // people standing in the flames catch fire
+    if (this.fire.patches.length) for (const c of this.targets()) {
+      if (!c.alive || c.inVehicle || this.burning.has(c)) continue;
+      const p = this.fire.inside(c.pos.x, c.pos.y, c.pos.z, 0.25);
+      if (p) this.ignite(c, (p.owner as Character) ?? c);
+    }
+    // burning: damage ticks, flames on the body, then the corpse smoulders
+    for (const [c, b] of [...this.burning]) {
+      b.t -= dt; b.tick -= dt;
+      const inFire = this.fire.patches.length > 0 && !!this.fire.inside(c.pos.x, c.pos.y, c.pos.z, 0.25);
+      if (inFire) b.t = Math.max(b.t, 3.5);
+      if (c.alive) {
+        for (let k = 0; k < 2; k++) this.particles.fire(c.pos.x + (Math.random() - 0.5) * 0.3, c.pos.y + 0.3 + Math.random() * 1.3, c.pos.z + (Math.random() - 0.5) * 0.3, 0.45);
+        if (Math.random() < 0.3) this.particles.smoke(c.pos.x, c.pos.y + 1.7, c.pos.z, 0.9, 0.5);
+        if (b.tick <= 0) {
+          b.tick = 0.25;
+          const dmg = (c.isPlayer ? 10 : 36) * 0.25;
+          const killed = c.damage(dmg, b.by, this.time);
+          this.onHit?.(c, dmg, b.by, false, killed, WEAPONS.molotov, 'torso');
         }
+      } else {
+        b.corpse += dt;
+        if (Math.random() < 0.4) this.particles.fire(c.pos.x + (Math.random() - 0.5) * 0.5, c.pos.y + 0.25, c.pos.z + (Math.random() - 0.5) * 0.5, 0.5);
+        if (Math.random() < 0.2) this.particles.smoke(c.pos.x, c.pos.y + 0.6, c.pos.z, 0.9, 0.6);
+        if (b.corpse > 4) b.t = 0;
       }
-      if (f.t <= 0) this.fires.splice(this.fires.indexOf(f), 1);
+      if (b.t <= 0) { this.burning.delete(c); if (c.alive && !c.isPlayer) c.human.stopAction('panic'); }
+    }
+    // cars parked / stuck in the fire heat up and eventually go up
+    if (this.fire.patches.length) {
+      for (const v of this.vehicles()) {
+        if (v.destroyed) continue;
+        const r = Math.max(0.6, v.tpl.layout.half[2] * 0.45);
+        const inside = !!this.fire.inside(v.position.x, v.position.y, v.position.z, r);
+        const h0 = this.carHeat.get(v) ?? 0;
+        if (!inside && h0 <= 0) continue;
+        const h = inside ? h0 + dt : Math.max(0, h0 - dt * 0.4);
+        this.carHeat.set(v, h);
+        if (inside && Math.random() < 0.6) this.particles.fire(v.position.x + (Math.random() - 0.5) * 1.6, v.position.y + 0.5 + Math.random() * 0.5, v.position.z + (Math.random() - 0.5) * 2.4, 0.7);
+        if (h > 1.2) v.damage(dt * 90, undefined, undefined, undefined, false);
+        if (h > 3.4 && !v.destroyed) v.damage(v.health + 5, v.position.clone(), undefined, undefined, false);
+      }
     }
   }
+  /** Sets a person on fire (idempotent). */
+  ignite(c: Character, by: Character) {
+    if (!c.alive || this.burning.has(c)) return;
+    this.burning.set(c, { t: 4, by, tick: 0.1, corpse: 0 });
+    if (!c.isPlayer && !c.inVehicle) c.human.playAction('panic');
+    this.onIgnite?.(c, by);
+  }
   get activeProjectiles() { return this.projectiles.length; }
-  get activeFires() { return this.fires.length; }
+  get activeFires() { return this.fire.active; }
 
   // ---------------------------------------------------------------- melee
   /** Melee strike in front of the attacker (fists, knife, bat). */

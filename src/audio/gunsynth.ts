@@ -66,6 +66,7 @@ export interface GunVoice {
   /** body resonances [Hz, amplitude, decay s] (chamber, barrel, the "boom") */ modes: [number, number, number][];
   /** chest thump: pitch-dropping sine */ thump: number; thumpF0: number; thumpF1: number; thumpTau: number;
   /** near-field noise tail with a closing low-pass */ tail: number; tailTau: number; tailHz: number;
+  /** transient emphasis: the first few ms are boosted by `pop` (x), decaying with `popTau` s: a sharp, loud pop instead of a wall of noise */ pop?: number; popTau?: number;
   /** rocket motor hiss (launchers) */ hiss?: number;
   drive: number;
 }
@@ -95,6 +96,14 @@ export const GUNS: Record<GunSound, GunVoice> = {
   launcher: V({ dur: 0.7, crack: 0.3, crackHp: 1500, blast: 0.6, blastTau: 0.02, blastHz: 400, modes: [[90, 0.9, 0.12], [180, 0.6, 0.07], [520, 0.25, 0.03]], thump: 1.3, thumpF0: 140, thumpF1: 50, thumpTau: 0.12, tail: 0.25, tailTau: 0.2, tailHz: 900, drive: 2.5 }),
   rpg: V({ dur: 1.6, crack: 0.8, crackHp: 2000, blast: 1.2, blastTau: 0.03, blastHz: 500, modes: [[80, 0.9, 0.15], [160, 0.7, 0.1], [300, 0.4, 0.06]], thump: 1.4, thumpF0: 110, thumpF1: 40, thumpTau: 0.14, tail: 0.7, tailTau: 0.6, tailHz: 2500, hiss: 0.5, drive: 3.5 }),
 };
+
+/** Transient character per weapon: pistols snap, rifles crack, shotguns and snipers thump (less spike, longer body). */
+const POP: Record<GunSound, [number, number]> = {
+  compact: [1.7, 0.0035], pistol: [1.7, 0.004], heavyPistol: [1.5, 0.0045], revolver: [1.3, 0.006], machinePistol: [1.5, 0.003], compactSmg: [1.5, 0.003], smg: [1.4, 0.0035],
+  sawnoff: [0.8, 0.01], shotgun: [0.9, 0.009], autoShotgun: [1, 0.007], carbine: [1.6, 0.003], rifle: [1.7, 0.003], battleRifle: [1.4, 0.004], marksman: [1.4, 0.004],
+  sniper: [1.2, 0.006], lmg: [1.4, 0.0035], launcher: [0.4, 0.015], rpg: [0.4, 0.02],
+};
+for (const g of Object.keys(POP) as GunSound[]) { GUNS[g].pop = POP[g][0]; GUNS[g].popTau = POP[g][1]; }
 
 /**
  * Renders one gunshot variant (mono). `far` renders the distant version: no near crack (except the supersonic snap,
@@ -152,6 +161,11 @@ export function renderGun(v0: GunVoice, sr: number, r: Rand, far = false): Float
     // ground bounce ~4 ms behind the direct sound thickens the report like a real recording at head height
     const g = Math.floor(0.0042 * sr), g2 = Math.floor(0.013 * sr);
     for (let i = n - 1; i >= g2; i--) out[i] += out[i - g] * 0.42 + out[i - g2] * 0.18;
+  }
+  if (!far && v.pop) {
+    // transient shaper: a gunshot is a sharp, loud spike that falls away fast; a dense wall of noise reads as a hiss
+    const k = v.pop, tau = v.popTau ?? 0.004;
+    for (let i = 0; i < n; i++) out[i] *= 1 + k * Math.exp(-i / sr / tau);
   }
   for (let i = 0; i < n; i++) out[i] = Math.tanh(out[i] * v.drive * 0.5) / Math.tanh(v.drive * 0.5);
   return finish(out, sr, 0.95);
