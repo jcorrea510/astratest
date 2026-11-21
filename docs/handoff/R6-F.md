@@ -1,4 +1,5 @@
-# R6-F (orders/hostage/blood/hit-fx) — IN PROGRESS
-- Code done & compiling: src/game/orders.ts (menu key G, compliance, shield, seated hostage), src/render/blood.ts (+Particles.blood, Combat.bloodHit), src/ui/combatfx.ts (indicator/vignette/menu), npc.ts brains 'ordered'/'hostage', sfx hitThud/earRing, Settings.blood + toggle, renderer.setHurt, action kneel_head.
-- Wiring in game.ts (orders.update, onPlayerHurt, updateHurtFx). Edits outside own files: population.ts (2 guards), actions.ts, hitzones.ts(zoneBone), character.ts(heldBy), bindings.ts, settingsPanel.ts, input.ts(rawPressed).
-- Next: unit tests (src/game/orders.test.ts), e2e tests/e2e/orders6f.spec.ts (port 5209), screenshots (blood, menu, shield, indicator), fix issues.
+# R6-F (orders/hostage/blood/hit-fx) — DONE
+- Key: KeyB is the camera action, so orders stay on G (hold); HUD hint "Hold G · give orders" shows while aiming at a target (orders.ts).
+- Tests: src/game/orders.test.ts (7), tests/e2e/orders6f.spec.ts (6, static build: vite build --outDir /tmp/dist-r6f; vite preview --port 5209). All pass; tsc/eslint/vitest clean.
+- Screenshots (FX_SHOTS dir): r6f-orders-menu/shield/blood/hit-indicator/hostage-car/low-health. Headless CSS timeline barely ticks, so spec pins fades via addStyleTag for shots.
+- Edits outside own files: population.ts, actions.ts, hitzones.ts, character.ts, bindings.ts, settingsPanel.ts, input.ts.

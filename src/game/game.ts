@@ -10,7 +10,7 @@ import { precinctCarSpots } from '../world/precinct';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import { worldGlass } from '../world/glass';
 import type { Assets } from '../world/assets';
-import { loadHumanTemplate, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
+import { Human, loadHumanTemplate, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
 import { Character } from '../actors/character';
 import { CameraRig } from './camera';
 import { PlayerController } from './player';
@@ -163,6 +163,7 @@ export class Game {
     onProgress(0.55, 'Waking up the locals');
     await tick();
     this.humanTpl = await loadHumanTemplate(this.assets.human); // [PEOPLE] realistic bodies + retargeted clips
+    Human.lodFrom = this.renderer.camera.position;
     this.player = new Character(this.physics, this.humanTpl, PLAYER_LOOK, 'player', SPAWN.x, SPAWN.z, SPAWN.y);
     this.player.yaw = SPAWN.yaw; this.player.maxHealth = 100;
     this.renderer.scene.add(this.player.human.root);

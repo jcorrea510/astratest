@@ -13,12 +13,12 @@ import type { GroomState } from '../ui/groom';
 
 /** Where the player stands while previewing (store-local metres, facing the mirror on the back wall) and how far the camera orbits. */
 const SPOT: Record<ShopType, { x: number; z: number; dist: number; focusY: number; fov: number; front: boolean }> = {
-  barber: { x: 1.9, z: -1.4, dist: 1.5, focusY: 1.66, fov: 34, front: false }, // head and shoulders, facing the mirror wall
+  barber: { x: 1.9, z: -1.4, dist: 1.9, focusY: 1.6, fov: 30, front: false }, // head and shoulders, facing the mirror wall
   clothing: { x: -1.8, z: 2.2, dist: 1.95, focusY: 0.98, fov: 56, front: true }, // full body, facing the street
 };
 const TITLE: Record<ShopType, string> = { barber: 'Barber chair', clothing: 'Fitting room' };
 
-interface Session { face: number; k: Kiosk; type: ShopType; owned: FullLook; pending: FullLook; back: THREE.Vector3; backYaw: number; angle: number; focus: THREE.Vector3 }
+interface Session { light: THREE.PointLight; t: number; face: number; k: Kiosk; type: ShopType; owned: FullLook; pending: FullLook; back: THREE.Vector3; backYaw: number; angle: number; focus: THREE.Vector3 }
 
 export class Salon {
   private session: Session | null = null;
@@ -64,7 +64,8 @@ export class Salon {
     const face = spot.front ? k.def.yaw : k.def.yaw + Math.PI;
     g.player.place(at.x, at.y + 0.02, at.z, face);
     g.player.updateVisual(0);
-    this.session = { k, type, owned, pending: { ...owned }, back, backYaw, angle: 0, face, focus: new THREE.Vector3(at.x, at.y + spot.focusY, at.z) };
+    const light = new THREE.PointLight('#fff2e0', 5, 7, 1.6); g.renderer.scene.add(light);
+    this.session = { light, t: 0, k, type, owned, pending: { ...owned }, back, backYaw, angle: 0, face, focus: new THREE.Vector3(at.x, at.y + spot.focusY, at.z) };
     g.menuOpen = true; g.input.exitLock();
     window.addEventListener('mousemove', this.onMove);
     this.ui.openGroom({
@@ -96,7 +97,7 @@ export class Salon {
   /** Leaves the chair: an unpaid preview is thrown away, the player goes back to where they stood. */
   close(hideUi = true) {
     const s = this.session; if (!s) return;
-    this.session = null;
+    this.session = null; s.light.removeFromParent(); s.light.dispose();
     window.removeEventListener('mousemove', this.onMove);
     const g = this.game;
     g.player.human.applyLook(s.owned);
@@ -107,9 +108,12 @@ export class Salon {
   }
   update(dt: number) {
     const s = this.session; if (!s) return;
-    s.angle += dt * 0.45;
-    // the camera starts in front of the player and slowly circles
-    this.game.cam.preview = { focus: s.focus, yaw: s.face + s.angle, dist: SPOT[s.type].dist, pitch: 0.04, fov: SPOT[s.type].fov };
+    s.t += dt;
+    // 3/4 view that sways gently (a drag adds to it); a warm key light sits up and to the camera's left, a cool fill is the shop's own lighting
+    const sway = s.type === 'barber' ? 0.65 + 0.3 * Math.sin(s.t * 0.5) : 0.3 * Math.sin(s.t * 0.4), yaw = s.face + sway + s.angle, sp = SPOT[s.type];
+    this.game.cam.preview = { focus: s.focus, yaw, dist: sp.dist, pitch: 0.03, fov: sp.fov };
+    const ly = yaw + 0.9;
+    s.light.position.set(s.focus.x + Math.sin(ly) * 1.6, s.focus.y + 0.9, s.focus.z + Math.cos(ly) * 1.6);
   }
   /** Drag to spin the preview. */
   drag(dx: number) { if (this.session) this.session.angle -= dx * 0.01; }

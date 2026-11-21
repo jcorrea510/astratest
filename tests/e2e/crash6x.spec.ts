@@ -17,11 +17,12 @@ const shot = async (name: string, focus: [number, number, number], yaw: number, 
   if (!SHOTS) return;
   await page.evaluate(({ focus, yaw, dist, pitch }) => {
     const g = (window as any).__game;
-    g.cam.preview = { focus: new g.player.pos.constructor(...focus), yaw, dist, pitch, fov: 50 };
-    g.cam.update(0.016, g.player.pos, 'foot'); g.renderer.render();
+    const c = g.cam.camera, cp = Math.cos(pitch), f = new g.player.pos.constructor(...focus);
+    c.fov = 50; c.updateProjectionMatrix();
+    c.position.set(f.x + Math.sin(yaw) * cp * dist, f.y + Math.sin(pitch) * dist, f.z + Math.cos(yaw) * cp * dist);
+    c.lookAt(f); c.updateMatrixWorld(true); g.renderer.render();
   }, { focus, yaw, dist, pitch });
   await page.screenshot({ path: `${SHOTS}/${name}.png` });
-  await page.evaluate(() => { (window as any).__game.cam.preview = null; });
 };
 
 test('car at 30 mph hits a pedestrian: body rides the hood (>=0.3 s) and is never inside the car', async () => {
@@ -135,7 +136,32 @@ test('perf: 5 ragdolls + 3 crumpled cars frame time', async () => {
 
 test('screenshots', async () => {
   test.skip(!SHOTS, 'set R6X_SHOTS=<dir> to render');
-  await page.evaluate(() => { const g = (window as any).__game; g.combat.fire.patches.length = 0; });
   const crash = await page.evaluate(() => { const c = (window as any).__crashCar; return c ? [c.position.x, c.position.y + 0.5, c.position.z] : null; });
   if (crash) await shot('crumpled-front', crash as [number, number, number], Math.PI / 2 + 0.5, 6, 0.2);
+  const lamp = await page.evaluate(() => { const g = (window as any).__game; const f = g.breakables.fallen[0]; return f ? [f.holder.position.x, f.holder.position.y + 1, f.holder.position.z] : null; });
+  if (lamp) await shot('fallen-lamp', lamp as [number, number, number], 0.6, 9, 0.25);
+  // ped on the hood
+  await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.player.place(-250, 0.25, -80, 0);
+    const car = g.vehicles.spawn('sedan', -545, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
+    const ped = g.pop.spawn('civilian', -500, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
+    (window as any).__hc = car; (window as any).__hp = ped;
+    for (let f = 0; f < 30; f++) g.frame(1 / 60, false);
+    for (let f = 0; f < 205; f++) { const lv = car.phys.body.linvel(); car.phys.body.setLinvel({ x: 13.4, y: lv.y, z: 0 }, true); g.frame(1 / 60, false); }
+  });
+  for (let k = 0; k < 3; k++) {
+    const pos = await page.evaluate(() => { const c = (window as any).__hc; return [c.position.x + 1.2, c.position.y + 0.6, c.position.z]; });
+    await shot(`ped-on-hood-${k}`, pos as [number, number, number], 0.9 + k * 0.5, 5.5, 0.15);
+    await page.evaluate(() => { const g = (window as any).__game, c = (window as any).__hc; for (let f = 0; f < 6; f++) { c.phys.body.setLinvel({ x: 11, y: c.phys.body.linvel().y, z: 0 }, true); g.frame(1 / 60, false); } });
+  }
+  // molotov
+  await page.evaluate(() => {
+    const g = (window as any).__game;
+    g.player.place(-250, 0.25, -80, 0);
+    const ped = g.pop.spawn('civilian', -262, -80, 0.25); ped.brain = 'scripted'; ped.persistent = true;
+    g.combat.launch(g.player, { id: 'molotov', projectile: 'molotov', damage: 30, cat: 'throw' }, new g.player.pos.constructor(-257, 1.6, -80), new g.player.pos.constructor(-1, -0.1, 0).normalize(), 0, 0.5);
+    for (let f = 0; f < 60 * 3; f++) g.frame(1 / 60, false);
+  });
+  await shot('molotov-fire', [-262, 1.2, -80], 1.2, 9, 0.2);
 });

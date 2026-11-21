@@ -6,6 +6,7 @@
  *  - cached "extras" geometry per hairstyle/facial hair/hat/garment combination (hair shells generated from the
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
+import { CARD_HAIR, hairCardGeometry, facialCardGeometry } from './hairCards';
 import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -558,23 +559,6 @@ function tube(points: THREE.Vector3[], radius: (t: number) => number, base: Body
 }
 
 /** Rebinds a Quaternius rigged hair mesh onto this body (rigid on the head; translated by the head joint offset). */
-function ubcHair(base: BodyBase, assets: HumanAssets, key: string, region: number = R.HAIR, filter?: (x: number, y: number, z: number) => boolean): Part {
-  const src = assets.hair.get(key)!;
-  const g = src.geo.toNonIndexed();
-  const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
-  const d = base.head.joint.clone().sub(src.headJoint);
-  const pos: number[] = [], nor: number[] = [], uv: number[] = [];
-  for (let t = 0; t < P.count; t += 3) {
-    if (filter) { let ok = true; for (let k = 0; k < 3; k++) if (!filter(P.getX(t + k) + d.x, P.getY(t + k) + d.y, P.getZ(t + k) + d.z)) ok = false; if (!ok) continue; }
-    for (let k = t; k < t + 3; k++) {
-      pos.push(P.getX(k) + d.x, P.getY(k) + d.y, P.getZ(k) + d.z); nor.push(N.getX(k), N.getY(k), N.getZ(k));
-      const s = src.slot; uv.push(s[0] + THREE.MathUtils.clamp(U.getX(k), 0.002, 0.998) * s[2], s[1] + THREE.MathUtils.clamp(U.getY(k), 0.002, 0.998) * s[3]);
-    }
-  }
-  return { pos, nor, uv, region, bone: base.boneNames.indexOf('DEF-head') };
-}
-
-/** A garment piece in body space, skinned by nearest-body-vertex weights (or explicit weights). */
 function garment(base: BodyBase, g: THREE.BufferGeometry, region: number, weights?: (p: THREE.Vector3) => { si: number[]; sw: number[] }): Part {
   const f = g.index ? g.toNonIndexed() : g; f.computeVertexNormals();
   const P = f.attributes.position, N = f.attributes.normal;
@@ -598,45 +582,53 @@ const HAIR_SHELL: Partial<Record<HairStyle, { thick: (hn: THREE.Vector3, p: THRE
   braids: { thick: hn => 0.004 + 0.004 * Math.abs(Math.sin(hn.x * 18)), along: true },
   ponytail: { thick: () => 0.01, along: true },
   bun: { thick: () => 0.01, along: true },
+  long: { thick: hn => 0.012 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) },
+  buns: { thick: hn => 0.014 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) },
+  parted: { thick: hn => 0.011 + 0.014 * THREE.MathUtils.smoothstep(hn.y, 0.1, 0.8) },
   bob: { thick: hn => 0.016 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.1, 0.8) },
 };
 
 /** Builds (and caches) the extras geometry for a look. */
 export function extrasGeometries(base: BodyBase, assets: HumanAssets, look: FullLook): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
-  const ubc = ['long', 'buns', 'parted', 'buzz'].includes(look.hairStyle);
-  // The scanned (UBC) hair/beard meshes are ~100k vertices (7 MB) each: they are cached on their own so every person with
-  // that hair shares one copy, instead of one per hair x hat x garment combination.
-  for (const [kind, key] of [['hair', ubc ? `hair|${look.hairStyle}` : ''], ['facial', look.facial !== 'none' ? `facial|${look.facial}` : ''], ['misc', `${ubc ? 'ubc' : look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`]] as const) {
-    if (!key) continue;
-    const g = extrasPart(base, assets, look, kind, key); if (g) out.push(g);
+  const add = (g: THREE.BufferGeometry | null, kind: string) => { if (g) { g.userData.kind = kind; out.push(g); } };
+  const cardStyle = CARD_HAIR.has(look.hairStyle), hatOn = look.hatStyle !== 'none';
+  // hair cards + beard cards (near), the old thick-shell cap (only drawn far away for card styles), garments and hats
+  if (cardStyle) {
+    const k = `cards|${look.hairStyle}|${hatOn ? 'hat' : 'bare'}`;
+    if (!base.extras.has(k)) base.extras.set(k, hairCardGeometry(base, look.hairStyle, hatOn));
+    add(base.extras.get(k) ?? null, 'cards');
+  }
+  if (look.facial === 'beard' || look.facial === 'goatee' || look.facial === 'moustache') {
+    const k = `fcards|${look.facial}`;
+    if (!base.extras.has(k)) base.extras.set(k, facialCardGeometry(base, look.facial));
+    add(base.extras.get(k) ?? null, 'fcards');
+  }
+  for (const [kind, key] of [['cap', `cap|${look.hairStyle}|${look.hatStyle === 'none' ? 0 : 1}`], ['misc', `${look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`]] as const) {
+    const g = extrasPart(base, assets, look, kind, key); if (g) add(g, kind === 'cap' && cardStyle ? 'cap' : 'misc');
   }
   return out;
 }
-function extrasPart(base: BodyBase, assets: HumanAssets, look: FullLook, kind: 'hair' | 'facial' | 'misc', key: string): THREE.BufferGeometry | null {
+function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, kind: 'cap' | 'misc', key: string): THREE.BufferGeometry | null {
   const hat = look.hatStyle, hairS = look.hairStyle;
   if (base.extras.has(key)) return base.extras.get(key)!;
   const parts: Part[] = [];
-  const hairOnly = kind === 'hair', facialOnly = kind === 'facial', misc = kind === 'misc';
+  const capOnly = kind === 'cap', misc = kind === 'misc';
   const hairThick = (hn: THREE.Vector3, p: THREE.Vector3) => HAIR_SHELL[hairS]?.thick(hn, p) ?? 0.012;
   // ---- hair
   const shell = HAIR_SHELL[hairS];
-  if (misc && shell && !(hat !== 'none' && ['crew', 'fade', 'cornrows'].includes(hairS))) parts.push(scalpShell(base, shell.line ?? hairline, shell.thick, R.HAIRP, 0.1, shell.along));
+  if (capOnly && shell && !(hat !== 'none' && ['crew', 'fade', 'cornrows'].includes(hairS))) parts.push(scalpShell(base, shell.line ?? hairline, shell.thick, R.HAIRP, 0.1, shell.along));
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-  if (hairOnly || misc) switch (hairS) {
-    case 'long': if (hairOnly) parts.push(ubcHair(base, assets, 'long')); break;
-    case 'buns': if (hairOnly) parts.push(ubcHair(base, assets, 'buns')); break;
-    case 'parted': if (hairOnly) parts.push(ubcHair(base, assets, 'parted')); break;
-    case 'buzz': if (hairOnly) parts.push(ubcHair(base, assets, base.sex === 'f' ? 'buzzF' : 'buzz')); break;
+  if (capOnly) switch (hairS) {
     case 'ponytail': {
-      if (!misc) break;
+      if (!capOnly) break;
       parts.push(tube([V(0, 0.35, -1.0), V(0, 0.18, -1.22), V(0, -0.3, -1.25), V(0, -0.9, -1.15), V(0, -1.5, -1.05)], t => 0.026 * (1 - t * 0.55) + 0.01 * Math.sin(t * 3.14), base));
       parts.push(headPart(base, new THREE.TorusGeometry(0.19, 0.06, 6, 12).rotateX(0.5).translate(0, 0.3, -1.03), R.HAT));
       break;
     }
-    case 'bun': if (misc) parts.push(headPart(base, new THREE.SphereGeometry(0.38, 14, 10).scale(1, 0.85, 0.85).translate(0, 0.72, -0.95), R.HAIRP)); break;
+    case 'bun': if (capOnly) parts.push(headPart(base, new THREE.SphereGeometry(0.38, 14, 10).scale(1, 0.85, 0.85).translate(0, 0.72, -0.95), R.HAIRP)); break;
     case 'braids': {
-      if (!misc) break;
+      if (!capOnly) break;
       for (let i = 0; i < 14; i++) {
         const a = -2.2 + (i / 13) * 4.4; const sx = Math.sin(a) * 1.02, sz = -Math.cos(a) * 1.02;
         const len = 1.9 + (i % 3) * 0.15;
@@ -645,7 +637,7 @@ function extrasPart(base: BodyBase, assets: HumanAssets, look: FullLook, kind: '
       break;
     }
     case 'bob': {
-      if (!misc) break;
+      if (!capOnly) break;
       // a curtain of hair from the hairline down to the jaw, open at the face
       const ring = new THREE.CylinderGeometry(1.1, 1.18, 1.0, 22, 3, true, Math.PI * 0.32, Math.PI * 1.36);
       ring.translate(0, -0.22, -0.06);
@@ -653,10 +645,6 @@ function extrasPart(base: BodyBase, assets: HumanAssets, look: FullLook, kind: '
       break;
     }
   }
-  // ---- facial hair
-  if (!facialOnly) { /* no facial hair here */ } else if (look.facial === 'beard') parts.push(ubcHair(base, assets, 'beard'));
-  else if (look.facial === 'goatee') parts.push(ubcHair(base, assets, 'beard', R.HAIR, (x, y) => Math.abs(x - base.head.center.x) < 0.028 && y < base.head.joint.y + 0.07));
-  else if (look.facial === 'moustache') parts.push(ubcHair(base, assets, 'beard', R.HAIR, (x, y, z) => Math.abs(x - base.head.center.x) < 0.035 && y > base.head.joint.y + 0.045 && z > base.head.center.z + 0.06));
   // ---- hats
   if (!misc) { /* hats are in the misc part */ } else if (hat === 'cap' || hat === 'police') {
     const capLine = (_x: number, z: number) => THREE.MathUtils.lerp(0.02, 0.36, THREE.MathUtils.smoothstep(z, 0.1, 0.75));

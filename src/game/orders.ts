@@ -15,6 +15,7 @@ import type { Npc } from '../actors/npc';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Game } from './game';
 import type { MenuItem } from '../ui/combatfx';
+import { keyLabel } from '../core/settings';
 
 export type OrderId = 'kneel' | 'come' | 'hands' | 'car' | 'beat' | 'out';
 export const ORDER_LABEL: Record<OrderId, string> = { kneel: 'Get down', come: 'Come here', hands: 'Hands up', car: 'Get in the car', beat: 'Beat it', out: 'Get out' };
@@ -128,6 +129,11 @@ export class Orders {
       return;
     }
     if (!inp.held('orders')) this.menuLatch = false;
+    // key hint while aiming at somebody (the key is rebindable, so name it)
+    if (can && !this.open && g.pcombat.armed && g.pcombat.aiming && !inp.held('orders') && (this.hintT -= dt) <= 0) {
+      this.hintT = 0.3;
+      if (this.findTarget()) g.fx?.say(`Hold ${keyLabel(g.settings.bindings.orders[0] ?? 'KeyG')}  ·  give orders`, 500);
+    }
     if (can && inp.held('orders') && !this.menuLatch) {
       const t = this.findTarget();
       if (t) { this.target = t; this.items = this.menuFor(t); this.sel = -1; this.px = this.py = 0; this.open = true; g.fx?.showMenu('Orders', this.items as MenuItem[], -1); }
@@ -136,6 +142,7 @@ export class Orders {
     else if (this.shield && !blocked && inp.justPressed('interact')) this.releaseShield(true);
   }
   private menuLatch = false;
+  private hintT = 0;
 
   private finish(commit: boolean) {
     const g = this.g, t = this.target, it = this.items[this.sel];

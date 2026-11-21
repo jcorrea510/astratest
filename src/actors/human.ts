@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { hairMaterial } from './hairCards';
 import { loadHumanAssets, extrasGeometries, type HumanAssets, type BodyBase } from './humanAssets';
 import { personMaterial, applyLookUniforms, type PersonUniforms } from './humanMaterial';
 import { ACTIONS, BONE_OF, BONE_ORDER, samplePose, type ActionDef, type BoneKey, type Euler } from './actions';
@@ -118,6 +119,8 @@ const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
+/** Beyond this distance (m) a person's hair is the simple cap instead of cards. */
+const HAIR_LOD_DIST = 20;
 export class Human {
   root = new THREE.Group();
   model: THREE.Object3D;
@@ -207,18 +210,32 @@ export class Human {
     for (const e of this.extras) e.removeFromParent();
     this.extras = [];
     for (const g of extrasGeometries(this.base, this.tpl.assets, this.look)) {
-      const ex = new THREE.SkinnedMesh(g, this.material);
+      const kind = g.userData.kind as string, card = kind === 'cards' || kind === 'fcards';
+      const ex = new THREE.SkinnedMesh(g, card ? hairMaterial(this.look.hair) : this.material);
       ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
       ex.boundingSphere = g.boundingSphere!.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
-      ex.castShadow = true; ex.receiveShadow = true; ex.frustumCulled = false;
+      ex.castShadow = !card; ex.receiveShadow = true; ex.frustumCulled = false;
+      ex.userData.lod = kind; // 'cards' / 'fcards': near only; 'cap': far only (stand-in for the cards); 'misc': always
+      ex.visible = kind !== 'cap';
       this.mesh.parent!.add(ex);
       this.extras.push(ex);
     }
+    this.lodFar = false;
+  }
+  /** Camera position used to swap hair cards for the simple cap beyond HAIR_LOD_DIST (set once by the game). */
+  static lodFrom: THREE.Vector3 | null = null;
+  private lodFar = false; private lodT = 0;
+  private updateHairLod(dt: number) {
+    if (!Human.lodFrom) return;
+    this.lodT -= dt; if (this.lodT > 0) return; this.lodT = 0.3 + Math.random() * 0.2;
+    const far = this.root.position.distanceToSquared(Human.lodFrom) > HAIR_LOD_DIST * HAIR_LOD_DIST;
+    if (far === this.lodFar) return; this.lodFar = far;
+    for (const e of this.extras) { const k = e.userData.lod; if (k === 'cards' || k === 'fcards') e.visible = !far; else if (k === 'cap') e.visible = far; }
   }
   /** Re-dresses this person (sex changes are not supported in place: create a new Human for that). */
   applyLook(look: Look) {
     const l = resolveLook({ ...look, sex: this.look.sex });
-    const rebuild = l.hairStyle !== this.look.hairStyle || l.facial !== this.look.facial || l.hatStyle !== this.look.hatStyle || l.topStyle !== this.look.topStyle || l.bottomStyle !== this.look.bottomStyle;
+    const rebuild = l.hairStyle !== this.look.hairStyle || l.hair !== this.look.hair || l.facial !== this.look.facial || l.hatStyle !== this.look.hatStyle || l.topStyle !== this.look.topStyle || l.bottomStyle !== this.look.bottomStyle;
     this.look = l;
     if (rebuild) this.buildExtras();
     applyLookUniforms(this.material, this.base, l);
@@ -315,6 +332,7 @@ export class Human {
   flash() { this.flashT = 0.12; }
 
   update(dt: number) {
+    this.updateHairLod(dt);
     this.stateTime += dt;
     const base = this.base;
     const sc = this.scale;
