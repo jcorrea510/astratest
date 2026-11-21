@@ -42,7 +42,7 @@ export function strandTexture(): THREE.CanvasTexture | null {
   for (let y = 0; y < H; y++) {
     const v = y / (H - 1);
     const root = 0.3 + 0.7 * Math.min(1, v / 0.38);           // roots sit in shadow
-    const tip = 1 + 0.18 * Math.max(0, (v - 0.7) / 0.3);        // tips catch the light
+    const tip = 1 + 0.18 * Math.max(0, (v - 0.7) / 0.3) + 0.38 * Math.exp(-(((v - 0.46) / 0.13) ** 2)); // tips catch the light + a soft highlight band across the strands
     for (let x = 0; x < W; x++) {
       const i = (y * W + x) * 4, cv = cover[y * W + x];
       const edge = Math.min(1, Math.min(x, W - 1 - x) / 9);     // soft fade at the card sides
@@ -55,12 +55,12 @@ export function strandTexture(): THREE.CanvasTexture | null {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.wrapS = THREE.ClampToEdgeWrapping; t.generateMipmaps = true;
   strandTex = t; return t;
 }
-const mats = new Map<string, THREE.MeshPhysicalMaterial>();
-/** Shared hair-card material for a hair colour: alpha-tested, double sided, sheen + anisotropy for a soft highlight along the strands. */
-export function hairMaterial(hex: string): THREE.MeshPhysicalMaterial {
+const mats = new Map<string, THREE.MeshStandardMaterial>();
+/** Shared hair-card material for a hair colour: alpha-tested, double sided; the strand highlight band is baked into the texture (cheaper than anisotropy / sheen shaders). */
+export function hairMaterial(hex: string): THREE.MeshStandardMaterial {
   let m = mats.get(hex); if (m) return m;
   const col = new THREE.Color(hex);
-  m = new THREE.MeshPhysicalMaterial({ color: col, map: strandTexture(), alphaTest: 0.42, side: THREE.DoubleSide, vertexColors: true, roughness: 0.52, metalness: 0, sheen: 0.9, sheenRoughness: 0.35, sheenColor: col.clone().lerp(new THREE.Color('#ffffff'), 0.45), anisotropy: 0.65, anisotropyRotation: Math.PI / 2, envMapIntensity: 0.7 });
+  m = new THREE.MeshStandardMaterial({ color: col, map: strandTexture(), alphaTest: 0.42, side: THREE.DoubleSide, vertexColors: true, roughness: 0.5, metalness: 0, envMapIntensity: 0.7 });
   mats.set(hex, m); return m;
 }
 

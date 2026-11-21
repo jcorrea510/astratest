@@ -108,13 +108,14 @@ vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool si
       float row = fract(h * 3.4); vec3 drink = 0.25 + 0.7 * vec3(fH(vec2(cell, floor(h * 3.4))), fH(vec2(cell + 3.0, floor(h * 3.4))), fH(vec2(cell, floor(h * 3.4) + 5.0)));
       vec3 fr = mix(vec3(0.7, 0.85, 0.95), drink, step(0.2, row) * step(0.25, fx) * step(h, 2.0));
       c = mix(vec3(0.12), fr, frame); gGlow += c * 0.5 * frame; }
-    else if (side && h < 2.1) { float row = fract(h * 2.6); vec3 pk = 0.3 + 0.65 * vec3(fH(vec2(cell, floor(h * 2.6))), fH(vec2(cell, floor(h * 2.6) + 9.0)), 0.3 + 0.5 * hs);
-      c = mix(vec3(0.5), pk, step(0.18, row) * step(0.2, fx)); }
+    else if (side && h < 2.1) { float row = fract(h * 2.6); float pi = fH(vec2(cell, floor(h * 2.6) + 9.0));
+      vec3 pk = pi < 0.25 ? vec3(0.75, 0.15, 0.12) : pi < 0.5 ? vec3(0.9, 0.75, 0.2) : pi < 0.75 ? vec3(0.85, 0.85, 0.8) : vec3(0.15, 0.3, 0.55);
+      c = mix(vec3(0.45, 0.47, 0.5), pk * 0.85, step(0.3, row) * step(0.15, fx) * step(fx, 0.85)); }
   } else if (st < 2.5) { // liquor: bottle shelves, warm
     if (h < 2.5 && h > 0.2) { float row = fract(h * 3.2); float bi = floor(h * 3.2); float amber = fH(vec2(cell, bi + 1.0));
       vec3 bottle = amber < 0.4 ? vec3(0.45, 0.22, 0.06) : amber < 0.7 ? vec3(0.12, 0.35, 0.16) : vec3(0.75, 0.8, 0.85);
-      float bw = step(0.28, fx) * step(fx, 0.72) * step(0.2, row);
-      c = mix(vec3(0.16, 0.1, 0.06), bottle * (0.7 + 0.5 * row), bw); gGlow += bottle * bw * 0.35; }
+      float bw = step(0.2, row) * (row < 0.62 ? step(0.18, fx) * step(fx, 0.82) : step(0.4, fx) * step(fx, 0.6)) * step(0.15, fH(vec2(cell, bi + 7.0)));
+      c = mix(vec3(0.16, 0.1, 0.06) + vec3(0.25, 0.18, 0.1) * step(row, 0.2), bottle * (0.7 + 0.5 * row), bw); gGlow += bottle * bw * 0.35; }
   } else if (st < 3.5) { // jewelry: dark wall, glittering lit cases
     c = vec3(0.04, 0.035, 0.04);
     float caseM = step(0.12, fract(u / 1.6)) * step(fract(u / 1.6), 0.88) * step(0.7, h) * step(h, 1.15);

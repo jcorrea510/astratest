@@ -20,7 +20,9 @@ const shot = async (name: string, focus: [number, number, number], yaw: number, 
     const c = g.cam.camera, cp = Math.cos(pitch), f = new g.player.pos.constructor(...focus);
     c.fov = 50; c.updateProjectionMatrix();
     c.position.set(f.x + Math.sin(yaw) * cp * dist, f.y + Math.sin(pitch) * dist, f.z + Math.cos(yaw) * cp * dist);
-    c.lookAt(f); c.updateMatrixWorld(true); g.renderer.render();
+    c.lookAt(f); c.updateMatrixWorld(true);
+    for (const n of g.pop.npcs) n.char.human.mesh.visible = true; // the pop culls people against the game camera, not this one
+    g.renderer.render();
   }, { focus, yaw, dist, pitch });
   await page.screenshot({ path: `${SHOTS}/${name}.png` });
 };
