@@ -12,24 +12,21 @@ test('lab', async ({ page }) => {
     const n = g.pop.spawn('civilian', -277, -95.5, g.player.pos.y + 0.2); n.persistent = true; n.brain = 'ordered'; n.order = 'kneel'; n.orderMax = 999; n.char.yaw = Math.PI / 2 + Math.PI; (window as any).__n = n;
   });
   await step(page, 2.5, { dt: 1 / 30 });
-  await page.evaluate(() => { (window as any).requestAnimationFrame = () => 0; });
-  await page.waitForTimeout(500);
   for (const [cname, pose] of Object.entries(CANDS)) {
     await page.evaluate((pose) => { const n = (window as any).__n; const a = n.char.human.act; if (pose) a.def.poses = [[0, pose]]; }, pose);
     await step(page, 0.8, { dt: 1 / 30 });
     console.log('DBG', cname, JSON.stringify(await page.evaluate(() => { const n = (window as any).__n; return [n.pos.y, n.brain, n.char.human.actionName, n.char.human.act?.t]; })));
     for (const [name, ang] of [['side', 0], ['front', 1]] as [string, number][]) {
-      for (let rep = 0; rep < 2; rep++) {
       await page.evaluate((ang) => {
-        const g = (window as any).__game, n = (window as any).__n, C = g.renderer.camera;
-        g.frame(1 / 60, false);
-        const p = n.pos, yaw = n.char.yaw, fx = Math.sin(yaw), fz = Math.cos(yaw);
-        if (ang === 0) C.position.set(p.x + fz * 3.0, p.y + 0.9, p.z - fx * 3.0); else C.position.set(p.x + fx * 3.0, p.y + 0.9, p.z + fz * 3.0);
-        C.lookAt(p.x, p.y + 0.6, p.z); C.updateMatrixWorld(true); g.renderer.render();
+        const g = (window as any).__game, n = (window as any).__n, pl = g.player;
+        pl.human.root.visible = false;
+        g.pcombat.inv?.select?.('fists');
+        const yaw = Math.PI / 2; pl.place(-280, 0.25, -95.5, yaw); g.cam.snapBehind(yaw);
+        n.char.place(-280 + Math.sin(yaw) * 2.6, n.pos.y, -95.5 + Math.cos(yaw) * 2.6, yaw + (ang === 1 ? Math.PI : Math.PI / 2));
       }, ang);
-      await page.waitForTimeout(250);
-      await page.screenshot({ path: `/tmp/r6f-shots/lab-${cname}-${name}.png`, clip: { x: 340, y: 100, width: 600, height: 500 } });
-      }
+      await step(page, 0.3, { dt: 1 / 30 });
+      await page.evaluate(() => (window as any).__game.frame(1 / 60, true));
+      await page.screenshot({ path: `/tmp/r6f-shots/lab-${cname}-${name}.png`, clip: { x: 440, y: 160, width: 400, height: 400 } });
     }
   }
 });

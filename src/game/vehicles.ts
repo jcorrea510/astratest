@@ -54,7 +54,11 @@ export class VehicleManager {
     this.scene.add(v.group); this.list.push(v);
     return v;
   }
+  /** called for every removed vehicle before its body is freed (managers drop their references: AI traffic, dispatch) */
+  removeListeners: ((v: Vehicle) => void)[] = [];
   remove(v: Vehicle) {
+    if (v.disposed) return; // double remove
+    for (const l of this.removeListeners) l(v);
     const i = this.list.indexOf(v); if (i >= 0) this.list.splice(i, 1);
     this.engines.get(v.id)?.stop(); this.engines.delete(v.id);
     for (let i = 0; i < 8; i++) this.skids.end(v.id * 8 + i);

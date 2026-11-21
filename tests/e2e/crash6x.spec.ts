@@ -115,6 +115,30 @@ test('molotov: fire lasts >= 8 s and ignites a pedestrian standing in it', async
   expect(r.burning).toBe(true);
 });
 
+test('regression: destroying and removing AI cars with occupants and a ragdoll on the hood never traps physics', async () => {
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, errs: string[] = [];
+    const lanes = g.city.lanes.filter((l: any) => l.length > 60);
+    const cars = [0, 1, 2].map(i => g.traffic.spawnOnLane('sedan', lanes[i * 7], 20, 'cruise'));
+    for (let f = 0; f < 40; f++) g.frame(1 / 60, false);
+    const V = g.player.pos.constructor;
+    // a ragdoll sprawled on car 2's hood, car 0 and 1 wrecked
+    const ped = g.pop.spawn('civilian', cars[2].v.position.x, cars[2].v.position.z, cars[2].v.position.y); ped.brain = 'scripted';
+    g.ragdolls.launch(ped.char, { vx: 3, vy: 3, vz: 0, getUp: false, car: cars[2].v });
+    for (const c of [cars[0], cars[1]]) c.v.damage(1e6, new V(c.v.position.x, c.v.position.y + 0.5, c.v.position.z), new V(0, 0, 1), null);
+    try {
+      for (let f = 0; f < 90; f++) g.frame(1 / 60, false);
+      for (const c of cars) g.vehicles.remove(c.v); // removed behind the AI's back, occupants still seated
+      g.vehicles.remove(cars[0].v); // double remove
+      for (let f = 0; f < 180; f++) g.frame(1 / 60, false);
+    } catch (e: any) { errs.push(String(e?.message ?? e)); }
+    return { errs, stillTracked: g.traffic.cars.filter((c: any) => cars.includes(c)).length };
+  });
+  console.log('removal', JSON.stringify(r));
+  expect(r.errs).toEqual([]);
+  expect(r.stillTracked).toBe(0);
+});
+
 test('perf: 5 ragdolls + 3 crumpled cars frame time', async () => {
   const r = await page.evaluate(() => {
     const g = (window as any).__game;

@@ -138,7 +138,7 @@ export class Crumpler {
       if (dH >= 0.02 && oz > z0 - 0.05 && oy > info.deckY - 0.16 && Math.abs(ox) < hw * 0.98) {
         const u = Math.min(1, Math.max(0, (zf - oz) / Math.max(0.5, zf - z0))); // 0 at the nose, 1 at the windshield base
         const edge = 1 - sstep((Math.abs(ox) / hw - 0.7) / 0.3); // tapers to nothing at the fenders, so the hood folds instead of tearing off
-        const bump = Math.sin(Math.PI * u) ** 1.5 * edge, fold = sstep(u) * (1 - sstep((u - 0.8) / 0.2));
+        const bump = Math.sin(Math.PI * u) ** 1.5 * edge * (1 - sstep((u - 0.8) / 0.2)), fold = sstep(u) * (1 - sstep((u - 0.8) / 0.2));
         dy += dH * (0.09 * bump + 0.04 * fold * edge);
         dz -= dH * 0.12 * (1 - u) * edge;
       }

@@ -69,6 +69,8 @@ export class Traffic {
    */
   onPlayerTrafficViolation(cb: (v: Violation) => void): () => void { this.violationCbs.push(cb); return () => { const i = this.violationCbs.indexOf(cb); if (i >= 0) this.violationCbs.splice(i, 1); }; }
   constructor(private city: CityMap, readonly vehicles: VehicleManager, private pop: Population, private audio: GameAudio, private time: () => number) {
+    // a vehicle removed by anyone (crowd, activities, tests) must not stay on the AI list: its body is freed and eject()/yaw would trap in physics
+    vehicles.removeListeners.push(v => { const i = this.cars.findIndex(c => c.v === v); if (i >= 0) this.cars.splice(i, 1); this.crashes = this.crashes.filter(c => c.v !== v); });
     vehicles.crashListeners.push(e => { this.crashes.push({ pos: e.point.clone(), t: this.time(), v: e.vehicle }); if (this.crashes.length > 6) this.crashes.shift(); });
   }
 
@@ -199,6 +201,7 @@ export class Traffic {
     for (const sv of sirens) { const sf = sv.phys.forward(); this.sirenSources.push({ x: sv.position.x, z: sv.position.z, fx: sf.x, fz: sf.z, speed: sv.speed }); }
     for (const car of [...this.cars]) {
       const v = car.v;
+      if (v.disposed) { const k = this.cars.indexOf(car); if (k >= 0) this.cars.splice(k, 1); continue; }
       if (v.destroyed || !car.driver.alive || v.driver !== car.driver.char) {
         // driver gone (carjacked, killed, destroyed car)
         const idx = this.cars.indexOf(car); if (idx >= 0) this.cars.splice(idx, 1);
