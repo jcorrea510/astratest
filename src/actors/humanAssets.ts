@@ -571,7 +571,7 @@ function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, key: s
   // ---- hats
   if (hat === 'cap' || hat === 'police') {
     parts.push(scalpShell(base, capLine, hn => hairThick(hn) * 0.6 + 0.009, R.HAT, 0.04));
-    const brim = new THREE.CylinderGeometry(0.9, 0.9, 0.04, 18, 1, false, -Math.PI / 2, Math.PI).scale(0.95, 1, 0.75).rotateX(-0.12).translate(0, 0.3, 0.72);
+    const brim = new THREE.CylinderGeometry(0.9, 0.9, 0.04, 18, 1, false, -Math.PI / 2, Math.PI).scale(0.95, 1, 0.75).rotateX(0.1).translate(0, 0.62, 0.76);
     parts.push(headPart(base, brim, hat === 'police' ? R.DETAIL : R.HAT));
     if (hat === 'police') parts.push(headPart(base, new THREE.CylinderGeometry(1.16, 1.05, 0.38, 22).translate(0, 0.86, -0.04), R.HAT));
   } else if (hat === 'beanie') {

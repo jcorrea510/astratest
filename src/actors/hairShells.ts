@@ -210,7 +210,7 @@ export const SHELL_HAIR = new Set<HairStyle>(Object.keys(SCALP) as HairStyle[]);
 /** Shell thickness at a scalp point (hats sit on top of it). */
 export const shellThick = (style: HairStyle, hn: THREE.Vector3) => SCALP[style]?.thick(hn) ?? 0.012;
 /** Hats cover the scalp above this line (head coordinates): hair only shows below it. */
-export const capLine = (_x: number, z: number) => THREE.MathUtils.lerp(0.02, 0.36, sstep(z, 0.1, 0.75));
+export const capLine = (_x: number, z: number) => THREE.MathUtils.lerp(0.06, 0.52, sstep(z, 0.1, 0.75));
 
 const ROOT_STRANDS = 720;
 function scalpSurf(base: BodyBase, sp: ScalpSpec, hatOn: boolean): Surf {
