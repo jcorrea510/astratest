@@ -31,7 +31,7 @@ test('car at 30 mph hits a pedestrian: body rides the hood (>=0.3 s) and is neve
   const r = await page.evaluate(() => {
     const g = (window as any).__game;
     g.player.place(-250, 0.25, -80, 0);
-    for (const v of [...g.vehicles.list]) g.vehicles.remove(v);
+    for (const v of g.vehicles.list) v.phys.body.setEnabled(false);
     const car = g.vehicles.spawn('sedan', -345, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
     const ped = g.pop.spawn('civilian', -300, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
     const V = car.position.constructor;
@@ -139,15 +139,25 @@ test('perf: 5 ragdolls + 3 crumpled cars frame time', async () => {
 
 test('screenshots', async () => {
   test.skip(!SHOTS, 'set R6X_SHOTS=<dir> to render');
-  const crash = await page.evaluate(() => { const c = (window as any).__crashCar; return c ? [c.position.x, c.position.y + 0.5, c.position.z] : null; });
-  if (crash) await shot('crumpled-front', crash as [number, number, number], Math.PI / 2 + 0.5, 6, 0.2);
+  for (const [name, mph, side] of [['crumple-20mph', 20, false], ['crumple-40mph', 40, false], ['crumple-60mph', 60, false], ['crumple-side', 25, true]] as const) {
+    const pos = await page.evaluate(({ mph, side }) => {
+      const g = (window as any).__game, v = mph * 0.447;
+      g.player.place(-250, 0.25, -80, 0);
+      for (const c of g.vehicles.list) c.phys.body.setEnabled(false); // park the wrecks (removing a destroyed car mid-test trips a physics eject)
+      const car = g.vehicles.spawn('sedan', side ? -430 : -450, -96.5, side ? 0 : Math.PI / 2, -1, 0.6); car.persistent = true;
+      for (let f = 0; f < 30; f++) g.frame(1 / 60, false);
+      for (let f = 0; f < 200; f++) { const lv = car.phys.body.linvel(); if (f < 120 && car.position.x < -424) car.phys.body.setLinvel(side ? { x: v, y: lv.y, z: 0 } : { x: v, y: lv.y, z: 0 }, true); g.frame(1 / 60, false); }
+      return [car.position.x, car.position.y + 0.5, car.position.z];
+    }, { mph, side });
+    await shot(name, pos as [number, number, number], side ? 2.2 : Math.PI / 2 + 0.5, 6, 0.2);
+  }
   const lamp = await page.evaluate(() => { const g = (window as any).__game; const f = g.breakables.fallen[0]; return f ? [f.holder.position.x, f.holder.position.y + 1, f.holder.position.z] : null; });
   if (lamp) await shot('fallen-lamp', lamp as [number, number, number], 0.6, 9, 0.25);
   // ped on the hood
   await page.evaluate(() => {
     const g = (window as any).__game;
     g.player.place(-250, 0.25, -80, 0);
-    for (const v of [...g.vehicles.list]) g.vehicles.remove(v);
+    for (const v of g.vehicles.list) v.phys.body.setEnabled(false);
     const car = g.vehicles.spawn('sedan', -345, -96.5, Math.PI / 2, -1, 0.6); car.persistent = true;
     const ped = g.pop.spawn('civilian', -300, -96.5, 0.25); ped.brain = 'scripted'; ped.persistent = true;
     (window as any).__hc = car; (window as any).__hp = ped;

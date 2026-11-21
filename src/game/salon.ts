@@ -13,7 +13,7 @@ import type { GroomState } from '../ui/groom';
 
 /** Where the player stands while previewing (store-local metres, facing the mirror on the back wall) and how far the camera orbits. */
 const SPOT: Record<ShopType, { x: number; z: number; dist: number; focusY: number; fov: number; front: boolean }> = {
-  barber: { x: 1.9, z: -1.4, dist: 1.9, focusY: 1.6, fov: 30, front: false }, // head and shoulders, facing the mirror wall
+  barber: { x: 1.9, z: -1.4, dist: 1.8, focusY: 1.46, fov: 30, front: false }, // head and shoulders, facing the mirror wall
   clothing: { x: -1.8, z: 2.2, dist: 1.95, focusY: 0.98, fov: 56, front: true }, // full body, facing the street
 };
 const TITLE: Record<ShopType, string> = { barber: 'Barber chair', clothing: 'Fitting room' };

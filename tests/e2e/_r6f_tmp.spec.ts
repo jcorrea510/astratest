@@ -17,7 +17,9 @@ test('lab', async ({ page }) => {
   for (const [cname, pose] of Object.entries(CANDS)) {
     await page.evaluate((pose) => { const n = (window as any).__n; const a = n.char.human.act; if (pose) a.def.poses = [[0, pose]]; }, pose);
     await step(page, 0.8, { dt: 1 / 30 });
+    console.log('DBG', cname, JSON.stringify(await page.evaluate(() => { const n = (window as any).__n; return [n.pos.y, n.brain, n.char.human.actionName, n.char.human.act?.t]; })));
     for (const [name, ang] of [['side', 0], ['front', 1]] as [string, number][]) {
+      for (let rep = 0; rep < 2; rep++) {
       await page.evaluate((ang) => {
         const g = (window as any).__game, n = (window as any).__n, C = g.renderer.camera;
         g.frame(1 / 60, false);
@@ -25,7 +27,9 @@ test('lab', async ({ page }) => {
         if (ang === 0) C.position.set(p.x + fz * 3.0, p.y + 0.9, p.z - fx * 3.0); else C.position.set(p.x + fx * 3.0, p.y + 0.9, p.z + fz * 3.0);
         C.lookAt(p.x, p.y + 0.6, p.z); C.updateMatrixWorld(true); g.renderer.render();
       }, ang);
+      await page.waitForTimeout(250);
       await page.screenshot({ path: `/tmp/r6f-shots/lab-${cname}-${name}.png`, clip: { x: 340, y: 100, width: 600, height: 500 } });
+      }
     }
   }
 });

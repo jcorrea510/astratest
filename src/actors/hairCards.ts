@@ -10,7 +10,7 @@ import { headCoords, hairline, type BodyBase } from './humanAssets';
 import type { FullLook, HairStyle } from './look';
 
 /** Styles built from cards (the others stay as the old shell / braid geometry; buzz and bald are skin paint only). */
-export const CARD_HAIR = new Set<HairStyle>(['short', 'slick', 'parted', 'curly', 'afro', 'long', 'bob', 'pixie', 'ponytail', 'bun', 'buns', 'fade', 'crew']);
+export const CARD_HAIR = new Set<HairStyle>(['short', 'slick', 'parted', 'curly', 'afro', 'long', 'bob', 'pixie', 'ponytail', 'bun', 'buns', 'fade', 'crew', 'cornrows', 'braids']);
 
 // ---------------------------------------------------------------------------------------------------------- strand texture + material
 let strandTex: THREE.CanvasTexture | null = null;
@@ -48,7 +48,7 @@ export function strandTexture(): THREE.CanvasTexture | null {
       const edge = Math.min(1, Math.min(x, W - 1 - x) / 9);     // soft fade at the card sides
       const k = Math.max(0, Math.min(1, shade[y * W + x] * root * tip));
       d[i] = d[i + 1] = d[i + 2] = Math.round(255 * k);
-      d[i + 3] = Math.round(255 * Math.min(1, cv * (0.35 + 0.65 * edge) * (v < 0.04 ? 1 : 1)));
+      d[i + 3] = Math.round(255 * Math.min(1, cv * (0.35 + 0.65 * edge) * Math.min(1, (1 - v) / 0.14)));
     }
   }
   g.putImageData(img, 0, 0);
@@ -162,7 +162,7 @@ function buildCards(base: BodyBase, planners: Planners, seed: number, hatOn: boo
         const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
         tan.copy(b).sub(a).normalize();
         side.crossVectors(tan, nrm[i]); if (side.lengthSq() < 1e-6) side.crossVectors(tan, UP); side.normalize();
-        const t = i / N, w = spec.w * (1 - 0.55 * t * t) * 0.5;
+        const t = i / N, w = spec.w * (1 - 0.8 * t * t) * 0.5;
         for (const sg of [-1, 1]) {
           pos.push(pts[i].x + side.x * w * sg, pts[i].y + side.y * w * sg, pts[i].z + side.z * w * sg);
           nor.push(nrm[i].x, nrm[i].y, nrm[i].z);
@@ -196,14 +196,19 @@ function hairPlans(base: BodyBase, style: HairStyle): Planners {
   const rad = (p: THREE.Vector3, n: THREE.Vector3) => tang(p.clone().sub(crown), n);
   switch (style) {
     case 'short': return [{ count: 330, plan: (hn, n, p, r) => !inHair(hn) ? null : { len: r.range(0.03, 0.05), flow: hn.z > 0.45 && hn.y > 0.25 ? tang(V3(hn.x * 0.4, 0.25, 1), n) : rad(p, n), lift: 0.25, grav: 0.1, wave: 0.15, w: 0.02, off: r.range(0.002, 0.005), stick: 0.7 } }];
-    case 'crew': return [{ count: 170, plan: (hn, n, p, r) => hn.y < 0.15 || !inHair(hn) ? null : { len: r.range(0.014, 0.022), flow: rad(p, n), lift: 0.2, grav: 0, wave: 0, w: 0.012, off: 0.0022, stick: 0.9, seg: 3, tint: 0.9 } }];
-    case 'fade': return [{ count: 150, plan: (hn, n, p, r) => hn.y < 0.48 || !inHair(hn) ? null : { len: r.range(0.02, 0.034), flow: hn.z > 0.4 ? tang(V3(0, 0.3, 1), n) : rad(p, n), lift: 0.3, grav: 0, wave: 0.1, w: 0.014, off: 0.0025, stick: 0.8, seg: 3 } }];
+    case 'crew': return [{ count: 340, plan: (hn, n, p, r) => hn.y < 0.15 || !inHair(hn) ? null : { len: r.range(0.016, 0.026), flow: rad(p, n), lift: 0.2, grav: 0, wave: 0, w: 0.018, off: 0.0022, stick: 0.9, seg: 3, tint: 0.9 } }];
+    case 'fade': return [{ count: 300, plan: (hn, n, p, r) => hn.y < 0.48 || !inHair(hn) ? null : { len: r.range(0.02, 0.034), flow: hn.z > 0.4 ? tang(V3(0, 0.3, 1), n) : rad(p, n), lift: 0.3, grav: 0, wave: 0.1, w: 0.02, off: 0.0025, stick: 0.8, seg: 3 } }];
     case 'slick': return [{ count: 300, plan: (hn, n, p, r) => !inHair(hn) ? null : { len: r.range(0.09, 0.14), flow: tang(V3(hn.x * 0.15, 0.12, -1), n), lift: 0.18, grav: 0.2, wave: 0.08, w: 0.022, off: r.range(0.002, 0.007), stick: 0.5 } }];
     case 'parted': return [{ count: 340, plan: (hn, n, p, r) => !inHair(hn) ? null : { len: r.range(0.07, 0.11), flow: tang(V3(Math.sign(hn.x - 0.32) * 1.0, -0.5, hn.z > 0.3 ? 0.35 : -0.15), n), lift: 0.3, grav: 0.35, wave: 0.12, w: 0.022, off: r.range(0.002, 0.007), stick: 0.5 } }];
     case 'curly': return [{ count: 520, plan: (hn, n, p, r) => !inHair(hn) ? null : { len: r.range(0.04, 0.075), flow: tang(V3(r.range(-1, 1), r.range(-0.3, 1), r.range(-1, 1)).normalize().add(rad(p, n)), n), lift: 0.9, grav: 0.25, wave: 0.7, w: 0.026, off: r.range(0.003, 0.01), stick: 0.2, seg: 4 } }];
-    case 'afro': return [{ count: 760, plan: (hn, n, p, r) => !inHair(hn) && hn.y < -0.1 ? null : { len: r.range(0.06, 0.1), flow: p.clone().sub(c).normalize(), lift: 0.6, grav: 0.1, wave: 0.5, w: 0.034, off: r.range(0.004, 0.03), stick: 0, seg: 3 } }];
-    case 'long': return [{ count: 620, plan: (hn, n, p, r) => hn.y < hairline(hn.x, hn.z) - 0.25 ? null : { len: hn.y > 0.5 ? r.range(0.26, 0.36) : r.range(0.22, 0.34), flow: tang(V3(Math.sign(hn.x || 1) * (hn.z > 0.2 ? 0.7 : 0.3), -1, hn.z > 0.2 ? 0.1 : -0.2), n), lift: 0.35, grav: 1.8, wave: 0.1, w: 0.03, off: r.range(0.002, 0.012), stick: 0.25, seg: 7 } }];
-    case 'bob': return [{ count: 440, plan: (hn, n, p, r) => hn.y < hairline(hn.x, hn.z) - 0.2 ? null : { len: r.range(0.1, 0.15), flow: tang(V3(Math.sign(hn.x || 1) * (hn.z > 0.2 ? 0.7 : 0.25), -1, hn.z > 0.2 ? 0.1 : -0.15), n), lift: 0.35, grav: 1.3, wave: 0.05, w: 0.03, off: r.range(0.003, 0.012), stick: 0.3, seg: 6 } }];
+    case 'afro': return [{ count: 900, plan: (hn, n, p, r) => !(hn.y > hairline(hn.x, hn.z) - 0.02 || (hn.y > -0.15 && hn.z < 0.1)) ? null : { len: r.range(0.04, 0.07), flow: tang(p.clone().sub(c).normalize().add(V3(r.range(-0.6, 0.6), r.range(-0.2, 0.6), r.range(-0.6, 0.6))), n), lift: 1.1, grav: 0.05, wave: 0.8, w: 0.04, off: r.range(0.006, 0.03), stick: 0, seg: 3 } }];
+    case 'long': return [{ count: 620, plan: (hn, n, p, r) => hn.y < hairline(hn.x, hn.z) - 0.25 ? null : { len: hn.z > 0.55 && hn.y > 0.2 ? r.range(0.1, 0.16) : r.range(0.22, 0.34), flow: tang(V3(Math.sign(hn.x || 1) * (hn.z > 0.2 ? 0.7 : 0.3), -1, hn.z > 0.2 ? 0.1 : -0.2), n), lift: 0.35, grav: 1.8, wave: 0.1, w: 0.03, off: r.range(0.002, 0.012), stick: 0.25, seg: 7 } }];
+    case 'bob': return [{ count: 440, plan: (hn, n, p, r) => hn.y < hairline(hn.x, hn.z) - 0.2 ? null : { len: hn.z > 0.55 && hn.y > 0.2 ? r.range(0.05, 0.08) : r.range(0.1, 0.15), flow: tang(V3(Math.sign(hn.x || 1) * (hn.z > 0.2 ? 0.7 : 0.25), -1, hn.z > 0.2 ? 0.1 : -0.15), n), lift: 0.35, grav: 1.3, wave: 0.05, w: 0.03, off: r.range(0.003, 0.012), stick: 0.3, seg: 6 } }];
+    case 'cornrows': return [{ count: 330, plan: (hn, n, p, r) => !inHair(hn) || hn.y < 0.0 ? null : { len: r.range(0.07, 0.1), flow: tang(V3(0, 0.1, -1), n), lift: 0.1, grav: 0.1, wave: 0, w: 0.015, off: r.range(0.0025, 0.005), stick: 0.9, seg: 4, tint: 0.92 } }];
+    case 'braids': return [
+      { count: 260, plan: (hn, n, p, r) => !inHair(hn) || hn.y < 0.1 ? null : { len: r.range(0.07, 0.1), flow: tang(V3(0, 0.1, -1), n), lift: 0.1, grav: 0.1, wave: 0, w: 0.015, off: r.range(0.0025, 0.005), stick: 0.9, seg: 4, tint: 0.92 } },
+      { count: 46, plan: (hn, n, p, r) => hn.y > 0.15 || hn.y < hairline(hn.x, hn.z) - 0.1 || (hn.z > 0.45 && Math.abs(hn.x) < 0.6) ? null : { len: r.range(0.22, 0.32), flow: tang(V3(Math.sign(hn.x || 1) * 0.4, -1, -0.3), n), lift: 0.3, grav: 1.8, wave: 0.04, w: 0.016, off: r.range(0.004, 0.012), stick: 0.2, seg: 8, tint: 0.85 } },
+    ];
     case 'pixie': return [{ count: 340, plan: (hn, n, p, r) => !inHair(hn) ? null : { len: r.range(0.045, 0.07), flow: tang(V3(hn.x * 0.8, -0.2, 0.6), n), lift: 0.35, grav: 0.1, wave: 0.2, w: 0.02, off: r.range(0.002, 0.007), stick: 0.5, seg: 4 } }];
     case 'ponytail': {
       const tie = fromHn(base, 0, 0.3, -1.02);

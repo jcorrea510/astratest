@@ -36,20 +36,21 @@ class Grid {
 }
 const key = (a: number, b: number, c: number) => ((a + 512) * 1024 + (b + 512)) * 1024 + (c + 512);
 const grids = new WeakMap<Float32Array, Grid>();
-/** deterministic per-position noise in [-1, 1] (so split vertices at the same spot move together) */
-function noise(x: number, y: number, z: number): number {
-  const s = Math.sin(Math.round(x * 40) * 12.9898 + Math.round(y * 40) * 78.233 + Math.round(z * 40) * 37.719) * 43758.5453;
-  return (s - Math.floor(s)) * 2 - 1;
-}
-const MAX_D = 0.62;
+const MAX_D = 0.38; // ~40 mph into a wall; panels never travel further than this from the undamaged shape
+const sstep = (t: number) => { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
+/** smooth low-frequency variation in [-1, 1] (no spikes: neighbouring vertices get neighbouring values) */
+function smoothN(x: number, y: number, z: number): number { return Math.sin(x * 6.1 + z * 2.3) * Math.sin(z * 5.3 - y * 3.7 + 1.3); }
 
 export class Crumpler {
   /** accumulated panel state 0..1 */
   hood = 0; bumperF = 0; bumperR = 0; front = 0; rear = 0; left = 0; right = 0;
   private grid: Grid;
   private idx: number[] = [];
+  private origN: Float32Array;
+  private acc = new Map<number, number[]>();
   private triMark = new Map<number, number>();
   constructor(private info: CrumpleInfo, private pos: THREE.BufferAttribute, private nrm: THREE.BufferAttribute) {
+    this.origN = new Float32Array(nrm.array as Float32Array);
     let g = grids.get(info.orig); if (!g) { g = new Grid(info); grids.set(info.orig, g); } this.grid = g;
   }
   /** max distance any vertex is displaced from the undamaged shape */
@@ -63,10 +64,11 @@ export class Crumpler {
    * Returns the number of vertices moved.
    */
   hit(lp: THREE.Vector3, dirIn: THREE.Vector3, energy: number): number {
-    const info = this.info, P = this.pos.array as Float32Array, N = this.nrm.array as Float32Array, O = info.orig;
+    const info = this.info, P = this.pos.array as Float32Array, O = info.orig;
     const e = Math.min(1.4, energy);
-    const R = 0.75 + 0.85 * Math.min(1, e);
-    const push = Math.min(0.5, 0.045 + 0.4 * e);
+    const R = 0.8 + 0.7 * Math.min(1, e);
+    const push = Math.min(0.3, 0.03 + 0.25 * e);
+    const cap = Math.min(0.55, MAX_D * (0.75 + 0.25 * e)) ;
     this.grid.query(lp.x, lp.y, lp.z, R, this.idx);
     const touched = this.triMark; touched.clear();
     let moved = 0;
@@ -74,12 +76,11 @@ export class Crumpler {
       const ox = O[i * 3], oy = O[i * 3 + 1], oz = O[i * 3 + 2];
       const d = Math.hypot(ox - lp.x, (oy - lp.y) * 1.25, oz - lp.z);
       if (d > R) continue;
-      const w = (1 - d / R) ** 1.5, nz = noise(ox, oy, oz);
-      const k = push * w * (1 + 0.5 * nz);
-      let x = P[i * 3] + dirIn.x * k + nz * k * 0.22, y = P[i * 3 + 1] + dirIn.y * k * 0.6 - Math.abs(nz) * k * 0.12, z = P[i * 3 + 2] + dirIn.z * k + noise(oz, ox, oy) * k * 0.2;
+      const w = sstep(1 - d / R), k = push * w * (1 + 0.18 * smoothN(ox, oy, oz));
+      let x = P[i * 3] + dirIn.x * k, y = P[i * 3 + 1] + dirIn.y * k * 0.6, z = P[i * 3 + 2] + dirIn.z * k;
       // clamp the total displacement from the undamaged position
       const dx = x - ox, dy = y - oy, dz = z - oz, dl = Math.hypot(dx, dy, dz);
-      if (dl > MAX_D) { const s = MAX_D / dl; x = ox + dx * s; y = oy + dy * s; z = oz + dz * s; }
+      if (dl > cap) { const q = cap / dl; x = ox + dx * q; y = oy + dy * q; z = oz + dz * q; }
       P[i * 3] = x; P[i * 3 + 1] = y; P[i * 3 + 2] = z; moved++;
       touched.set((i / 3) | 0, 1);
     }
@@ -90,19 +91,32 @@ export class Crumpler {
     else if (dirIn.z > 0.45 && lp.z < 0) { this.rear = Math.min(1, this.rear + wgt * 0.5); this.bumperR = Math.min(1, this.bumperR + wgt * 0.6); }
     if (dirIn.x > 0.5) this.right = Math.min(1, this.right + wgt * 0.5); else if (dirIn.x < -0.5) this.left = Math.min(1, this.left + wgt * 0.5);
     this.pos.needsUpdate = true; this.nrm.needsUpdate = true;
-    void N;
     return moved;
   }
-  /** Tilts the normals of touched triangles by the change of their face normal. */
+  /**
+   * Smooth normals over the touched region: face normals of the deformed triangles are averaged per welded position
+   * (the body is a triangle soup), then blended with the undamaged vertex normal so creases outside the dent survive.
+   */
   private retilt(tris: Map<number, number>) {
-    const P = this.pos.array as Float32Array, N = this.nrm.array as Float32Array, O = this.info.orig;
+    const P = this.pos.array as Float32Array, N = this.nrm.array as Float32Array, ON = this.origN;
+    const acc = this.acc; acc.clear();
+    const wk = (j: number) => key(Math.round(P[j] * 25), Math.round(P[j + 1] * 25), Math.round(P[j + 2] * 25));
+    for (const t of tris.keys()) {
+      const a = t * 9, f = faceN(P, a, true);
+      for (let v = 0; v < 3; v++) {
+        const k = wk(a + v * 3); let c = acc.get(k); if (!c) { c = [0, 0, 0]; acc.set(k, c); }
+        c[0] += f[0]; c[1] += f[1]; c[2] += f[2];
+      }
+    }
     for (const t of tris.keys()) {
       const a = t * 9;
-      const nn = faceN(P, a), no = faceN(O, a);
       for (let v = 0; v < 3; v++) {
-        const j = a + v * 3;
-        const x = N[j] + (nn[0] - no[0]) * 1.4, y = N[j + 1] + (nn[1] - no[1]) * 1.4, z = N[j + 2] + (nn[2] - no[2]) * 1.4, l = Math.hypot(x, y, z) || 1;
-        N[j] = x / l; N[j + 1] = y / l; N[j + 2] = z / l;
+        const j = a + v * 3, c = acc.get(wk(j))!, l = Math.hypot(c[0], c[1], c[2]);
+        if (l < 1e-9) continue;
+        let x = c[0] / l, y = c[1] / l, z = c[2] / l;
+        if (x * ON[j] + y * ON[j + 1] + z * ON[j + 2] < 0) { x = -x; y = -y; z = -z; } // never face inwards
+        const b = 0.75, nx = ON[j] * (1 - b) + x * b, ny = ON[j + 1] * (1 - b) + y * b, nz = ON[j + 2] * (1 - b) + z * b, m = Math.hypot(nx, ny, nz) || 1;
+        N[j] = nx / m; N[j + 1] = ny / m; N[j + 2] = nz / m;
       }
     }
   }
@@ -123,9 +137,10 @@ export class Crumpler {
       let dy = 0, dz = 0, dx = 0;
       if (dH >= 0.02 && oz > z0 - 0.05 && oy > info.deckY - 0.16 && Math.abs(ox) < hw * 0.98) {
         const u = Math.min(1, Math.max(0, (zf - oz) / Math.max(0.5, zf - z0))); // 0 at the nose, 1 at the windshield base
-        const bump = Math.sin(Math.PI * Math.min(1, u * 1.08)) ** 0.8;
-        dy += dH * (0.2 * bump + 0.05 * u) * (1 + 0.25 * noise(ox, oy, oz));
-        dz -= dH * 0.16 * (1 - u) * (1 + 0.3 * noise(oz, oy, ox));
+        const edge = 1 - sstep((Math.abs(ox) / hw - 0.7) / 0.3); // tapers to nothing at the fenders, so the hood folds instead of tearing off
+        const bump = Math.sin(Math.PI * u) ** 1.5 * edge, fold = sstep(u) * (1 - sstep((u - 0.8) / 0.2));
+        dy += dH * (0.09 * bump + 0.04 * fold * edge);
+        dz -= dH * 0.12 * (1 - u) * edge;
       }
       if (dB >= 0.02 && oz > zf - 0.55 && oy < info.bumperTop + 0.03) {
         const side = 0.5 + 0.5 * Math.sign(ox * sideSign || 1) * Math.min(1, Math.abs(ox) / hw); // one end sags more
@@ -138,15 +153,15 @@ export class Crumpler {
       if (dy === 0 && dz === 0 && dx === 0) continue;
       let x = P[i * 3] + dx, y = P[i * 3 + 1] + dy, z = P[i * 3 + 2] + dz;
       const ex = x - ox, ey = y - oy, ez = z - oz, l = Math.hypot(ex, ey, ez);
-      if (l > MAX_D + 0.15) { const s = (MAX_D + 0.15) / l; x = ox + ex * s; y = oy + ey * s; z = oz + ez * s; }
+      if (l > MAX_D + 0.12) { const s = (MAX_D + 0.12) / l; x = ox + ex * s; y = oy + ey * s; z = oz + ez * s; }
       P[i * 3] = x; P[i * 3 + 1] = y; P[i * 3 + 2] = z; touched.set((i / 3) | 0, 1);
     }
     this.retilt(touched);
     this.pos.needsUpdate = true; this.nrm.needsUpdate = true;
   }
 }
-function faceN(a: Float32Array, o: number): [number, number, number] {
+function faceN(a: Float32Array, o: number, area = false): [number, number, number] {
   const ux = a[o + 3] - a[o], uy = a[o + 4] - a[o + 1], uz = a[o + 5] - a[o + 2], vx = a[o + 6] - a[o], vy = a[o + 7] - a[o + 1], vz = a[o + 8] - a[o + 2];
-  const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z) || 1;
+  const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = area ? 1 : (Math.hypot(x, y, z) || 1);
   return [x / l, y / l, z / l];
 }

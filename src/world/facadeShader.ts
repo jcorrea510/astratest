@@ -104,7 +104,7 @@ vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool si
   if (st < 1.5) { // fridge wall + snack racks, lit sign band
     vec3 tint = st < 0.5 ? vec3(0.8, 0.12, 0.15) : vec3(0.05, 0.5, 0.3);
     if (h > 2.3 && h < 2.75) { c = tint; gGlow += tint * 0.9; }
-    else if (!side && h < 2.2) { float door = fract(u / 1.0); float frame = step(0.06, door) * step(door, 0.94);
+    else if (h < 2.2) { float door = fract(u / 1.0); float frame = step(0.06, door) * step(door, 0.94);
       float row = fract(h * 3.4); vec3 drink = 0.25 + 0.7 * vec3(fH(vec2(cell, floor(h * 3.4))), fH(vec2(cell + 3.0, floor(h * 3.4))), fH(vec2(cell, floor(h * 3.4) + 5.0)));
       vec3 fr = mix(vec3(0.7, 0.85, 0.95), drink, step(0.2, row) * step(0.25, fx) * step(h, 2.0));
       c = mix(vec3(0.12), fr, frame); gGlow += c * 0.5 * frame; }

@@ -29,14 +29,14 @@ describe('Crumpler', () => {
       if (Math.hypot(orig[i], orig[i + 1] - 0.6) < 0.3) best = Math.max(best, d); if (Math.abs(orig[i]) > 1.3) far = Math.max(far, d);
     }
     expect(best).toBeGreaterThan(0.05);
-    expect(best).toBeLessThanOrEqual(0.62 + 1e-4);
+    expect(best).toBeLessThanOrEqual(0.55 + 1e-4);
     expect(far).toBe(0);
   });
   it('clamps repeated hits to the maximum displacement and keeps normals unit length', () => {
     const { pos, nrm, info } = frontWall();
     const c = new Crumpler(info, pos, nrm);
     for (let i = 0; i < 40; i++) c.hit(new THREE.Vector3(0, 0.6, 2), new THREE.Vector3(0, 0, -1), 1.4);
-    expect(c.maxDisplacement()).toBeLessThanOrEqual(0.62 + 1e-3);
+    expect(c.maxDisplacement()).toBeLessThanOrEqual(0.55 + 1e-3);
     const N = nrm.array as Float32Array;
     for (let i = 0; i < N.length; i += 3) expect(Math.hypot(N[i], N[i + 1], N[i + 2])).toBeCloseTo(1, 3);
   });
@@ -51,5 +51,13 @@ describe('Crumpler', () => {
     let changed = 0; for (let i = 0; i < P.length; i++) if (Math.abs(P[i] - before[i]) > 1e-5) changed++;
     expect(changed).toBeGreaterThan(0);
     void orig;
+  });
+  it('a 40 mph hit moves panels at most ~0.38 m and never flips a normal away from its original side', () => {
+    const { pos, nrm, info } = frontWall();
+    const c = new Crumpler(info, pos, nrm);
+    c.hit(new THREE.Vector3(0, 0.6, 2), new THREE.Vector3(0, 0, -1), 1.2);
+    expect(c.maxDisplacement()).toBeLessThanOrEqual(0.4);
+    const N = nrm.array as Float32Array;
+    for (let i = 0; i < N.length; i += 3) expect(N[i + 2]).toBeGreaterThan(0.2);
   });
 });
