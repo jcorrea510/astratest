@@ -5,6 +5,7 @@ import { VEHICLES } from '../vehicles/specs';
 import { layoutFor, SHAPES } from '../vehicles/shapes';
 
 const city = generateCity();
+const routes = buildBusRoutes(city, 3); // built once (the expensive part), shared by the tests; the first route is the same as buildBusRoutes(city, 1)[0]
 describe('city buses', () => {
   it('is a long heavy 12 m vehicle with a door on the kerb side', () => {
     const l = layoutFor('bus');
@@ -13,7 +14,6 @@ describe('city buses', () => {
     expect(SHAPES.bus.doors.length).toBe(1);
   });
   it('builds drivable closed loop routes with kerb stops', () => {
-    const routes = buildBusRoutes(city, 3);
     expect(routes.length).toBeGreaterThanOrEqual(2);
     for (const r of routes) {
       expect(r.stops.length).toBe(4);
@@ -24,7 +24,7 @@ describe('city buses', () => {
     }
   });
   it('stop props sit on the pavement, beyond the lane, and merge to three meshes', () => {
-    const r = buildBusRoutes(city, 1)[0];
+    const r = routes[0];
     for (const s of r.stops) expect(Math.hypot(s.px - s.x, s.pz - s.z)).toBeGreaterThan(2.5);
     const g = buildStopProps(r.stops);
     for (const geo of [g.metal, g.glass, g.sign]) expect(geo.attributes.position.count).toBeGreaterThan(24 * r.stops.length);

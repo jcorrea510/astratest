@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { curbShift, yieldsToSiren, ViolationMonitor, type Violation, type LaneProbe, type PlayerSample } from './trafficRules';
+import { curbShift, yieldsToSiren, ViolationMonitor, type Violation, type LaneProbe, type PlayerSample, spawnGapClear } from './trafficRules';
 
 const mk = () => { const out: Violation[] = []; return { out, m: new ViolationMonitor(v => out.push(v), (x, z) => new THREE.Vector3(x, 0, z)) }; };
 const lane = (o: Partial<LaneProbe> = {}): LaneProbe => ({ id: 1, limit: 13, dist: 0.5, dx: 0, dz: 1, toStop: 50, signal: 'green', ...o });
@@ -50,5 +50,24 @@ describe('player traffic violations', () => {
   });
   it('rate limits repeats', () => {
     const { out, m } = mk(); run(m, 6, me({ speed: 30 }), lane()); expect(out.length).toBe(1);
+  });
+});
+
+describe('spawnGapClear (far-car spawn spacing)', () => {
+  const stopped = [{ s: 50, len: 4.6 }];
+  it('rejects spawning right behind or ahead of a stopped car, and inside its gap', () => {
+    expect(spawnGapClear(46, 4.5, stopped)).toBe(false); // bumper-to-bumper
+    expect(spawnGapClear(40, 4.5, stopped)).toBe(false); // 5.4 m bumper gap
+    expect(spawnGapClear(58, 4.5, stopped)).toBe(false);
+    expect(spawnGapClear(50, 4.5, stopped)).toBe(false); // on top
+  });
+  it('accepts >= 8 m bumper gap on either side and an empty lane', () => {
+    expect(spawnGapClear(50 - 17.2, 4.5, stopped)).toBe(true);
+    expect(spawnGapClear(50 + 17.2, 4.5, stopped)).toBe(true);
+    expect(spawnGapClear(10, 4.5, [])).toBe(true);
+  });
+  it('keeps room for a long bus', () => {
+    expect(spawnGapClear(66, 11.6, stopped)).toBe(false);
+    expect(spawnGapClear(50 + 22, 11.6, stopped)).toBe(true);
   });
 });

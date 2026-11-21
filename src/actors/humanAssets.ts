@@ -6,7 +6,7 @@
  *  - cached "extras" geometry per hairstyle/facial hair/hat/garment combination (hair shells generated from the
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
-import { CARD_HAIR, hairCardGeometry, facialCardGeometry } from './hairCards';
+import { SHELL_HAIR, hairShellGeometry, beardShellGeometry, shellThick, capLine } from './hairShells';
 import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -65,35 +65,19 @@ export interface HumanAssets {
   bodies: Record<Sex, BodyBase>;
   map: THREE.Texture;
   normalMap: THREE.Texture;
-  hair: Map<string, { geo: THREE.BufferGeometry; headJoint: THREE.Vector3; slot: readonly number[] }>;
   ualClipNames: string[];
 }
-
-const HAIR_FILES = { long: 'Hair_Long', buns: 'Hair_Buns', parted: 'Hair_SimpleParted', buzz: 'Hair_Buzzed', buzzF: 'Hair_BuzzedFemale', beard: 'Hair_Beard' } as const;
 
 /** Loads and prepares everything (call once). `base` is the URL prefix of public/assets/ubc/. */
 export async function loadHumanAssets(ual: GLTF, base: string): Promise<HumanAssets> {
   const loader = new GLTFLoader();
   const tl = new THREE.TextureLoader();
   const tex = (n: string, srgb: boolean) => tl.loadAsync(base + n).then(t => { t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4; return t; });
-  const [m, f, map, normalMap, ...hairG] = await Promise.all([
+  const [m, f, map, normalMap] = await Promise.all([
     loader.loadAsync(base + 'Superhero_Male_FullBody.gltf'), loader.loadAsync(base + 'Superhero_Female_FullBody.gltf'),
     tex('atlas_albedo.jpg', true), tex('atlas_normal.jpg', false),
-    ...Object.values(HAIR_FILES).map(n => loader.loadAsync(base + n + '.gltf')),
   ]);
-  const hair = new Map<string, { geo: THREE.BufferGeometry; headJoint: THREE.Vector3; slot: readonly number[] }>();
-  Object.keys(HAIR_FILES).forEach((k, i) => {
-    const g = hairG[i];
-    let sm: THREE.SkinnedMesh | null = null;
-    g.scene.traverse(o => { if ((o as THREE.SkinnedMesh).isSkinnedMesh && !sm) sm = o as THREE.SkinnedMesh; });
-    const mesh = sm as unknown as THREE.SkinnedMesh;
-    const hi = mesh.skeleton.bones.findIndex(b => b.name === 'Head');
-    const headJoint = new THREE.Vector3().setFromMatrixPosition(mesh.skeleton.boneInverses[hi].clone().invert());
-    const geo = mesh.geometry.clone();
-    for (const a of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(a)) geo.deleteAttribute(a);
-    hair.set(k, { geo, headJoint, slot: ['long', 'buns', 'buzzF'].includes(k) ? SLOT.hair2 : SLOT.hair1 });
-  });
-  return { bodies: { m: buildBody(m, 'm', ual), f: buildBody(f, 'f', ual) }, map, normalMap, hair, ualClipNames: ual.animations.map(a => a.name) };
+  return { bodies: { m: buildBody(m, 'm', ual), f: buildBody(f, 'f', ual) }, map, normalMap, ualClipNames: ual.animations.map(a => a.name) };
 }
 
 function remapUV(geo: THREE.BufferGeometry, slot: readonly number[]) {
@@ -402,9 +386,6 @@ function measureSpeed(scene0: THREE.Object3D, clip: THREE.AnimationClip): number
 // Extras: hair, facial hair, hats and garment pieces
 // ---------------------------------------------------------------------------------------------------------------
 
-const noise3 = (x: number, y: number, z: number) =>
-  Math.sin(x * 1.7 + Math.sin(y * 2.3 + z * 1.1) * 1.3) * Math.sin(y * 1.9 + Math.sin(z * 2.9 + x * 0.7)) * Math.sin(z * 2.1 + x * 1.3);
-
 interface Part { pos: number[]; nor: number[]; uv: number[]; region: number; bone?: number; weights?: { si: number[]; sw: number[] } }
 
 /** Turns a set of parts into one skinned, region-tagged geometry. Parts without weights are rigid on `bone`. */
@@ -533,32 +514,7 @@ function headPart(base: BodyBase, g: THREE.BufferGeometry, region: number, slot:
   return { pos, nor, uv, region, bone: base.boneNames.indexOf('DEF-head') };
 }
 
-/** A tube along a polyline in head-normalised coordinates (ponytails, braids). Radius in metres. */
-function tube(points: THREE.Vector3[], radius: (t: number) => number, base: BodyBase, region = R.HAIRP, seg = 8): Part {
-  const h = base.head;
-  const pts = points.map(p => new THREE.Vector3(h.center.x + p.x * h.half.x, h.center.y + p.y * h.half.y, h.center.z + p.z * h.half.z));
-  const curve = new THREE.CatmullRomCurve3(pts);
-  const tubeG = new THREE.TubeGeometry(curve, Math.max(6, points.length * 4), 1, seg, false);
-  // scale radius along the tube
-  const P = tubeG.attributes.position, uvA = tubeG.attributes.uv;
-  const steps = Math.max(6, points.length * 4);
-  for (let i = 0; i < P.count; i++) {
-    const t = uvA.getX(i);
-    const c = curve.getPointAt(Math.min(1, Math.round(t * steps) / steps));
-    const r = radius(t);
-    P.setXYZ(i, c.x + (P.getX(i) - c.x) * r, c.y + (P.getY(i) - c.y) * r, c.z + (P.getZ(i) - c.z) * r);
-  }
-  tubeG.computeVertexNormals();
-  const f = tubeG.toNonIndexed(), FP = f.attributes.position, FN = f.attributes.normal, FU = f.attributes.uv;
-  const pos: number[] = [], nor: number[] = [], uv: number[] = [];
-  for (let i = 0; i < FP.count; i++) {
-    pos.push(FP.getX(i), FP.getY(i), FP.getZ(i)); nor.push(FN.getX(i), FN.getY(i), FN.getZ(i));
-    uv.push(SLOT.hair1[0] + (0.1 + FU.getY(i) * 0.3) * SLOT.hair1[2], SLOT.hair1[1] + (0.05 + FU.getX(i) * 0.9) * SLOT.hair1[3]);
-  }
-  return { pos, nor, uv, region, bone: base.boneNames.indexOf('DEF-head') };
-}
-
-/** Rebinds a Quaternius rigged hair mesh onto this body (rigid on the head; translated by the head joint offset). */
+/** A garment piece in body space, skinned by nearest-body-vertex weights (or explicit weights). */
 function garment(base: BodyBase, g: THREE.BufferGeometry, region: number, weights?: (p: THREE.Vector3) => { si: number[]; sw: number[] }): Part {
   const f = g.index ? g.toNonIndexed() : g; f.computeVertexNormals();
   const P = f.attributes.position, N = f.attributes.normal;
@@ -570,94 +526,43 @@ function garment(base: BodyBase, g: THREE.BufferGeometry, region: number, weight
   return { pos, nor, uv, region, weights: w };
 }
 
-const HAIR_SHELL: Partial<Record<HairStyle, { thick: (hn: THREE.Vector3, p: THREE.Vector3) => number; along?: boolean; line?: (x: number, z: number) => number }>> = {
-  crew: { thick: hn => 0.006 + 0.012 * THREE.MathUtils.smoothstep(hn.y, 0.2, 0.75) },
-  fade: { thick: hn => 0.003 + 0.014 * THREE.MathUtils.smoothstep(hn.y, 0.45, 0.8), line: (x, z) => Math.max(hairline(x, z), 0.42) },
-  short: { thick: hn => 0.01 + 0.016 * THREE.MathUtils.smoothstep(hn.y, 0.1, 0.8) + 0.004 * noise3(hn.x * 9, hn.y * 9, hn.z * 9) },
-  pixie: { thick: hn => 0.012 + 0.016 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) + 0.006 * Math.max(0, hn.z) + 0.004 * noise3(hn.x * 8, hn.y * 8, hn.z * 8) },
-  slick: { thick: hn => 0.011 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.2, 0.9) + 0.006 * THREE.MathUtils.smoothstep(hn.z, 0.3, 0.9), along: true },
-  curly: { thick: hn => 0.026 + 0.012 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) + 0.008 * noise3(hn.x * 11, hn.y * 11, hn.z * 11) },
-  afro: { thick: hn => 0.05 + 0.035 * THREE.MathUtils.smoothstep(hn.y, -0.3, 0.7) + 0.008 * noise3(hn.x * 7, hn.y * 7, hn.z * 7), line: (x, z) => hairline(x, z) - 0.05 },
-  cornrows: { thick: hn => 0.003 + 0.0035 * Math.abs(Math.sin(hn.x * 22)), along: true },
-  braids: { thick: hn => 0.004 + 0.004 * Math.abs(Math.sin(hn.x * 18)), along: true },
-  ponytail: { thick: () => 0.01, along: true },
-  bun: { thick: () => 0.01, along: true },
-  long: { thick: hn => 0.012 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) },
-  buns: { thick: hn => 0.014 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.0, 0.8) },
-  parted: { thick: hn => 0.011 + 0.014 * THREE.MathUtils.smoothstep(hn.y, 0.1, 0.8) },
-  bob: { thick: hn => 0.016 + 0.01 * THREE.MathUtils.smoothstep(hn.y, 0.1, 0.8) },
-};
-
-/** Builds (and caches) the extras geometry for a look. */
+/** Builds (and caches) the extras geometry for a look: hair shells (near + far LOD), beard shells (near + far), hats and garments. */
 export function extrasGeometries(base: BodyBase, assets: HumanAssets, look: FullLook): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
   const add = (g: THREE.BufferGeometry | null, kind: string) => { if (g) { g.userData.kind = kind; out.push(g); } };
-  const cardStyle = CARD_HAIR.has(look.hairStyle), hatOn = look.hatStyle !== 'none';
-  // hair cards + beard cards (near), the old thick-shell cap (only drawn far away for card styles), garments and hats
-  if (cardStyle) {
-    const k = `cards|${look.hairStyle}|${hatOn ? 'hat' : 'bare'}`;
-    if (!base.extras.has(k)) base.extras.set(k, hairCardGeometry(base, look.hairStyle, hatOn));
-    add(base.extras.get(k) ?? null, 'cards');
+  const hatOn = look.hatStyle !== 'none';
+  const cached = (k: string, make: () => THREE.BufferGeometry | null) => {
+    if (!base.extras.has(k)) { const g = make(); if (g) freeAfterUpload(g); base.extras.set(k, g); }
+    return base.extras.get(k) ?? null;
+  };
+  if (SHELL_HAIR.has(look.hairStyle)) for (const far of [false, true]) {
+    add(cached(`hair|${look.hairStyle}|${hatOn ? 1 : 0}|${far ? 1 : 0}`, () => hairShellGeometry(base, look.hairStyle, hatOn, far)), far ? 'hairFar' : 'hair');
   }
-  if (look.facial === 'beard' || look.facial === 'goatee' || look.facial === 'moustache') {
-    const k = `fcards|${look.facial}`;
-    if (!base.extras.has(k)) base.extras.set(k, facialCardGeometry(base, look.facial));
-    add(base.extras.get(k) ?? null, 'fcards');
+  if (look.facial !== 'none') for (const far of [false, true]) {
+    add(cached(`beard|${look.facial}|${far ? 1 : 0}`, () => beardShellGeometry(base, look.facial, far)), far ? 'hairFar' : 'hair');
   }
-  for (const [kind, key] of [['cap', `cap|${look.hairStyle}|${look.hatStyle === 'none' ? 0 : 1}`], ['misc', `${look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`]] as const) {
-    const g = extrasPart(base, assets, look, kind, key); if (g) add(g, kind === 'cap' && cardStyle ? 'cap' : 'misc');
-  }
+  add(extrasPart(base, assets, look, `${look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`), 'misc');
   return out;
 }
-function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, kind: 'cap' | 'misc', key: string): THREE.BufferGeometry | null {
+function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, key: string): THREE.BufferGeometry | null {
   const hat = look.hatStyle, hairS = look.hairStyle;
   if (base.extras.has(key)) return base.extras.get(key)!;
   const parts: Part[] = [];
-  const capOnly = kind === 'cap', misc = kind === 'misc';
-  const hairThick = (hn: THREE.Vector3, p: THREE.Vector3) => HAIR_SHELL[hairS]?.thick(hn, p) ?? 0.012;
-  // ---- hair
-  const shell = HAIR_SHELL[hairS];
-  if (capOnly && shell && !(hat !== 'none' && ['crew', 'fade', 'cornrows'].includes(hairS))) parts.push(scalpShell(base, shell.line ?? hairline, shell.thick, R.HAIRP, 0.1, shell.along));
-  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-  if (capOnly) switch (hairS) {
-    case 'ponytail': {
-      if (!capOnly) break;
-      parts.push(tube([V(0, 0.35, -1.0), V(0, 0.18, -1.22), V(0, -0.3, -1.25), V(0, -0.9, -1.15), V(0, -1.5, -1.05)], t => 0.026 * (1 - t * 0.55) + 0.01 * Math.sin(t * 3.14), base));
-      parts.push(headPart(base, new THREE.TorusGeometry(0.19, 0.06, 6, 12).rotateX(0.5).translate(0, 0.3, -1.03), R.HAT));
-      break;
-    }
-    case 'bun': if (capOnly) parts.push(headPart(base, new THREE.SphereGeometry(0.38, 14, 10).scale(1, 0.85, 0.85).translate(0, 0.72, -0.95), R.HAIRP)); break;
-    case 'braids': {
-      if (!capOnly) break;
-      for (let i = 0; i < 14; i++) {
-        const a = -2.2 + (i / 13) * 4.4; const sx = Math.sin(a) * 1.02, sz = -Math.cos(a) * 1.02;
-        const len = 1.9 + (i % 3) * 0.15;
-        parts.push(tube([V(sx, 0.05, sz - 0.05), V(sx * 1.08, -0.4, sz * 1.06 - 0.08), V(sx * 1.05, -1.0, sz - 0.2), V(sx * 0.95, -len, sz - 0.3)], t => 0.011 * (1 - t * 0.3), base, R.HAIRP, 5));
-      }
-      break;
-    }
-    case 'bob': {
-      if (!capOnly) break;
-      // a curtain of hair from the hairline down to the jaw, open at the face
-      const ring = new THREE.CylinderGeometry(1.1, 1.18, 1.0, 22, 3, true, Math.PI * 0.32, Math.PI * 1.36);
-      ring.translate(0, -0.22, -0.06);
-      parts.push(headPart(base, ring, R.HAIRP));
-      break;
-    }
-  }
+  const hairThick = (hn: THREE.Vector3) => SHELL_HAIR.has(hairS) ? shellThick(hairS, hn) : 0.002;
+  // ---- hair ties
+  if (hairS === 'ponytail') parts.push(headPart(base, new THREE.TorusGeometry(0.17, 0.05, 6, 14).rotateX(0.35).translate(0, 0.33, -1.06), R.HAT));
   // ---- hats
-  if (!misc) { /* hats are in the misc part */ } else if (hat === 'cap' || hat === 'police') {
-    const capLine = (_x: number, z: number) => THREE.MathUtils.lerp(0.02, 0.36, THREE.MathUtils.smoothstep(z, 0.1, 0.75));
-    parts.push(scalpShell(base, capLine, (hn, p) => hairThick(hn, p) * 0.6 + 0.009, R.HAT, 0.04));
+  if (hat === 'cap' || hat === 'police') {
+    parts.push(scalpShell(base, capLine, hn => hairThick(hn) * 0.6 + 0.009, R.HAT, 0.04));
     const brim = new THREE.CylinderGeometry(0.9, 0.9, 0.04, 18, 1, false, -Math.PI / 2, Math.PI).scale(0.95, 1, 0.75).rotateX(-0.12).translate(0, 0.3, 0.72);
     parts.push(headPart(base, brim, hat === 'police' ? R.DETAIL : R.HAT));
     if (hat === 'police') parts.push(headPart(base, new THREE.CylinderGeometry(1.16, 1.05, 0.38, 22).translate(0, 0.86, -0.04), R.HAT));
   } else if (hat === 'beanie') {
-    parts.push(scalpShell(base, (_x, z) => THREE.MathUtils.lerp(-0.1, 0.4, THREE.MathUtils.smoothstep(z, 0.1, 0.75)), (hn, p) => hairThick(hn, p) * 0.5 + 0.012 + 0.006 * THREE.MathUtils.smoothstep(hn.y, 0.6, 1), R.HAT, 0.03));
+    parts.push(scalpShell(base, (_x, z) => THREE.MathUtils.lerp(-0.1, 0.4, THREE.MathUtils.smoothstep(z, 0.1, 0.75)), hn => hairThick(hn) * 0.5 + 0.012 + 0.006 * THREE.MathUtils.smoothstep(hn.y, 0.6, 1), R.HAT, 0.03));
     parts.push(headPart(base, new THREE.TorusGeometry(1.04, 0.1, 6, 26).rotateX(Math.PI / 2 - 0.42).translate(0, 0.22, -0.02), R.HAT));
   }
   // ---- garments
-  const gl = (misc ? look : { topStyle: '', bottomStyle: '' }) as { topStyle: string; bottomStyle: string };
+  const gl = look as { topStyle: string; bottomStyle: string };
   const J = base.J;
   const T = (p: number) => p; // torso param helper (0 crotch .. 1 neck base)
   const sm = THREE.MathUtils.smoothstep;

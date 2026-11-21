@@ -19,7 +19,7 @@ import type { Vehicle } from '../vehicles/vehicle';
 import { PARKED_MIX, TRAFFIC_MIX, type VehicleKind } from '../vehicles/specs';
 import { FarCars, kindPaint } from '../vehicles/farCars';
 import { hasTemplate } from '../vehicles/models/build';
-import { yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal } from './trafficRules';
+import { yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, spawnGapClear } from './trafficRules';
 import { Rng } from '../core/rng';
 import { carActivity, pedActivity, districtNightFactor } from './schedule';
 
@@ -281,6 +281,12 @@ export class Crowd {
       if (d < (this.prewarming ? 40 : 65) || d > 190) continue; // R6-T: denser ring (was 70-230) so moving cars outnumber parked ones in view
       if (Math.random() > DISTRICT_INFO[districtAt(this.city, sp.x, sp.z)].trafficDensity) continue;
       if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 11))) continue;
+      { // R6-Z1: >= 8 m bumper gap to far cars and to real (possibly stopped) cars on this lane
+        const others: { s: number; len: number }[] = [];
+        for (const c of this.cars) if (c.lane === lane) others.push({ s: c.s, len: c.len });
+        for (const rc of this.traffic?.cars ?? []) if (rc.lane.id === lane.id) others.push({ s: rc.s, len: 4.6 });
+        if (!spawnGapClear(s, bus ? 11.6 : 4.5, others)) continue;
+      }
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
       // never appear already doing 40 km/h towards a red line it cannot stop at (R6-T)
       if (!lane.connector && !spawnSafeAtSignal(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), signalState(this.city.intersections[lane.intersection], lane.axis, this.time() + 5), lane.length - s - 5.4)) continue;

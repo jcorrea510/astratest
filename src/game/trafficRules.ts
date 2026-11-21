@@ -97,3 +97,9 @@ export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: numbe
 export function spawnSafeAtSignal(now: 'green' | 'yellow' | 'red', in5s: 'green' | 'yellow' | 'red', dStop: number): boolean {
   return dStop > 70 || (now === 'green' && in5s === 'green');
 }
+
+/** R6-Z1: a far car may spawn at lane position `s` (length `len`) only if every other car on that lane (real or far) keeps >= `gap` m bumper to bumper. */
+export function spawnGapClear(s: number, len: number, others: ReadonlyArray<{ s: number; len: number }>, gap = 8): boolean {
+  for (const o of others) if (Math.abs(o.s - s) - (o.len + len) * 0.5 < gap) return false;
+  return true;
+}

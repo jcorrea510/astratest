@@ -185,6 +185,11 @@ test('damage feedback: the indicator points at the shooter; the screen reddens; 
   await page.evaluate(() => { const g = (window as any).__game; g.onPlayerHurt({ pos: new g.player.pos.constructor(g.player.pos.x - 8, 0, g.player.pos.z + 4) }, 12); g.player.health = 18; });
   await step(page, 0.1, { dt: 1 / 60 });
   await page.evaluate(() => { const g = (window as any).__game; g.onPlayerHurt({ pos: new g.player.pos.constructor(g.player.pos.x - 8, 0, g.player.pos.z + 4) }, 12); }); // fresh, so the 1.2 s fade is at its peak
+  await page.evaluate(() => { // a second shooter ahead-right; keep only the newest wedge so the shot reads clearly
+    const g = (window as any).__game; g.onPlayerHurt({ pos: new g.player.pos.constructor(g.player.pos.x + 4, 0, g.player.pos.z + 8) }, 12);
+    const els = [...document.querySelectorAll<HTMLElement>('.ma-fx-ind')];
+    const lastEl = els.find(e => e.dataset.angle === g.fx.last.angle.toFixed(1)); els.forEach(e => { if (e !== lastEl) e.classList.remove('is-on'); });
+  });
   await shot('hit-indicator');
   await step(page, 2.5, { dt: 1 / 30 });
   expect(await page.evaluate(() => (window as any).__game.fx.lowHealth)).toBeGreaterThan(0.5);

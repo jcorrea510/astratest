@@ -88,8 +88,8 @@ export const ACTIONS: Record<string, ActionDef> = {
   cuff_reach: { layer: 'upper', hold: true, dur: 0.45, fade: 0.15, poses: [[0, {}], [1, { chest: [20, 0, 0], head: [14, 0, 0], ...sym({ armL: [-52, 0, -10], foreL: [-38, 0, 0] }) }]] },
   wrists_back: { layer: 'upper', hold: true, dur: 0.75, fade: 0.12, poses: [[0, sym({ armL: [0, 0, 150], foreL: [0, 0, -70], head: [-6, 0, 0] })], [0.5, sym({ shL: [6, 0, 0], armL: [14, 0, 70], foreL: [-10, 0, -40], chest: [8, 0, 0], head: [10, 0, 0] })], [1, sym({ shL: [10, 0, 0], armL: [28, 0, -6], foreL: [12, 0, -58], chest: [-4, 0, 0], head: [12, 0, 0] })]] },
   kneel: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25 },
-  // "get down" order: kneeling, fingers laced behind the head
-  kneel_head: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, sym({ armL: [-110, 0, 70], foreL: [0, 0, 140], head: [8, 0, 0] })]] },
+  // "get down" order: both knees down, torso upright, fingers laced behind the head, elbows out, head slightly down (tuned from the one-knee clip)
+  kneel_head: { clip: 'Fixing_Kneeling', layer: 'full', loop: true, hold: true, fade: 0.25, poses: [[0, { spine: [-22, 0, 0], chest: [-22, 0, 0], neck: [-6, 0, 0], head: [14, 0, 0], thighL: [80, 0, 0], thighR: [30, 0, 0], ...sym({ armL: [-110, 0, 70], foreL: [0, 0, 140] }) }]] },
   // --- vehicles
   // driver side: left hand on the handle, pull the door round to the left (the player steps back on the legs layer)
   open_door: { layer: 'upper', dur: 1.05, fade: 0.12, events: [[0.42, 'open']], poses: [[0, {}], [0.3, { chest: [10, 8, 0], armL: [-30, 0, 6], foreL: [-28, 0, 0], head: [6, 0, 0] }], [0.45, { chest: [12, 10, 0], armL: [-34, 0, 4], foreL: [-22, 0, 0], head: [8, 0, 0] }], [0.78, { chest: [-2, 24, 0], spine: [0, 8, 0], armL: [-26, 0, 22], foreL: [-30, 0, 0] }], [1, {}]] },

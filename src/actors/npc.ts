@@ -637,6 +637,14 @@ export class NpcBrainRunner {
         n.avx += -dir.z * side * w * 1.6; n.avz += dir.x * side * w * 1.6;
         if (ahead > 0.7 && Math.abs(lat) < 0.75) n.avSlow = Math.min(n.avSlow, dd < 1.1 ? 0.3 : dd < 1.8 ? 0.6 : 0.85);
       }
+      // R6-Z1: never sidestep off the footpath onto the carriageway (the kerb-side node line sits right at the kerb): try the other side, else queue behind
+      if (n.avx !== 0 || n.avz !== 0) {
+        const city = this.env.city, k = 1.1;
+        if (surfaceAt(city, px + (dir.x + n.avx) * k, pz + (dir.z + n.avz) * k) === 'road') {
+          n.avx = -n.avx; n.avz = -n.avz;
+          if (surfaceAt(city, px + (dir.x + n.avx) * k, pz + (dir.z + n.avz) * k) === 'road') { n.avx = 0; n.avz = 0; n.avSlow = Math.min(n.avSlow, 0.6); }
+        }
+      }
     }
     if (n.avx !== 0 || n.avz !== 0) { dir.x += n.avx; dir.z += n.avz; dir.normalize(); }
     return n.avSlow;

@@ -60,6 +60,50 @@ test('a crowded street for 60 s: nobody crosses against the sign, jaywalks, or s
   expect(r.against, 'pedestrians who stepped off the kerb on DON\'T WALK').toBe(0);
 });
 
+test('peds waiting at a signalized crosswalk cross once the sign shows WALK (and not before)', async () => {
+  test.setTimeout(300_000);
+  await quietStreets(page);
+  const r = await page.evaluate(`(() => {
+    const g = window.__game, city = g.city, P = g.visuals.pedSignals, N = city.pedNodes;
+    g.clockRunning = false; g.hour = 13; g.pedCap = 0; g.trafficCap = 0;
+    for (const n of [...g.pop.npcs]) if (!n.persistent) g.pop.remove(n);
+    // a signalized crossing edge in a busy junction, and the signal post that governs it
+    let edge = null;
+    for (const a of N) for (const e of a.edges) if (!edge && e.crossing && a.id < e.to && city.intersections[e.crossing.intersection].signalized && city.intersections[e.crossing.intersection].ix >= 2) edge = { a, b: N[e.to], e };
+    const inter = city.intersections[edge.e.crossing.intersection];
+    let post = 0, bd = 99; P.posts.forEach((p, k) => { const d = Math.min(Math.hypot(p.x - edge.a.x, p.z - edge.a.z), Math.hypot(p.x - edge.b.x, p.z - edge.b.z)); if (p.inter === inter.id && d < bd) { bd = d; post = k; } });
+    // find the start of a DON'T WALK stretch followed by WALK for this post
+    const at = t => { g.time = t; P.update(t); return P.shown(post); };
+    let tHand = -1, tWalk = -1;
+    for (let t = 0; t < 120 && tWalk < 0; t += 0.25) { const s = at(t); if (s === 'hand' && tHand < 0) tHand = t; else if (s === 'walk' && tHand >= 0) tWalk = t; }
+    const mx = (edge.a.x + edge.b.x) / 2, mz = (edge.a.z + edge.b.z) / 2;
+    g.player.place(mx + 14, 0.25, mz + 14, 0);
+    at(tHand);
+    const peds = [];
+    for (let i = 0; i < 4; i++) {
+      const n = g.pop.spawn('civilian', edge.a.x + (edge.b.x - edge.a.x) * 0.02 + (i - 1.5) * 0.35, edge.a.z + (edge.b.z - edge.a.z) * 0.02, 0.2);
+      n.persistent = true; n.brain = 'wander'; n.activity = ''; n.buddy = null; n.node = edge.a.id; n.nextNode = edge.a.id; n.pend = edge.e;
+      peds.push(n);
+    }
+    const dist = n => Math.hypot(n.pos.x - edge.b.x, n.pos.z - edge.b.z);
+    const L = Math.hypot(edge.b.x - edge.a.x, edge.b.z - edge.a.z);
+    // phase 1: DON'T WALK for 1.5 s: nobody leaves the kerb
+    let tt = tHand;
+    for (let i = 0; i < 45; i++) { tt += 1 / 30; at(tt); g.frame(1 / 30, false); }
+    const before = peds.filter(n => !n.alive || dist(n) < L - 3.5).length;
+    // phase 2: jump to WALK and run the phase
+    tt = tWalk; at(tt);
+    let crossed = 0, onWalkEnter = 0;
+    for (let i = 0; i < 15 * 30; i++) { tt += 1 / 30; at(tt); g.frame(1 / 30, false); if (P.shown(post) === 'walk') for (const n of peds) if (n.onCross) onWalkEnter++; }
+    crossed = peds.filter(n => n.alive && dist(n) < 2.5).length;
+    return { before, crossed, onWalkEnter, tHand, tWalk, L: +L.toFixed(1), n: peds.length };
+  })()`) as any;
+  console.log('crossing', JSON.stringify(r));
+  expect(r.tWalk).toBeGreaterThan(r.tHand);
+  expect(r.before, 'nobody steps off the kerb on DON\'T WALK').toBe(0);
+  expect(r.crossed, 'at least one waiting ped crossed during WALK').toBeGreaterThanOrEqual(1);
+});
+
 test('walk / don\'t-walk heads show the signal phase and look right', async () => {
   test.setTimeout(300_000);
   await quietStreets(page);

@@ -12,9 +12,8 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { hairMaterial } from './hairCards';
 import { loadHumanAssets, extrasGeometries, type HumanAssets, type BodyBase } from './humanAssets';
-import { personMaterial, applyLookUniforms, type PersonUniforms } from './humanMaterial';
+import { personMaterial, hairMaterialFor, applyLookUniforms, type PersonUniforms } from './humanMaterial';
 import { ACTIONS, BONE_OF, BONE_ORDER, samplePose, type ActionDef, type BoneKey, type Euler } from './actions';
 import { resolveLook, type Look, type FullLook } from './look';
 
@@ -119,7 +118,7 @@ const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
-/** Beyond this distance (m) a person's hair is the simple cap instead of cards. */
+/** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
 const HAIR_LOD_DIST = 20;
 export class Human {
   root = new THREE.Group();
@@ -210,27 +209,31 @@ export class Human {
     for (const e of this.extras) e.removeFromParent();
     this.extras = [];
     for (const g of extrasGeometries(this.base, this.tpl.assets, this.look)) {
-      const kind = g.userData.kind as string, card = kind === 'cards' || kind === 'fcards';
-      const ex = new THREE.SkinnedMesh(g, card ? hairMaterial(this.look.hair) : this.material);
+      const kind = g.userData.kind as string, hair = kind === 'hair' || kind === 'hairFar';
+      const ex = new THREE.SkinnedMesh(g, hair ? hairMaterialFor(this.material) : this.material);
       ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
       ex.boundingSphere = g.boundingSphere!.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
-      ex.castShadow = !card; ex.receiveShadow = true; ex.frustumCulled = false;
-      ex.userData.lod = kind; // 'cards' / 'fcards': near only; 'cap': far only (stand-in for the cards); 'misc': always
-      ex.visible = kind !== 'cap';
+      ex.receiveShadow = true; ex.frustumCulled = false;
+      // hair shells never cast shadows (many alpha-tested layers); callers toggle castShadow on all extras, so pin it
+      if (hair) Object.defineProperty(ex, 'castShadow', { get: () => false, set: () => { /* pinned */ } });
+      else ex.castShadow = true;
+      ex.userData.lod = kind; // 'hair': near only; 'hairFar': far only (two solid layers); 'misc': always
       this.mesh.parent!.add(ex);
       this.extras.push(ex);
     }
-    this.lodFar = false;
+    this.lodFar = false; this.lodT = 0; this.showExtras();
   }
-  /** Camera position used to swap hair cards for the simple cap beyond HAIR_LOD_DIST (set once by the game). */
+  /** Camera position used to swap hair shells for their cheap LOD beyond HAIR_LOD_DIST (set once by the game). */
   static lodFrom: THREE.Vector3 | null = null;
-  private lodFar = false; private lodT = 0;
+  private lodFar = false; private lodT = 0; private detail = true;
+  private showExtras() {
+    for (const e of this.extras) { const k = e.userData.lod; e.visible = this.detail && (k === 'hair' ? !this.lodFar : k === 'hairFar' ? this.lodFar : true); }
+  }
   private updateHairLod(dt: number) {
     if (!Human.lodFrom) return;
     this.lodT -= dt; if (this.lodT > 0) return; this.lodT = 0.3 + Math.random() * 0.2;
     const far = this.root.position.distanceToSquared(Human.lodFrom) > HAIR_LOD_DIST * HAIR_LOD_DIST;
-    if (far === this.lodFar) return; this.lodFar = far;
-    for (const e of this.extras) { const k = e.userData.lod; if (k === 'cards' || k === 'fcards') e.visible = !far; else if (k === 'cap') e.visible = far; }
+    if (far === this.lodFar) return; this.lodFar = far; this.showExtras();
   }
   /** Re-dresses this person (sex changes are not supported in place: create a new Human for that). */
   applyLook(look: Look) {
@@ -538,8 +541,8 @@ export class Human {
       bone.quaternion.premultiply(_t);
     }
   }
-  /** Shows/hides hair and garment extras (far LOD). */
-  setDetail(full: boolean) { for (const e of this.extras) e.visible = full; }
+  /** Shows/hides hair and garment extras (far LOD). The hair near/far swap stays in effect. */
+  setDetail(full: boolean) { if (full === this.detail) return; this.detail = full; this.showExtras(); }
   private bodyLod = 0;
   /** Body detail by distance: 0 = full (~14k tris), 1 = ~4.5k, 2 = ~1.8k clustered copies of the shared body; same skeleton, so animation and the swap are seamless. */
   setBodyLod(l: 0 | 1 | 2) {

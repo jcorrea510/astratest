@@ -7,13 +7,13 @@ import { h } from './dom';
 
 const CSS = `
 .ma-fx { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; font-family: inherit; }
-.ma-fx-vig { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 38%, rgba(150,8,8,0.55) 78%, rgba(90,0,0,0.9) 100%); }
+.ma-fx-vig { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 38%, rgba(150,8,8,0.35) 80%, rgba(90,0,0,0.65) 100%); }
 .ma-fx-low { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(40,0,0,0.65) 100%); }
 .ma-fx-ind { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
-.ma-fx-ind i { position: absolute; left: -90px; top: -38vh; width: 180px; height: 56px; border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  background: radial-gradient(ellipse at 50% 0%, rgba(255,40,30,0.95), rgba(220,20,20,0.55) 45%, rgba(220,20,20,0) 72%); filter: blur(1px); }
-.ma-fx-ind.is-on { animation: ma-fx-ind 1.25s ease-out forwards; }
-@keyframes ma-fx-ind { 0% { opacity: 1; } 55% { opacity: 0.8; } 100% { opacity: 0; } }
+.ma-fx-ind svg { position: absolute; left: -50vh; top: -50vh; width: 100vh; height: 100vh; overflow: visible; }
+.ma-fx-ind path { fill: none; stroke: rgba(235,28,24,0.95); stroke-width: 1.6; stroke-linecap: round; filter: drop-shadow(0 0 0.6vh rgba(120,0,0,0.8)); }
+.ma-fx-ind.is-on { animation: ma-fx-ind 1s ease-out forwards; }
+@keyframes ma-fx-ind { 0% { opacity: 1; } 60% { opacity: 0.75; } 100% { opacity: 0; } }
 .ma-fx-say { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); padding: 6px 14px; border-radius: 14px; background: rgba(12,14,18,0.72);
   color: #f2f4f8; font-size: 15px; letter-spacing: 0.01em; opacity: 0; transition: opacity 0.2s; white-space: nowrap; }
 .ma-fx-say.is-on { opacity: 1; }
@@ -27,6 +27,9 @@ const CSS = `
 .ma-fx-menu .opt.is-sel { background: #ffb347; color: #14100a; border-color: #ffd7a0; }
 .ma-fx-menu .opt.is-sel b { color: #14100a; }
 `;
+
+/** Thin curved wedge on a ring of radius 22% of the screen height (the svg is 100vh square, centred on the screen), pointing up; rotated per shooter. */
+const WEDGE = '<svg viewBox="-50 -50 100 100"><path d="M -6 -21.2 A 22 22 0 0 1 6 -21.2"/></svg>';
 
 export interface MenuItem { id: string; label: string }
 
@@ -42,7 +45,7 @@ export class CombatFx {
     this.root = h('div', 'ma-fx');
     this.vig = h('div', 'ma-fx-vig'); this.low = h('div', 'ma-fx-low');
     this.root.append(this.low, this.vig);
-    for (let i = 0; i < 6; i++) { const d = h('div', 'ma-fx-ind'); d.appendChild(document.createElement('i')); this.root.appendChild(d); this.inds.push(d); }
+    for (let i = 0; i < 6; i++) { const d = h('div', 'ma-fx-ind'); d.innerHTML = WEDGE; this.root.appendChild(d); this.inds.push(d); }
     this.say_ = h('div', 'ma-fx-say'); this.menu = h('div', 'ma-fx-menu'); this.hub = h('div', 'hub');
     this.root.append(this.say_, this.menu);
     parent.appendChild(this.root);
