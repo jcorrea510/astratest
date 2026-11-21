@@ -45,7 +45,7 @@ export function personMaterial(base: BodyBase, map: THREE.Texture, normalMap: TH
 export function hairMaterialFor(person: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   const cached = person.userData.hairMat as THREE.MeshStandardMaterial | undefined; if (cached) return cached;
   const u = person.userData.uniforms as PersonUniforms;
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0, side: THREE.DoubleSide });
+  const m = new THREE.MeshStandardMaterial({ map: person.map, roughness: 0.72, metalness: 0, side: THREE.DoubleSide });
   m.userData.uniforms = u;
   m.onBeforeCompile = sh => patchPerson(sh, u, true);
   m.customProgramCacheKey = () => 'person-hair-1';
@@ -301,6 +301,18 @@ if (mode < 0.5) {
   a = lay < 0.3 * dens ? 1.0 : step(lay, len) * (1.0 - smoothstep(w - fg, w + fg, length(o)));
   b = mix(0.72, 1.15, r3) * mix(0.9, 1.08, h21(pc + 1.7));
   hairTilt = o.x * 1.4;
+} else if (mode > 2.5) {
+  // scanned mesh: the sculpt's baked shading (as the body material drew it) plus fine strands across the locks
+  float lum = 0.3;
+#ifdef USE_MAP
+  vec3 txc = texture2D(map, vMapUv).rgb; lum = dot(txc, vec3(0.299, 0.587, 0.114));
+#endif
+  float fu = max(fwidth(u), 1e-4), sf = 1.0 - smoothstep(0.35, 0.9, fu);
+  float uu = u + sin(v * 90.0 + floor(u / 6.0)) * 0.6;
+  r1 = h11(floor(uu)); float r2 = h11(floor(uu / 5.0) + 17.0);
+  a = 1.0;
+  b = (0.38 + 2.4 * lum) * mix(1.0, mix(0.8, 1.14, r1) * mix(0.9, 1.07, r2), sf);
+  hairTilt = (fract(uu) - 0.5) * 0.5 * sf;
 } else {
   // cornrows: raised braided rows running along v
   float ru = u / 16.0, rc = fract(ru) - 0.5;

@@ -210,14 +210,14 @@ export class Human {
     this.extras = [];
     for (const g of extrasGeometries(this.base, this.tpl.assets, this.look)) {
       const kind = g.userData.kind as string, hair = kind === 'hair' || kind === 'hairFar';
-      const ex = new THREE.SkinnedMesh(g, hair ? hairMaterialFor(this.material) : this.material);
+      const ex = new THREE.SkinnedMesh(g, hair || kind === 'scan' ? hairMaterialFor(this.material) : this.material);
       ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
       ex.boundingSphere = g.boundingSphere!.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
       ex.receiveShadow = true; ex.frustumCulled = false;
       // hair shells never cast shadows (many alpha-tested layers); callers toggle castShadow on all extras, so pin it
       if (hair) Object.defineProperty(ex, 'castShadow', { get: () => false, set: () => { /* pinned */ } });
       else ex.castShadow = true;
-      ex.userData.lod = kind; // 'hair': near only; 'hairFar': far only (two solid layers); 'misc': always
+      ex.userData.lod = kind; // 'hair': near only; 'hairFar': far only (two solid layers); 'scan' / 'misc': always
       this.mesh.parent!.add(ex);
       this.extras.push(ex);
     }

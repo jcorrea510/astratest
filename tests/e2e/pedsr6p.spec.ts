@@ -93,10 +93,14 @@ test('peds waiting at a signalized crosswalk cross once the sign shows WALK (and
     const before = peds.filter(n => !n.alive || dist(n) < L - 3.5).length;
     // phase 2: jump to WALK and run the phase
     tt = tWalk; at(tt);
-    let crossed = 0, onWalkEnter = 0;
-    for (let i = 0; i < 15 * 30; i++) { tt += 1 / 30; at(tt); g.frame(1 / 30, false); if (P.shown(post) === 'walk') for (const n of peds) if (n.onCross) onWalkEnter++; }
-    crossed = peds.filter(n => n.alive && dist(n) < 2.5).length;
-    return { before, crossed, onWalkEnter, tHand, tWalk, L: +L.toFixed(1), n: peds.length };
+    let onWalkEnter = 0, walkFrames = 0; const minD = peds.map(() => 99);
+    for (let i = 0; i < 15 * 30; i++) {
+      tt += 1 / 30; at(tt); g.frame(1 / 30, false);
+      if (P.shown(post) === 'walk') { walkFrames++; peds.forEach((n, k) => { if (n.alive) { minD[k] = Math.min(minD[k], dist(n)); if (n.onCross) onWalkEnter++; } }); }
+    }
+    // crossed = left the kerb and stepped onto the road while the sign showed WALK
+    const crossed = minD.filter(d => d < L - 2.5).length;
+    return { before, crossed, onWalkEnter, walkFrames, minD: minD.map(d => +d.toFixed(1)), tHand, tWalk, L: +L.toFixed(1), n: peds.length };
   })()`) as any;
   console.log('crossing', JSON.stringify(r));
   expect(r.tWalk).toBeGreaterThan(r.tHand);

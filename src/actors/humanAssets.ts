@@ -6,7 +6,8 @@
  *  - cached "extras" geometry per hairstyle/facial hair/hat/garment combination (hair shells generated from the
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
-import { SHELL_HAIR, hairShellGeometry, beardShellGeometry, shellThick, capLine } from './hairShells';
+import { SHELL_HAIR, hairShellGeometry, shellThick, capLine } from './hairShells';
+import { SCAN_FILES, SCAN_HAIR, SCAN_FACIAL, scanGeometry, type ScanSrc, type ScanKey } from './hairScan';
 import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -65,6 +66,8 @@ export interface HumanAssets {
   bodies: Record<Sex, BodyBase>;
   map: THREE.Texture;
   normalMap: THREE.Texture;
+  /** Scanned hair / beard meshes (see hairScan.ts). */
+  hair: Map<ScanKey, ScanSrc>;
   ualClipNames: string[];
 }
 
@@ -73,11 +76,23 @@ export async function loadHumanAssets(ual: GLTF, base: string): Promise<HumanAss
   const loader = new GLTFLoader();
   const tl = new THREE.TextureLoader();
   const tex = (n: string, srgb: boolean) => tl.loadAsync(base + n).then(t => { t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4; return t; });
-  const [m, f, map, normalMap] = await Promise.all([
+  const [m, f, map, normalMap, ...hairG] = await Promise.all([
     loader.loadAsync(base + 'Superhero_Male_FullBody.gltf'), loader.loadAsync(base + 'Superhero_Female_FullBody.gltf'),
     tex('atlas_albedo.jpg', true), tex('atlas_normal.jpg', false),
+    ...Object.values(SCAN_FILES).map(n => loader.loadAsync(base + n + '.gltf')),
   ]);
-  return { bodies: { m: buildBody(m, 'm', ual), f: buildBody(f, 'f', ual) }, map, normalMap, ualClipNames: ual.animations.map(a => a.name) };
+  const hair = new Map<ScanKey, ScanSrc>();
+  (Object.keys(SCAN_FILES) as ScanKey[]).forEach((k, i) => {
+    let sm: THREE.SkinnedMesh | null = null;
+    hairG[i].scene.traverse(o => { if ((o as THREE.SkinnedMesh).isSkinnedMesh && !sm) sm = o as THREE.SkinnedMesh; });
+    const mesh = sm as unknown as THREE.SkinnedMesh;
+    const hi = mesh.skeleton.bones.findIndex(b => b.name === 'Head');
+    const headJoint = new THREE.Vector3().setFromMatrixPosition(mesh.skeleton.boneInverses[hi].clone().invert());
+    const geo = mesh.geometry.clone();
+    for (const a of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(a)) geo.deleteAttribute(a);
+    hair.set(k, { geo, headJoint, slot: ['long', 'buns'].includes(k) ? SLOT.hair2 : SLOT.hair1 });
+  });
+  return { bodies: { m: buildBody(m, 'm', ual), f: buildBody(f, 'f', ual) }, map, normalMap, hair, ualClipNames: ual.animations.map(a => a.name) };
 }
 
 function remapUV(geo: THREE.BufferGeometry, slot: readonly number[]) {
@@ -535,12 +550,14 @@ export function extrasGeometries(base: BodyBase, assets: HumanAssets, look: Full
     if (!base.extras.has(k)) { const g = make(); if (g) freeAfterUpload(g); base.extras.set(k, g); }
     return base.extras.get(k) ?? null;
   };
-  if (SHELL_HAIR.has(look.hairStyle)) for (const far of [false, true]) {
+  // scanned hair / beard meshes (shared by everyone with that style), else layered shells with a near and a far LOD
+  const scan = SCAN_HAIR[look.hairStyle];
+  if (scan) add(cached(`scan|${look.hairStyle}|${hatOn ? 1 : 0}`, () => scanGeometry(base, assets.hair.get(scan)!, look.hairStyle, hatOn)), 'scan');
+  else if (SHELL_HAIR.has(look.hairStyle)) for (const far of [false, true]) {
     add(cached(`hair|${look.hairStyle}|${hatOn ? 1 : 0}|${far ? 1 : 0}`, () => hairShellGeometry(base, look.hairStyle, hatOn, far)), far ? 'hairFar' : 'hair');
   }
-  if (look.facial !== 'none') for (const far of [false, true]) {
-    add(cached(`beard|${look.facial}|${far ? 1 : 0}`, () => beardShellGeometry(base, look.facial, far)), far ? 'hairFar' : 'hair');
-  }
+  const fs = SCAN_FACIAL[look.facial];
+  if (fs) add(cached(`scan|${look.facial}`, () => scanGeometry(base, assets.hair.get(fs)!, look.facial, false)), 'scan');
   add(extrasPart(base, assets, look, `${look.hairStyle}|${look.hatStyle}|${look.topStyle}|${look.bottomStyle}`), 'misc');
   return out;
 }
