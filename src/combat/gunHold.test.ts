@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { solveHold, makeHoldOut, handQuat } from './gunHold';
+import { solveHold, makeHoldOut, handQuat, onFootUpperMode, supportGripWeight } from './gunHold';
 import type { WeaponAnchors } from './weaponModels';
 import { WorldGlass, HITS_TO_BREAK } from '../world/glass';
 import { aisleWaypoint, AISLE, queueSpot } from '../game/storeLife';
@@ -53,5 +53,26 @@ describe('store life', () => {
     let s = 3; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
     for (let i = 0; i < 50; i++) { const p = aisleWaypoint(r); expect(p.x).toBeGreaterThanOrEqual(AISLE.x0); expect(p.z).toBeLessThanOrEqual(AISLE.z1); }
     expect(queueSpot(2).z).toBeGreaterThan(queueSpot(0).z);
+  });
+});
+
+describe('one-hand guns leave the left arm alone (R6-BW)', () => {
+  it('not aiming: a one-hand gun keeps the normal locomotion arm swing, a long gun is carried', () => {
+    expect(onFootUpperMode(true, false, false)).toBe('loco');
+    expect(onFootUpperMode(true, false, true)).toBe('carry');
+    expect(onFootUpperMode(false, false, false)).toBe('loco');
+    expect(onFootUpperMode(true, true, false)).toBe('pistol');
+    expect(onFootUpperMode(true, true, true)).toBe('rifle');
+  });
+  it('the left-hand grip IK weight is zero for a lowered one-hand gun (no blend leftovers) and full for long guns', () => {
+    for (const raise of [0, 0.1, 0.2, 0.34]) expect(supportGripWeight(false, raise)).toBe(0);
+    expect(supportGripWeight(false, 1)).toBeCloseTo(1, 5);
+    for (const raise of [0, 0.5, 1]) expect(supportGripWeight(true, raise)).toBe(1);
+    expect(supportGripWeight(false, 0.6)).toBeGreaterThan(0);
+  });
+  it('a lowered pistol asks for no support hand at all', () => {
+    const o = makeHoldOut();
+    solveHold({ shR, shL, armLen: 0.6, dir: V(1, -0.3, 0).normalize(), anchors: pistol, supportHand: false, raise: 0 }, o);
+    expect(o.hasLeft).toBe(false);
   });
 });

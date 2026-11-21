@@ -2,6 +2,7 @@
 import type { WeaponId, WeaponState } from '../combat/weapons';
 import type { GameMode, OwnedCar } from './modes';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
+import { parseAppearance, type Appearance } from './grooming';
 
 export const SAVE_KEY = 'meridian-afterglow.save.v1';
 export interface SaveData {
@@ -15,6 +16,8 @@ export interface SaveData {
   stats: { kills: number; distance: number; crashes: number };
   /** Sandbox tool toggles (the game is sandbox-only; `missions` is kept for old saves and a possible story return). */
   tools?: SandboxTools;
+  /** Barber / clothing purchases: only the fields that differ from the starting outfit. */
+  appearance?: Appearance;
 }
 export interface SandboxTools { god: boolean; ammo: boolean; never: boolean; clock: boolean }
 export function serialize(d: SaveData): string { return JSON.stringify(d); }
@@ -35,6 +38,7 @@ export function parseSave(raw: string | null): SaveData | null {
       jumps: Array.isArray(d.jumps) ? d.jumps.filter(x => typeof x === 'number') : [],
       pos: { x: d.pos.x, z: d.pos.z, yaw: d.pos.yaw ?? 0 }, hour: clamp(d.hour ?? 17.5, 0, 24),
       stats: { kills: d.stats?.kills ?? 0, distance: d.stats?.distance ?? 0, crashes: d.stats?.crashes ?? 0 },
+      ...(parseAppearance(d.appearance) ? { appearance: parseAppearance(d.appearance) } : {}),
       ...(d.tools && typeof d.tools === 'object' ? { tools: { god: !!d.tools.god, ammo: !!d.tools.ammo, never: !!d.tools.never, clock: d.tools.clock !== false } } : {}),
     };
   } catch { return null; }

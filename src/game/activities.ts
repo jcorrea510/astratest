@@ -10,6 +10,7 @@ import { Marker, type MissionCtx } from './missions';
 import { WEAPONS, WEAPON_ORDER, type WeaponId } from '../combat/weapons';
 import { RAPIER, groups, G_STATIC } from '../core/physics';
 import { Robberies } from './robbery';
+import { Salon } from './salon';
 
 export class Activities {
   found = new Set<number>();
@@ -33,6 +34,7 @@ export class Activities {
   disarmGarage() { this.garageArmed = false; }
   onSaveRequested: (() => boolean) | null = null;
   robberies: Robberies;
+  salon: Salon;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
     this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166', 'TIDEWATER ARMS');
     this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff', 'GLOW GARAGE  ·  RESPRAY $150');
@@ -41,6 +43,8 @@ export class Activities {
     this.safeMk = ctx.marker(PLACES.safehouse, 1.3, '#9be8a6', 'SAFEHOUSE  ·  SAVE');
     this.buildRamps();
     this.robberies = new Robberies(game, ui, (x, z) => ctx.groundY(x, z));
+    this.salon = new Salon(game, ui, () => this.robberies.kiosks);
+    this.salon.onChanged = () => { this.onSaveRequested?.(); };
   }
   /** Re-creates postcard pickups after loading a save. */
   spawnCards() {
@@ -187,8 +191,8 @@ export class Activities {
     this.shopOpen = kind; g.menuOpen = true; g.input.exitLock();
     this.ui.openShop(kind === 'arms' ? 'Tidewater Arms' : kind === 'dealer' ? 'Redline Motors' : 'Pier 9 Snacks', this.shopItems(), g.money, id => this.buy(id), () => this.closeShop());
   }
-  closeShop() { if (!this.shopOpen) return; this.shopOpen = null; this.game.menuOpen = false; this.ui.closeShop(); }
-  get shopIsOpen() { return !!this.shopOpen; }
+  closeShop() { this.salon.close(); if (!this.shopOpen) return; this.shopOpen = null; this.game.menuOpen = false; this.ui.closeShop(); }
+  get shopIsOpen() { return !!this.shopOpen || this.salon.isOpen; }
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
@@ -198,6 +202,7 @@ export class Activities {
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
     if (this.dealerMk.inside(p, 2.5)) return `${key}  Browse Redline Motors`;
     if (this.safeMk.inside(p, 2.5)) return `${key}  Save game`;
+    { const sp = this.salon.prompt(key); if (sp && !this.robberies.robbing) return sp; }
     return this.missionActive() ? null : this.robberies.prompt();
   }
   update(dt: number) {
@@ -209,11 +214,14 @@ export class Activities {
       if (this.goalT <= 0) { this.goalT = 1.5; this.checkMilestones(); }
       if (this.garageT <= 0) { this.garageT = 4; if (g.deathT < 0) this.parkOwned(); }
     }
+    this.salon.update(dt);
+    if (this.salon.isOpen) return;
     if (g.inputBlocked && !this.shopOpen) return;
     if (this.shopOpen) { if (g.input.justPressed('pause')) this.closeShop(); return; }
     // interactions
     if (!g.playerVehicle && g.input.justPressed('interact')) {
-      if (this.shopMk.inside(p, 2.5)) this.openShop('arms');
+      if (this.salon.inside() && !this.robberies.robbing) this.salon.open();
+      else if (this.shopMk.inside(p, 2.5)) this.openShop('arms');
       else if (this.snackMk.inside(p, 2.5)) this.openShop('snack');
       else if (this.dealerMk.inside(p, 2.5)) this.openShop('dealer');
       else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }

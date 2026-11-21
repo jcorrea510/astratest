@@ -76,3 +76,20 @@ export function solveHold(i: HoldInput, o: HoldOut): HoldOut {
   }
   return o;
 }
+
+/**
+ * Upper-body animation mode for a person on foot. Aimed: pistol / rifle pose. Not aimed: a two-handed gun is carried (both arms in the
+ * carry pose, the IK then seats the left hand on the fore-end), but a gun that needs only the right hand leaves the left arm to the
+ * normal idle / walk / run swing ('loco') so it never hangs in a pistol-ready pose or lags behind.
+ */
+export function onFootUpperMode(armed: boolean, aiming: boolean, twoHanded: boolean): 'loco' | 'pistol' | 'rifle' | 'carry' {
+  if (!armed) return 'loco';
+  if (aiming) return twoHanded ? 'rifle' : 'pistol';
+  return twoHanded ? 'carry' : 'loco';
+}
+const sstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/**
+ * How strongly the left hand is pulled onto the gun. Long guns (stock + fore-end) always; a one-hand gun only while raised
+ * to aim, fading out below `raise` 0.35, so a lowered one-hand gun has no left-arm IK left over at all.
+ */
+export function supportGripWeight(hasButt: boolean, raise: number): number { return hasButt ? 1 : sstep(0.35, 0.8, raise); }

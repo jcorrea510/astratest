@@ -14,6 +14,7 @@ import { buildEast } from './eastbuild';
 import { buildQuay } from './quaybuild';
 import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
 import { registerBench } from './benches';
+import { planPark, onLake, LAKE_POOLS } from './parkplan';
 import { signalPosts } from './signals';
 import type { BreakableDef, BreakKind } from '../game/breakables';
 import { buildPedSignals, type PedSignals } from './pedsignals';
@@ -588,30 +589,45 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   signalLamps.frustumCulled = false; root.add(signalLamps);
   const pedSignals = buildPedSignals(city, physics); root.add(pedSignals.group);
 
+  // The park lake: real water (the sea's wave shader) in a stone kerb. Nothing is placed on it (see parkplan.ts).
+  const buildParkLake = (cx: number, cz: number) => {
+    const lakeMat = waterMat.clone(); lakeMat.onBeforeCompile = waterMat.onBeforeCompile; lakeMat.transparent = false; lakeMat.opacity = 1;
+    lakeMat.customProgramCacheKey = () => 'lake-water';
+    const kerb = C('#a9a398'), kerbTop = C('#c4bfb2'), mud = C('#3b3a33');
+    for (const [dx, dz, rr] of LAKE_POOLS) {
+      const x = cx + dx, z = cz + dz;
+      const bed = new THREE.Mesh(new THREE.CircleGeometry(rr, 40).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: mud, roughness: 1 })); bed.position.set(x, CURB_HEIGHT + 0.02, z); bed.receiveShadow = true; root.add(bed);
+      const w = new THREE.Mesh(new THREE.CircleGeometry(rr, 40).rotateX(-Math.PI / 2), lakeMat); w.position.set(x, CURB_HEIGHT + 0.16, z); w.receiveShadow = true; root.add(w);
+      const n = Math.ceil((Math.PI * 2 * rr) / 1.3);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2, px = x + Math.cos(a) * (rr + 0.2), pz = z + Math.sin(a) * (rr + 0.2);
+        if (LAKE_POOLS.some(([ox, oz, or]) => (ox !== dx || oz !== dz) && Math.hypot(px - (cx + ox), pz - (cz + oz)) < or - 0.1)) continue; // inside a neighbouring pool
+        const yaw = -(a + Math.PI / 2), t = trim.at(px, pz);
+        t.box(px, CURB_HEIGHT + 0.17, pz, 1.4, 0.34, 0.55, yaw, kerb, T_STONE); t.box(px, CURB_HEIGHT + 0.35, pz, 1.4, 0.05, 0.7, yaw, kerbTop, T_STONE);
+      }
+    }
+  };
+
   // Parks, plazas, backyards
   for (const b of city.blocks) {
     const r = new Rng(b.id * 31 + 7);
     const ix0 = b.x0 + SIDEWALK, ix1 = b.x1 - SIDEWALK, iz0 = b.z0 + SIDEWALK, iz1 = b.z1 - SIDEWALK;
     if (b.kind === 'park') {
-      const lake = b.ix === 4 && b.iz === 1;
-      const lcx = (ix0 + ix1) / 2, lcz = (iz0 + iz1) / 2;
-      if (lake) { // the park lake: three overlapping pools, shore stones, a footbridge-width path skirting it
-        const wc = C('#2f6d7c');
-        for (const [dx, dz, rr] of [[0, 0, 24], [16, 12, 15], [-17, -9, 14]]) trim.at(lcx + dx, lcz + dz).cyl(lcx + dx, CURB_HEIGHT + 0.005, lcz + dz, rr, rr, 0.04, 28, wc, [0.1, 0, 0, 0]);
-      }
+      const plan = planPark(b, r), lake = plan.lake, lcx = plan.cx, lcz = plan.cz;
+      if (lake) buildParkLake(lcx, lcz);
       for (let i = 0; i < (lake ? 70 : 46); i++) {
         const x = r.range(ix0 + 3, ix1 - 3), z = r.range(iz0 + 3, iz1 - 3);
-        if (lake && Math.hypot(x - lcx, z - lcz) < 34) continue;
+        if (lake && onLake(lcx, lcz, x, z, 10)) continue;
         if (Math.abs(x - (ix0 + ix1) / 2) < 5 || Math.abs(z - (iz0 + iz1) / 2) < 5) continue;
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(1.0, 1.5), r);
       }
-      for (let i = 0; i < 10; i++) { const x = r.range(ix0 + 4, ix1 - 4); props.add('bench', x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, Math.PI); registerBench(x, CURB_HEIGHT, (iz0 + iz1) / 2 + 3.6, Math.PI); physics.addStaticBox(x, 0.45, (iz0 + iz1) / 2 + 3.6, 0.95, 0.45, 0.35); }
-      for (let i = 0; i < 26; i++) props.add(`shrub${r.int(0, 1)}`, r.range(ix0 + 2, ix1 - 2), CURB_HEIGHT, r.range(iz0 + 2, iz1 - 2), r.range(0, 6), r.range(0.8, 1.5));
-      // paths through the park
-      const tb = trim.at((ix0 + ix1) / 2, (iz0 + iz1) / 2);
-      tb.box((ix0 + ix1) / 2, CURB_HEIGHT + 0.02, (iz0 + iz1) / 2, ix1 - ix0, 0.04, 4.2, 0, C('#b7ab95'), T_STONE);
-      tb.box((ix0 + ix1) / 2, CURB_HEIGHT + 0.02, (iz0 + iz1) / 2, 4.2, 0.04, iz1 - iz0, 0, C('#b7ab95'), T_STONE);
-      for (let i = 0; i < 8; i++) { const x = ix0 + (ix1 - ix0) * (i + 0.5) / 8; const p = { x, z: (iz0 + iz1) / 2 - 2.8 }; props.add('streetlight', p.x, CURB_HEIGHT, p.z, 0); }
+      for (const bn of plan.benches) { props.add('bench', bn.x, CURB_HEIGHT, bn.z, Math.PI); registerBench(bn.x, CURB_HEIGHT, bn.z, Math.PI); physics.addStaticBox(bn.x, 0.45, bn.z, 0.95, 0.45, 0.35); }
+      for (const sh of plan.shrubs) props.add(`shrub${sh.k}`, sh.x, CURB_HEIGHT, sh.z, sh.yaw, sh.s);
+      // paths through the park (they stop at the lake kerb)
+      const tb = trim.at(lcx, lcz);
+      for (const [a0, a1] of plan.pathsX) tb.box((a0 + a1) / 2, CURB_HEIGHT + 0.02, lcz, a1 - a0, 0.04, 4.2, 0, C('#b7ab95'), T_STONE);
+      for (const [a0, a1] of plan.pathsZ) tb.box(lcx, CURB_HEIGHT + 0.02, (a0 + a1) / 2, 4.2, 0.04, a1 - a0, 0, C('#b7ab95'), T_STONE);
+      for (const p of plan.lights) props.add('streetlight', p.x, CURB_HEIGHT, p.z, 0);
     } else if (b.kind === 'plaza' || b.district === 'heights') {
       for (let i = 0; i < (b.kind === 'plaza' ? 14 : 5); i++) {
         const x = r.range(ix0 + 4, ix1 - 4), z = r.range(iz0 + 4, iz1 - 4);
@@ -683,6 +699,30 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         tb.box((cx + RX) / 2, RY - 0.55, cz, Math.abs(cx - RX), 0.7, 0.7, 0, steelC, T_METAL);
         physics.addStaticBox(cx, RY / 2, cz, 0.45, RY / 2, 0.45);
       }
+    }
+    // both ends of the line are terminal stations: buffer stops on each track, an end wall with a lit sign, a platform canopy and a pair of end piers
+    for (const [zEnd, dir] of [[z0 + 6, -1], [z1, 1]] as const) {
+      const tb = trim.at(RX, zEnd - dir * 8), yel = C('#d9b13a'), blk = C('#1c1d20'), red = C('#b3262c'), panel = C('#5c646b');
+      for (const sg of [-1, 1]) {
+        const bz = zEnd - dir * 0.9, bx = RX + sg * 0.72;
+        tb.box(bx, RY + 0.62, bz, 0.5, 0.3, 0.7, 0, yel, T_PAINT); tb.box(bx, RY + 0.62, bz - dir * 0.1, 0.52, 0.3, 0.18, 0, blk, T_PAINT); // striped stop block
+        tb.box(bx, RY + 0.95, bz + dir * 0.05, 0.16, 0.5, 0.5, 0, steelC, T_METAL);
+        tb.box(bx, RY + 1.0, bz - dir * 0.34, 0.3, 0.3, 0.14, 0, red, T_METAL); // buffer face
+      }
+      tb.box(RX, RY + 0.85, zEnd - dir * 0.45, 3.4, 0.5, 0.3, 0, steelC, T_METAL); // headstock beam joining the two stops
+      tb.box(RX, RY + 2.4, zEnd - dir * 0.15, 8.4, 3.2, 0.3, 0, panel, T_METAL); // end wall
+      tb.box(RX, RY + 3.4, zEnd - dir * 0.34, 4.2, 0.6, 0.06, 0, C('#2fcf80'), T_GLOW(2.2)); // terminal sign strip
+      tb.box(RX, RY + 3.4, zEnd - dir * 0.37, 4.4, 0.8, 0.02, 0, blk, T_PAINT);
+      // canopy over the last 16 m of platform
+      const zc = zEnd - dir * 9;
+      tb.box(RX, RY + 3.95, zc, 8.6, 0.25, 16, 0, steelC, T_METAL);
+      for (const sg of [-1, 1]) for (let k = 0; k < 3; k++) tb.box(RX + sg * 4.0, RY + 2.4, zEnd - dir * (3 + k * 6), 0.16, 3.1, 0.16, 0, steelC, T_METAL);
+      for (const sg of [-1, 1]) tb.box(RX + sg * 2.2, RY + 0.47, zc, 0.12, 0.04, 16, 0, yel, T_PAINT); // platform edge stripes
+      for (let k = 0; k < 4; k++) tb.box(RX + (k % 2 ? 1.6 : -1.6), RY + 3.78, zEnd - dir * (3 + Math.floor(k / 2) * 8), 0.9, 0.06, 0.4, 0, C('#fff4d6'), T_GLOW(1.6));
+      // end piers: columns with a crossbeam so the last deck span stands on something
+      const pz = zEnd - dir * 2.5;
+      tb.box(RX, RY - 0.9, pz, 8.4, 0.7, 1.0, 0, steelC, T_METAL);
+      for (const sg of [-1, 1]) { tb.box(RX + sg * 3.2, RY / 2 - 0.5, pz, 0.9, RY - 1, 0.9, 0, conc, T_STONE); physics.addStaticBox(RX + sg * 3.2, RY / 2 - 0.5, pz, 0.45, RY / 2 - 0.5, 0.45); }
     }
     // subway entrances: green-lamp stair kiosks on corner sidewalks
     const sr = new Rng(4242);

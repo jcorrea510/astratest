@@ -24,7 +24,7 @@ test.describe('audio pops', () => {
         lab.registerSample(c.kit, k, await ctx.decodeAudioData(await (await fetch(base + f)).arrayBuffer()));
       c.warmAll();
       const step = scenario === 'city' ? 0.05 : 0.025;
-      let engines = Array.from({ length: scenario === 'engines' ? 10 : 0 }, () => new lab.EngineVoiceImpl(() => c));
+      const engines = Array.from({ length: scenario === 'engines' ? 10 : 0 }, () => new lab.EngineVoiceImpl(() => c));
       const heli = new lab.EngineVoiceImpl(() => c); const siren = new lab.SirenVoice(() => c); const skid = new lab.SkidVoice(() => c);
       let churn = 0, maxVoices = 0;
       for (let t = step; t < secs; t += step) {
@@ -56,7 +56,12 @@ test.describe('audio pops', () => {
         for (let i = 2; i < d.length; i++) {
           peak = Math.max(peak, Math.abs(d[i]));
           const dd = Math.abs(d[i] - 2 * d[i - 1] + d[i - 2]);
-          if (dd > 0.06 && i / SR > 0.3 && (!worst.length || i / SR - worst[worst.length - 1].t > 0.05)) worst.push({ t: +(i / SR).toFixed(3), dd: +dd.toFixed(3) });
+          if (dd > 0.04 && i / SR > 0.3 && (!worst.length || i / SR - worst[worst.length - 1].t > 0.05)) {
+            // a loud high tone (bird / cricket at 5 kHz) has a large but regular second difference; a click is an outlier against its neighbours
+            let nb = 0;
+            for (let j = Math.max(2, i - 96); j < Math.min(d.length, i + 96); j++) if (Math.abs(j - i) > 2) nb = Math.max(nb, Math.abs(d[j] - 2 * d[j - 1] + d[j - 2]));
+            if (dd > 0.06 && dd > 2.5 * nb) worst.push({ t: +(i / SR).toFixed(3), dd: +dd.toFixed(3) });
+          }
         }
       }
       return { peak, worst: worst.slice(0, 10), count: worst.length, churn, maxVoices, diag: { ...c.diag } };

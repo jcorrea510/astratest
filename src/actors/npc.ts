@@ -373,7 +373,7 @@ export class NpcBrainRunner {
       if (panicking && !h.actionName && !h.busy) h.playAction('panic', { weight: 0.75 });
       else if (!panicking && h.actionName === 'panic') h.stopAction('panic');
     }
-    h.setUpperMode(n.weapon !== 'fists' && (aiming || n.brain === 'combat') ? 'pistol' : n.weapon !== 'fists' && n.brain === 'chase' ? 'carry' : 'loco');
+    h.setUpperMode(n.weapon !== 'fists' && (aiming || n.brain === 'combat') ? 'pistol' : n.weapon !== 'fists' && n.brain === 'chase' ? (WEAPONS[n.weapon].twoHanded ? 'carry' : 'loco') : 'loco'); // one-hand guns leave the free arm swinging
     h.aimPitch = 0;
   }
   /**

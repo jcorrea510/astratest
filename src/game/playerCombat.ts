@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { Inventory, WEAPONS, weaponMesh, weaponParts, type WeaponId, type WeaponDef, type WeaponParts } from '../combat/weapons';
 import { muzzleWorld, weaponAnchors } from '../combat/weaponModels';
-import { solveHold, makeHoldOut } from '../combat/gunHold';
+import { solveHold, makeHoldOut, onFootUpperMode, supportGripWeight } from '../combat/gunHold';
 import type { Combat } from '../combat/combat';
 import { aimSearchStart, shotDirection } from '../combat/aim';
 import { type Character, meleeTargets, MELEE_POWER } from '../actors/character'; // [PEOPLE] melee strike targeting
@@ -206,7 +206,7 @@ export class PlayerCombat {
     }
     this.cam.scopeFov = this.scoped ? this.scopeFov : null;
     // upper body pose
-    if (onFoot) h.setUpperMode(this.armed ? (this.aiming ? (def.twoHanded ? 'rifle' : 'pistol') : 'carry') : 'loco');
+    if (onFoot) h.setUpperMode(onFootUpperMode(this.armed, this.aiming, def.twoHanded));
     this.updateSpread(dt, def);
     this.updateRecoil(dt, def);
     this.updateAim(onFoot);
@@ -483,7 +483,7 @@ export class PlayerCombat {
         if (an.support && parts.pump) { _a1.copy(an.support); _a1.z += parts.pump.position.z - ((parts.pump.userData.rest as THREE.Vector3 | undefined)?.z ?? parts.pump.position.z); H.lPalm.copy(_a1).applyMatrix4(m.matrixWorld); }
         else if (an.support) H.lPalm.copy(an.support).applyMatrix4(m.matrixWorld);
         else { _a1.copy(an.grip).add(_a2.set(0.017, -0.012, 0.012)); H.lPalm.copy(_a1).applyMatrix4(m.matrixWorld); }
-        h.gripSolve('L', H.lPalm, _q.copy(m.quaternion).multiply(_qr.copy(H.quat).invert().multiply(H.lQuat)), w * (an.butt ? 1 : smooth(0.35, 0.8, this.raiseT)));
+        h.gripSolve('L', H.lPalm, _q.copy(m.quaternion).multiply(_qr.copy(H.quat).invert().multiply(H.lQuat)), w * supportGripWeight(!!an.butt, this.raiseT));
       }
     }
   }

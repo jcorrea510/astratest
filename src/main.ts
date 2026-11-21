@@ -16,6 +16,8 @@ import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } f
 import { MissionCtx } from './game/missions';
 import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
+import { dressed, appearanceDiff } from './game/grooming';
+import { PLAYER_DEFAULT_LOOK } from './actors/look';
 import { readSave, writeSave, safeSavePos, saveSummary, type SaveData } from './game/save';
 import type { GameMode } from './game/modes';
 import { PLACES } from './game/places';
@@ -216,6 +218,7 @@ function applySave(s: SaveData) {
   for (const c of s.collectibles) a.found.add(c);
   for (const j of s.jumps) a.jumpsDone.add(j);
   g.stats = { ...s.stats };
+  if (s.appearance) g.player.human.applyLook(dressed(PLAYER_DEFAULT_LOOK, s.appearance));
   sandbox!.applyCaps();
   sandbox!.loadTools(s.tools);
   // Old or hand-edited saves may sit on a roof, in water or off the map: resume on valid ground instead.
@@ -240,6 +243,7 @@ function saveGame(): boolean {
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
     missions: [], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
     pos, hour: g.hour, stats: g.stats, tools: sandbox.tools(),
+    ...(Object.keys(appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook())).length ? { appearance: appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook()) } : {}),
   });
 }
 

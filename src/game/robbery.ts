@@ -44,7 +44,7 @@ export class Robberies {
       this.kiosks.push({ ex: newEx(), def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, shoppers: [], refillT: 8, clerkT: 4, clerkTurn: 0, panicT: -1, callT: 0, called: false, looting: 0, looted: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
     }
   }
-  blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: 'shop' as const, label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
+  blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: (k.def.kind === 'barber' ? 'barber' : k.def.kind === 'clothing' ? 'clothing' : 'shop') as 'shop' | 'barber' | 'clothing', label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
   get robbing() { return !!this.active; }
   /** The store the player is standing in, if any. */
   inside(): Kiosk | null {

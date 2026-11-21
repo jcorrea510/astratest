@@ -1077,3 +1077,28 @@
 /* controller glyphs replace keyboard caps in hint rows after a pad press */
 .ma-root.is-pad kbd[data-pad] { font-size: 0; }
 .ma-root.is-pad kbd[data-pad]::after { content: attr(data-pad); font-size: calc(13 * var(--u)); }
+
+/* ------------------------------------------------------------------ barber / clothing */
+.ma-groom.is-open { display: flex; align-items: center; justify-content: flex-start; pointer-events: none; padding-left: calc(28 * var(--u)); background: linear-gradient(90deg, rgba(4, 14, 16, 0.55), rgba(4, 14, 16, 0) 55%); }
+.ma-groom-panel { width: min(calc(440 * var(--u)), 94vw); max-height: 92vh; border-top: calc(5 * var(--u)) solid var(--apricot); pointer-events: auto; }
+.ma-groom-head { align-items: center; padding-bottom: calc(10 * var(--u)); }
+.ma-groom-title { font-size: calc(34 * var(--u)); }
+.ma-groom-tabs { display: flex; flex-wrap: wrap; gap: calc(4 * var(--u)); padding: 0 calc(18 * var(--u)) calc(8 * var(--u)); }
+.ma-root .ma-groom-tab { font-family: var(--display); font-weight: 800; font-size: calc(15 * var(--u)); text-transform: uppercase; letter-spacing: 0.04em; padding: calc(6 * var(--u)) calc(10 * var(--u)); border-radius: calc(3 * var(--u)); background: var(--panel-2); color: var(--cream); }
+.ma-root .ma-groom-tab.is-active { background: var(--apricot); color: var(--ink); }
+.ma-root .ma-groom-tab:hover, .ma-root .ma-groom-tab:focus { background: var(--cream); color: var(--ink); }
+.ma-groom-body { display: flex; flex-direction: column; gap: calc(3 * var(--u)); max-height: calc(300 * var(--u)); min-height: calc(200 * var(--u)); }
+.ma-groom-body.is-swatches { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: calc(8 * var(--u)); }
+.ma-root .ma-groom-opt { display: flex; justify-content: space-between; align-items: center; gap: calc(12 * var(--u)); min-height: calc(42 * var(--u)); padding: calc(6 * var(--u)) calc(14 * var(--u)); border-radius: calc(3 * var(--u)); background: var(--panel-2); text-align: left; }
+.ma-root .ma-groom-opt:hover, .ma-root .ma-groom-opt:focus { background: var(--cream); color: var(--ink); }
+.ma-root .ma-groom-opt.is-selected { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--apricot); }
+.ma-groom-name { font-family: var(--display); font-weight: 800; font-size: calc(20 * var(--u)); text-transform: uppercase; }
+.ma-groom-price { font-family: var(--display); font-weight: 800; font-size: calc(20 * var(--u)); color: var(--money); font-variant-numeric: tabular-nums; }
+.ma-groom-price.is-current { color: var(--apricot); }
+.ma-root .ma-groom-opt:hover .ma-groom-price, .ma-root .ma-groom-opt:focus .ma-groom-price { color: #0f6b3b; }
+.ma-root .ma-groom-body.is-swatches .ma-groom-opt { min-height: 0; padding: calc(4 * var(--u)); border-radius: 50%; width: calc(46 * var(--u)); height: calc(46 * var(--u)); justify-content: center; }
+.ma-groom-swatch { display: block; width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; box-shadow: inset 0 0 0 calc(1 * var(--u)) rgba(255, 255, 255, 0.35); }
+.ma-groom-foot { display: flex; align-items: center; justify-content: space-between; gap: calc(16 * var(--u)); }
+.ma-groom-total { font-family: var(--display); font-weight: 800; font-size: calc(26 * var(--u)); line-height: 1; color: var(--money); }
+.ma-groom-note { font-size: calc(13 * var(--u)); color: #ff8a7a; min-height: calc(14 * var(--u)); }
+.ma-root .ma-groom-pay.is-disabled { opacity: 0.5; }

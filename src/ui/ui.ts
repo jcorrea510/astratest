@@ -23,6 +23,7 @@ import { CityPainter } from './mapdraw';
 import { FullMap } from './fullmap';
 import { Wheel } from './wheel';
 import { Shop } from './shop';
+import { GroomPanel, type GroomConfig, type GroomState } from './groom';
 import { SettingsPanel } from './settingsPanel';
 import { ControlsPanel } from './controlsPanel';
 import { SandboxPanel } from './sandbox';
@@ -33,7 +34,7 @@ import { createFullscreenButton } from '../core/fullscreen';
 import { padGlyph } from '../core/gamepad';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
-type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'sandbox' | 'credits';
+type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'groom' | 'sandbox' | 'credits';
 interface Layer { id: LayerId; el: HTMLElement; back: () => void; action?: (a: NavAction) => boolean; openedAt: number; prevFocus: Element | null }
 type PauseTab = 'map' | 'sandbox' | 'settings' | 'controls' | 'quit';
 const PAUSE_TABS: { id: PauseTab; label: string }[] = [
@@ -90,6 +91,7 @@ export class UI implements GameUI {
   private notices = new Notices();
   private wheel: Wheel;
   private shop: Shop;
+  private groom: GroomPanel;
   private settingsPanel: SettingsPanel;
   private controlsPanel: ControlsPanel;
   private sandbox: SandboxPanel;
@@ -165,6 +167,8 @@ export class UI implements GameUI {
     this.root.appendChild(this.pauseEl);
     this.shop = new Shop(sound);
     this.root.appendChild(this.shop.el);
+    this.groom = new GroomPanel(sound);
+    this.root.appendChild(this.groom.el);
     this.settingsPanel = new SettingsPanel({
       get: () => this.settings,
       set: (s, q) => this.applySettings(s, q),
@@ -788,6 +792,14 @@ export class UI implements GameUI {
     this.popLayer('shop');
   }
 
+  openGroom(cfg: GroomConfig, state: GroomState): void {
+    if (this.groom.isOpen()) this.popLayer('groom', false);
+    this.groom.show({ ...cfg, onClose: () => { this.popLayer('groom', false); cfg.onClose(); } }, state);
+    this.pushLayer({ id: 'groom', el: this.groom.el, back: () => this.groom.requestClose() });
+  }
+  updateGroom(state: GroomState): void { if (this.groom.isOpen()) this.groom.update(state); }
+  closeGroom(): void { if (!this.groom.isOpen()) return; this.groom.hide(); this.popLayer('groom'); }
+
   // ---------------------------------------------------------------- sandbox
   openSandbox(actions: SandboxAction[], onAction: (id: string, value?: number | string | boolean) => void, onClose: () => void): void {
     if (this.sandbox.isOpen()) this.popLayer('sandbox', false);
@@ -880,6 +892,7 @@ export class UI implements GameUI {
     if (layer.id === 'settings') this.settingsPanel.close();
     if (layer.id === 'map') this.fullmap?.hide();
     if (layer.id === 'shop') this.shop.hide();
+    if (layer.id === 'groom') this.groom.hide();
     if (layer.id === 'sandbox') this.sandbox.hide();
   }
 

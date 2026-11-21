@@ -25,6 +25,8 @@ export class CameraRig {
   baseFov = 62;
   zoomLevel = 0;
   cinematic: { pos: THREE.Vector3; look: THREE.Vector3 } | null = null;
+  /** Barber / clothing preview: orbit `focus` (the player's chest) at `yaw` (0 = from +z), `dist` metres away; null = normal camera. */
+  preview: { focus: THREE.Vector3; yaw: number; dist: number; pitch: number; fov: number } | null = null;
   /** COMBAT: vertical FOV (degrees) while looking through a weapon scope (set by PlayerCombat), null = none. */
   scopeFov: number | null = null;
   /** On-foot motion fed by the player controller each step: sprint blend 0..1, ground speed, step phase (cycles), airborne. */
@@ -48,6 +50,14 @@ export class CameraRig {
 
   update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean; free?: boolean } = {}) {
     this.lastInput += dt;
+    if (this.preview) {
+      const v = this.preview, cp = Math.cos(v.pitch);
+      this.camera.position.set(v.focus.x + Math.sin(v.yaw) * cp * v.dist, v.focus.y + Math.sin(v.pitch) * v.dist, v.focus.z + Math.cos(v.yaw) * cp * v.dist);
+      this.camera.lookAt(v.focus);
+      if (Math.abs(this.camera.fov - v.fov) > 0.01) { this.camera.fov = v.fov; this.camera.updateProjectionMatrix(); }
+      this.initialized = false; this.hasClear = false; // the follow camera snaps back to the player afterwards
+      return;
+    }
     if (mode === 'cinematic' && this.cinematic) {
       this.camera.position.lerp(this.cinematic.pos, 1 - Math.exp(-dt * 2));
       this.camera.lookAt(this.cinematic.look);

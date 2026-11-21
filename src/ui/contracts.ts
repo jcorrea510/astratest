@@ -23,7 +23,7 @@ export interface HudState {
   fps: number | null;
 }
 export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
-export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms'; label?: string; pulse?: boolean }
+export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing'; label?: string; pulse?: boolean }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
 export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean }
 export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean;
@@ -64,6 +64,9 @@ export interface GameUI {
   openShop(title: string, items: ShopItem[], money: number, onBuy: (id: string) => void, onClose: () => void): void;
   refreshShop(items: ShopItem[], money: number): void;
   closeShop(): void;
+  openGroom(cfg: import('./groom').GroomConfig, state: import('./groom').GroomState): void;
+  updateGroom(state: import('./groom').GroomState): void;
+  closeGroom(): void;
   // Full map (opened from pause menu or the Map key)
   openMap(s: MinimapState): void;
   closeMap(): void;

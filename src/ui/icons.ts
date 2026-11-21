@@ -91,10 +91,10 @@ export function guessIcon(text: string): WeaponIcon | null {
 }
 
 /** Map legend (sandbox: no mission, target or checkpoint markers). */
-export const BLIP_KINDS: MinimapBlip['kind'][] = ['waypoint', 'safehouse', 'shop', 'arms', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
+export const BLIP_KINDS: MinimapBlip['kind'][] = ['waypoint', 'safehouse', 'shop', 'arms', 'barber', 'clothing', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
 export const BLIP_LABELS: Record<MinimapBlip['kind'], string> = {
   mission: 'Job', target: 'Target', checkpoint: 'Checkpoint', waypoint: 'Waypoint', safehouse: 'Safehouse', shop: 'Store',
-  arms: 'Arms dealer', garage: 'Garage', vehicle: 'Vehicle', collectible: 'Postcard', enemy: 'Hostile', police: 'Patrol',
+  arms: 'Arms dealer', barber: 'Barber', clothing: 'Clothing store', garage: 'Garage', vehicle: 'Vehicle', collectible: 'Postcard', enemy: 'Hostile', police: 'Patrol',
 };
 
 /** Weapon whose model stands in for each icon (fists / medkit / armor keep their drawn glyphs). */
