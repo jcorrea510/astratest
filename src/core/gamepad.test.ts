@@ -65,7 +65,7 @@ describe('iPad detection', () => {
   });
   it('only phones are gated; iPad gets the low memory preset', () => {
     expect(isPhoneLike(ipadOS, 820)).toBe(false); expect(isPhoneLike(iphone, 390)).toBe(true);
-    expect(defaultQualityFor(ipadOS)).toBe('low'); expect(defaultQualityFor(mac)).toBeNull();
+    expect(defaultQualityFor(ipadOS)).toBeNull(); // owner: M4 iPad runs the normal preset expect(defaultQualityFor(mac)).toBeNull();
   });
 });
 

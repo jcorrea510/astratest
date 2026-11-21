@@ -30,3 +30,24 @@ describe('spawning a car already moving', () => {
     expect(upY).toBeGreaterThan(0.9);
   });
 });
+
+// Regression: a pickup stolen off the sidewalk flipped as it dropped off the kerb (centre of mass near the roof line)
+describe('tall vehicles off a kerb', () => {
+  beforeAll(async () => { await initPhysics(); });
+  for (const kind of ['pickup', 'suv', 'van', 'minivan', 'swat'] as const) {
+    it(`${kind}: drives off a sidewalk kerb at an angle, turning hard, and stays on its wheels`, () => {
+      const p = new Physics();
+      p.world.createCollider(RAPIER.ColliderDesc.cuboid(2000, 1, 2000).setTranslation(0, -1, 0));
+      p.world.createCollider(RAPIER.ColliderDesc.cuboid(4, 0.075, 50).setTranslation(-4, 0.075, 0)); // sidewalk slab x<0, 15 cm kerb at x=0
+      const car = new VehiclePhysics(p, VEHICLES[kind], layoutFor(kind), -3, 0, 0, Math.PI / 4);
+      car.settleAt(-3, 0.15, 0, Math.PI / 4);
+      car.setVelocity(Math.sin(Math.PI / 4) * 11, 0, Math.cos(Math.PI / 4) * 11); // ~25 mph off the kerb
+      let minUp = 1;
+      for (let i = 0; i < 60 * 5; i++) {
+        car.fixedUpdate(1 / 60, { throttle: 1, steer: i > 15 ? -1 : 0, handbrake: false }); p.step(1 / 60); car.postStep();
+        const q = car.body.rotation(); minUp = Math.min(minUp, 1 - 2 * (q.x * q.x + q.z * q.z));
+      }
+      expect(minUp).toBeGreaterThan(0.6);
+    });
+  }
+});

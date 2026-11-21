@@ -94,6 +94,10 @@ export class VehiclePhysics {
     const m = spec.mass;
     const ix = (m / 12) * ((2 * hy) ** 2 + (2 * hz) ** 2), iy = (m / 12) * ((2 * hx) ** 2 + (2 * hz) ** 2) * 1.15, iz = (m / 12) * ((2 * hx) ** 2 + (2 * hy) ** 2) * 1.2;
     this.comLocalY = layout.centerY + spec.comY;
+    // Weight sits low (engine, frame, axles): cap the centre of mass so half the track is >= 1.35x its height above the road.
+    // Tall bodies (vans, pickups, SUVs, buses) had it near the roof line and tipped over from a kerb or a nudge.
+    { const restY = VehiclePhysics.restBodyY(spec, layout, 0), halfTrack = Math.max(...layout.wheels.map(wd => Math.abs(wd.x)));
+      const maxH = halfTrack / 1.35; if (restY + this.comLocalY > maxH) this.comLocalY = maxH - restY; }
     desc.setMassProperties(m, { x: 0, y: this.comLocalY, z: 0 }, { x: ix, y: iy, z: iz }, { x: 0, y: 0, z: 0, w: 1 });
     this.collider = w.createCollider(desc, this.body);
     this.prevPos = { x, y, z }; this.prevQuat = { ...q };

@@ -19,7 +19,8 @@ export function pointerLockSupported(el: { requestPointerLock?: unknown }): bool
 }
 export type QualityName = 'low' | 'medium' | 'high';
 /** iPad tabs are killed at roughly 1.4 GB: start on the lightest preset unless the player chose one. */
-export function defaultQualityFor(nav: NavLike = navigator): QualityName | null { return isIPad(nav) ? 'low' : null; }
+/** No forced preset on iPad: M-series iPads run the normal default (the player can still pick Low). */
+export function defaultQualityFor(nav: NavLike = navigator): QualityName | null { void nav; return null; }
 /** Launched from the iOS home screen / an installed PWA: there is no browser chrome, so the app is already "fullscreen". */
 export function isStandalone(): boolean {
   try {
