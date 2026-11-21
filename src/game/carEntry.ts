@@ -101,6 +101,11 @@ export class CarEntry {
 
   // ------------------------------------------------------------------------------------------------ entering
   /** Picks the door to use: the driver's unless something blocks it. */
+  /** R6-A: car door sfx (falls back to the generic door sound). */
+  private carDoorSfx(open: boolean, pos: THREE.Vector3): void {
+    const a = this.game.audio as unknown as { carDoor?: (o: boolean, p: THREE.Vector3) => void };
+    if (a.carDoor) a.carDoor(open, pos); else this.game.audio.play(open ? 'doorOpen' : 'doorClose', { pos });
+  }
   chooseDoor(v: Enterable, seat = 0): { door: number; entrySeat: number } {
     const d0 = v.doorForSeat(seat);
     if (d0 < 0) return { door: -1, entrySeat: seat };
@@ -236,7 +241,7 @@ export class CarEntry {
     const v = j.v, h = this.player.human;
     j.phase = 'open'; j.t = 0;
     h.playAction(j.f.sg === 1 ? 'open_door' : 'open_door_r', {
-      onEvent: e => { if (e === 'open') { v.setDoor(j.door, 1); j.opened = true; this.game.audio.play('doorOpen', { pos: v.position }); } },
+      onEvent: e => { if (e === 'open') { v.setDoor(j.door, 1); j.opened = true; this.carDoorSfx(true, v.position); } },
     });
   }
   /** Car alarm / witnesses after a break-in. */
@@ -263,7 +268,7 @@ export class CarEntry {
     const f = v.doorFrame(door);
     this.job = { kind: 'exit', v, door, seat, entrySeat, f, phase: 'xopen', t: 0, life: 0, path: [], startPos: new THREE.Vector3(), startYaw: 0, grabbed: false, startled: false, opened: true };
     v.setDoor(door, 1);
-    this.game.audio.play('doorOpen', { pos: v.position });
+    this.carDoorSfx(true, v.position);
     return true;
   }
   /** Out of a moving vehicle: a dive and a tumble. */
@@ -310,7 +315,7 @@ export class CarEntry {
       npc = this.game.pop.npcs.find(n => n.char === victim) ?? null;
       if (v instanceof Vehicle) this.game.traffic.release(v);
     }
-    v.setDoor(door, 1); this.game.audio.play('doorOpen', { pos: v.position });
+    v.setDoor(door, 1); this.carDoorSfx(true, v.position);
     if (puller && puller !== player) {
       puller.yaw = v.yaw - side * HALF_PI;
       puller.human.playAction('pull_out');
@@ -514,7 +519,7 @@ export class CarEntry {
     j.phase = 'close'; j.t = 0;
     this.game.boardFinished(v, j.seat);
     v.setDoor(j.door, 0);
-    this.game.audio.play('doorClose', { pos: v.position });
+    this.carDoorSfx(false, v.position);
     v.playerUsed = true; v.doorsLocked = false;
   }
   private startHotwire(v: Vehicle) {

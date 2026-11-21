@@ -266,7 +266,8 @@ export class Robberies {
         if (closedNow !== sh.shutter.visible) sh.setClosed(closedNow);
         // automatic sliding doors
         const near = dist < 8.5 && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
-        k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
+        const door0 = k.door; k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
+        if ((door0 === 0) !== (k.door === 0) && dist < 20) (g.audio as unknown as { storeBell?: (p: THREE.Vector3) => void }).storeBell?.(k.pos); // R6-A door chime on open / shut
         sh.setDoor(k.door * k.door * (3 - 2 * k.door));
         sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || k.panicT >= 0 || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
       }

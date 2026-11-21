@@ -150,7 +150,7 @@ export class StoreExtras {
     const g = this.game, sh = k.shell!, ex = k.ex;
     const can = this.canReg(k), held = g.input.held('interact');
     if (can && held) {
-      if (k.looting === 0) { k.looting = 0.001; this.host.panic(k); ex.aimOnly = false; sh.setDrawer(1); ex.pickT = 0; this.ui.toast('Cracking the register...', 'info'); }
+      if (k.looting === 0) { k.looting = 0.001; this.host.panic(k); ex.aimOnly = false; sh.setDrawer(1); (g.audio as unknown as { registerDrawer?: (p: THREE.Vector3) => void }).registerDrawer?.(k.pos); ex.pickT = 0; this.ui.toast('Cracking the register...', 'info'); }
       k.looting = Math.min(1, k.looting + dt / REG_TIME);
       ex.pickT -= dt; if (ex.pickT <= 0) { ex.pickT = 1.0; g.player.human.playOnce('PickUp_Table', 'full', 0.12); g.audio.play('money', { pos: k.pos, volume: 0.35 }); }
       sh.setBills(1 - k.looting);

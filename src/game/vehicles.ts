@@ -89,7 +89,7 @@ export class VehicleManager {
         v.flashT = 0.15;
         this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);
         if (imp > 6) this.audio.play('glass', { pos: pt, volume: Math.min(1, imp / 14) });
-        this.audio.play('crash', { pos: pt, volume: Math.min(1, imp / 12), pitch: 0.9 + Math.random() * 0.2 });
+        const au = this.audio as unknown as { crash?: (i: number, p?: THREE.Vector3) => void }; if (au.crash) au.crash(imp / 12, pt); else this.audio.play('crash', { pos: pt, volume: Math.min(1, imp / 12), pitch: 0.9 + Math.random() * 0.2 }); // R6-A: one path per impact
         const ev: CrashEvent = { vehicle: v, impact: imp, point: pt.clone() };
         this.onCrash?.(ev); for (const l of this.crashListeners) l(ev);
         void destroyed;

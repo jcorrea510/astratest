@@ -217,7 +217,7 @@ export class Game {
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
     this.playerCtl.onFallDamage = (d) => { if (!this.ghost && this.player.damage(d, null, this.time)) this.playerDown('down'); };
-    this.playerCtl.onSound = (snd, vol) => { this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: snd === 'footstep' ? 0.9 + Math.random() * 0.2 : 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
+    this.playerCtl.onSound = (snd, vol) => { if (snd === 'footstep') { this.stepSound(this.player.pos, vol); return; } this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
     onProgress(0.85, 'Warming up the city lights');
     this.physics.world.step();
     await tick();
@@ -660,6 +660,7 @@ export class Game {
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
+    this.pedSteps();
     this.traffic.update(dt, this.renderer.camera, this.player.pos, this.trafficCap ?? this.renderer.quality.traffic);
     this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
     this.crowd.sirens = this.traffic.sirenSources;
@@ -713,6 +714,24 @@ export class Game {
     let rel = (this.cam.forwardYaw - Math.atan2(dx, dz)) * 180 / Math.PI;
     rel = ((rel + 540) % 360) - 180; // 0 ahead, +right, -left, ±180 behind
     this.fx?.hurt(rel, dmg);
+  }
+  /** R6-A: surface footstep (road/sidewalk/lot concrete, park grass, beach sand, quay wood). */
+  private stepSound(p: THREE.Vector3, vol: number): void {
+    const s = surfaceAt(this.city, p.x, p.z), a = this.audio as unknown as { footstep?: (s: string, p: THREE.Vector3, v: number) => void };
+    if (a.footstep) a.footstep(s === 'park' ? 'grass' : s === 'beach' ? 'sand' : s === 'quay' ? 'wood' : 'concrete', p, vol * 0.8); else this.audio.play('footstep', { pos: p, volume: vol });
+  }
+  private pedPhase = new Map<number, number>();
+  /** R6-A: peds within 15 m step on the same foot plants as the player. */
+  private pedSteps(): void {
+    const pp = this.player.pos;
+    for (const n of this.pop.npcs) {
+      const c = n.char; if (!n.alive || c.inVehicle) continue;
+      if (Math.abs(c.pos.x - pp.x) > 15 || Math.abs(c.pos.z - pp.z) > 15) { this.pedPhase.delete(n.id); continue; }
+      const ph = c.human.locoPhase, last = this.pedPhase.get(n.id); this.pedPhase.set(n.id, ph);
+      if (last === undefined || c.speed < 0.6) continue;
+      const crossed = (a: number) => (last < a && ph >= a) || (last > ph && (ph >= a || last < a));
+      if (crossed(0.08) || crossed(0.58)) this.stepSound(c.pos, 0.3);
+    }
   }
   private updateHurtFx(dt: number) {
     this.blood.enabled = this.settings.blood;

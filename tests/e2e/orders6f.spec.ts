@@ -13,7 +13,7 @@ async function scene(dist = 5) {
   await page.evaluate((dist) => {
     const g = (window as any).__game;
     g.police.clear?.(); g.clockRunning = false; g.hour = 14;
-    for (const n of [...g.pop.npcs]) if (!n.persistent && !n.char.inVehicle) g.pop.remove(n);
+    for (const n of [...g.pop.npcs]) if ((!n.persistent || n === (window as any).__n) && !n.char.inVehicle) g.pop.remove(n);
     g.player.place(-280, 0.25, -95.5, Math.PI / 2); g.cam.snapBehind(Math.PI / 2);
     g.pcombat.give('pistol', 200); g.pcombat.inv.select('pistol'); g.input.press('Mouse2');
     const yaw = g.player.yaw, x = g.player.pos.x + Math.sin(yaw) * dist, z = g.player.pos.z + Math.cos(yaw) * dist;
