@@ -44,7 +44,7 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   ssLane?: number; ssWait?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
-const sp = { x: 0, z: 0, dx: 0, dz: 0 };
+const sp: { x: number; z: number; dx: number; dz: number; y?: number } = { x: 0, z: 0, dx: 0, dz: 0 };
 export class Traffic {
   cars: AiCar[] = [];
   maxCars = 18;
@@ -80,17 +80,24 @@ export class Traffic {
     return 'sedan';
   }
   /** Spawns a driven car on a lane at distance s. */
-  spawnOnLane(kind: VehicleKind, lane: Lane, s: number, mode: DriveMode = 'cruise', role: 'civilian' | 'police' | 'gang' = 'civilian', look?: Look, speed0?: number): AiCar {
+  /** far-crowd car positions near the player, refreshed by the crowd each frame (real cars queue behind them) */
+  farObs: { x: number; z: number }[] = [];
+  spawnOnLane(kind: VehicleKind, lane: Lane, s: number, mode: DriveMode = 'cruise', role: 'civilian' | 'police' | 'gang' = 'civilian', look?: Look, speed0?: number, pose?: { x: number; z: number; yaw: number }): AiCar {
     samplePath(lane, s, sp);
-    const yaw = Math.atan2(sp.dx, sp.dz);
-    const v = this.vehicles.spawn(kind, sp.x, sp.z, yaw);
+    // a promoted far car takes over exactly where it was drawn (lane offset, heading); everything spawns settled on its
+    // springs at the road height: no drop and bounce (tall trucks used to land hard and tip)
+    const yaw = pose?.yaw ?? Math.atan2(sp.dx, sp.dz), px = pose?.x ?? sp.x, pz = pose?.z ?? sp.z;
+    const v = this.vehicles.spawn(kind, px, pz, yaw);
+    v.phys.settleAt(px, lane.ys ? (sp.y ?? 0) : 0, pz, yaw);
     // start at the speed the caller handed over (a far-crowd car being promoted), never faster than it could stop for a red
     let v0 = speed0 ?? lane.speed * 0.6;
     if (!lane.connector && mode === 'cruise') v0 = Math.min(v0, signalCap(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), lane.length - s - 5.2, v0));
-    v.phys.body.setLinvel({ x: sp.dx * v0, y: 0, z: sp.dz * v0 }, true);
+    v.phys.setVelocity(Math.sin(yaw) * v0, 0, Math.cos(yaw) * v0); // syncs the crash detector: a car spawned moving must not 'crash' into its own speed
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
     const car: AiCar = { v, driver, lane, s, mode, target: null, stuckT: 0, honkT: 0, reverseT: 0, persistent: false, ram: false, arriveDist: 8 };
+    // a promoted far car keeps its lateral place in the lane (it was tucked away from the kerbside parked row): no swerve back into it
+    if (pose) { const l = Math.hypot(sp.dx, sp.dz) || 1; car.shift = THREE.MathUtils.clamp(((px - sp.x) * sp.dz - (pz - sp.z) * sp.dx) / l, -1.4, 1.4); }
     // some civilians drive with a friend in the front passenger seat
     if (role === 'civilian' && mode === 'cruise' && v.tpl.seats.length > 1 && v.doorIndex('right', 0) >= 0 && Math.random() < 0.2) {
       const pax = this.pop.spawn('civilian', sp.x, sp.z, 0.5);
@@ -339,6 +346,9 @@ export class Traffic {
         if (!o.driver && Math.abs(o.speed) < 0.6 && o !== playerVehicle) check(o.position.x, o.position.z, v.phys.layout.half[0] + o.phys.layout.half[0] + 0.2, 'car', o, car.shift ?? 0);
         else check(o.position.x, o.position.z, 2.3, 'car', o);
       }
+      // far-crowd cars ahead (drawn, not simulated physically): queue behind them like any car instead of driving into them
+      let farBlock = false;
+      for (const o of this.farObs) { const was = blockDist; check(o.x, o.z, 2.1, 'car', null); if (blockDist < was) farBlock = true; }
       if (!player.inVehicle && player.alive) check(player.pos.x, player.pos.z, 1.9, 'person');
       for (const n of this.pop.npcs) if (n.alive && !n.char.inVehicle && !n.far) check(n.pos.x, n.pos.z, 1.7, 'person');
       if (blockDist < Infinity && !(car.mode === 'pursuit' && car.ram)) {
@@ -350,6 +360,7 @@ export class Traffic {
         const boc = bv ? this.carOf(bv) : null;
         car.blockedBy = bv;
         if (blocker === 'person') legit = true;
+        else if (!bv && farBlock) legit = true; // a far car moves on by itself
         else if (bv) {
           if (bv === playerVehicle) {
             legit = true;
@@ -600,6 +611,8 @@ export class Traffic {
         if (!this.prewarming && d < 100 && this.frustum.containsPoint(p)) continue;
         { const I = this.city.intersections[lane.intersection]; if (!this.prewarming && !spawnSafeAtSignal(signalState(I, lane.axis, this.time()), signalState(I, lane.axis, this.time() + 5), lane.length - s - 5.2)) continue; }
         if (this.vehicles.list.some(o => o.position.distanceTo(p) < 11) || this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 16)) continue;
+        if (this.farObs.some(o => Math.abs(o.x - p.x) < 12 && Math.abs(o.z - p.z) < 12)) continue;
+        if (this.pop.npcs.some(n => !n.char.inVehicle && Math.hypot(n.char.pos.x - p.x, n.char.pos.z - p.z) < 4)) continue; // never on top of a person // a far-crowd car is drawn there: never spawn a second (different) car on top of it
         // now and then an ambient police cruiser rolls by on patrol (max two, only while the heat is off)
         if (!this.prewarming && ambient > 5 && Math.random() < 0.05 && this.cars.filter(c => c.patrol).length < 2) {
           const pc = this.spawnOnLane('police', lane, s, 'cruise', 'police', COP_LOOK); pc.patrol = true; pc.maxSpeed = lane.speed * 0.85;
@@ -628,6 +641,13 @@ export class Traffic {
           if (nl) { samplePath(nl.lane, nl.s, sp); yaw = Math.atan2(sp.dx, sp.dz); }
           const v = this.vehicles.spawn(r.pick(PARKED_MIX), x, z, yaw, r.int(0, 11), CURB_HEIGHT + 0.25);
           v.settleParked(CURB_HEIGHT); // settled and asleep: no drop, trucks stay upright
+          // solid courtyard paving under all four corners (no ground there, or a wall/stoop inside the footprint: skip the spot)
+          { const L = v.phys.layout, c = Math.cos(yaw), sn = Math.sin(yaw); let ok = true;
+            for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]) {
+              const lx = ax * L.half[0], lz = az * L.half[2], wx = x + lx * c + lz * sn, wz = z - lx * sn + lz * c;
+              const h = v.phys.physics.ray(wx, CURB_HEIGHT + 3, wz, 0, -1, 0, 4, undefined, null, v.phys.body);
+              if (!h || Math.abs(CURB_HEIGHT + 3 - h.toi - CURB_HEIGHT) > 0.25) { ok = false; break; } }
+            if (!ok) { this.vehicles.remove(v); continue; } }
           v.parked = true; v.doorsLocked = r.chance(0.7); v.ignition = false; list.push(v);
         }
         this.parkedBlocks.set(b.id, list);

@@ -380,6 +380,12 @@ export class VehiclePhysics {
       body.applyTorqueImpulse({ x: left.x * tp + f.x * tr + up.x * ty, y: left.y * tp + f.y * tr + up.y * ty, z: left.z * tp + f.z * tr + up.z * ty }, true);
     }
     this.landing = Math.max(0, this.landing - dt * 3);
+    // Anti-roll: on the ground and not yet past the tipping point, damp the roll rate (springs + anti-roll bars). A brush from a
+    // passing car or a kerb no longer sends a tall van over; a real rollover (big lateral hit, ramp) still overpowers it.
+    if (wasGrounded && up.y > 0.55) {
+      const w = body.angvel(), wr = w.x * f.x + w.y * f.y + w.z * f.z, k = Math.min(1, dt * 7);
+      if (Math.abs(wr) > 0.05) body.setAngvel({ x: w.x - f.x * wr * k, y: w.y - f.y * wr * k, z: w.z - f.z * wr * k }, true);
+    }
 
     // Self-righting: stuck on the roof or side and nearly stopped -> roll back onto the wheels.
     if (up.y < 0.4 && planar < 2.5 && Math.hypot(av.x, av.z) < 2) {
@@ -480,7 +486,13 @@ export class VehiclePhysics {
     this.body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true); this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.upsideTime = 0; this.righting = 0; this.drift = 0;
+    this.lastVel = { x: 0, y: 0, z: 0 };
     this.capturePrev();
+  }
+  /** Sets the body's velocity without it registering as a crash on the next step (spawning a car already moving). */
+  setVelocity(x: number, y: number, z: number) {
+    this.body.setLinvel({ x, y, z }, true);
+    this.lastVel = { x, y, z };
   }
   teleport(x: number, y: number, z: number, yaw: number) {
     this.body.setTranslation({ x, y, z }, true);

@@ -45,7 +45,7 @@ const NEAR_KILL = 9, PROMOTE_R = 60;
 /** Real cars / people allowed over the preset cap for hand-overs (far real ones are demoted back to the crowd meanwhile). */
 const PROMOTE_SLACK = 10, PROMOTE_SLACK_PEDS = 16;
 /** Far-model cars / people never stay this close: over the cap a real one is demoted for them (or the cap stretches a little). */
-const NEAR_PROMOTE_CAR = 25, NEAR_PROMOTE_PED = 22, NEAR_OVERFLOW = 4;
+const NEAR_PROMOTE_CAR = 25, NEAR_PROMOTE_PED = 22, NEAR_OVERFLOW = 8;
 /** Real cars / people this far away (and out of view, or much further) go back to the cheap crowd. */
 const DEMOTE_R = 128, DEMOTE_PED_R = 82; // cars: just beyond Traffic's own spawn ring (no spawn/demote churn)
 /** Look seeds for far people (distinct from Population's). */
@@ -84,6 +84,8 @@ export class Crowd {
   promotePed: ((x: number, z: number, from: number, to: number, yaw: number, look?: FullLook, near?: boolean) => boolean) | null = null;
   private focus = new THREE.Vector3();
   /** why the last car hand-over was refused (tests) */ failWhy = '';
+  /** test hook: overlap refusals */ debugOverlap: Record<string, unknown>[] | null = null;
+  /** pose of the far car being handed over (the real car spawns exactly there) */ private pose: { x: number; z: number; yaw: number } | null = null;
   /** Connects the hand-over hooks to the real traffic / pedestrian systems; `caps` returns the current real-population caps. */
   wire(traffic: Traffic, pop: Population, caps: () => { traffic: number; peds: number }) {
     this.traffic = traffic; this.pop = pop;
@@ -92,13 +94,16 @@ export class Crowd {
       // NEAR_PROMOTE_CAR the least important real car is demoted on the spot, or the cap stretches by NEAR_OVERFLOW
       if (traffic.cars.length >= caps().traffic + PROMOTE_SLACK && !(near && (this.evictCar() || traffic.cars.length < caps().traffic + PROMOTE_SLACK + NEAR_OVERFLOW))) { this.stats.failCap++; this.failWhy = 'cap'; return false; }
       samplePath(lane, s, sp);
+      if (this.pose) { sp.x = this.pose.x; sp.z = this.pose.z; } // test the spot the car is actually drawn at (kerb-lane offset included)
       // never spawn inside a real car: footprint overlap only (a car queued 2 m behind another is fine)
       const len = bus ? 12.5 : 5.2;
       for (const o of this.vehicles.list) {
         const dx = o.position.x - sp.x, dz = o.position.z - sp.z, along = dx * sp.dx + dz * sp.dz, side = dx * sp.dz - dz * sp.dx;
-        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < 2.2) { this.stats.failOverlap++; this.failWhy = 'overlap'; return !!near; } // up close the far model shares the space of a real car: drop it (the real car stands in) instead of showing a boxy duplicate
+        if (Math.abs(along) < len * 0.5 + Math.max(2.4, o.tpl.front - o.tpl.rear) * 0.5 && Math.abs(side) < o.phys.layout.half[0] + (bus ? 1.45 : 1.05)) { this.stats.failOverlap++; this.failWhy = 'overlap'; if (this.debugOverlap && this.debugOverlap.length < 20) this.debugOverlap.push({ kind: o.kind, parked: o.parked, drv: !!o.driver, spd: +o.speed.toFixed(1), along: +along.toFixed(1), side: +side.toFixed(1), near: !!near }); return false; } // held (still drawn) until the space is clear: dropping it here made cars vanish in front of the player
       }
-      const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed); // keeps its speed: no sudden launch from a red line
+      // nor on a person (a crossing pedestrian, a body in the road): depenetrating from a capsule launched cars onto their roof
+      for (const n of pop.npcs) { if (n.char.inVehicle) continue; const p = n.char.pos; if (Math.abs(p.x - sp.x) < len * 0.5 + 1 && Math.abs(p.z - sp.z) < len * 0.5 + 1 && Math.hypot(p.x - sp.x, p.z - sp.z) < len * 0.5 + 0.8) { this.failWhy = 'person'; return false; } }
+      const car = traffic.spawnOnLane(bus ? 'bus' : kind, lane, s, 'cruise', 'civilian', undefined, speed, this.pose ?? undefined); // keeps its speed and exact drawn pose: a seamless swap
       car.v.respray(col.copy(paint).convertLinearToSRGB());
       this.stats.promotedCars++;
       return true;
@@ -130,7 +135,7 @@ export class Crowd {
         for (const side of [1, -1]) {
           for (let s = a; s <= b; s += 6.4) {
             if (!r.chance(0.3)) continue; // R6-T: fewer kerbside slots so moving cars outnumber parked ones
-            const off = side * (road.half - 0.45), along = s + r.range(-0.5, 0.5);
+            const off = side * (road.half - 1.0), along = s + r.range(-0.5, 0.5);
             const x = road.axis === 'x' ? along : road.coord + off, z = road.axis === 'x' ? road.coord + off : along;
             r.chance(0.5); // (keeps the seeded colours / kinds below unchanged)
             // nose with the traffic on this side of the street: heading of the nearest driving lane (right-hand traffic)
@@ -313,10 +318,10 @@ export class Crowd {
       // never removed while it can be seen up close: over the cap / on top of a real car it waits until it is out of view
       const inView = d < 120 && this.seen(c.x, 1.2, c.z, c.bus ? 7 : 3.5);
       let kill = d > 215 || (i >= cap && !inView);
-      if (!kill && d < PROMOTE_R && !this.prewarming) { if (this.promoteCar?.(c.lane, c.s, c.bus, c.v, c.kind, c.pc, d < NEAR_PROMOTE_CAR)) kill = true; else this.stats.heldCars++; }
+      if (!kill && d < PROMOTE_R && !this.prewarming) { this.pose = c; const ok = this.promoteCar?.(c.lane, c.s, c.bus, c.v, c.kind, c.pc, d < NEAR_PROMOTE_CAR); this.pose = null; if (ok) kill = true; else this.stats.heldCars++; }
       if (!kill && d < NEAR_KILL && !inView) kill = true; // beside / behind the camera and still not handed over
       let why = kill ? 'promoted' : '';
-      if (!kill && checkReal && d < 140 && (!inView || d > 90)) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 4 && Math.abs(o.position.z - c.z) < 4) { kill = true; why = 'real'; break; }
+      if (!kill && checkReal && d < 140 && !inView) for (const o of this.vehicles.list) if (Math.abs(o.position.x - c.x) < 4 && Math.abs(o.position.z - c.z) < 4) { kill = true; why = 'real'; break; }
       if (kill) { if (this.debug) this.debug.push({ x: c.x, z: c.z, why: why || (d > 215 ? 'far' : i >= cap ? 'cap' : 'near'), d, inView }); cars.splice(i, 1); }
     }
     let spawns = this.prewarming ? 60 : 4;
@@ -331,6 +336,9 @@ export class Crowd {
     // real traffic on the same lanes: far cars queue behind it instead of driving into it (and being culled for it)
     const realOn = new Map<number, number[]>();
     for (const rc of this.traffic?.cars ?? []) { const l = realOn.get(rc.lane.id); if (l) l.push(rc.s); else realOn.set(rc.lane.id, [rc.s]); }
+    if (this.traffic) { const fo = this.traffic.farObs; fo.length = 0; for (const c of cars) if (Math.abs(c.x - focus.x) < 160 && Math.abs(c.z - focus.z) < 160) fo.push(c); }
+    const near: { x: number; z: number }[] = [];
+    for (const v of this.vehicles.list) { if (v.parked) continue; const p = v.position; if (Math.abs(p.x - focus.x) < 240 && Math.abs(p.z - focus.z) < 240) near.push({ x: p.x, z: p.z }); } // kerbside parked cars are passed (lane offset), not queued behind
     for (const c of cars) {
       const lane = c.lane;
       let target = lane.speed * (c.bus ? 0.7 : 0.85);
@@ -359,7 +367,7 @@ export class Crowd {
         }
       } else target = Math.min(target, 8);
       // kerb lane: hold clear of kerbside parked cars; a siren behind / oncoming: tuck to the kerb and slow down
-      let wantKs = !lane.connector && lane.lane === lane.lanes - 1 ? 0.45 : 0;
+      let wantKs = !lane.connector && lane.lane === lane.lanes - 1 ? 0.75 : 0; // kerb lane keeps clear of the parked row
       for (const sv of this.sirens) if (yieldsToSiren(c.x, c.z, Math.sin(c.yaw), Math.cos(c.yaw), sv.x, sv.z, sv.fx, sv.fz, sv.speed)) { wantKs = -1.3; target = Math.min(target, 3); break; }
       c.ks = (c.ks ?? 0) + (wantKs - (c.ks ?? 0)) * Math.min(1, dt * 2.5);
       const same = byLane.get(lane.id);
@@ -367,6 +375,16 @@ export class Crowd {
       if (same && same.length > 1) for (const o of same) {
         if (o === c) continue; const gap = o.s - c.s - (o.len + c.len) * 0.5 - 0.5;
         if (gap > -2 && gap < 40) { target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); if (gap < leadGap) { leadGap = gap; lead = o; } }
+      }
+      // any real vehicle in the path (the player, a car turning in from another lane, a crash): brake behind it
+      if (near.length) {
+        const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
+        for (const o of near) {
+          const dx = o.x - c.x, dz = o.z - c.z, along = dx * fx + dz * fz;
+          if (along < 0 || along > 18) continue;
+          if (Math.abs(dx * fz - dz * fx) > 1.5) continue;
+          target = Math.min(target, Math.max(0, along - (c.len * 0.5 + 4)) * 0.9);
+        }
       }
       const reals = realOn.get(lane.id);
       if (reals) for (const rs of reals) { const gap = rs - c.s - (4.6 + c.len) * 0.5 - 0.5; if (gap > -2 && gap < 40) target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); }
@@ -489,6 +507,7 @@ export class Crowd {
         const v = s.real;
         const gone = !this.vehicles.list.includes(v) || !v.parked || !!v.driver;
         if (gone) { s.taken = true; s.real = null; }
+        else if (v.position.y < -1.2) { this.vehicles.remove(v); s.real = null; s.taken = true; } // fell through a gap in the road: never seen again
         else if (d > 110) { s.hp = v.health / v.spec.health; if (s.hp > 0.98) s.hp = undefined; this.vehicles.remove(v); s.real = null; }
         else continue; // the real car stands here
       }
