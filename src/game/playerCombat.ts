@@ -118,7 +118,8 @@ export class PlayerCombat {
     if (want) { want.v.rollWindow(want.pane, true); this.rolled = want; }
     if (!v) { this.lean = this.leanApplied = 0; return; } // left the car: the entry/exit animation owns the root again
     // lean toward the open window (far side: across the seat) so the arm reaches it
-    const tgt = this.driveAim ? (this.driveSide(v) === 1 ? 0.08 : -0.3) : 0;
+    // Round 8: lean right into the open window (it was 8 cm: the arm could not reach out and the gun stayed in the cabin)
+    const tgt = this.driveAim ? driveLean(this.driveSide(v)) : 0;
     this.lean += (tgt - this.lean) * 0.25;
     const root = this.player.human.root, dl = this.lean - this.leanApplied;
     if (Math.abs(dl) > 1e-5 && root.parent) { root.position.x += dl; this.leanApplied = this.lean; }
@@ -129,12 +130,12 @@ export class PlayerCombat {
     const v = this.player.inVehicle as Vehicle; const side = this.driveSide(v);
     const di = v.doorIndex(side === 1 ? 'left' : 'right', 0); if (di < 0) return;
     const f = v.doorFrame(di);
-    _wn.set(f.sg * (f.outX + 0.12), f.belt + 0.06, (f.z0 + f.z1) / 2);
+    _wn.set(f.sg * (f.outX + 0.22), f.belt + 0.1, (f.z0 + f.z1) / 2); // grip well outside the door line: forearm out of the window
     v.visual.updateMatrixWorld(); v.visual.localToWorld(_wn);
     _gr.copy(an.grip).applyQuaternion(H.quat).add(H.pos);
     H.pos.add(_wn.sub(_gr));
     _gr.copy(an.grip).applyQuaternion(H.quat).add(H.pos); // new grip position
-    const dist = _gr.distanceTo(shoulder), maxR = armLen * (an.butt ? 1.15 : 0.97);
+    const dist = _gr.distanceTo(shoulder), maxR = armLen * (an.butt ? 1.15 : 1.06);
     if (dist > maxR) H.pos.addScaledVector(_gr.sub(shoulder).normalize(), -(dist - maxR)); // far-side aim: the arm stretches over the dash
   }
   /** Aiming down a scope right now. */
@@ -534,3 +535,6 @@ function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, 
 
 /** Pure (tests): see PlayerCombat.threatening. */
 export function isThreatening(aimHeld: boolean, driveAim: boolean, sinceShot: number): boolean { return aimHeld || driveAim || sinceShot < 1.5; }
+
+/** Round 8: how far (m, car-local x, + = left) the driver leans for a drive-by: well into the near window, or across the seat. Pure. */
+export function driveLean(side: number): number { return side === 1 ? 0.32 : -0.4; }
