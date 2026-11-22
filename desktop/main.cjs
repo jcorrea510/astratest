@@ -1,6 +1,6 @@
 // Meridian Afterglow desktop shell: serves the built game from inside the app over a private app:// origin (so fetch,
 // modules and WebAssembly all work) and opens it fullscreen. Same game as the website, no tabs or browser UI.
-const { app, BrowserWindow, protocol, net, Menu, shell } = require('electron');
+const { app, BrowserWindow, protocol, net, Menu, shell, powerSaveBlocker } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -10,6 +10,10 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('force_high_performance_gpu');
+// Round 7: WebGL straight on Metal, GPU rasterisation, and no App Nap throttling while the game is open
+app.commandLine.appendSwitch('use-angle', 'metal');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
 
 const root = path.join(__dirname, 'game');
 function create() {
@@ -30,6 +34,7 @@ app.whenReady().then(() => {
   });
   // minimal menu (keeps Cmd+Q / Cmd+F fullscreen / copy-paste working on macOS)
   Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { label: 'View', submenu: [{ role: 'togglefullscreen' }, { role: 'reload' }] }]));
+  powerSaveBlocker.start('prevent-app-suspension');
   create();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) create(); });
 });

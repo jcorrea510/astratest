@@ -162,6 +162,8 @@ export class Game {
     onProgress(0.05, 'Laying out streets');
     await tick();
     this.visuals = buildCity(this.renderer.scene, this.physics, this.assets, this.city);
+    // Round 7 perf: the city chunks never move: compute their matrices once instead of on every frame's scene update
+    for (const o of this.visuals.chunkMeshes) { o.updateMatrix(); o.updateMatrixWorld(true); o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; }
     this.buildLamps();
     onProgress(0.55, 'Waking up the locals');
     await tick();
@@ -833,7 +835,9 @@ export class Game {
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
     this.visuals.pedSignals.update(this.time);
   }
+  private cullN = 0;
   private cullChunks() {
+    if ((this.cullN++ % 3) !== 0) return; // Round 7 perf: distances move little in 3 frames (60 m margin)
     const cp = this.renderer.camera.position; const max = this.renderer.quality.drawDistance + 60;
     // far from the ground (flying over roofs) a 15 cm near plane leaves ~1 cm depth steps, so coplanar roof layers flicker: push it out
     { const cam = this.renderer.camera, nn = Math.min(2, 0.15 + Math.max(0, cp.y - 15) * 0.012); if (Math.abs(cam.near - nn) > 0.05 || (nn === 0.15 && cam.near !== 0.15)) { cam.near = nn; cam.updateProjectionMatrix(); } }

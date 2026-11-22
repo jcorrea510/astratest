@@ -45,3 +45,14 @@ test('headlights: real spot lights follow the lit cars at night (count by preset
   expect(r.lowSpots).toBe(1);
   expect(r.white).toBe(0);
 });
+
+test('perf: static city chunks keep frozen matrices and are still culled by distance', async () => {
+  const r = await page.evaluate(() => {
+    const g = (window as any).__game, ch = g.visuals.chunkMeshes;
+    for (let i = 0; i < 6; i++) g.frame(1 / 30, false);
+    return { frozen: ch.every((o: any) => !o.matrixAutoUpdate), hidden: ch.filter((o: any) => !o.visible).length, n: ch.length };
+  });
+  console.log('chunks', JSON.stringify(r));
+  expect(r.frozen).toBe(true);
+  expect(r.hidden).toBeGreaterThan(0);
+});
