@@ -8,7 +8,8 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
   ray-cast tyres for ~65 cars, ~90 CPU-animated skeletons, traffic/crowd AI, scene-graph matrices; plus hitches from geometry built at
   runtime (hair shells ~94k verts built the first time a style appears: 100 ms-1 s spikes) and full-res post passes (bloom + output + grade).
   Pro engines spread this over worker threads, bake assets offline, GPU-skin/instance crowds and cull per frame with LOD budgets.
-  Next, in order: (1) prebuild/bake hair shells (or lighter shells) so no runtime builds while driving; (2) far / off-screen AI cars: tyre
+  Next, in order: (1) DONE: hitches were emergency-car models + body LODs built during play (0.6-0.75 s each) -> built at load;
+  looks warmed ahead from the far crowd (perf7.spec: worst frame 758 -> ~60-90 ms); (2) far / off-screen AI cars: tyre
   rays + AI at 20-30 Hz instead of 60; (3) merge grade into the output pass (one full-screen pass less) and bloom at quarter res on Medium;
   (4) physics + traffic in a Web Worker (big job: needs a message-passing car state); (5) measure on the M1 with ?showFps and the
   renderer stats before/after each step.

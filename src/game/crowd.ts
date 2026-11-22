@@ -81,6 +81,8 @@ export class Crowd {
    * the cheap one keeps walking/driving until it is almost beside the camera, so nobody blinks out at mid range.
    */
   promoteCar: ((lane: Lane, s: number, bus: boolean, speed: number, kind: VehicleKind, paint: THREE.Color, near?: boolean) => boolean) | null = null;
+  /** a far pedestrian got their look (Round 7: the population warms its extras before they come close) */
+  onNewLook: ((l: FullLook) => void) | null = null;
   promotePed: ((x: number, z: number, from: number, to: number, yaw: number, look?: FullLook, near?: boolean) => boolean) | null = null;
   private focus = new THREE.Vector3();
   /** why the last car hand-over was refused (tests) */ failWhy = '';
@@ -187,7 +189,7 @@ export class Crowd {
   }
   /** The person a far pedestrian is (built on first use and kept, so they look the same when they turn real). */
   private lookOf(p: GPed): FullLook {
-    if (!p.lk) p.lk = randomLook(p.seed ?? LOOK_SEED++);
+    if (!p.lk) { p.lk = randomLook(p.seed ?? LOOK_SEED++); this.onNewLook?.(p.lk); }
     if (!p.data) p.data = this.people?.pack(p.lk);
     return p.lk;
   }

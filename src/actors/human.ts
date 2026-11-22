@@ -120,6 +120,17 @@ const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vect
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
 /** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
 const HAIR_LOD_DIST = 20;
+/**
+ * Round 7 perf: builds (and caches) the hair / hat / garment extras a look needs, ahead of the person turning real, so the
+ * first close-up of a style never builds geometry mid-drive (100 ms - 1 s hitches). Returns the build time in ms.
+ */
+export function warmLookExtras(tpl: HumanTemplate, look: Look): number {
+  const t0 = performance.now(), L = resolveLook(look);
+  extrasGeometries(tpl.assets.bodies[L.sex], tpl.assets, L);
+  return performance.now() - t0;
+}
+/** Round 7 perf: the mid / far body LODs (decimated once per sex, ~0.6 s each) are built at load, not on first sight. */
+export function warmBodies(tpl: HumanTemplate) { for (const b of Object.values(tpl.assets.bodies)) for (const n of [4500, 1800]) lowBody(b.geo, n); }
 export class Human {
   root = new THREE.Group();
   model: THREE.Object3D;

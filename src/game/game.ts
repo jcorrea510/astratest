@@ -10,7 +10,7 @@ import { precinctCarSpots } from '../world/precinct';
 import { buildCity, type CityVisuals } from '../world/citybuild';
 import { worldGlass } from '../world/glass';
 import type { Assets } from '../world/assets';
-import { Human, loadHumanTemplate, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
+import { Human, loadHumanTemplate, warmBodies, type HumanTemplate, randomLook, PLAYER_DEFAULT_LOOK } from '../actors/human';
 import { Character } from '../actors/character';
 import { CameraRig } from './camera';
 import { PlayerController } from './player';
@@ -206,6 +206,7 @@ export class Game {
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
+    this.crowd.onNewLook = l => this.pop.queueWarm(l); // Round 7 perf: build a far person's hair / clothes extras before they come close
     for (const r of this.buses.routes) for (const st of r.stops) this.crowd.clearSlotsNear(st.x, st.z, 14); // no parking at bus stops
     this.crowd.wire(this.traffic, this.pop, () => ({ traffic: this.trafficCap ?? this.renderer.quality.traffic, peds: this.pop.maxCivilians })); // far crowd hands over to real cars/people (no vanishing)
     this.police = new Police(this.city, this.pop, this.traffic, this.audio, this.renderer.scene);
@@ -427,6 +428,10 @@ export class Game {
       this.pop.update(0.2, this.renderer.camera, this.player.pos, this.renderer.quality.pedestrians);
     }
     this.crowd.update(0.1, this.player.pos, this.crowdCaps());
+    this.pop.warmStep(120_000); // behind the loading screen: every look on the streets so far
+    // Round 7 perf: build the emergency-vehicle models and the body LODs behind the loading screen (they were built during
+    // the first seconds of play: 0.6-0.75 s freezes each)
+    warmBodies(this.humanTpl); for (const k of this.warmKinds.splice(0)) getTemplate(k);
     this.pop.prewarming = this.traffic.prewarming = this.crowd.prewarming = false;
     // compile the cop/gun shader variants now (off to the side, one frame) so the first fight doesn't hitch
     try {
@@ -686,6 +691,7 @@ export class Game {
     this.buses.update(dt, this.player.pos);
     this.taxi.update(dt); this.taxiJob.update(dt);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
+    this.pop.warmStep(2);
     this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);

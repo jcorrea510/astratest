@@ -3,7 +3,8 @@ import { pedImpact } from './impact';
 import * as THREE from 'three';
 import { Npc, NpcBrainRunner, streetClock, type NpcEnv, type Role } from '../actors/npc';
 import { pedActivity, districtNightFactor } from './schedule';
-import { randomLook, type HumanTemplate, type Look } from '../actors/human';
+import { randomLook, warmLookExtras, type HumanTemplate, type Look } from '../actors/human';
+import type { FullLook } from '../actors/look';
 import type { CityMap } from '../world/citymap';
 import { DISTRICT_INFO, districtAt, surfaceAt } from '../world/citymap';
 import type { Character } from '../actors/character';
@@ -85,6 +86,22 @@ export class Population {
       if (n.brain === 'idle') { c.yaw = Math.atan2(-dx, -dz); if (d < 4 && d > 0.01) c.move(new THREE.Vector3(dx / d * 1.8, 0, dz / d * 1.8), 0.25, false); }
     }
   }
+  // ---- Round 7 perf: look warm-up (hair / hat / garment extras are built before the person comes close)
+  private warmQ: Look[] = []; private warmKeys = new Set<string>();
+  /** build times (ms) of warmed looks (tests / tuning) */ warmMs: number[] = [];
+  queueWarm(l: Look) {
+    const f = l as Partial<FullLook>, k = `${f.sex}|${f.hairStyle}|${f.hatStyle}|${f.facial}|${f.topStyle}|${f.bottomStyle}`;
+    if (this.warmKeys.has(k)) return; this.warmKeys.add(k); this.warmQ.push(l);
+  }
+  /** Builds queued looks until `budgetMs` is used (at least one when anything is queued). */
+  private aheadSeed = -1;
+  warmStep(budgetMs: number) {
+    const t0 = performance.now();
+    // people spawned directly (drivers, shoppers, police...) take the next look seeds: warm a few of those ahead too
+    if (this.aheadSeed !== LOOK_SEED) { this.aheadSeed = LOOK_SEED; for (let k = 0; k < 12; k++) this.queueWarm(randomLook(LOOK_SEED + k)); }
+    while (this.warmQ.length && (performance.now() - t0 < budgetMs)) { const ms = warmLookExtras(this.tpl, this.warmQ.shift()!); if (this.warmMs.length < 4000) this.warmMs.push(ms); }
+  }
+  get warmPending() { return this.warmQ.length; }
   spawn(role: Role, x: number, z: number, y = 0.2, look?: Look, weapon: WeaponId = 'fists'): Npc {
     const n = new Npc(this.env.physics, this.tpl, look ?? randomLook(LOOK_SEED++), role, x, z, y);
     this.scene.add(n.char.human.root);
