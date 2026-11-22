@@ -595,6 +595,16 @@ export class NpcBrainRunner {
       return 0;
     }
     dir.copy(tv.normalize());
+    // Round 7: follow the path line, not a beeline to the far node: someone off the line (dodged, spawned, handed over
+    // from the far crowd) steps back onto it within a few metres instead of slanting across the roadway for 40 m
+    if (from !== target && !n.onCross) {
+      const ax = from.x + ox, az = from.z + oz, ux = ex / el, uz = ez / el;
+      const along = (n.pos.x - ax) * ux + (n.pos.z - az) * uz, lat = (n.pos.x - ax) * -uz + (n.pos.z - az) * ux;
+      if (Math.abs(lat) > 6 || along < -4 || along > el + 4) { n.node = -1; n.nextNode = -1; n.pend = null; return 0.6; } // lost the path: re-anchor from here (nearest kerb / own block)
+      if (Math.abs(lat) > 0.6 && along > 0 && along < el) {
+        const ahead = Math.min(el, along + 2.5); tv.set(ax + ux * ahead - n.pos.x, 0, az + uz * ahead - n.pos.z); dir.copy(tv.normalize());
+      }
+    }
     if (n.onCross) { // hurry along if the sign has started flashing
       const e = from.edges.find(q => q.to === n.nextNode);
       const sig = e?.crossing ? pedSignal(city.intersections[e.crossing.intersection], e.crossing.axis, this.env.time()) : 'walk';

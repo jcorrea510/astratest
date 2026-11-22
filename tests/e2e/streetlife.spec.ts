@@ -51,14 +51,16 @@ test('a pedestrian walks into a shop, disappears for a while, and comes back out
 
 test('night: far cars have head and tail lights; day: lights off', async ({ page }) => {
   const p = watch(page); await boot(page); await goto(page);
-  const day = await page.evaluate(() => { const g = (window as any).__game; return { vis: g.crowd.lightMesh.visible, cars: g.crowd.cars.length }; });
-  expect(day.vis).toBe(false);
+  // far cars light their lamps in their own material (uHead / uTail), drawn with the instanced bodies
+  const lamps = () => page.evaluate(() => { const g = (window as any).__game, ks = [...g.crowd.far.kinds.values()]; return { head: Math.max(0, ...ks.map((k: any) => k.mat.userData.u.uHead.value)), tail: Math.max(0, ...ks.map((k: any) => k.mat.userData.u.uTail.value)), drawn: g.crowd.far.drawn }; });
+  const day = await lamps();
+  expect(day.head).toBe(0);
   await page.evaluate(() => { (window as any).__game.hour = 23; });
   await step(page, 10, { dt: 1 / 20 });
-  const night = await page.evaluate(() => { const g = (window as any).__game; return { vis: g.crowd.lightMesh.visible, n: g.crowd.lightMesh.count, cars: g.crowd.cars.length }; });
+  const night = await lamps();
   console.log('night', JSON.stringify(night));
-  expect(night.vis).toBe(true);
-  expect(night.n).toBeGreaterThan(0);
+  expect(night.head).toBeGreaterThan(0); expect(night.tail).toBeGreaterThan(0);
+  expect(night.drawn).toBeGreaterThan(0);
   clean(p);
 });
 

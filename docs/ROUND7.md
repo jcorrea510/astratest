@@ -23,9 +23,10 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 - [ ] Z: tsc, vitest, key e2e, publish gh-pages, rebuild Mac app, owner summary.
 
 ## Overnight (owner, 22 Nov 00:15): wake up to a game that plays for hours
-- [ ] O1 AI driving: long soak with the player ramming / blocking: 0 AI-vs-AI crashes from bad turns, cars recover from player chaos, no lasting pile-ups.
-- [ ] O2 Peds: walk the sidewalks/crossings cleanly; shoppers browse, pay, leave (no piles).
-- [ ] O3 Only what you can see costs anything: per-instance culling of far cars/peds (instanced meshes are drawn whole today), shadow casters, off-screen updates.
+- [x] O1 AI driving (chaos7: 4 AI-only crashes / 3 min while the player rams + blocks, nobody stuck > 10 s, jam clears in 0.5 s): long soak with the player ramming / blocking: 0 AI-vs-AI crashes from bad turns, cars recover from player chaos, no lasting pile-ups.
+- [~] O2 Peds (walkers follow the path line + re-anchor when lost; taxis/vans use the kerb door; on-road samples 3-6.5% -> ~2-3%.
+  OPEN: a few walkers stuck in the gutter can't step up the 18 cm kerb (character autostep?) -> peds7 still red): walk the sidewalks/crossings cleanly; shoppers browse, pay, leave (no piles).
+- [~] O3 (far instances already CPU-culled; now upload only used slots) Only what you can see costs anything: per-instance culling of far cars/peds (instanced meshes are drawn whole today), shadow casters, off-screen updates.
 - [ ] O4 Long-session stability: 30+ min soak (memory, object counts, no leaks/stalls).
 - [ ] O5 Map polish found along the way.
 - [ ] Morning note: native rendering (Mac app = Electron/WebGL-on-Metal; iPad sideload options, WebGPU) - discuss, don't build blind.
