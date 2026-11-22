@@ -194,9 +194,10 @@ export class Renderer {
   updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {
     const s = sampleSky(hour, this.skyState);
     this.sky.update(s, time, this.camera.position);
-    // Rebuild the reflection environment from the sky every ~6 game minutes.
-    const dh = Math.abs(((hour - this.envHour + 36) % 24) - 12);
-    if (dh > 0.1 || this.envHour < -50) {
+    // Rebuild the reflection environment from the sky every 0.75 game hours (~45 real s). Round 8: it was every 6 game
+    // minutes = every 6 real seconds, and each rebuild (a new PMREM target) made every material re-resolve its program: a
+    // regular hitch on the Mac
+    if (envRebuildDue(hour, this.envHour)) {
       this.envHour = hour;
       this.envSky.update(s, 0, new THREE.Vector3());
       const rt = this.pmrem.fromScene(this.envScene, 0.02, 0.1, 200);
@@ -255,4 +256,10 @@ export function adaptStep(s: DynState, dt: number, now: number, adaptive: boolea
   if (s.slowT > 2500 && s.scale > DYN_MIN) { s.scale = Math.max(DYN_MIN, +(s.scale - 0.1).toFixed(2)); s.slowT = 0; s.lastResize = now; return true; }
   if (s.fastT > 8000 && s.scale < 1) { s.scale = Math.min(1, +(s.scale + 0.1).toFixed(2)); s.fastT = 0; s.lastResize = now; return true; }
   return false;
+}
+
+/** Round 8: rebuild the sky reflection map only after 0.75 game hours (or the first time / after a clock jump). Pure (tests). */
+export function envRebuildDue(hour: number, lastHour: number): boolean {
+  if (lastHour < -50) return true;
+  return Math.abs(((hour - lastHour + 36) % 24) - 12) >= 0.75;
 }

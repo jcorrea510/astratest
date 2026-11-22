@@ -1,6 +1,9 @@
 # Progress (newest first; keep short — git has history)
 
-Resume: read CLAUDE.md, docs/BRIEF6.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
+Resume: read CLAUDE.md, docs/BRIEF8.md + docs/ROUND8.md (Round 7: ROUND7.md), this file. Continue unfinished items. Owner rules in CLAUDE.md.
+
+## Round 8 (owner play-test 22 Nov on iPad + Mac) — see docs/ROUND8.md
+- [x] Mac freezes ~1/s: adaptive resolution thrash (resize on every 33 ms crossing) + lights added mid-game (full shader recompile) + sky env rebuilt every 6 s. All fixed with tests.
 
 ## Round 6b (owner play-test 21 Nov, lead fixing personally)
 - [x] Fake crashes: cars spawned moving 'crashed' into their own speed (damage, shattered windscreens, phantom accident stops). 63 → ~0 crashes / 90 s.

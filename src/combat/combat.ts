@@ -334,6 +334,7 @@ export class Combat {
 
   /** Bullet hole on a car: snapped from the coarse physics hull onto the visible paint (front faces only), never over a window opening, so it can't hang in the air. */
   private carDecal(v: Vehicle, origin: THREE.Vector3, d: THREE.Vector3, hullPoint: THREE.Vector3) {
+    if (typeof (v as { surfaceRay?: unknown }).surfaceRay !== 'function') return; // helicopters: no paint mesh to snap to (Round 8: threw)
     const t = hullPoint.distanceTo(origin), n = this.v3;
     const hit = v.surfaceRay(origin, d, Math.max(0, t - 0.4), t + 2.5, n); if (hit < 0) return;
     const p = this.v2.copy(origin).addScaledVector(d, hit);

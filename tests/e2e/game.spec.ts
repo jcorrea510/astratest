@@ -19,8 +19,9 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   // no save: no Continue, no story entries
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
   expect((await page.locator('.ma-title-menu .ma-menu-item').allTextContents()).join(' ')).not.toMatch(/story|mission|chapter/i);
-  // keyboard navigation: down to Credits (New game, Highway, Settings, Controls, Credits), open, back out with Esc
-  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');
+  // keyboard navigation: down to Credits (New game, Settings, Controls, Credits; Highway mode removed in Round 8), open, back out with Esc
+  await expect(page.locator('.ma-title-menu [data-item="highway"]')).toHaveCount(0);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
   await expect(page.locator('.ma-title-menu .ma-menu-item:focus')).toHaveText('Credits');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Open assets (CC0)')).toBeVisible();
