@@ -103,3 +103,15 @@ export function spawnGapClear(s: number, len: number, others: ReadonlyArray<{ s:
   for (const o of others) if (Math.abs(o.s - s) - (o.len + len) * 0.5 < gap) return false;
   return true;
 }
+
+/**
+ * Round 8: pedal for an AI driver from the speed error (target - current, m/s). Throttle stays proportional; braking is
+ * progressive: ~4 m/s^2 when 3 m/s too fast, ~7 at 5 m/s, full from ~8 m/s too fast (it used to be full brake from
+ * 3 m/s over: cars "slammed on the brakes" all the time). Standing at a stop: 0. Pure (tests).
+ */
+export function aiPedal(err: number, speed: number, targetSpeed: number): number {
+  if (err >= 0) return Math.min(1, err * 0.35);
+  if (targetSpeed < 0.3 && Math.abs(speed) < 0.5) return 0;
+  const e = -err;
+  return -Math.min(1, Math.max(0, e - 0.3) * 0.13);
+}

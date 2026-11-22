@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -425,7 +425,7 @@ export class Traffic {
       if (car.stuckT > 2.2) { car.reverseT = 1.4; car.stuckT = 0; }
       let throttle: number;
       if (car.reverseT > 0) { car.reverseT -= dt; throttle = -0.8; steer = -steer; }
-      else { const err = targetSpeed - speed; throttle = THREE.MathUtils.clamp(err * 0.35, -1, 1); if (targetSpeed < 0.3 && Math.abs(speed) < 0.5) throttle = 0; }
+      else throttle = aiPedal(targetSpeed - speed, speed, targetSpeed);
       v.input.throttle = throttle; v.input.steer = steer; v.input.handbrake = targetSpeed < 0.3 && Math.abs(speed) < 0.5;
       v.siren = car.mode === 'pursuit' || (car.driver.role === 'police' && car.mode === 'goto');
     }

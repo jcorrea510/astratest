@@ -132,6 +132,9 @@ export class Crowd {
   private buildSlots() {
     const r = new Rng(99);
     for (const road of this.city.roads) {
+      // Round 8: no kerbside parking on one-lane streets: a parked car there took half of the only lane ("parked cars in the
+      // middle of the road", and every passing car had to swerve round it)
+      if (!kerbParking(road.lanes)) continue;
       {
         const a = road.from + 8, b = road.to - 8;
         for (const side of [1, -1]) {
@@ -546,3 +549,6 @@ export class Crowd {
 
 /** Round 8: a far-crowd car / person may only appear in view beyond 150 m (nearer, only where the camera can't see it). Pure (tests). */
 export function spawnHidden(dist: number, inView: boolean): boolean { return inView && dist < 150; }
+
+/** Round 8: streets with kerbside parking (two lanes each way; a one-lane street has no room). Pure (tests). */
+export function kerbParking(lanes: number): boolean { return lanes >= 2; }
