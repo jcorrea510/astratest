@@ -33,7 +33,7 @@ export function buildWest(o: WestCtx) {
   const { root, physics, city, trim } = o;
   // ---- sidewalks along the curved streets (flat; the road ribbon is 3 cm above the ground, walks 5 cm)
   const walks: Ribbon = { pos: [], nor: [], uv: [], col: [] };
-  const west = city.paths.filter(p => p.kind === 'street');
+  const west = city.paths.filter(p => p.kind === 'street' && p.name !== 'Broadway'); // Round 7: Broadway's sidewalks are its cut blocks (this ribbon ran into the cross streets)
   const concrete = C('#d6d2c8');
   for (const p of west) for (const sg of [-1, 1]) ribbon(walks, p.pts, sg * p.half, sg * (p.half + SIDEWALK), 0.05, concrete);
   const wm = new THREE.Mesh(ribbonGeo(walks), o.paveMat); wm.receiveShadow = true; root.add(wm);

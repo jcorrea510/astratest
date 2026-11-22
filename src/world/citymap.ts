@@ -409,14 +409,28 @@ export function generateCity(seed = 1977): CityMap {
   // Pedestrian graph: 4 corner nodes per block, edges along sidewalks and crosswalks
   const cornerId = new Map<string, number>();
   const inset = 2.2;
+  const diagTips: { b: Block; A: number; D: number; Cn: number; E: number }[] = [];
   for (const b of blocks) {
+    if (b.diag) {
+      // Round 7: a block cut by Broadway is two triangular sidewalks; its north-west and south-east corners lie in Broadway's
+      // roadway, so peds used to walk diagonally through traffic. Each triangle gets its own loop, and the cut corners
+      // hand the north / south crossings to one triangle and the west / east crossings to the other.
+      const k = BROADWAY.channel * Math.SQRT2, add = (x: number, z: number) => { pedNodes.push({ id: pedNodes.length, x, z, blockId: b.id, edges: [] }); return pedNodes.length - 1; };
+      const A = add(b.x0 + k + inset * 1.6, b.z0 + inset), B = add(b.x1 - inset, b.z0 + inset), Cn = add(b.x1 - inset, b.z1 - k - inset * 1.6);
+      const D = add(b.x0 + inset, b.z0 + k + inset * 1.6), E = add(b.x1 - k - inset * 1.6, b.z1 - inset), F = add(b.x0 + inset, b.z1 - inset);
+      for (const [a, c] of [[A, B], [B, Cn], [Cn, A], [D, F], [F, E], [E, D]]) { pedNodes[a].edges.push({ to: c, crossing: null }); pedNodes[c].edges.push({ to: a, crossing: null }); }
+      const key = (t: string) => `${b.ix},${b.iz},${t}`;
+      cornerId.set(key('ne'), B); cornerId.set(key('sw'), F);
+      diagTips.push({ b, A, D, Cn, E });
+      continue;
+    }
     const corners: [number, number, string][] = [[b.x0 + inset, b.z0 + inset, 'nw'], [b.x1 - inset, b.z0 + inset, 'ne'], [b.x1 - inset, b.z1 - inset, 'se'], [b.x0 + inset, b.z1 - inset, 'sw']];
     for (const [x, z, tag] of corners) { cornerId.set(`${b.ix},${b.iz},${tag}`, pedNodes.length); pedNodes.push({ id: pedNodes.length, x, z, blockId: b.id, edges: [] }); }
     const ids = ['nw', 'ne', 'se', 'sw'].map(t => cornerId.get(`${b.ix},${b.iz},${t}`)!);
     for (let k = 0; k < 4; k++) { const a = ids[k], c = ids[(k + 1) % 4]; pedNodes[a].edges.push({ to: c, crossing: null }); pedNodes[c].edges.push({ to: a, crossing: null }); }
   }
   const link = (a: string, c: string, inter: Intersection, axis: 'x' | 'z') => {
-    const ia = cornerId.get(a), ic = cornerId.get(c);
+    const ia = cornerId.get(`${a}:${axis}`) ?? cornerId.get(a), ic = cornerId.get(`${c}:${axis}`) ?? cornerId.get(c);
     if (ia === undefined || ic === undefined) return;
     pedNodes[ia].edges.push({ to: ic, crossing: { intersection: inter.id, axis } });
     pedNodes[ic].edges.push({ to: ia, crossing: { intersection: inter.id, axis } });
@@ -429,6 +443,23 @@ export function generateCity(seed = 1977): CityMap {
   for (let i = 0; i < nx - 1; i++) for (let j = 0; j < nz - 2; j++) {
     link(`${i},${j},sw`, `${i},${j + 1},nw`, interGrid[i][j + 1], 'x');
     link(`${i},${j},se`, `${i},${j + 1},ne`, interGrid[i + 1][j + 1], 'x');
+  }
+  // the triangles' tips cross straight over to a point on the neighbouring block's facing sidewalk (that edge is split)
+  const splitEdge = (u: number | undefined, v: number | undefined, x: number, z: number, blockId: number): number | null => {
+    if (u === undefined || v === undefined) return null;
+    pedNodes[u].edges = pedNodes[u].edges.filter(e => e.to !== v); pedNodes[v].edges = pedNodes[v].edges.filter(e => e.to !== u);
+    const P = pedNodes.length; pedNodes.push({ id: P, x, z, blockId, edges: [{ to: u, crossing: null }, { to: v, crossing: null }] });
+    pedNodes[u].edges.push({ to: P, crossing: null }); pedNodes[v].edges.push({ to: P, crossing: null });
+    return P;
+  };
+  const cross = (a: number, c: number | null, inter: Intersection, axis: 'x' | 'z') => { if (c === null) return; pedNodes[a].edges.push({ to: c, crossing: { intersection: inter.id, axis } }); pedNodes[c].edges.push({ to: a, crossing: { intersection: inter.id, axis } }); };
+  const blockAt = (i: number, j: number) => blocks.find(q => q.ix === i && q.iz === j);
+  for (const { b, A, D, Cn, E } of diagTips) {
+    const i = b.ix, j = b.iz, up = blockAt(i, j - 1), left = blockAt(i - 1, j), right = blockAt(i + 1, j), down = blockAt(i, j + 1);
+    if (up) cross(A, splitEdge(cornerId.get(`${i},${j - 1},sw`), cornerId.get(`${i},${j - 1},se`), pedNodes[A].x, up.z1 - inset, up.id), interGrid[i][j], 'x');
+    if (left) cross(D, splitEdge(cornerId.get(`${i - 1},${j},ne`), cornerId.get(`${i - 1},${j},se`), left.x1 - inset, pedNodes[D].z, left.id), interGrid[i][j], 'z');
+    if (right) cross(Cn, splitEdge(cornerId.get(`${i + 1},${j},nw`), cornerId.get(`${i + 1},${j},sw`), right.x0 + inset, pedNodes[Cn].z, right.id), interGrid[i + 1][j + 1], 'z');
+    if (down) cross(E, splitEdge(cornerId.get(`${i},${j + 1},nw`), cornerId.get(`${i},${j + 1},ne`), pedNodes[E].x, down.z0 + inset, down.id), interGrid[i + 1][j + 1], 'x');
   }
 
   // West extension: lots along the curved frontages, sidewalks for pedestrians

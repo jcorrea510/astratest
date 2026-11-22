@@ -9,6 +9,8 @@ import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
 
 export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vector3 }
+/** Headlight spot intensity (renderer units, decay 1.1): bright pool on the road out to ~25 m. */
+export const HEADLIGHT_CD = 420;
 export class VehicleManager {
   list: Vehicle[] = [];
   onCrash: ((e: CrashEvent) => void) | null = null;
@@ -103,7 +105,31 @@ export class VehicleManager {
   }
   /** Max cars that cast shadows at once (nearest first); set from the graphics preset. */
   shadowBudget = 10;
+  /** Round 7: real headlight spots (no shadows) for the player's car and the nearest lit cars; the count is fixed per
+   * graphics preset (set by the game) so the light count never changes mid-play (no shader recompiles). */
+  private heads: { l: THREE.SpotLight; t: THREE.Object3D }[] = [];
+  setHeadlightCount(n: number) {
+    while (this.heads.length < n) {
+      const l = new THREE.SpotLight(0xfff0d8, 0, 55, 0.5, 0.55, 1.1), t = new THREE.Object3D();
+      l.target = t; l.castShadow = false; this.scene.add(l, t); this.heads.push({ l, t });
+    }
+    while (this.heads.length > n) { const h = this.heads.pop()!; this.scene.remove(h.l, h.t); h.l.dispose(); }
+  }
+  private updateHeadlights(night: number, listener: THREE.Vector3, pv: Vehicle | null) {
+    if (!this.heads.length) return;
+    const lit = this.list.filter(v => v.headOn && v.position.distanceToSquared(listener) < 90 * 90);
+    lit.sort((a, b) => (a === pv ? -1e9 : a.position.distanceToSquared(listener)) - (b === pv ? -1e9 : b.position.distanceToSquared(listener)));
+    for (let i = 0; i < this.heads.length; i++) {
+      const h = this.heads[i], v = lit[i];
+      if (!v || night < 0.05) { h.l.intensity = 0; continue; }
+      const f = v.phys.forward(), L = v.phys.layout, front = (L.half[2] ?? 2.2) + (L.zCenter ?? 0);
+      h.l.position.set(v.position.x + f.x * front, v.position.y + 0.35, v.position.z + f.z * front);
+      h.t.position.set(v.position.x + f.x * (front + 22), v.position.y - 1.2, v.position.z + f.z * (front + 22));
+      h.l.intensity = HEADLIGHT_CD * Math.min(1, night * 1.6);
+    }
+  }
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
+    this.updateHeadlights(night, listener, playerVehicle);
     this.updateSkidAudio(playerVehicle);
     this.updatePlayerSiren(playerVehicle);
     for (const v of [...this.list]) {

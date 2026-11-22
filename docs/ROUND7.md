@@ -7,6 +7,6 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 - [x] G4 NPC reactions (sliding car registered no hit -> body shoved into street; now ground-speed hits + unsink): hands up wrists-first (not elbows), "come here" — they don't flee before the order lands, walk briskly with hands still up, car side-hit ragdoll doesn't sink/jitter through the floor.
 - [ ] G5 Gore (cheap): headshot can remove the head (blood spurt), limb hits show a wound decal + blood spray/drip; budgeted particles; settings toggle.
 - [ ] G6 Walk-in gun store (wall arsenal, look at a gun to select/buy), garages (repair + repaint), more car variety.
-- [ ] G7 World/visuals: cross-street intersections — sidewalks/lamp posts out of the road, peds walk clean lines; headlights light the world (cheap spot lights on nearest cars); low-quality traffic lights coloured; street-light pool flat on the ground.
+- [x] G7 World/visuals (Broadway ribbon/lamps/ped graph fixed; spot headlights 1/2/4 by preset; Low signal colours; pools on ground): cross-street intersections — sidewalks/lamp posts out of the road, peds walk clean lines; headlights light the world (cheap spot lights on nearest cars); low-quality traffic lights coloured; street-light pool flat on the ground.
 - [x] G8 Controls (click-to-aim default on Mac + trackpad swipe aims; car wheel + aim draws last gun): KBM aim in the Mac app (pointer lock), in a car hold Tab = sidearm wheel, hold RMB = last weapon.
 - [ ] Z: tsc, vitest, key e2e, publish gh-pages, rebuild Mac app, owner summary.

@@ -2,14 +2,14 @@
 export type QualityName = 'low' | 'medium' | 'high';
 export interface QualityPreset {
   pixelRatio: number; shadowMap: number; shadowRange: number; bloom: boolean; msaa: number;
-  drawDistance: number; pedestrians: number; traffic: number; pointLights: number; particles: number;
+  drawDistance: number; pedestrians: number; traffic: number; pointLights: number; /** real headlight spots (Round 7) */ headlights: number; particles: number;
   /** cheap instanced far crowds (src/game/crowd.ts): distant cars, pedestrians, curbside parked cars */
   farCars: number; farPeds: number; parked: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, particles: 300, farCars: 220, farPeds: 140, parked: 110 },
-  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, particles: 700, farCars: 420, farPeds: 340, parked: 250 },
-  high: { pixelRatio: 1.25, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, particles: 1200, farCars: 560, farPeds: 520, parked: 380 },
+  low: { pixelRatio: 0.75, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, headlights: 1, particles: 300, farCars: 220, farPeds: 140, parked: 110 },
+  medium: { pixelRatio: 1, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, headlights: 2, particles: 700, farCars: 420, farPeds: 340, parked: 250 },
+  high: { pixelRatio: 1.25, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, headlights: 4, particles: 1200, farCars: 560, farPeds: 520, parked: 380 },
 };
 
 export type Action =

@@ -76,6 +76,8 @@ export class Vehicle {
   driver: Character | null = null;
   input: DriveInput = { throttle: 0, steer: 0, handbrake: false };
   headlights = false;
+  /** headlights lit this frame (Round 7: the manager gives the nearest lit cars a real spot light) */
+  headOn = false;
   /** Emergency lights + sound driven by AI units (police dispatch sets this). */
   siren = false;
   /** Player-controlled siren tone: 0 off, 1 wail, 2 yelp, 3 phaser. */
@@ -415,6 +417,7 @@ export class Vehicle {
     const u = this.material.userData.u;
     const occupied = !!this.driver || this.persistent;
     const on = (this.headlights || night > 0.35) && !this.destroyed && !this.lightsBroken && occupied;
+    this.headOn = on;
     u.uHead.value = on ? 2.2 : 0;
     if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.5 * night : 0; this.beam.visible = on && night > 0.05; }
     const lit = !this.destroyed && occupied;

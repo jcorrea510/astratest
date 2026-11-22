@@ -149,7 +149,7 @@ export function genWestLots(paths: PathRoad[], startId: number, rng: Rng, sidewa
 
 /** Sidewalk pedestrian nodes along both sides of every west street, joined into the existing graph. */
 export function genWestPeds(paths: PathRoad[], nodes: PedNode[], sidewalk: number, east = false) {
-  const west = paths.filter(pp => pp.kind === 'street' && isEastPath(pp) === east);
+  const west = paths.filter(pp => pp.kind === 'street' && isEastPath(pp) === east && pp.name !== 'Broadway'); // Round 7: Broadway's cut blocks carry its sidewalks (these nodes led peds across the cross streets)
   const firstWest = nodes.length;
   const chains: number[][] = [];
   const link = (a: number, b: number) => { nodes[a].edges.push({ to: b, crossing: null }); nodes[b].edges.push({ to: a, crossing: null }); };

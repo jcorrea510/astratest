@@ -48,6 +48,7 @@ import type { HeliVariant } from '../vehicles/helicopterModel';
 import { Blood } from '../render/blood'; // R6-F
 import { CombatFx } from '../ui/combatfx';
 import { Orders } from './orders';
+import { signalLampColors } from '../render/signalColors';
 import { TaxiRide } from './taxiRide';
 import { TaxiJob } from './taxiJob';
 
@@ -672,6 +673,7 @@ export class Game {
     this.combat.update(dt);
     this.pop.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 26 : 16;
     this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
+    this.vehicles.setHeadlightCount(this.renderer.quality.headlights ?? 1);
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
@@ -770,17 +772,32 @@ export class Game {
     this.lampBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.6), toneMapped: false }), heads.length);
     this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.62, 0.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
     const m = new THREE.Matrix4();
-    heads.forEach((h, i) => { m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, 0.21, h.z); this.lampPools.setMatrixAt(i, m); });
+    this.lampPoolY = heads.map(h => this.groundUnder(h));
+    heads.forEach((h, i) => { m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, this.lampPoolY[i], h.z); this.lampPools.setMatrixAt(i, m); });
     this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere();
     this.lampPools.renderOrder = 1;
     this.renderer.scene.add(this.lampBulbs, this.lampPools);
     for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffc98a, 0, 22, 1.6); this.renderer.scene.add(l); this.lampLights.push(l); }
   }
+  /**
+   * Round 7: height for a lamp's light pool: the lowest ground among five rays under the head (+3 cm), so the pool lies
+   * flat on the road (the raised pavement simply hides its edge) instead of hovering at a fixed 0.21 m, or far below a
+   * freeway deck. Pure apart from the rays.
+   */
+  private groundUnder(h: THREE.Vector3): number {
+    let lo = Infinity;
+    for (const [dx, dz] of [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]]) {
+      const hit = this.physics.ray(h.x + dx, h.y - 0.6, h.z + dz, 0, -1, 0, 14, groups(0xffff, G_STATIC));
+      if (hit) lo = Math.min(lo, h.y - 0.6 - hit.toi);
+    }
+    return (Number.isFinite(lo) ? lo : 0) + 0.03;
+  }
+  lampPoolY: number[] = [];
   /** A lamp head broken (on=false) or restored: bulb, light pool and the nearest-light pick all follow. */
   private setLamp(i: number, on: boolean) {
     const h = this.visuals.lampHeads[i], o = this.lampOrig[i]; if (!h || !o || !this.lampBulbs) return;
     const m = new THREE.Matrix4();
-    if (on) { h.copy(o); m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, 0.21, h.z); this.lampPools.setMatrixAt(i, m); }
+    if (on) { h.copy(o); m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, this.lampPoolY[i] ?? 0.03, h.z); this.lampPools.setMatrixAt(i, m); }
     else { h.set(0, -5000, 0); m.makeScale(0, 0, 0); this.lampBulbs.setMatrixAt(i, m); this.lampPools.setMatrixAt(i, m); }
     this.lampBulbs.instanceMatrix.needsUpdate = true; this.lampPools.instanceMatrix.needsUpdate = true;
   }
@@ -805,7 +822,7 @@ export class Game {
     this.signalTimer -= 1;
     if (this.signalTimer > 0) return; this.signalTimer = 8;
     const lamps = this.visuals.signalLamps;
-    const cols = { red: new THREE.Color(14, 0.6, 0.5), yellow: new THREE.Color(14, 8, 0.6), green: new THREE.Color(1, 14, 5.5) };
+    const cols = signalLampColors(this.renderer.quality.bloom);
     const off = new THREE.Color(0.06, 0.06, 0.06);
     for (const h of this.visuals.signalHeads) {
       const st = signalState(this.city.intersections[h.inter], h.axis, this.time);

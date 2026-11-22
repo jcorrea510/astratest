@@ -130,7 +130,9 @@ export function buildExpansion(
       }
       // lights
       lampSince += segLen;
-      if (lampSince > (p.kind === 'freeway' ? 45 : 36)) {
+      // Round 7: no lamp right at a path's end: there the side offset lands in the cross street of the junction
+      const end = p.pts[p.pts.length - 1], nearEnd = !p.elevated && Math.hypot(b.x - end.x, b.z - end.z) < 14;
+      if (lampSince > (p.kind === 'freeway' ? 45 : 36) && !nearEnd) {
         lampSince = 0;
         const sg = p.kind === 'freeway' ? ((i % 2) ? 1 : -1) : 1;
         const off = p.half + (p.elevated ? 0.35 : 1.2);
