@@ -24,7 +24,7 @@ test('2 min downtown: walkers stay off the roadway except at crossings, nobody f
         samples++;
         const surf = g.combat.groundSurface(n.pos.x, n.pos.z);
         if (surf === 'road' && !nearX(n.pos.x, n.pos.z)) { onRoad++; if (roadWhere.length < 8 && f % 90 === 0) { const a = g.city.pedNodes[n.node], b = g.city.pedNodes[n.nextNode]; roadWhere.push([+n.pos.x.toFixed(1), +n.pos.z.toFixed(1), n.id, n.activity, !!n.buddy, +n.laneOffset.toFixed(2), +n.sideT.toFixed(2), a ? [a.x, a.z] : null, b ? [b.x, b.z] : null, n.onCross, n.pend?.crossing ? 'pc' : '']); } }
-        const st = n.char.speed < 0.15 && !n.activity && !n.pend?.crossing ? (still.get(n) ?? 0) + 0.5 : 0; // (waiting for WALK at a crossing is not frozen) still.set(n, st); if (st === 20) frozen++;
+        const st = n.char.speed < 0.15 && !n.activity && !n.pend?.crossing ? (still.get(n) ?? 0) + 0.5 : 0; still.set(n, st); if (st === 20) frozen++; // (waiting for WALK at a crossing is not frozen)
       }
     }
     return { samples, onRoad, roadWhere, frozen, npcs: P.npcs.length };
