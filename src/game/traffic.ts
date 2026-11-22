@@ -497,11 +497,11 @@ export class Traffic {
     if (dist < -4) { car.stopPlan = null; return ts; }
     if (dist < 1.6 && Math.abs(v.speed) < 0.7) { // arrived: do the thing
       if (plan.kind === 'drop' || plan.kind === 'deliver') {
-        const p = v.doorPoint(1), n = this.pop.spawn('civilian', p.x, p.z, Math.max(0.2, v.position.y), undefined);
+        const p = v.doorPoint(-1), n = this.pop.spawn('civilian', p.x, p.z, Math.max(0.2, v.position.y), undefined);
         n.node = -1; n.nextNode = -1; n.char.yaw = v.yaw; n.char.human.playAction('exit_car');
         car.stopT = plan.kind === 'deliver' ? 18 + Math.random() * 22 : 5 + Math.random() * 4;
       } else if (plan.npc && plan.npc.alive && plan.npc.brain === 'idle') {
-        const n = plan.npc, p = v.doorPoint(1);
+        const n = plan.npc, p = v.doorPoint(-1); // Round 7: the kerb-side door (the street side sent people across the road)
         this.pop.runner.endAct(n); n.brain = 'wander'; n.activity = 'taxi'; n.destPt = new THREE.Vector3(p.x, n.pos.y, p.z); n.stateT = 0;
         car.stopT = 16;
       } else { car.stopPlan = null; return ts; }

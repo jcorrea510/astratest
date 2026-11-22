@@ -80,7 +80,7 @@ export class TaxiRide {
     const v = c.v, pl = this.h.player;
     const fare = Math.min(this.h.money, this.fare);
     if (fare > 0) this.h.addMoney(-fare);
-    const p = v.doorPoint(1);
+    const p = v.doorPoint(-1); // kerb side
     this.h.scene.add(pl.human.root);
     pl.place(p.x, Math.max(p.y, v.position.y - 0.2), p.z, v.yaw);
     pl.inVehicle = null; pl.setCollision(true); pl.human.setState('loco');

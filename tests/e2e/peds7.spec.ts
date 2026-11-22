@@ -20,7 +20,7 @@ test('2 min downtown: walkers stay off the roadway except at crossings, nobody f
       g.frame(1 / 30, false);
       if (f % 15) continue;
       for (const n of P.npcs) {
-        if (!n.alive || n.far || n.char.inVehicle || n.brain !== 'wander' || n.char.ragdoll) continue;
+        if (!n.alive || n.far || n.char.inVehicle || n.brain !== 'wander' || n.char.ragdoll || n.activity === 'taxi') continue; // (getting into a cab at the kerb)
         samples++;
         const surf = g.combat.groundSurface(n.pos.x, n.pos.z);
         if (surf === 'road' && !nearX(n.pos.x, n.pos.z)) { onRoad++; if (roadWhere.length < 5) roadWhere.push([+n.pos.x.toFixed(1), +n.pos.z.toFixed(1)]); }
