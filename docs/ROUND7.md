@@ -24,9 +24,8 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 
 ## Overnight (owner, 22 Nov 00:15): wake up to a game that plays for hours
 - [x] O1 AI driving (chaos7: 4 AI-only crashes / 3 min while the player rams + blocks, nobody stuck > 10 s, jam clears in 0.5 s): long soak with the player ramming / blocking: 0 AI-vs-AI crashes from bad turns, cars recover from player chaos, no lasting pile-ups.
-- [~] O2 Peds (walkers follow the path line + re-anchor when lost; taxis/vans use the kerb door; on-road samples 3-6.5% -> ~2-3%.
-  OPEN (next): walkers in the gutter can't step up the 18 cm kerb - probe: spawn at (-110,0.05,-6.5), push towards z<-8:
-  they stop at z -7.7..-7.9 (Character.sweep/findLedge; player not checked). Fix, then peds7 (< 2.5 %) goes green): walk the sidewalks/crossings cleanly; shoppers browse, pay, leave (no piles).
+- [x] O2 Peds: path following + re-anchoring, kerb-side doors, and walkers no longer stall in the gutter (the step-up fallback
+  looked for a 0.25 m+ face; a kerb is 0.18 m). peds7: on-road 3-6.5 % -> 0.3-1.8 %, frozen excludes WALK waits. Patrols spawn on their own timer.
 - [~] O3 (far instances already CPU-culled; now upload only used slots) Only what you can see costs anything: per-instance culling of far cars/peds (instanced meshes are drawn whole today), shadow casters, off-screen updates.
 - [ ] O4 Long-session stability: 30+ min soak (memory, object counts, no leaks/stalls).
 - [ ] O5 Map polish found along the way.

@@ -63,6 +63,7 @@ export class Traffic {
   private monT = 0; private lastProbe: LaneProbe | null = null;
   /** consecutive-frame bookkeeping for tests / diagnostics */
   stats = { jamBreaks: 0, jamDespawns: 0, honks: 0, yields: 0 };
+  private patrolT = 15; private forcePatrol = false;
   /**
    * Subscribe to traffic violations committed by the player while driving: {kind: 'red_light'|'speeding'|'wrong_way'|'collision'|'reckless', pos}.
    * Returns an unsubscribe function. Events are rate limited per kind, so the police can report each one directly.
@@ -628,9 +629,13 @@ export class Traffic {
       this.laneT = this.prewarming ? 0 : 0.5; this.nearLanes.length = 0;
       for (const l of this.city.lanes) { if (l.connector || l.length < 30) continue; const a = l.points[0], b = l.points[l.points.length - 1]; const dx = (a.x + b.x) / 2 - focus.x, dz = (a.z + b.z) / 2 - focus.z; if (dx * dx + dz * dz < 190 * 190) this.nearLanes.push(l); }
     }
-    this.spawnT -= dt;
+    this.spawnT -= dt; this.patrolT -= dt;
     const ambient = this.cars.filter(c => c.mode === 'cruise' && !c.persistent).length;
-    if (this.spawnT <= 0 && ambient < this.maxCars) {
+    // Round 7: most cars near the player now come from the far crowd, so the ambient spawner below rarely runs and patrols
+    // stopped appearing: give one cruiser its own timer (on top of the cap) while nobody is patrolling
+    const patrolling = this.cars.some(c => c.patrol);
+    if (!this.prewarming && this.patrolT <= 0 && !patrolling && ambient > 5) { this.patrolT = 25 + Math.random() * 25; this.forcePatrol = true; }
+    if (this.spawnT <= 0 && (ambient < this.maxCars || this.forcePatrol)) {
       this.spawnT = this.prewarming ? 0 : 0.18;
       for (let tries = 0; tries < 12; tries++) {
         if (!this.nearLanes.length) break;
@@ -648,9 +653,9 @@ export class Traffic {
         if (this.farObs.some(o => Math.abs(o.x - p.x) < 12 && Math.abs(o.z - p.z) < 12)) continue;
         if (this.pop.npcs.some(n => !n.char.inVehicle && Math.hypot(n.char.pos.x - p.x, n.char.pos.z - p.z) < 4)) continue; // never on top of a person // a far-crowd car is drawn there: never spawn a second (different) car on top of it
         // now and then an ambient police cruiser rolls by on patrol (max two, only while the heat is off)
-        if (!this.prewarming && ambient > 5 && Math.random() < 0.05 && this.cars.filter(c => c.patrol).length < 2) {
-          const pc = this.spawnOnLane('police', lane, s, 'cruise', 'police', COP_LOOK); pc.patrol = true; pc.maxSpeed = lane.speed * 0.85;
-        } else this.spawnOnLane(this.pickKind(), lane, s);
+        if (this.forcePatrol || (!this.prewarming && ambient > 5 && Math.random() < 0.05 && this.cars.filter(c => c.patrol).length < 2)) {
+          const pc = this.spawnOnLane('police', lane, s, 'cruise', 'police', COP_LOOK); pc.patrol = true; pc.maxSpeed = lane.speed * 0.85; this.forcePatrol = false;
+        } else if (ambient < this.maxCars) this.spawnOnLane(this.pickKind(), lane, s);
         break;
       }
     }
