@@ -6,6 +6,7 @@
  * pedestrian is handed over to a real one up close, the same person carries on walking.
  */
 import * as THREE from 'three';
+import { uploadUsed } from '../vehicles/farCars';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { lowBody, type HumanTemplate } from './human';
 import type { BodyBase } from './humanAssets';
@@ -183,7 +184,7 @@ export class CrowdPeople {
   end() {
     for (const s of this.sexes.values()) {
       s.mesh.count = s.n; s.mesh.visible = s.n > 0;
-      if (s.n) { s.mesh.instanceMatrix.needsUpdate = true; for (const a of s.data) a.needsUpdate = true; }
+      if (s.n) { uploadUsed(s.mesh.instanceMatrix, s.n); for (const a of s.data) uploadUsed(a, s.n); } // Round 7 perf: used instances only
     }
   }
 }

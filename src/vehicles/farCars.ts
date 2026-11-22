@@ -19,6 +19,8 @@ export function kindPaint(kind: VehicleKind, index: number, out = new THREE.Colo
   const paints = VEHICLES[kind].paints; return out.set(paints[((index % paints.length) + paints.length) % paints.length]).convertSRGBToLinear();
 }
 
+/** Marks only the first `n` instances of a per-instance attribute for upload (not the whole capacity). */
+export function uploadUsed(a: THREE.BufferAttribute, n: number) { a.clearUpdateRanges(); a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; }
 export class FarCars {
   private kinds = new Map<VehicleKind, KindMesh>();
   /** instances drawn last frame (tests/stats) */ drawn = 0;
@@ -68,7 +70,7 @@ export class FarCars {
   end(night: number) {
     for (const k of this.kinds.values()) {
       k.mesh.count = k.n; k.mesh.visible = k.n > 0;
-      if (k.n) { k.mesh.instanceMatrix.needsUpdate = true; k.paint.needsUpdate = true; }
+      if (k.n) { uploadUsed(k.mesh.instanceMatrix, k.n); uploadUsed(k.paint, k.n); } // Round 7 perf: only the instances in use go to the GPU
       const u = k.mat.userData.u, on = night > 0.35;
       u.uHead.value = on ? 2.2 : 0; u.uTail.value = on ? 1.2 : 0; u.uLight.value = Math.max(0.6, night * 2.5);
     }
