@@ -42,11 +42,12 @@ test('a corpse takes rounds: blood, a jolt, and the round stops in the body', as
     const p0 = n.char.pos.clone(), wounds0 = g.blood.woundCount, splats0 = g.blood.splatCount;
     g.pcombat.give('shotgun', 20); g.pcombat.inv.select('shotgun');
     const o = g.player.pos.clone(); o.y += 1.5;
-    const target = n.char.human.root.position.clone(); target.y += 0.15;
+    for (let i = 0; i < 2; i++) g.frame(1 / 30, true); // bones in their lying pose
+    const hips = n.char.human.model.getObjectByName('DEF-hips') ?? n.char.human.model.getObjectByName('DEF-spine001'); const target = new (g.player.pos.constructor)(); hips.getWorldPosition(target);
     const d = target.clone().sub(o).normalize();
     const hits = g.combat.shoot(g.player, g.pcombat.inv.def, o, d, 0.0);
     for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
-    return { hitBody: hits.some((h: any) => h.target === n.char), wounds: g.blood.woundCount - wounds0, splats: g.blood.splatCount - splats0, moved: n.char.pos.distanceTo(p0) };
+    return { hitBody: hits.some((h: any) => h.target === n.char), kinds: hits.map((h: any) => h.kind), wounds: g.blood.woundCount - wounds0, splats: g.blood.splatCount - splats0, moved: n.char.pos.distanceTo(p0), dbg: { inPop: g.pop.npcs.includes(n), alive: n.char.alive, dead: n.char.deadTime, brain: n.brain, root: n.char.human.root.position.toArray().map((x: number) => +x.toFixed(2)), pl: g.player.pos.toArray().map((x: number) => +x.toFixed(2)), blood: g.blood.enabled } };
   });
   console.log('corpse', JSON.stringify(r));
   expect(r.hitBody).toBe(true);

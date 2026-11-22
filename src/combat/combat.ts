@@ -754,5 +754,5 @@ export function slumpOccupant(c: Character, v: Vehicle) {
 
 /** Round 8: a dead body still lying in the world (not in a car, not yet cleaned up) can be shot. Pure (tests). */
 export function corpseShootable(c: { alive: boolean; inVehicle: unknown; deadTime: number }): boolean {
-  return !c.alive && !c.inVehicle && c.deadTime > 0.15 && c.deadTime < 120;
+  return !c.alive && !c.inVehicle && c.deadTime < 120;
 }

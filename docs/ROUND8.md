@@ -13,11 +13,11 @@ Resume here after a limit/compaction: first unticked group. Every fix gets a reg
   arm out the window; 2-door cars seat you in the back; 2-door brakes oddly weak; truck drives sideways like a crab.
 - [ ] D Traffic + peds: no pile-ups (keep the amount), no phantom braking, no two cars in one lane, parked cars in the road,
   cars phased into each other at crosswalks, peds colliding at crossings, peds running into the street, random hands-up.
-- [ ] E Stores: no smash case in the gun store, more gun stores, robbed store still sells later, can rob the till after the clerk is
+- [x] E (558ec14) Stores: no smash case in the gun store, more gun stores, robbed store still sells later, can rob the till after the clerk is
   shot, clerk fights back harder, a knocked-out clerk stays down, closed store's door can't be walked through, all stores reopen
   on death, bank easy to find on the map.
-- [ ] F Combat + gore: much more gore, shoot corpses (more blood, holes, body moves), peds flee hard from gunfire, cops shoot
+- [~] F (558ec14) Combat + gore (corpses shootable, denser blood, car-hit blood, panic, cop bursts, quicker arrest; e2e pending): much more gore, shoot corpses (more blood, holes, body moves), peds flee hard from gunfire, cops shoot
   faster, windshield shots always register, arrest is quick and clean.
-- [ ] G Orders: hold G; passengers walk to and get in the passenger seat; order them out again.
-- [ ] H Remove Highway mode.
+- [x] G (558ec14) Orders: hold G; passengers walk to and get in the passenger seat; order them out again.
+- [x] H (558ec14) Remove Highway mode.
 - [ ] Z Publish (site + Mac app), version shown in the menu/HUD.

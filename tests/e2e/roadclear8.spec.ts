@@ -16,8 +16,10 @@ test('no static obstacle in any lane', async ({ page }) => {
       const sp = { x: 0, z: 0, dx: 0, dz: 1, y: 0 } as any;
       for (let s = 1; s < l.length - 1; s += 3) {
         sample(l, s, sp); n++;
-        const y = (sp.y ?? 0) + 1.0;
-        if (g.physics.overlapsCapsule(sp.x, y, sp.z, 0.5, 0.35, filt)) hits.push({ x: Math.round(sp.x), z: Math.round(sp.z), y: Math.round(y), lane: l.id });
+        // stand on the real road surface (a hill lane's stored heights can sit under the terrain mesh)
+        const gr = g.physics.ray(sp.x, (sp.y ?? 0) + 4, sp.z, 0, -1, 0, 8, ((0xffff) << 16) | G_STATIC);
+        const y = (gr ? (sp.y ?? 0) + 4 - gr.toi : (sp.y ?? 0)) + 1.35; // 0.65-2.05 m above the road: posts and pillars
+        if (g.physics.overlapsCapsule(sp.x, y, sp.z, 0.4, 0.3, filt)) hits.push({ x: Math.round(sp.x), z: Math.round(sp.z), y: Math.round(y), lane: l.id });
       }
     }
     return { n, hits: hits.slice(0, 40), total: hits.length };

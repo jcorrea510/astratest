@@ -322,7 +322,7 @@ export class Robberies {
       n.role = 'gang'; n.hostile = true; n.arm('pistol', g.renderer.scene); n.brain = 'combat'; n.target = g.player; n.seenTime = t; n.lastSeen.copy(p);
       this.ui.toast('The clerk pulled a gun!', 'warning');
       // Round 8: the store stays open (it used to close, so the till could not be robbed after winning the shootout)
-      this.active = null; this.ui.robberyMeter(null); this.game.audio.setMusicMood('none'); this.panic(k); return;
+      this.active = null; k.phase = 'open'; this.ui.robberyMeter(null); this.game.audio.setMusicMood('none'); this.panic(k); return;
     }
     if (this.covering(k)) {
       k.uncoveredT = 0;

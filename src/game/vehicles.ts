@@ -123,6 +123,7 @@ export class VehicleManager {
     if (!this.heads.length) return;
     const want = pickHeadlightCars(this.list, this.heads.map(h => h.v), listener, pv, this.heads.length);
     for (const h of this.heads) {
+      if (h.v && !this.list.includes(h.v)) { h.v = null; h.w = 0; } // removed / despawned: its physics body is gone (reading it panicked)
       const keep = !!h.v && want.includes(h.v) && !h.v.destroyed;
       if (!keep) { h.w = Math.max(0, h.w - dt * 3.5); if (h.w === 0) h.v = null; }
       else h.w = Math.min(1, h.w + dt * 3.5);
