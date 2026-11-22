@@ -4,16 +4,19 @@ import { CATEGORY_NAME, CATEGORY_ORDER, WEAPONS, type Inventory, type WeaponCat 
 
 export const CAT_PREFIX = 'cat:';
 /** Slots for the wheel. A category shows the weapon it would equip (scroll while highlighted to change it). */
-export function wheelSlots(inv: Inventory, canHeal: boolean): WheelSlot[] {
+/** Categories a gun can be used from a car seat (drive-by): Round 7 in-car wheel. */
+export const CAR_CATS: ReadonlySet<WeaponCat> = new Set(['melee', 'pistol', 'smg', 'shotgun', 'rifle'] as WeaponCat[]);
+export function wheelSlots(inv: Inventory, canHeal: boolean, inCar = false): WheelSlot[] {
   const slots: WheelSlot[] = CATEGORY_ORDER.map(cat => {
     const id = inv.categoryPick(cat); const list = inv.inCategory(cat);
+    if (inCar && !CAR_CATS.has(cat)) return { id: CAT_PREFIX + cat, label: CATEGORY_NAME[cat], icon: cat === 'throw' ? 'grenade' : 'lmg', detail: 'Not in a car', enabled: false };
     if (!id) return { id: CAT_PREFIX + cat, label: CATEGORY_NAME[cat], icon: cat === 'melee' ? 'fists' : cat === 'throw' ? 'grenade' : cat === 'heavy' ? 'lmg' : (cat as 'pistol' | 'smg' | 'shotgun' | 'rifle'), detail: 'Empty', enabled: false };
     const w = WEAPONS[id], st = inv.weapons[id];
     const more = list.length > 1 ? `  · ${list.indexOf(id) + 1}/${list.length}` : ''; // scroll the mouse wheel over the slot to switch
     const detail = w.melee ? `Melee${more}` : w.cat === 'throw' ? `x${inv.total(id)}${more}` : `${st.clip} / ${st.reserve}${more}`;
     return { id: CAT_PREFIX + cat, label: w.name, icon: w.icon, detail, enabled: true };
   });
-  slots.push({ id: 'medkit', label: 'First-aid kit', icon: 'medkit', detail: `x${inv.medkits}`, enabled: inv.medkits > 0 && canHeal });
+  slots.push({ id: 'medkit', label: 'First-aid kit', icon: 'medkit', detail: `x${inv.medkits}`, enabled: inv.medkits > 0 && canHeal && !inCar });
   return slots;
 }
 /** The current weapon's slot id (for highlighting when the wheel opens). */

@@ -32,6 +32,8 @@ export const DEFAULT_BINDINGS: Record<Action, string[]> = {
 };
 export interface Settings {
   quality: QualityName; sensitivity: number; invertY: boolean; fov: number;
+  /** Round 7: aim with a click (toggle) instead of holding the button: on by default on Macs (a held trackpad click turns finger movement into scrolling) */
+  aimToggle: boolean;
   master: number; music: number; sfx: number; bindings: Record<Action, string[]>; showFps: boolean; cameraShake: number;
   /** 'natural' = neutral filmic grade (default), 'stylised' = teal/apricot split-tone. */
   look: 'natural' | 'stylised';
@@ -40,7 +42,9 @@ export interface Settings {
   /** blood spatter, pools and wound marks (Teen: moderate); off = clean hits */
   blood: boolean;
 }
-export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true };
+/** A Mac with a trackpad (not an iPad, which reports as Mac but has touch). */
+export function isMacLike(): boolean { try { return typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1); } catch { return false; } }
+export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike() };
 export const SETTINGS_KEY = 'meridian-afterglow.settings.v1';
 
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
@@ -56,6 +60,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     merged.fov = clampNum(merged.fov, 50, 80, 62); merged.cameraShake = clampNum(merged.cameraShake, 0, 1, 1);
     if (merged.look !== 'natural' && merged.look !== 'stylised') merged.look = 'natural';
     if (typeof merged.blood !== 'boolean') merged.blood = true;
+    if (typeof merged.aimToggle !== 'boolean') merged.aimToggle = isMacLike();
     if (merged.driving !== 'arcade' && merged.driving !== 'realistic') merged.driving = 'arcade';
     delete (merged as unknown as Record<string, unknown>).pedDensity; delete (merged as unknown as Record<string, unknown>).trafficDensity; delete (merged as unknown as Record<string, unknown>).pedestrians; delete (merged as unknown as Record<string, unknown>).traffic;
     // density now follows the graphics preset only (old saves may carry per-slider values; they are simply ignored)

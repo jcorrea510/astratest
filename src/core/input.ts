@@ -30,7 +30,7 @@ export class Input {
     window.addEventListener('keydown', e => {
       if (this.captureCb) { e.preventDefault(); const cb = this.captureCb; this.captureCb = null; cb(e.code); return; }
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ControlLeft'].includes(e.code) && this.enabled) e.preventDefault();
-      if (!e.repeat) { this.pressed.add(e.code); }
+      if (!e.repeat) { this.pressed.add(e.code); if (this.settings.aimToggle && this.enabled && this.codes('aim').includes(e.code)) this.aimLatch = !this.aimLatch; }
       this.down.add(e.code); this.lastSource = 'kbm';
     });
     window.addEventListener('keyup', e => { this.down.delete(e.code); this.released.add(e.code); });
@@ -40,12 +40,15 @@ export class Input {
       if (this.captureCb) { e.preventDefault(); const cb = this.captureCb; this.captureCb = null; cb(code); return; }
       if (e.target !== canvas && !this.locked) return;
       this.down.add(code); this.pressed.add(code); this.lastSource = 'kbm';
+      if (this.settings.aimToggle && this.codes('aim').includes(code)) this.aimLatch = !this.aimLatch;
     });
     window.addEventListener('mouseup', e => { const code = `Mouse${e.button}`; this.down.delete(code); this.released.add(code); });
     window.addEventListener('contextmenu', e => { if (e.target === canvas || this.locked) e.preventDefault(); });
     window.addEventListener('mousemove', e => { if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; } });
     window.addEventListener('wheel', e => {
       if (!this.locked) return;
+      // Round 7: a trackpad (smooth pixel deltas, sideways too) steers the aim while aiming instead of switching weapons
+      if (e.deltaMode === 0 && (e.deltaX !== 0 || Math.abs(e.deltaY) < 40 || !Number.isInteger(e.deltaY)) && this.held('aim')) { this.mouseDX += e.deltaX * 0.9; this.mouseDY += e.deltaY * 0.9; return; }
       const code = e.deltaY > 0 ? 'WheelDown' : 'WheelUp';
       this.pressed.add(code); this.wheel += Math.sign(e.deltaY);
     }, { passive: true });
@@ -68,11 +71,15 @@ export class Input {
       if (r && typeof r.catch === 'function') r.catch(() => { if (isIPad()) { this.virtualLock = true; this.locked = true; } /* else: user gesture required; we retry on next click */ });
     } catch { /* ignore */ }
   }
-  exitLock() { if (this.virtualLock) this.locked = false; if (document.pointerLockElement) document.exitPointerLock(); }
+  /** click-to-aim state (settings.aimToggle) */
+  aimLatch = false;
+  exitLock() { this.aimLatch = false; if (this.virtualLock) this.locked = false; if (document.pointerLockElement) document.exitPointerLock(); }
   private codes(a: Action) { return this.settings.bindings[a] ?? []; }
   private isCodeDown(c: string) { return this.down.has(c) || this.scripted.has(c); }
   held(a: Action): boolean {
     if (!this.enabled) return false;
+    if (a === 'aim' && this.settings.aimToggle && this.aimLatch && this.lastSource === 'kbm') return true;
+    if (a === 'aim' && this.settings.aimToggle && this.lastSource === 'kbm' && this.codes(a).some(c => c.startsWith('Mouse') && this.down.has(c))) return this.aimLatch;
     if (this.codes(a).some(c => this.isCodeDown(c))) return true;
     return padHeld(a, this.pad, this._padCtx);
   }

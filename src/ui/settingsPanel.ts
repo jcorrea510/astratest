@@ -141,6 +141,7 @@ export class SettingsPanel {
       this.body.appendChild(this.slider('Look sensitivity', 'Mouse and right-stick camera speed.', 0.2, 3, 0.05, s.sensitivity, v => `${v.toFixed(2)}×`, v => this.update(x => { x.sensitivity = v; })));
       this.body.appendChild(this.toggle('Realistic driving', 'Off: arcade assists. On: real-world grip (about 0.9 g for sedans) and more weight transfer.', s.driving === 'realistic', v => this.update(x => { x.driving = v ? 'realistic' : 'arcade'; })));
       this.body.appendChild(this.toggle('Invert vertical look', 'Push forward to look down.', s.invertY, v => this.update(x => { x.invertY = v; })));
+      this.body.appendChild(this.toggle('Click to aim', 'Mouse: click aim once to raise the gun, again to lower it (best on a trackpad). Off: hold to aim.', s.aimToggle, v => this.update(x => { x.aimToggle = v; })));
       const link = h('div', 'ma-row');
       const lt = h('div', 'ma-row-text');
       lt.appendChild(h('div', 'ma-row-label', 'Keyboard & mouse bindings'));

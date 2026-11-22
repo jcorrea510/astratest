@@ -94,6 +94,8 @@ export class PlayerCombat {
     this.spine = player.human.spine ?? null;
   }
   get armed() { return !WEAPONS[this.inv.current].melee; }
+  /** the last gun held that can be fired from a car seat (Round 7: aim in a car draws it) */
+  lastCarGun: WeaponId | null = null;
   get aiming() { return this.ctl.aiming || this.hipAimT > 0 || this.driveAim; }
   /** R6-K drive-by: holding aim inside a car with a one-handed gun puts it out the window; fire then shoots along the camera aim point. */
   driveAim = false;
@@ -183,6 +185,12 @@ export class PlayerCombat {
     const onFoot = c.alive && !c.inVehicle;
     const veh = c.inVehicle as Vehicle | null;
     const inCar = c.alive && !!veh && typeof veh.kind === 'string' && veh.kind !== 'tank';
+    // Round 7: aiming in a car with fists / a heavy weapon / a throwable out draws the last gun you used (that works from a seat)
+    if (inCar && !blocked && this.input.held('aim') && (inv.def.melee || inv.def.cat === 'heavy' || inv.def.cat === 'throw')) {
+      const g = this.lastCarGun && inv.weapons[this.lastCarGun] ? this.lastCarGun : (['pistol', 'smg', 'shotgun', 'rifle'] as const).map(c => inv.categoryPick(c)).find(Boolean);
+      if (g) inv.select(g);
+    }
+    if (!inv.def.melee && inv.def.cat !== 'heavy' && inv.def.cat !== 'throw') this.lastCarGun = inv.current;
     const def0 = inv.def;
     this.driveAim = inCar && !blocked && this.input.held('aim') && !def0.melee && def0.cat !== 'heavy';
     const mode = this.driveAim ? (def0.cat === 'pistol' || def0.cat === 'smg' ? 'pistol' : def0.cat === 'throw' ? 'none' : 'rifle') : 'none';

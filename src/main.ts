@@ -311,7 +311,7 @@ function quitToTitle() {
 
 // ---------------- Inventory wheel ----------------
 function wheelSlots(): WheelSlot[] {
-  return combatWheelSlots(game!.pcombat.inv, game!.player.health < game!.player.maxHealth); // COMBAT: category wheel
+  return combatWheelSlots(game!.pcombat.inv, game!.player.health < game!.player.maxHealth, !!game!.playerVehicle); // COMBAT: category wheel (Round 7: drive-by guns in a car)
 }
 function openWheel() {
   const g = game!;
@@ -347,7 +347,7 @@ function frame(raw: number) {
   }
   if (!g.paused) {
     // wheel (hold)
-    const canWheel = !g.playerVehicle && g.player.alive && g.deathT < 0 && !a.shopIsOpen;
+    const canWheel = !g.playerHeli && !g.taxi.riding && g.player.alive && g.deathT < 0 && !a.shopIsOpen; // Round 7: in a car too (hold Tab: pick the drive-by gun)
     if (canWheel && input.held('wheel') && !g.wheelOpen) openWheel();
     if (g.wheelOpen) {
       const pad = input.pad;
@@ -393,7 +393,7 @@ function exposeApi() {
   window.__meridian = {
     game, activities, sandbox, ui, settings, PLAYER_LOOK, ctx,
     save: () => saveGame(), read: () => readSave(storage),
-    pause, resume, openWheel, closeWheel, quit: quitToTitle,
+    pause, resume, openWheel, closeWheel, wheelSlots, quit: quitToTitle,
     /** the GPS route the minimap would draw for the current waypoint (null when none) */
     gps: () => minimapState().route ?? null,
   };

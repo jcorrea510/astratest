@@ -8,5 +8,5 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 - [ ] G5 Gore (cheap): headshot can remove the head (blood spurt), limb hits show a wound decal + blood spray/drip; budgeted particles; settings toggle.
 - [ ] G6 Walk-in gun store (wall arsenal, look at a gun to select/buy), garages (repair + repaint), more car variety.
 - [ ] G7 World/visuals: cross-street intersections — sidewalks/lamp posts out of the road, peds walk clean lines; headlights light the world (cheap spot lights on nearest cars); low-quality traffic lights coloured; street-light pool flat on the ground.
-- [ ] G8 Controls: KBM aim in the Mac app (pointer lock), in a car hold Tab = sidearm wheel, hold RMB = last weapon.
+- [x] G8 Controls (click-to-aim default on Mac + trackpad swipe aims; car wheel + aim draws last gun): KBM aim in the Mac app (pointer lock), in a car hold Tab = sidearm wheel, hold RMB = last weapon.
 - [ ] Z: tsc, vitest, key e2e, publish gh-pages, rebuild Mac app, owner summary.
