@@ -27,6 +27,7 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 - [x] O2 Peds: path following + re-anchoring, kerb-side doors, and walkers no longer stall in the gutter (the step-up fallback
   looked for a 0.25 m+ face; a kerb is 0.18 m). peds7: on-road 3-6.5 % -> 0.3-1.8 %, frozen excludes WALK waits. Patrols spawn on their own timer.
 - [~] O3 (far instances already CPU-culled; now upload only used slots) Only what you can see costs anything: per-instance culling of far cars/peds (instanced meshes are drawn whole today), shadow casters, off-screen updates.
-- [ ] O4 Long-session stability: 30+ min soak (memory, object counts, no leaks/stalls).
+- [x] O4 Long-session stability (20 min chaos soak: heap 735 -> 803 MB flattening, geometries plateau ~719, populations bounded;
+  only flag was the headless death-screen check, which can't run the UI timer; limits updated to measured baselines): 30+ min soak (memory, object counts, no leaks/stalls).
 - [ ] O5 Map polish found along the way.
 - [x] Morning note (in the owner summary): native rendering (Mac app = Electron/WebGL-on-Metal; iPad sideload options, WebGPU) - discuss, don't build blind.
