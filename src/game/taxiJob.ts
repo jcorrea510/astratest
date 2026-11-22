@@ -31,7 +31,7 @@ export class TaxiJob {
   private release(n: Npc, flee = false) {
     const g = this.g, v = n.char.inVehicle as { doorPoint(s: 1 | -1): THREE.Vector3; position: THREE.Vector3; yaw: number } | null;
     if (v) {
-      const p = v.doorPoint(1);
+      const p = v.doorPoint(n.char.human.root.position.x >= 0 ? 1 : -1); // out of the door they sit by
       g.renderer.scene.add(n.char.human.root);
       n.char.inVehicle = null; n.char.place(p.x, Math.max(0.2, v.position.y), p.z, v.yaw);
       n.char.setCollision(true); n.char.human.setState('loco'); if (n.model) n.model.visible = true;
@@ -75,10 +75,13 @@ export class TaxiJob {
     }
     if (ph.kind === 'pickup') {
       ph.t += dt;
-      const n = ph.n, c = n.char, door = pv.doorPoint(1), dx = door.x - c.pos.x, dz = door.z - c.pos.z, d = Math.hypot(dx, dz);
+      // the rear door on the fare's side (the kerb), not the street side across the car body
+      const n = ph.n, c = n.char, lp = pv.group.worldToLocal(c.pos.clone()), side: 1 | -1 = lp.x >= 0 ? 1 : -1;
+      const door = pv.doorPoint(side), dx = door.x - c.pos.x, dz = door.z - c.pos.z, d = Math.hypot(dx, dz);
       if (d > 25 || ph.t > 25) { this.cancel('The fare gave up on you.'); return; }
       if (d < 1.3 && Math.abs(pv.speed) < 1) {
-        g.traffic.seat(n, pv, 2); n.brain = 'passenger';
+        const seats = pv.tpl.seats.length, rear = [2, 3].filter(i => i < seats), seat = rear.find(i => Math.sign(pv.seatLocal(i).x) === side) ?? rear[0] ?? 1;
+        g.traffic.seat(n, pv, seat); n.brain = 'passenger';
         g.audio.play('doorClose', { pos: pv.position, volume: 0.6 });
         const dest = this.pickDest(pv.position);
         if (!dest) { this.cancel(null); return; }
