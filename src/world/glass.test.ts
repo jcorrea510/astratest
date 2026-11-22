@@ -12,3 +12,19 @@ describe('WorldGlass break hook', () => {
     expect(seen).toEqual([{ x: 4, y: 2, z: 6, yaw: 0.5, w: 2.2, h: 1.8 }]);
   });
 });
+
+describe('Round 7: grilles and shutters stop glass cracking', async () => {
+  const { WorldGlass, facadeHash, shopGrilledAtNight } = await import('./glass');
+  it('a shielded pane is not found by bullets (so it never cracks); unshielded again once lifted', () => {
+    const w = new WorldGlass(); let down = true;
+    const id = w.add(0, 1.5, 0, 0, 2, 2); w.panes[id].shielded = () => down;
+    const pt = { x: 0, y: 1.5, z: 0 } as never;
+    expect(w.glassAt(pt)).toBeNull();
+    down = false; expect(w.glassAt(pt)).toBe(id);
+  });
+  it('the CPU copy of the facade hash stays in [0,1) and grilles about a quarter of shops (shader: step(0.25, fH))', () => {
+    for (let s = 0; s < 50; s++) { const h = facadeHash(s, 8); expect(h).toBeGreaterThanOrEqual(0); expect(h).toBeLessThan(1); }
+    let n = 0; for (let s = 0; s < 2000; s++) if (shopGrilledAtNight(s)) n++;
+    expect(n / 2000).toBeGreaterThan(0.15); expect(n / 2000).toBeLessThan(0.35);
+  });
+});

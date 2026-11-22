@@ -1,6 +1,8 @@
 /** Rotating rectangular radar drawn on a canvas, throttled to ~30 fps. */
 import type { MinimapState } from './contracts';
 import { clampToBox, worldToMinimap, TRUE_NORTH } from './geometry';
+/** Blip kinds that stay on the rim when off the minimap (Round 7: no more ring of shop icons). */
+export const RIM_KINDS: ReadonlySet<string> = new Set(['waypoint', 'mission', 'target', 'checkpoint', 'enemy', 'police']);
 import { CityPainter, drawBlip, drawPlayerArrow } from './mapdraw';
 import { h } from './dom';
 
@@ -99,7 +101,8 @@ export class Minimap {
       const p = worldToMinimap(s.x, s.z, s.heading, scale, b.x, b.z, this.tmp);
       p.y *= PITCH;
       const clamped = clampToBox(p, minX, maxX, minY, maxY);
-      if (clamped && b.kind === 'collectible') continue;
+      // Round 7: only things that matter right now stay pinned to the rim; shops, stores, garages etc. show only when on the map
+      if (clamped && !RIM_KINDS.has(b.kind)) continue;
       if (clamped && (b.kind === 'enemy' || b.kind === 'police' || b.kind === 'vehicle')) ctx.globalAlpha = 0.7;
       drawBlip(ctx, b.kind, cx + p.x, cy + p.y, br, t, !!b.pulse, clamped);
       ctx.globalAlpha = 1;

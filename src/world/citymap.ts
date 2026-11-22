@@ -379,9 +379,10 @@ export function generateCity(seed = 1977): CityMap {
         const cross = adx * bdz - adz * bdx; // >0 -> b is to the right of a (x east, z south)
         if (relaxed) { if (b.lane !== (cross > 0 ? b.lanes - 1 : 0) && !straight) continue; }
         else if (straight) { if (b.lane !== Math.min(a.lane, b.lanes - 1) && !(inter.ix < 0 && a.lanes < b.lanes)) continue; }
-        else if (inter.ix >= 0) { if (b.lane !== Math.min(a.lane, b.lanes - 1)) continue; } // concentric turns from either lane (no crossing paths)
-        else if (cross > 0) { if (a.lane !== a.lanes - 1) continue; }
-        else { if (a.lane !== 0) continue; }
+        // Round 7: right turns only from the kerb lane into the kerb lane, left turns only from the inner lane into the inner
+        // lane (turning from the other lane cut across straight-on traffic: the owner's main crash source)
+        else if (cross > 0) { if (a.lane !== a.lanes - 1 || b.lane !== b.lanes - 1) continue; }
+        else { if (a.lane !== 0 || b.lane !== 0) continue; }
         const pts: V2[] = [];
         if (straight) pts.push(ae, bs);
         else {
@@ -523,17 +524,30 @@ export function nearestLane(city: CityMap, x: number, z: number, roadOnly = true
   return best;
 }
 
-const routeCache = new WeakMap<CityMap, { prev: number[][]; fields: Map<string, Float32Array> }>();
+const routeCache = new WeakMap<CityMap, { prev: number[][]; chg: number[][]; fields: Map<string, Float32Array> }>();
 /**
  * Driving distance from the start of every lane to a target point, following the lane graph
  * (reverse Dijkstra seeded by the lanes that pass near the target). Quantised and cached per 10 m cell.
  */
+/**
+ * One step along a route field from `lane`: the next connector to take, or the neighbouring lane to change into
+ * (`change` true), or null when the target lies on this lane (or cannot be reached).
+ */
+export function routeStep(city: CityMap, field: Float32Array, lane: Lane): { id: number; change: boolean } | null {
+  let id = -1, best = Infinity, change = false;
+  for (const n of lane.next) { const c = lane.length + field[n]; if (c < best) { best = c; id = n; } }
+  for (const q of [lane.leftLane, lane.rightLane]) if (q !== undefined) { const c = field[q] + LANE_CHANGE_COST; if (c < best - 0.5) { best = c; id = q; change = true; } }
+  if (id < 0 || !Number.isFinite(best) || best > field[lane.id] + 0.5) return null;
+  return { id, change };
+}
+/** Route cost (m) of moving over to the neighbouring lane. */
+export const LANE_CHANGE_COST = 25;
 export function routeField(city: CityMap, x: number, z: number): Float32Array {
   let c = routeCache.get(city);
   if (!c) {
-    const prev: number[][] = city.lanes.map(() => []);
-    for (const l of city.lanes) for (const n of l.next) prev[n].push(l.id);
-    c = { prev, fields: new Map() }; routeCache.set(city, c);
+    const prev: number[][] = city.lanes.map(() => []), chg: number[][] = city.lanes.map(() => []);
+    for (const l of city.lanes) { for (const n of l.next) prev[n].push(l.id); for (const q of [l.leftLane, l.rightLane]) if (q !== undefined) chg[q].push(l.id); }
+    c = { prev, chg, fields: new Map() }; routeCache.set(city, c);
   }
   const key = `${Math.round(x / 10)},${Math.round(z / 10)}`;
   const hit = c.fields.get(key); if (hit) return hit;
@@ -574,6 +588,8 @@ export function routeField(city: CityMap, x: number, z: number): Float32Array {
   while (heap.length) {
     const id = pop(); if (done[id]) continue; done[id] = 1;
     for (const p of c.prev[id]) { const cand = city.lanes[p].length + D[id]; if (cand < D[p]) { D[p] = cand; push(p); } }
+    // a lane change to the neighbouring lane (turns leave from one lane only, so routes need them)
+    for (const p of c.chg[id]) { const cand = D[id] + LANE_CHANGE_COST; if (cand < D[p]) { D[p] = cand; push(p); } }
   }
   if (c.fields.size > 48) c.fields.clear();
   c.fields.set(key, D);
@@ -700,6 +716,7 @@ function buildExpansion(intersections: Intersection[], interGrid: Intersection[]
         const axis: 'x' | 'z' = ed[0] !== 0 ? 'x' : 'z';
         const lane: Lane = { id: lanes.length, points: lp, length, cum, next: [], connector: false, intersection: endI.id, axis, speed, lane: k, lanes: lanesN, roadId: -1, ys };
         lanes.push(lane);
+        if (k > 0) { lane.leftLane = lane.id - 1; lanes[lane.id - 1].rightLane = lane.id; } // lane changes (turns leave from one lane only)
         push(`${endI.id}:in`, lane.id); push(`${startI.id}:out`, lane.id);
       }
     }

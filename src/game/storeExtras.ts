@@ -142,9 +142,11 @@ export class StoreExtras {
   // ---------- physical register ----------
   private canReg(k: Kiosk): boolean {
     const g = this.game, sh = k.shell; if (!sh || k.phase !== 'open' || k.looted || g.playerVehicle || g.inputBlocked || !g.player.alive) return false;
-    if (k.clerk?.alive && k.ex.koT <= 0) return false; // staffed: hold the clerk up instead
+    if (this.host.active === k) return false; // a hold-up in progress: the clerk is filling the bag
+    // staffed by a calm, unhurt clerk: hold them up instead. Round 7: a shot / cowering clerk (or a store in panic) no longer guards the till
+    const c = k.clerk; if (c?.alive && k.ex.koT <= 0 && k.panicT < 0 && c.char.health >= c.char.maxHealth) return false;
     const l = k.frame.toLocal(g.player.pos);
-    return Math.abs(g.player.pos.y - k.clerkPos.y) < 2.2 && Math.abs(l.x - sh.register.lx) < 1.05 && l.z > k.frame.counterZ - 1.6 && l.z < k.frame.counterZ + 1.35;
+    return Math.abs(g.player.pos.y - k.clerkPos.y) < 2.2 && Math.abs(l.x - sh.register.lx) < 1.5 && l.z > k.frame.counterZ - 1.8 && l.z < k.frame.counterZ + 1.6;
   }
   private register(k: Kiosk, dt: number) {
     const g = this.game, sh = k.shell!, ex = k.ex;

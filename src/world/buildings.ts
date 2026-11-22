@@ -4,7 +4,7 @@
  * and corrugated warehouses. Surfaces go into chunked FacadeBuilders (procedural facade shader), details into
  * chunked TrimBuilders (cornices, sills, awnings, fire escapes, rooftop plant), plus sign/billboard placements.
  */
-import { worldGlass } from './glass';
+import { worldGlass, shopGrilledAtNight } from './glass';
 import { shopStyleOfBrand } from './shopStyle';
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
@@ -166,7 +166,8 @@ function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
     pt(0, s.base + s.groundH - 0.42, hd + 0.05, sw + 0.2, 0.86, 0.08, C('#1e1e1e'), T_METAL);
     { // real shop glass: one pane per bay (street side), shattered by bullets via worldGlass
       const B = bays(s.w - 0.4, 2.6); const gy0 = s.base + 0.55, gy1 = s.base + s.groundH - 0.95;
-      for (let i = 0; i < B.n; i++) { const q = L(B.at(i), hd + 0.04); worldGlass.addOverlay(q.x, (gy0 + gy1) / 2, q.z, s.yaw, B.cw - 0.25, gy1 - gy0); }
+      const grilled = shopGrilledAtNight(s.seed % 9973); // Round 7: no cracks through a night grille
+      for (let i = 0; i < B.n; i++) { const q = L(B.at(i), hd + 0.04); const id = worldGlass.addOverlay(q.x, (gy0 + gy1) / 2, q.z, s.yaw, B.cw - 0.25, gy1 - gy0); if (grilled) worldGlass.panes[id].shielded = () => worldGlass.night > 0.5; }
     }
     if (s.awning) {
       const ac = C(['#7a1f1f', '#1f4e3d', '#22305a', '#5a3a1f', '#6b1f4f', '#2b2b2b', '#a8551c'][r.int(0, 6)]);

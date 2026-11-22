@@ -115,8 +115,8 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   box(-3.0, 1.06, counterZ, 4.1, 0.05, 0.8, C(top0), [0.3, 0.2, 0, 0]);
   if (def.kind === 'bank' || def.kind === 'jewelry') box(-3.0, 0.52, counterZ + 0.36, 4.0, 0.9, 0.03, C('#d4af37'), T_METAL);
   col(-3.0, 0.52, counterZ, 2.0, 0.52, 0.35);
-  // register: body + screen on the counter, a drawer that slides out towards the customer, bills inside (see setDrawer / setBills)
-  const regX = -2.6, regG = new THREE.Group(); regG.position.set(regX, 1.085, counterZ - 0.05); root.add(regG);
+  // register: body + screen on the counter, a drawer that slides out towards the clerk, bills inside (see setDrawer / setBills)
+  const regX = -2.6, regG = new THREE.Group(); regG.position.set(regX, 1.085, counterZ - 0.05); regG.rotation.y = Math.PI; root.add(regG); // Round 7: keys, screen and drawer face the clerk
   const rt = new TrimBuilder();
   rt.box(0, 0.11, 0, 0.46, 0.22, 0.4, 0, C('#2f3133'), T_PLASTIC); rt.box(0.05, 0.4, -0.12, 0.34, 0.22, 0.04, 0, C('#0e1a14'), T_PLASTIC, -0.25); rt.box(0.05, 0.4, -0.098, 0.3, 0.18, 0.01, 0, C('#7fe0a0'), T_GLOW(1.4), -0.25);
   rt.cyl(0.05, 0.2, -0.12, 0.03, 0.03, 0.12, 6, C('#555'), T_METAL);
@@ -232,6 +232,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   for (let k = 0; k < 34; k++) sh.box(0, 0.05 + k * 0.1, 0, W, 0.09, 0.05, 0, C(k % 2 ? '#8f969b' : '#80878c'), [0.45, 0.7, 0, 0]);
   sh.box(0, 3.45, 0.05, W + 0.2, 0.3, 0.3, 0, C('#5d6266'), T_METAL);
   const shutter = new THREE.Mesh(sh.build(), trimMat); shutter.position.set(0, 0, hd + 0.08); shutter.visible = false; shutter.castShadow = true; root.add(shutter);
+  for (const m of paneMeshes) { const id = m.userData.paneId as number | undefined; if (id !== undefined) worldGlass.panes[id].shielded = () => shutter.visible; } // Round 7: shots hit the shutter, not the glass
   const gapCol = col(doorX, 1.7, fz, doorW / 2, 1.7, 0.08); gapCol.setEnabled(false);
   // alarm beacon over the door
   const alarm = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false }));
@@ -243,7 +244,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     for (const c of extras.cases) if (c.broken) { c.broken = false; root.add(c.glass); if (c.loot) c.loot.visible = true; }
     const v = extras.vault; if (v) { v.door.rotation.y = 0; v.openA = 0; v.cash.visible = true; v.rig.visible = false; for (const cc of v.colliders) cc.setEnabled(true); }
   };
-  const burst = () => { for (const f of fly) { f.m.visible = true; f.t = 0; f.m.position.set(regX + (Math.random() - 0.5) * 0.2, 1.3, counterZ + 0.1); f.v.set((Math.random() - 0.5) * 1.6, 2.2 + Math.random() * 1.6, 0.4 + Math.random() * 1.4); f.w.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); } };
+  const burst = () => { for (const f of fly) { f.m.visible = true; f.t = 0; f.m.position.set(regX + (Math.random() - 0.5) * 0.2, 1.3, counterZ - 0.3); f.v.set((Math.random() - 0.5) * 1.6, 2.2 + Math.random() * 1.6, 0.4 + Math.random() * 1.4); f.w.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); } };
   return {
     root, shutter, doors, alarm, toWorld: toW, toLocal, counterZ,
     register: { lx: regX, lz: counterZ - 0.05 }, cases: extras.cases, vault: extras.vault, tellers: extras.tellers, smashCase, setVault, resetExtras,

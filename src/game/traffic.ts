@@ -1,7 +1,7 @@
 /** Ambient traffic and police driving: lane following, signals, spacing, reactions, parked cars, pursuit. */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, yellowLeft, nearestLane, routeField, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, yellowLeft, nearestLane, routeField, routeStep, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
@@ -41,7 +41,7 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
   legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null;
   /** stop-sign / left-turn wait bookkeeping: lane it was counted on and seconds stood at the line */
-  ssLane?: number; ssWait?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
+  ssLane?: number; ssWait?: number; lcRetry?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp: { x: number; z: number; dx: number; dz: number; y?: number } = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -185,13 +185,34 @@ export class Traffic {
     }
     return false;
   }
-  /** A left turner waits while the box is busy or an oncoming car would reach the junction within a few seconds. */
-  private leftBlocked(inter: { x: number; z: number; halfX: number; halfZ: number }, self: Vehicle, f: { x: number; z: number }): boolean {
-    if (this.boxBusy(inter, self)) return true;
+  private turnCache = new Map<number, number>();
+  /** 1 = left, -1 = right, 0 = straight, for a junction connector lane. */
+  turnOf(id: number): number {
+    let r = this.turnCache.get(id);
+    if (r === undefined) {
+      const nl = this.city.lanes[id], a = nl.points[0], b = nl.points[nl.points.length - 1], p1 = nl.points[1] ?? b, pn = nl.points[nl.points.length - 2] ?? a;
+      const d0 = Math.hypot(p1.x - a.x, p1.z - a.z) || 1, d1 = Math.hypot(b.x - pn.x, b.z - pn.z) || 1;
+      r = nl.connector ? turnSide((p1.x - a.x) / d0, (p1.z - a.z) / d0, (b.x - pn.x) / d1, (b.z - pn.z) / d1) : 0; this.turnCache.set(id, r);
+    }
+    return r;
+  }
+  /**
+   * A left turner waits while the box is busy, an oncoming car would reach the junction within a few seconds, or an
+   * opposing left turner with priority (lower id) is about to go. After a long wait (`patient` false) only a car that is
+   * really close still holds it (a deadlock breaker that never drives into a moving car).
+   */
+  private leftBlocked(inter: { id: number; x: number; z: number; halfX: number; halfZ: number }, self: Vehicle, f: { x: number; z: number }, patient = true): boolean {
+    if (patient && this.boxBusy(inter, self)) return true;
     for (const o of this.vehicles.list) {
       if (o === self) continue;
-      const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1;
-      if (oncomingConflict(o.position.x - inter.x, o.position.z - inter.z, of.x * sg, of.z * sg, Math.abs(o.speed), f.x, f.z)) return true;
+      const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1, ox = o.position.x - inter.x, oz = o.position.z - inter.z;
+      if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, Math.abs(o.speed), f.x, f.z) && (patient || Math.hypot(ox, oz) / Math.max(1.5, Math.abs(o.speed)) < 2.2)) return true;
+      if (!patient) { if (Math.abs(ox) < inter.halfX && Math.abs(oz) < inter.halfZ && Math.abs(o.speed) > 1) return true; continue; }
+      // opposing left turner waiting at its line: the lower id goes first (their paths can cross at uneven junctions)
+      if (o.id < self.id && of.x * f.x + of.z * f.z < -0.7) {
+        const oc = this.carOf(o);
+        if (oc && !oc.lane.connector && oc.lane.intersection === inter.id && oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1 && this.distToStop(oc) < 10) return true;
+      }
     }
     return false;
   }
@@ -239,7 +260,7 @@ export class Traffic {
         }
         // an accident ahead: slow down, tuck to the kerb and stop short of it
         for (const cs of this.crashes) {
-          if (t - cs.t > 9 || cs.v === v) continue;
+          if (t - cs.t > 5 || cs.v === v) continue; // Round 7: pile-ups clear faster
           const dx = cs.pos.x - pos.x, dz = cs.pos.z - pos.z, ahead = dx * f.x + dz * f.z;
           if (ahead < -3 || ahead > 42) continue;
           const lat = dx * f.z - dz * f.x;
@@ -247,7 +268,7 @@ export class Traffic {
           car.crashT = Math.max(car.crashT, 2.5);
         }
       }
-      if (this.crashes.some(c => c.v === v && t - c.t < 5)) { v.hazard = true; legit = true; targetSpeed = 0; } else if (v.hazard && !car.stopT) v.hazard = false;
+      if (this.crashes.some(c => c.v === v && t - c.t < 2.5)) { v.hazard = true; legit = true; targetSpeed = 0; } else if (v.hazard && !car.stopT) v.hazard = false;
       if (car.yieldT > 0) { legit = true; targetSpeed = Math.min(targetSpeed, car.yieldT > 2.2 ? 4 : 0); }
       if (car.crashT > 0 && crashD < Infinity) { legit = true; targetSpeed = Math.min(targetSpeed, crashD < 16 && Math.abs(crashLat) < 3.4 ? Math.max(0, (crashD - 9) * 0.5) : 5); }
       // lateral offset inside the lane: clear kerbside parked cars, tuck right for sirens / crashes
@@ -305,11 +326,9 @@ export class Traffic {
             const c2 = stopSignCap(dStop, speed, car.ssWait ?? 0, dStop > 14 || !this.boxBusy(inter, v));
             if (c2 < Infinity) { targetSpeed = Math.min(targetSpeed, c2); legit = true; }
           } else if (dStop < 22 && car.nextChoice !== undefined) {
-            const nl = this.city.lanes[car.nextChoice], a = nl.points[0], b = nl.points[nl.points.length - 1], p1 = nl.points[1] ?? b, pn = nl.points[nl.points.length - 2] ?? a;
-            const d0 = Math.hypot(p1.x - a.x, p1.z - a.z) || 1, d1 = Math.hypot(b.x - pn.x, b.z - pn.z) || 1;
-            if (nl.connector && turnSide((p1.x - a.x) / d0, (p1.z - a.z) / d0, (b.x - pn.x) / d1, (b.z - pn.z) / d1) === 1) {
+            if (this.turnOf(car.nextChoice) === 1) {
               if (standing) car.ssWait = (car.ssWait ?? 0) + dt;
-              if ((car.ssWait ?? 0) < 8 && this.leftBlocked(inter, v, f)) { targetSpeed = Math.min(targetSpeed, stopSpeed(dStop - 0.4)); legit = true; }
+              if (this.leftBlocked(inter, v, f, (car.ssWait ?? 0) < 8)) { targetSpeed = Math.min(targetSpeed, stopSpeed(dStop - 0.4)); legit = true; }
             }
           }
         }
@@ -372,9 +391,11 @@ export class Traffic {
           // two cars nose to nose (or a cycle in the intersection): the one in the box goes through
           if (boc && boc.blockedBy === v && car.mode === 'cruise' && (car.lane.connector || car.lane.length - car.s < 10 || v.id < bv.id) && (car.jamT ?? 0) > (car.lane.connector ? 1.5 : 4) && (car.ghostT ?? 0) <= 0) { car.ghostT = 6; this.stats.jamBreaks++; }
         }
-        if (bv && Math.abs(bv.speed) < 0.6 && !this.carOf(bv) && Math.abs(speed) < 1 && car.mode !== 'pursuit') {
+        // ...or an AI car that is itself stuck (wrecked, tangled in a pile-up, its driver gone): go round it quickly
+        const stuckAi = !!boc && !boc.legitWait && ((boc.jamT ?? 0) > 1.5 || !boc.driver.alive || boc.driver.char.inVehicle !== bv || (bv?.destroyed ?? false));
+        if (bv && Math.abs(bv.speed) < 0.6 && (!boc || stuckAi) && Math.abs(speed) < 1 && car.mode !== 'pursuit') {
           car.blockedT = (car.blockedT ?? 0) + dt;
-          if (car.blockedT > 3 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
+          if (car.blockedT > 1.5 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
         } else car.blockedT = 0;
         // honk at somebody stepping out in front of a moving car (jaywalkers)
         if (blocker === 'person' && speed > 3 && blockDist < 15 && t - (car.lastHonk ?? -99) > 5) { car.lastHonk = t; this.audio.play('horn', { pos, volume: 0.55 }); }
@@ -386,7 +407,7 @@ export class Traffic {
       // gridlock watchdog: stopped with nothing legitimate to wait for
       if (car.mode === 'cruise' && !car.persistent && Math.abs(speed) < 0.8 && targetSpeed < 0.3 && !legit) car.jamT = (car.jamT ?? 0) + dt;
       else if (Math.abs(speed) > 2 || legit) car.jamT = 0;
-      if ((car.jamT ?? 0) > 12 && car.reverseT <= 0 && (car.jamT ?? 0) % 9 < dt) { car.reverseT = 1.4; car.lcCool = 0; this.stats.jamBreaks++; }
+      if ((car.jamT ?? 0) > 5 && car.reverseT <= 0 && (car.jamT ?? 0) % 6 < dt) { car.reverseT = 1.4; car.lcCool = 0; this.stats.jamBreaks++; }
       // panicking and boxed in: bail out and run
       if (car.mode === 'flee' && !car.persistent && blockDist < 7 && Math.abs(speed) < 1.5) { car.boxedT = (car.boxedT ?? 0) + dt; if (car.boxedT > 2) { for (const p of car.passengers ?? []) if (p.alive && p.char.inVehicle === v) this.ejectPassenger(p, v); this.eject(car, v, 1); continue; } } else car.boxedT = 0;
       this.laneChange(car, dt, pos, f, speed, blockDist, blocker, blockerV);
@@ -491,7 +512,9 @@ export class Traffic {
   /** Both lanes in use: signal, then move over when a slower/stopped car is ahead (or now and then to even out the lanes). */
   private laneChange(car: AiCar, dt: number, pos: THREE.Vector3, f: { x: number; z: number }, speed: number, blockDist: number, blocker: 'car' | 'person' | null, blockerV: Vehicle | null) {
     const v = car.v;
-    if (car.mode !== 'cruise' || car.lane.connector || car.persistent) { if (car.lc) { car.lc = null; v.signal = 0; } return; }
+    // route-following cars (buses, goto, police) move over for their next turn: turns only leave from the correct lane
+    const routed = (car.mode === 'goto' || car.mode === 'pursuit') && !!car.target && !car.lane.connector;
+    if ((car.mode !== 'cruise' && !routed) || car.lane.connector || (car.persistent && !routed)) { if (car.lc) { car.lc = null; v.signal = 0; } return; }
     car.lcCool = (car.lcCool ?? 0) - dt;
     if (car.lc) {
       car.lc.t += dt;
@@ -504,8 +527,19 @@ export class Traffic {
       } else if (car.lc.t > 3.4) { car.lc = null; v.signal = 0; }
       return;
     }
-    if (car.lcCool > 0 || car.stopPlan || speed < 3 || car.lane.length - car.s < 30 || car.s < 8) return;
     const lane = car.lane;
+    if (routed) {
+      const st = routeStep(this.city, routeField(this.city, car.target!.x, car.target!.z), lane);
+      car.lcRetry = (car.lcRetry ?? 0) - dt;
+      if (!st?.change || lane.length - car.s < 9 || speed < 0.5 || car.lcRetry > 0) return;
+      const tl = this.city.lanes[st.id];
+      if (!this.laneClear(tl, car.s, v)) { car.lcRetry = 0.6; return; }
+      samplePath(tl, Math.min(car.s + 8, tl.length - 0.1), sp);
+      v.signal = (sp.x - pos.x) * f.z - (sp.z - pos.z) * f.x > 0 ? 1 : -1;
+      car.lc = { to: st.id, t: 0.6, done: false };
+      return;
+    }
+    if (car.lcCool > 0 || car.stopPlan || speed < 3 || lane.length - car.s < 30 || car.s < 8) return;
     const toId = lane.lane > 0 ? lane.leftLane : lane.rightLane;
     if (toId === undefined) return;
     // slow or stopped car right ahead: overtake. Skip when everybody is just queueing for a red.

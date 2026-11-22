@@ -127,12 +127,17 @@ export function addBroadwayLanes(
 export function diagConnectors(inter: Intersection, ins: number[], outs: number[], lanes: Lane[], polyLength: (p: V2[]) => { length: number; cum: number[] }): void {
   const dirEnd = (l: Lane) => { const e = l.points[l.points.length - 1], p = l.points[l.points.length - 2], d = Math.hypot(e.x - p.x, e.z - p.z) || 1; return { x: (e.x - p.x) / d, z: (e.z - p.z) / d }; };
   const dirStart = (l: Lane) => { const s = l.points[0], n = l.points[1], d = Math.hypot(n.x - s.x, n.z - s.z) || 1; return { x: (n.x - s.x) / d, z: (n.z - s.z) / d }; };
-  for (const li of ins) for (const lo of outs) {
+  for (let pass = 0; pass < 2; pass++) for (const li of ins) for (const lo of outs) {
     const a = lanes[li], b = lanes[lo];
     if (!a.diag && !b.diag) continue;
     if (a.connector || b.connector) continue;
+    if (pass === 1 && a.next.length) continue; // fallback only for a lane the strict rules left without a way on
     const ta = dirEnd(a), tb = dirStart(b);
     if (ta.x * tb.x + ta.z * tb.z < 0.3) continue; // straight or a 45 degree turn only
+    // Round 7: bear right only from the kerb lane into the kerb lane, bear left only inner to inner, straight lane to lane
+    const cr = ta.x * tb.z - ta.z * tb.x; // > 0: b is to the right (x east, z south)
+    const want = pass === 1 ? Math.min(a.lane, b.lanes - 1) : cr > 0.3 ? (a.lane === a.lanes - 1 ? b.lanes - 1 : -1) : cr < -0.3 ? (a.lane === 0 ? 0 : -1) : Math.min(a.lane, b.lanes - 1);
+    if (b.lane !== want) continue;
     const p0 = a.points[a.points.length - 1], p3 = b.points[0], k = Math.hypot(p3.x - p0.x, p3.z - p0.z) / 3;
     const p1 = { x: p0.x + ta.x * k, z: p0.z + ta.z * k }, p2 = { x: p3.x - tb.x * k, z: p3.z - tb.z * k };
     const pts: V2[] = [];

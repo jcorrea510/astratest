@@ -196,14 +196,15 @@ export class Activities {
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
-    if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() && this.garageArmed ? 'Stop to respray ($150)' : null; // not again until you drive out and back in
+    if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() && this.garageArmed ? 'Stop to respray ($150)' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
+    if (g.taxi?.riding) return g.taxi.prompt(key);
     if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
     if (this.dealerMk.inside(p, 2.5)) return `${key}  Browse Redline Motors`;
     if (this.safeMk.inside(p, 2.5)) return `${key}  Save game`;
     { const sp = this.salon.prompt(key); if (sp && !this.robberies.robbing) return sp; }
-    return this.missionActive() ? null : this.robberies.prompt();
+    return (this.missionActive() ? null : this.robberies.prompt()) ?? g.taxi?.prompt(key) ?? null;
   }
   update(dt: number) {
     const g = this.game, p = g.player.pos, t = g.time;
@@ -220,11 +221,13 @@ export class Activities {
     if (this.shopOpen) { if (g.input.justPressed('pause')) this.closeShop(); return; }
     // interactions
     if (!g.playerVehicle && g.input.justPressed('interact')) {
-      if (this.salon.inside() && !this.robberies.robbing) this.salon.open();
+      if (g.taxi?.riding) g.taxi.interact();
+      else if (this.salon.inside() && !this.robberies.robbing) this.salon.open();
       else if (this.shopMk.inside(p, 2.5)) this.openShop('arms');
       else if (this.snackMk.inside(p, 2.5)) this.openShop('snack');
       else if (this.dealerMk.inside(p, 2.5)) this.openShop('dealer');
       else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }
+      else if (!this.robberies.robbing && !this.missionActive()) g.taxi?.interact(); // hail a cab
     }
     // Respray garage
     this.garageCool = Math.max(0, this.garageCool - dt);

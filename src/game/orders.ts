@@ -126,6 +126,7 @@ export class Orders {
       const pick = radialPick(this.items.length, this.px, this.py); if (pick >= 0) this.sel = pick;
       if (!can || !this.target || !this.target.alive || this.target.pos.distanceTo(p.pos) > 30 || inp.rawPressed('Escape')) { this.finish(false); return; }
       if (!inp.held('orders')) { this.finish(true); return; }
+      if (this.target.brain === 'surrender') this.target.stateT = Math.min(this.target.stateT, 0.35); // waits for the order
       g.fx?.showMenu(this.target.brain === 'hostage' ? 'Hostage' : 'Orders', this.items as MenuItem[], this.sel);
       return;
     }

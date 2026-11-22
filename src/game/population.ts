@@ -55,13 +55,15 @@ export class Population {
         if (d < 0.62 && p.speed > 5 && into > 0.6 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
         else if (into > 0.3) c.faceTowards(Math.atan2(-dx, -dz), 7, 0.1);
       }
-      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'surrender' && n.brain !== 'cower' && n.brain !== 'ordered' && n.brain !== 'hostage') {
+      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'cower' && n.brain !== 'ordered' && n.brain !== 'hostage') {
         const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
         const along = cx * aim.dir.x + cy * aim.dir.y + cz * aim.dir.z;
         if (along > 0) {
           const off = Math.hypot(cx - aim.dir.x * along, cy - aim.dir.y * along, cz - aim.dir.z * along);
           if (off < 0.9 + along * 0.02) {
-            if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
+            // Round 7: frozen with hands up for as long as the gun stays on them (they used to bolt after 2-4 s, before an order could land)
+            if (n.brain === 'surrender') n.stateT = Math.min(n.stateT, 0.35);
+            else if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
           }
         }
       }

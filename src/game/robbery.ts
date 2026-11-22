@@ -20,7 +20,7 @@ export interface Kiosk {
   /** direction the counter faces (towards customers) */
   front: THREE.Vector3; clerkPos: THREE.Vector3; customer: THREE.Vector3; door: number;
   /** shoppers wandering the aisles (2-5), their reactions and the register state when the clerk is out of the picture */
-  shoppers: Shopper[]; /** seconds until the next shopper walks in */ refillT: number; clerkT: number; clerkTurn: number; panicT: number; callT: number; called: boolean; looting: number; looted: boolean;
+  shoppers: Shopper[]; /** seconds until the next shopper walks in */ refillT: number; clerkT: number; clerkTurn: number; panicT: number; callT: number; called: boolean; looting: number; looted: boolean; /** clerk killed and carted off: nobody behind the counter until the player leaves */ vacant?: boolean;
 }
 export interface Shopper { n: Npc; act: 'browse' | 'handsUp' | 'cower' | 'flee' | 'out'; caller: boolean; delay: number; life: ShopLife; /** game time the hands went up */ upAt?: number }
 const _v0 = new THREE.Vector3();
@@ -169,7 +169,9 @@ export class Robberies {
       case 'queue': {
         const line = k.shoppers.filter(q => q.act === 'browse' && (q.life.st === 'queue' || q.life.st === 'pay')).sort((a, b) => a.life.arrive - b.life.arrive);
         const idx = Math.max(0, line.indexOf(s)), spot = idx === 0 ? PAY_SPOT : queueSpot(idx - 1);
-        if (goTo(spot.x, spot.z, WALK_SPEED, 0.3)) {
+        // nobody to pay (clerk gone) or wedged in the line for a while: give up and head out
+        if (!k.clerk?.alive || k.ex.koT > 0 || L.stuck > 3) { L.st = 'leave'; L.stuck = 0; break; }
+        if (goTo(spot.x, spot.z, WALK_SPEED, idx === 0 ? 0.45 : 0.4)) {
           idle(); faceLocal(idx === 0 ? 0 : -1, idx === 0 ? -1 : -0.3);
           if (idx === 0) { L.st = 'pay'; L.t = 3.5; h.playAction('Interact', { layer: 'upper', fade: 0.25 }); }
         }
@@ -181,7 +183,9 @@ export class Robberies {
         break;
       }
       case 'leave': {
-        const past = lp.z > 4.4;
+        // Round 7: once at the inside of the door keep going out (DOOR_IN sits short of the threshold, so leavers used to
+        // stop there for good and pile up in the doorway)
+        const past = lp.z > 4.4 || Math.hypot(lp.x - DOOR_IN.x, lp.z - DOOR_IN.z) < 0.9 || (L.stuck > 2 && lp.z > 2.5);
         const tgt = past ? DOOR_OUT : DOOR_IN;
         if (goTo(tgt.x, tgt.z, WALK_SPEED * 1.15, past ? 0.8 : 0.5) && past) {
           s.act = 'out'; n.persistent = false; n.brain = 'wander'; n.node = -1; h.setState('loco'); // strolls off down the pavement
@@ -265,15 +269,19 @@ export class Robberies {
         const closedNow = k.phase === 'closed' && dist > 9;
         if (closedNow !== sh.shutter.visible) sh.setClosed(closedNow);
         // automatic sliding doors
-        const near = dist < 8.5 && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
+        // the doors also open for shoppers coming and going (they used to stay shut unless the player was close)
+        const doorW = k.frame.toWorld(3.1, 0.05, 4.4), shopperAt = k.phase !== 'closed' && k.shoppers.some(q => q.n.alive && Math.hypot(q.n.pos.x - doorW.x, q.n.pos.z - doorW.z) < 2.2);
+        const near = (dist < 8.5 || shopperAt) && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
         const door0 = k.door; k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
         if ((door0 === 0) !== (k.door === 0) && dist < 20) (g.audio as unknown as { storeBell?: (p: THREE.Vector3) => void }).storeBell?.(k.pos); // R6-A door chime on open / shut
         sh.setDoor(k.door * k.door * (3 - 2 * k.door));
         sh.alarm.visible = k.alarmT > 0 && (k.phase === 'robbing' || k.panicT >= 0 || (k.phase === 'closed' && t < k.reopenAt - REOPEN + 40)) && Math.sin(t * 12) > 0;
       }
       // a clerk staffs every open store the player is near
-      if (k.clerk && !g.pop.npcs.includes(k.clerk)) k.clerk = null; // removed elsewhere: its body is disposed
-      if (k.phase === 'open' && dist < 110 && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
+      if (k.clerk && !g.pop.npcs.includes(k.clerk)) { if (!k.clerk.alive) k.vacant = true; k.clerk = null; } // removed elsewhere: its body is disposed
+      if (dist > 60) k.vacant = false;
+      // Round 7: a killed clerk is not replaced while the player is still around (a fresh one used to pop up and lock the till)
+      if (k.phase === 'open' && dist < 110 && !k.vacant && (!k.clerk || (!k.clerk.alive && dist > 60))) { if (k.clerk) this.releaseClerk(k); this.spawnClerk(k); }
       if (k.clerk && dist > 140 && k !== this.active) this.releaseClerk(k);
       if (k.phase === 'open' && k.clerk && !k.clerk.alive) this.panic(k);
       this.updateShoppers(k, dt, dist);

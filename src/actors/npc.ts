@@ -320,8 +320,10 @@ export class NpcBrainRunner {
         if (n.order === 'kneel') { speed = 0; if (c.human.actionName !== 'kneel_head' && !c.human.busy) c.human.playAction('kneel_head'); }
         else if (n.order === 'hands') { speed = 0; if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up'); }
         else if (n.order === 'come') {
-          if (d > 1.7) { desired.set(dx / d, 0, dz / d); speed = d > 6 ? 3.4 : 2.2; if (c.human.actionName === 'hands_up') c.human.stopAction('hands_up'); }
-          else { speed = 0; if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up'); }
+          // Round 7: a brisk, nervous walk over with the hands kept up (they used to drop them and amble)
+          if (d > 1.7) { desired.set(dx / d, 0, dz / d); speed = d > 5 ? 3.3 : 2.6; }
+          else speed = 0;
+          if (c.human.actionName !== 'hands_up' && !c.human.busy) c.human.playAction('hands_up');
         } else if (n.order === 'car' && n.destPt) {
           tv.copy(n.destPt).sub(c.pos); tv.y = 0; const gd = tv.length(); faceYaw = null;
           if (gd > 0.9) { desired.copy(tv.normalize()); speed = gd > 5 ? 3.6 : 2.4; } else { n.order = 'board'; speed = 0; }

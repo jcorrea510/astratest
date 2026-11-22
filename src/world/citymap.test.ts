@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateCity, signalState, pedestrianMayCross, SIGNAL_PERIOD, surfaceAt, samplePath, nearestLane, routeField, districtAt } from './citymap';
+import { generateCity, signalState, pedestrianMayCross, SIGNAL_PERIOD, surfaceAt, samplePath, nearestLane, routeField, routeStep, LANE_CHANGE_COST, districtAt } from './citymap';
 import { STORES, storeAt } from '../game/places';
 
 const city = generateCity();
@@ -76,8 +76,9 @@ describe('lane routing', () => {
         for (let s = 0; s <= cur.length; s += 2) { samplePath(cur, s, p); if (Math.hypot(p.x - t.x, p.z - t.z) < 14) { reached = true; break; } }
         if (reached) break;
         driven += cur.length;
-        let best = cur.next[0]; for (const n of cur.next) if (field[n] < field[best]) best = n;
-        cur = city.lanes[best];
+        const st = routeStep(city, field, cur); if (!st) break; // lane changes are part of a route (turns leave from one lane)
+        if (st.change) driven -= cur.length - LANE_CHANGE_COST;
+        cur = city.lanes[st.id];
       }
       expect(reached, `reached ${t.x},${t.z}`).toBe(true);
       expect(driven, `to ${t.x},${t.z}`).toBeLessThan(500);
@@ -97,7 +98,7 @@ describe('city expansion', () => {
     // walk the lane graph from a grid lane: the freeway lanes must be reachable
     const fwLanes = new Set(city.lanes.filter(l => l.ys && Math.max(...l.ys) > 5 && !l.connector).map(l => l.id));
     const seen = new Set<number>(); const q = city.lanes.filter(l => !l.connector && !l.ys).map(l => l.id); // any grid lane (some inner lanes are only entered from the cross street)
-    while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); q.push(...city.lanes[id].next); }
+    while (q.length) { const id = q.pop()!; if (seen.has(id)) continue; seen.add(id); const l = city.lanes[id]; q.push(...l.next); if (l.leftLane !== undefined) q.push(l.leftLane); if (l.rightLane !== undefined) q.push(l.rightLane); }
     expect([...fwLanes].some(id => seen.has(id))).toBe(true);
     // every expansion lane (freeway, ramps, hill and airfield roads) is reachable from the grid
     for (const l of city.lanes) if (l.ys) expect(seen.has(l.id), `lane ${l.id}`).toBe(true);

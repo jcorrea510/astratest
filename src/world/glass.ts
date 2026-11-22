@@ -10,7 +10,20 @@ export interface Pane {
   /** bullets taken; cracked after 1, shattered at HITS_TO_BREAK */ hits: number; broken: boolean; inst: number; mesh: THREE.Mesh | null;
   /** frame collider behind the pane (walk-in stores): switched off when the pane shatters */
   collider?: { setEnabled(on: boolean): void } | null;
+  /** Round 7: a roll-down grille / shutter covers the pane (bullets hit metal, the glass never cracks) */
+  shielded?: () => boolean;
 }
+/** GLSL fH (facadeShader) in float32 steps, so the CPU knows which shopfronts the shader draws a night grille on. */
+export function facadeHash(x: number, y: number): number {
+  const f = Math.fround, fr = (v: number) => f(v - Math.floor(v));
+  x = f(x % 289); y = f(y % 289);
+  let qx = fr(f(x * f(0.1031))), qy = fr(f(y * f(0.1030))), qz = fr(f(x * f(0.0973)));
+  const d = f(f(f(qx * f(qy + f(33.33))) + f(qy * f(qz + f(33.33)))) + f(qz * f(qx + f(33.33))));
+  qx = f(qx + d); qy = f(qy + d); qz = f(qz + d);
+  return fr(f(f(qx + qy) * qz));
+}
+/** Shopfront (facade kind 4) with this seed shows a roll-down grille at night (shader: open = step(0.25, fH(seed, 8))). */
+export function shopGrilledAtNight(seed: number): boolean { return facadeHash(seed, 8) < 0.25; }
 const CELL = 16;
 export const HITS_TO_BREAK = 3;
 /** how far behind a shattered street pane the visible (and bullet-stopping) interior backdrop sits */
@@ -36,6 +49,8 @@ function crackTexture(): THREE.Texture {
 }
 
 export class WorldGlass {
+  /** 0..1 night factor (set by the game each frame): night grilles come down over closed shops */
+  night = 0;
   panes: Pane[] = [];
   private grid = new Map<string, number[]>();
   private intact: THREE.InstancedMesh | null = null;
@@ -89,7 +104,7 @@ export class WorldGlass {
     for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) {
       const l = this.grid.get(`${i},${j}`); if (!l) continue;
       for (const id of l) {
-        const p = this.panes[id]; if (p.broken && !includeBroken) continue;
+        const p = this.panes[id]; if ((p.broken && !includeBroken) || p.shielded?.()) continue;
         const nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
         const dx = pt.x - p.x, dz = pt.z - p.z, dy = pt.y - p.y;
         if (Math.abs(dx * nx + dz * nz) > tol) continue;

@@ -2,7 +2,7 @@
  * GPS routing: follows the lane graph (roads, ramps, the freeway bridge) from the player's position to a waypoint,
  * so the drawn route never cuts across water, buildings or terrain. Built on routeField (reverse Dijkstra).
  */
-import { type CityMap, type V2, routeField } from './citymap';
+import { type CityMap, type V2, routeField, routeStep } from './citymap';
 
 function closestOnLane(lane: { points: V2[]; cum: number[] }, x: number, z: number) {
   let d = Infinity, s = 0;
@@ -38,11 +38,13 @@ export function gpsRoute(city: CityMap, fx: number, fz: number, tx: number, tz: 
   const out: V2[] = [{ x: fx, z: fz }];
   let cur = city.lanes[start], s0 = startS;
   for (let step = 0; step < 400; step++) {
-    const nexts = cur.next;
-    let nb = -1, nd = Infinity;
-    for (const n of nexts) if (field[n] < nd) { nd = field[n]; nb = n; }
-    const terminal = nb < 0 || !Number.isFinite(nd) || cur.length + nd > field[cur.id] + 0.5; // the lane itself is the cheapest way to the target
-    if (terminal) {
+    const st = routeStep(city, field, cur);
+    if (st?.change) { // move over to the neighbouring lane a little further on
+      const tl = city.lanes[st.id], s1 = Math.min(tl.length, s0 + 15);
+      out.push(pointAt(cur, s0)); cur = tl; s0 = s1; continue;
+    }
+    const nb = st ? st.id : -1;
+    if (!st) { // the lane itself is the cheapest way to the target
       const { s } = closestOnLane(cur, tx, tz);
       const sEnd = Math.max(s0, s);
       for (let i = 0; i < cur.points.length; i++) if (cur.cum[i] > s0 && cur.cum[i] < sEnd) out.push(cur.points[i]);

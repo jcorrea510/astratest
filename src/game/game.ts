@@ -48,6 +48,8 @@ import type { HeliVariant } from '../vehicles/helicopterModel';
 import { Blood } from '../render/blood'; // R6-F
 import { CombatFx } from '../ui/combatfx';
 import { Orders } from './orders';
+import { TaxiRide } from './taxiRide';
+import { TaxiJob } from './taxiJob';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -98,7 +100,7 @@ export class Game {
   police!: Police;
   playerVehicle: Vehicle | null = null;
   /** R6-F: orders / hostages, blood, damage feedback */
-  orders!: Orders; blood!: Blood; fx: CombatFx | null = null;
+  orders!: Orders; taxi!: TaxiRide; taxiJob!: TaxiJob; blood!: Blood; fx: CombatFx | null = null;
   private lowRingT = 0; private wasLow = false;
   /** the car the player last got out of (kept out of mission clean-ups) */
   lastPlayerVehicle: Vehicle | null = null;
@@ -214,6 +216,13 @@ export class Game {
       sfx: (name, at) => this.audio.play(name, { pos: at }),
     });
     this.orders = new Orders(this);
+    this.taxiJob = new TaxiJob(this);
+    const game = this; // eslint-disable-line @typescript-eslint/no-this-alias
+    this.taxi = new TaxiRide({
+      player: this.player as never, traffic: this.traffic, vehicles: this.vehicles, city: this.city,
+      get waypoint() { return game.waypoint; }, get money() { return game.money; }, addMoney: d => this.addMoney(d),
+      scene: this.renderer.scene, toast: (m, k) => this.events.onToast(m, (k ?? 'info') as never), sound: (n, p) => this.audio.play(n as never, { pos: p }),
+    });
     this.events.arrestAnimationDone = this.police.dispatch.animHook; // [POLICE] the cop cuffs the player before the ARRESTED card
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
@@ -330,7 +339,7 @@ export class Game {
   /** Advances the simulation by real-time dt (seconds). Exposed for scripted tests. */
   frame(raw: number, render = true) {
     raw = Number.isFinite(raw) ? Math.max(0, Math.min(0.1, raw)) : 0;
-    this.input.padContext = this.playerHeli ? 'heli' : this.playerVehicle ? 'car' : 'foot';
+    this.input.padContext = this.playerHeli ? 'heli' : this.playerVehicle || this.taxi?.riding ? 'car' : 'foot';
     this.input.pollGamepad();
     this.timeScale += (this.targetTimeScale - this.timeScale) * Math.min(1, raw * 10);
     const dt = this.paused ? 0 : raw * this.timeScale;
@@ -427,6 +436,7 @@ export class Game {
   /** Enter the nearest vehicle (walk to the door; carjacking if occupied) or get out of the current one. */
   toggleVehicle() {
     if (this.carEntry.active || this.carEntry.playerDragged || !this.player.alive || this.deathT >= 0) return;
+    if (this.taxi.riding) { this.taxi.exit(); return; }
     if (this.playerVehicle) { this.carEntry.beginExit(this.playerVehicle); return; }
     if (this.playerHeli) { this.carEntry.beginExit(this.playerHeli); return; }
     const lift = this.helis.liftNear(this.player.pos);
@@ -639,6 +649,9 @@ export class Game {
       if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 3;
       // a burning chopper: jump
       if (ph.destroyed && !this.carEntry.active) this.carEntry.beginExit(ph);
+    } else if (this.taxi.riding) {
+      this.player.human.update(dt);
+      if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 3;
     } else if (pv) {
       if (!handled) this.player.human.update(dt);
       if (!blocked) {
@@ -655,7 +668,7 @@ export class Game {
     }
     this.orders.update(dt, raw, blocked);
     this.updateHurtFx(dt);
-    this.pcombat.update(dt, blocked || this.paused || this.carEntry.active, () => this.pop.characters(), () => this.vehicles.list);
+    this.pcombat.update(dt, blocked || this.paused || this.carEntry.active || this.taxi.riding, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
     this.pop.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 26 : 16;
     this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
@@ -667,6 +680,7 @@ export class Game {
     this.crowd.hour = this.pop.hour = this.traffic.hour = this.hour; // street-life schedules
     this.crowd.sirens = this.traffic.sirenSources;
     this.buses.update(dt, this.player.pos);
+    this.taxi.update(dt); this.taxiJob.update(dt);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
@@ -679,6 +693,7 @@ export class Game {
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
+    else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.yaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);
@@ -694,7 +709,7 @@ export class Game {
       this.audio.setAmbience({ night: this.renderer.skyState.night, water, traffic: Math.min(1, near / 8 + (d === 'heights' ? 0.3 : 0.1)), park: d === 'juniper' ? 1 : d === 'hillside' ? 0.6 : d === 'strand' ? 0.3 : 0, altitude: Math.min(1, Math.max(0, (this.renderer.camera.position.y - 25) / 70)) });
     }
     this.renderer.updateEnvironment(this.hour, this.time, this.player.pos);
-    nightUniform.value = this.renderer.skyState.night;
+    nightUniform.value = this.renderer.skyState.night; worldGlass.night = nightUniform.value;
     timeUniform.value = this.time;
     this.updateSignals();
     this.updateLamps(dt);
