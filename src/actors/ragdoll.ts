@@ -39,6 +39,7 @@ export class Ragdoll {
   bend = new THREE.Quaternion();
   rootPos = new THREE.Vector3(); rootQuat = new THREE.Quaternion();
   hood = 0; // seconds the torso has been above the car's hood line (stats for tests)
+  groundT = 0; /** times a body was lifted back out of the ground (stats for tests) */ unsunk = 0;
   private crackedGlass = false;
   readonly s: number;
   constructor(private sys: RagdollSystem, public char: Character, public o: LaunchOpts) {
@@ -127,13 +128,27 @@ export class RagdollSystem {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const r = this.list[i], c = r.char;
       if (r.frozen) { if (!c.ragdoll) this.list.splice(i, 1); continue; }
-      r.t += dt; r.sync(); r.checkGlass();
+      r.t += dt; r.sync(); r.checkGlass(); this.unsink(r, dt);
       const sleeping = r.legs.isSleeping() && r.torso.isSleeping();
       if (r.speed < 0.5 || sleeping) r.still += dt; else r.still = 0;
       if (r.o.getUp && c.alive && r.t > 1.0 && r.still > 0.6) { this.release(r); this.list.splice(i, 1); continue; }
       if (r.o.getUp && !c.alive) r.o.getUp = false;
       if (!r.o.getUp && r.t > 30 && r.still > 2) r.freeze();
       if (c.isDisposed) { r.freeze(); this.list.splice(i, 1); }
+    }
+  }
+  /**
+   * Round 7: a body squeezed under the street (pinned by a car, solver push-through) is lifted back onto the ground
+   * instead of jittering half inside it. Checked a few times a second per body.
+   */
+  private unsink(r: Ragdoll, dt: number) {
+    r.groundT -= dt; if (r.groundT > 0) return; r.groundT = 0.15;
+    for (const [b, rad] of [[r.legs, LEG.r * r.s], [r.torso, TOR.r * r.s]] as const) {
+      const p = b.translation(), hit = this.physics.ray(p.x, p.y + 1.6, p.z, 0, -1, 0, 4, groups(0xffff, G_STATIC)), g = hit ? p.y + 1.6 - hit.toi : null; // streets only (not a car roof)
+      if (g === null || p.y - rad > g - 0.08) continue;
+      b.setTranslation({ x: p.x, y: g + rad + 0.03, z: p.z }, true);
+      const v = b.linvel(); b.setLinvel({ x: v.x * 0.5, y: Math.max(0, v.y), z: v.z * 0.5 }, true);
+      r.unsunk++;
     }
   }
   /** Stand a living ragdoll back up where it came to rest. */

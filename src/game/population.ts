@@ -149,6 +149,14 @@ export class Population {
       if (Math.abs(lz - zc) / hzh > Math.abs(lx) / hxh * 0.6) lz = zc + (lz - zc >= 0 ? 1 : -1) * (hzh + 0.12); else lx = (lx >= 0 ? 1 : -1) * (hxh + 0.12);
       ch.pos.x = v.position.x + c * lx + s * lz; ch.pos.z = v.position.z - s * lx + c * lz;
     }
+    // Round 7: struck by the flank (beside the car, not in front of the bumper): thrown sideways and along, clear of the
+    // body. They used to be launched at 12% of the car's speed and get scraped along the side into the ground (jitter).
+    if (Math.abs(lx) >= hxh - 0.05 && Math.abs(lz - zc) < hzh - 0.3) {
+      const out = lx >= 0 ? 1 : -1, ox = c * out, oz = -s * out, push = 2.2 + Math.min(6, sp * 0.22);
+      ch.yaw = Math.atan2(-ox, -oz); // facing the car side, knocked over backwards away from it
+      this.ragdolls!.launch(ch, { vx: vel.x * 0.55 + ox * push, vy: 1.1, vz: vel.z * 0.55 + oz * push, spin: lateral * 1.5, getUp: true, lying: false, car: v });
+      return;
+    }
     const fwd = Math.sign(v.speed) || 1;
     if (!lying) ch.yaw = Math.atan2(vel.x * fwd, vel.z * fwd) + Math.PI; // facing the car, so they fall back onto the hood
     const k = lying ? 0.25 : 0.12;
@@ -159,7 +167,9 @@ export class Population {
   vehicleHits(vehicles: Iterable<Vehicle>, player: Character, onPlayerHit: (v: Vehicle, speed: number) => void) {
     this.watchCrashes(vehicles, 1 / 60);
     for (const v of vehicles) {
-      const sp = Math.abs(v.speed);
+      // Round 7: ground speed, not just along the nose: a car sliding sideways into someone used to register no hit at
+      // all, so its body shoved the walking character into the street (sinking, jittering)
+      const lv0 = v.phys.body.linvel(), sp = Math.max(Math.abs(v.speed), Math.hypot(lv0.x, lv0.z));
       if (sp < 3) continue;
       const hx = v.tpl.layout.half[0] + 0.35, hz = v.tpl.layout.half[2] + 0.35;
       const yaw = v.yaw, c = Math.cos(yaw), s = Math.sin(yaw);
