@@ -21,6 +21,8 @@ import { bodyCapsules, rayBody, zoneDamage, zoneBone, type Capsule, type Zone } 
 import type { Blood } from '../render/blood';
 import { coneSample } from './aim';
 
+/** Weapons that take a head off at close range (Round 7 gore): shotguns, rifles, heavy guns, or a magnum-class round (85+ damage). Pure: tests. */
+export function decapitates(w: Pick<WeaponDef, 'cat' | 'damage' | 'melee'>): boolean { return !w.melee && (w.cat === 'shotgun' || w.cat === 'rifle' || w.cat === 'heavy' || w.damage >= 85); }
 export interface HitInfo { point: THREE.Vector3; target: Character | Vehicle | null; kind: 'character' | 'vehicle' | 'static' | 'none'; headshot: boolean; killed: boolean; damage?: number; surface?: ImpactKind; zone?: Zone; throughGlass?: boolean; ricochet?: boolean }
 export interface ShotEvent { shooter: Character; weapon: WeaponDef; origin: THREE.Vector3; hits: HitInfo[] }
 /** Result of tracing one ray through the world and people. */
@@ -376,7 +378,7 @@ export class Combat {
         const apply = () => {
           const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
           this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
-          this.bloodHit(c, end, d, zone, strength, res.killed);
+          this.bloodHit(c, end, d, zone, strength, res.killed, w, tr.t);
           return res;
         };
         const delay = tr.t > 100 ? flightTime(v0, tr.t) : 0; // long shots take time to arrive
@@ -428,8 +430,14 @@ export class Combat {
   }
 
   /** Spray, ground / wall spatter, a wound mark on the hit bone and (on a kill) a growing pool. Skipped when Blood is off. */
-  private bloodHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, killed: boolean) {
+  private bloodHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, killed: boolean, w?: WeaponDef, dist = 0) {
     const b = this.blood; if (!b || !b.enabled) return;
+    b.onSpurt ??= (x, y, z, dx, dy, dz, s) => this.particles.blood(x, y, z, dx, dy, dz, s);
+    // Round 7 gore: a heavy round to the head at close range takes it off; other hits keep bleeding for a while
+    const left0 = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
+    if (zone === 'head' && killed && w && c.team !== 'player' && dist < 30 && decapitates(w)) {
+      const head = zoneBone(c.human.model, 'head', left0); if (head) b.decapitate(head, zoneBone(c.human.model, 'neck', left0), c.pos.y);
+    } else if (zone !== 'head') { const bone = zoneBone(c.human.model, zone, left0); if (bone) b.bleed(bone, c.pos.y, killed ? 6 : 3.5, Math.min(1.5, strength + (w ? w.damage / 60 : 0))); }
     this.particles.blood(end.x, end.y, end.z, d.x, d.y * 0.3, d.z, strength * (zone === 'head' ? 1.3 : 1));
     const wr = this.physics.ray(end.x, end.y, end.z, d.x, d.y, d.z, 3.5, WORLD, c.collider);
     const wall = wr ? { x: end.x + d.x * wr.toi, y: end.y + d.y * wr.toi, z: end.z + d.z * wr.toi, nx: wr.normal.x, ny: wr.normal.y, nz: wr.normal.z } : null;

@@ -7,6 +7,8 @@ import * as THREE from 'three';
 
 export const BLOOD_SPLAT_MAX = 120;
 export const BLOOD_POOL_MAX = 18;
+/** wounds bleeding at once (Round 7 gore budget) */
+export const BLEED_MAX = 6;
 const POOL_FULL = 0.62; // metres of radius when fully grown
 const POOL_GROW_S = 14;
 
@@ -106,6 +108,7 @@ export class Blood {
     this.sync();
   }
   update(dt: number) {
+    if (this.bleeders.length) this.bleedTick(dt);
     if (!this.poolList.length) return;
     let growing = false;
     for (const r of this.poolList) if (r.age < POOL_GROW_S) {
@@ -123,8 +126,45 @@ export class Blood {
     }
     this.pools.instanceMatrix.needsUpdate = true;
   }
+  // ---------------- Round 7 gore (cheap: a capped list of bleeding wounds, particles + a few floor splats) ----------------
+  /** emits blood particles (wired to Particles.blood by the combat code) */
+  onSpurt: ((x: number, y: number, z: number, dx: number, dy: number, dz: number, s: number) => void) | null = null;
+  bleeders: { bone: THREE.Object3D; t: number; every: number; acc: number; floorAcc: number; groundY: number; s: number; up: boolean }[] = [];
+  /** A wound that keeps bleeding for `dur` s (spurts along the bone's up axis when `up`, else drips). At most BLEED_MAX at once. */
+  bleed(bone: THREE.Object3D, groundY: number, dur: number, strength: number, up = false) {
+    if (!this.enabled) return;
+    const same = this.bleeders.find(b => b.bone === bone); if (same) { same.t = Math.max(same.t, dur); same.s = Math.max(same.s, strength); return; }
+    if (this.bleeders.length >= BLEED_MAX) this.bleeders.shift();
+    this.bleeders.push({ bone, t: dur, every: up ? 0.06 : 0.16, acc: 0, floorAcc: 0, groundY, s: strength, up });
+  }
+  /** Head shot off by a heavy round: the head goes, a dark stump caps the neck and it spurts for a few seconds. */
+  decapitate(head: THREE.Object3D, neck: THREE.Object3D | null, groundY: number) {
+    if (!this.enabled || head.userData.gone) return;
+    head.userData.gone = true; head.scale.setScalar(0.001); // children (hair, hats skinned to it) collapse with it
+    const at = neck ?? head.parent; if (!at) return;
+    const stump = new THREE.Mesh(this.woundGeo, this.woundMat); stump.userData.wound = true; stump.renderOrder = 3;
+    stump.position.copy(head.position).multiplyScalar(at === head.parent ? 1 : 0.9); stump.scale.setScalar(0.11);
+    stump.quaternion.setFromUnitVectors(this.z, new THREE.Vector3(0, 1, 0));
+    at.add(stump); this.wounds.push(stump);
+    this.bleed(at, groundY, 5, 1.6, true);
+  }
+  private bleedTick(dt: number) {
+    for (let i = this.bleeders.length - 1; i >= 0; i--) {
+      const b = this.bleeders[i]; b.t -= dt;
+      if (b.t <= 0 || !b.bone.parent) { this.bleeders.splice(i, 1); continue; }
+      const fade = Math.min(1, b.t / 2);
+      b.acc += dt; b.floorAcc += dt;
+      if (b.acc >= b.every) {
+        b.acc = 0; b.bone.getWorldPosition(this.p);
+        if (b.up) { b.bone.getWorldQuaternion(this.q); const u = new THREE.Vector3(0, 1, 0).applyQuaternion(this.q); this.onSpurt?.(this.p.x, this.p.y + 0.05, this.p.z, u.x + (Math.random() - 0.5) * 0.4, u.y * 1.4 + 0.3, u.z + (Math.random() - 0.5) * 0.4, b.s * fade); }
+        else this.onSpurt?.(this.p.x, this.p.y, this.p.z, (Math.random() - 0.5) * 0.3, -0.6, (Math.random() - 0.5) * 0.3, 0.35 * b.s * fade);
+      }
+      if (b.floorAcc >= (b.up ? 0.35 : 0.7)) { b.floorAcc = 0; b.bone.getWorldPosition(this.p); this.splat(this.p.x + (Math.random() - 0.5) * 0.3, b.groundY + 0.01, this.p.z + (Math.random() - 0.5) * 0.3, 0, 1, 0, 0.1 + Math.random() * 0.12 * b.s); }
+    }
+  }
   /** Wipes everything (respawn / sandbox clear). */
   clear() {
+    this.bleeders.length = 0;
     this.splats.count = 0; this.si = 0; this.poolList.length = 0; this.pools.count = 0;
     for (const w of this.wounds) w.removeFromParent(); this.wounds.length = 0;
   }

@@ -135,7 +135,7 @@ export class SettingsPanel {
       this.body.appendChild(this.slider('Field of view', 'How much of the street you see.', 50, 80, 1, s.fov, v => `${v}°`, v => this.update(x => { x.fov = v; })));
       this.body.appendChild(this.slider('Camera shake', 'Impacts, explosions and engine rumble.', 0, 1, 0.05, s.cameraShake, v => `${Math.round(v * 100)}%`, v => this.update(x => { x.cameraShake = v; })));
       this.body.appendChild(this.toggle('Stylised colour grade', 'Teal and apricot split-tone instead of the neutral photographic look.', s.look === 'stylised', v => this.update(x => { x.look = v ? 'stylised' : 'natural'; })));
-      this.body.appendChild(this.toggle('Blood', 'Spatter, pools and wound marks when people are shot.', s.blood, v => this.update(x => { x.blood = v; })));
+      this.body.appendChild(this.toggle('Blood & gore', 'Spatter, pools, bleeding wounds, and heavy rounds that take a head off. Off: clean hits.', s.blood, v => this.update(x => { x.blood = v; })));
       this.body.appendChild(this.toggle('Show FPS', 'Frame-rate counter in the corner.', s.showFps, v => this.update(x => { x.showFps = v; })));
     } else if (this.tab === 'input') {
       this.body.appendChild(this.slider('Look sensitivity', 'Mouse and right-stick camera speed.', 0.2, 3, 0.05, s.sensitivity, v => `${v.toFixed(2)}×`, v => this.update(x => { x.sensitivity = v; })));

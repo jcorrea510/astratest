@@ -47,5 +47,5 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).
 
 ## Conventions
-Teen tone, all names/art original (no real brands/GTA assets). Keep draw calls low (merge by material, instancing, LOD).
+Tone: original names/art only (no real brands/GTA assets); gore (owner request, Round 7) only behind the Blood & gore setting. Keep draw calls low (merge by material, instancing, LOD).
 Every bug fix gets a regression test. Commit trailers: see git log.
