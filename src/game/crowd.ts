@@ -286,6 +286,7 @@ export class Crowd {
       samplePath(lane, s, sp);
       const d = Math.hypot(sp.x - focus.x, sp.z - focus.z);
       if (d < (this.prewarming ? 40 : 65) || d > 190) continue; // R6-T: denser ring (was 70-230) so moving cars outnumber parked ones in view
+      if (!this.prewarming && spawnHidden(d, this.seen(sp.x, 1.2, sp.z, 3.5))) continue; // Round 8: never pop into view nearby
       if (Math.random() > DISTRICT_INFO[districtAt(this.city, sp.x, sp.z)].trafficDensity) continue;
       if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (bus ? 20 : 11))) continue;
       { // R6-Z1: >= 8 m bumper gap to far cars and to real (possibly stopped) cars on this lane
@@ -436,6 +437,7 @@ export class Crowd {
       const x = nd.x + (to.x - nd.x) * t, z = nd.z + (to.z - nd.z) * t;
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d < (this.prewarming ? 30 : 66) || d > 210) continue;
+      if (!this.prewarming && spawnHidden(d, this.seen(x, 1, z, 1.2))) continue; // Round 8: people popped in ahead of you (66 m, in view)
       const dist = districtAt(this.city, x, z);
       if (Math.random() > Math.min(1, DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour))) continue;
       const rnd = (n: number) => Math.floor(Math.random() * n);
@@ -541,3 +543,6 @@ export class Crowd {
     v.parked = true; v.doorsLocked = s.paint % 3 !== 0; v.ignition = false; s.real = v;
   }
 }
+
+/** Round 8: a far-crowd car / person may only appear in view beyond 150 m (nearer, only where the camera can't see it). Pure (tests). */
+export function spawnHidden(dist: number, inView: boolean): boolean { return inView && dist < 150; }

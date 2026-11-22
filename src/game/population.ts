@@ -10,6 +10,7 @@ import { DISTRICT_INFO, districtAt, surfaceAt } from '../world/citymap';
 import type { Character } from '../actors/character';
 import type { RagdollSystem } from '../actors/ragdoll';
 import type { Vehicle } from '../vehicles/vehicle';
+import { spawnHidden } from './crowd';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
 
@@ -365,7 +366,8 @@ export class Population {
         if (d < (this.prewarming ? 10 : 35) || d > this.spawnMax) continue;
         const dist = districtAt(this.city, p.x, p.z), dens = DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour);
         if (Math.random() > dens) continue;
-        if (!this.prewarming && d < 80 && this.frustum.containsPoint(p.clone().setY(1))) continue;
+        // Round 8: never spawn where the camera can see (was: allowed in view beyond 80 m, and only the centre point was tested)
+        if (!this.prewarming && spawnHidden(d, this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(p.x, p.y + 1, p.z), 2.5)))) continue;
         const n = this.spawn('civilian', p.x, p.z, p.y);
         n.node = nd.id; n.nextNode = Math.random() < 0.5 ? e.to : nd.id;
         // walking with friends: a quarter of arrivals come as a pair or trio

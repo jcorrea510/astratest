@@ -197,6 +197,10 @@ export class NpcBrainRunner {
       case 'flee': {
         tv.copy(c.pos).sub(n.fleeFrom); tv.y = 0; if (tv.lengthSq() < 0.01) tv.set(1, 0, 0);
         tv.normalize(); desired.copy(tv); speed = 6.2;
+        // Round 8: run along the pavement, not out into the traffic: the escape heading closest to "away" that stays off the
+        // road (a person already in the road takes the shortest way back to the kerb)
+        { const a0 = Math.atan2(tv.x, tv.z), k = fleeHeading(a0, (a: number, r: number) => this.onRoad(c.pos.x + Math.sin(a) * r, c.pos.z + Math.cos(a) * r), this.onRoad(c.pos.x, c.pos.z));
+          if (k !== null) desired.set(Math.sin(k), 0, Math.cos(k)); }
         if (n.callCops && n.stateT > 2.5 && c.pos.distanceTo(n.fleeFrom) > 9) { // a safe distance away: stop and phone it in
           n.callCops = false; env.onWitness(n, 'attack');
           this.startAct(n, 'phone', 6 + Math.random() * 4, Math.atan2(n.fleeFrom.x - c.pos.x, n.fleeFrom.z - c.pos.z)); break;
@@ -678,3 +682,15 @@ export function npcFireTiming(police: boolean, auto: boolean, interval: number, 
 /** Round 8: sideways place on a footpath / crosswalk for a walker (negative = right of the walking direction): always on
  * the right half, spread 0.3-0.95 m from the centre line by the person's own random `laneOffset` (-0.8..0.8). Pure (tests). */
 export function keepRight(laneOffset: number): number { return -(0.3 + Math.min(0.8, Math.abs(laneOffset)) * 0.8); }
+
+/**
+ * Round 8: heading for a fleeing pedestrian. Tries "straight away" first, then turns further and further (30 deg steps,
+ * either side) until 2.5 m ahead is off the road. Standing in the road, it turns towards the nearest kerb instead (the
+ * first heading whose point 2.5 m out is pavement). null = keep the plain away heading. Pure (tests).
+ */
+export function fleeHeading(away: number, roadAt: (a: number, r: number) => boolean, inRoad: boolean): number | null {
+  const steps = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6];
+  if (!inRoad) { if (!roadAt(away, 2.5)) return null; for (const k of steps) { const a = away + k * Math.PI / 6; if (!roadAt(a, 2.5) && !roadAt(a, 1.2)) return a; } return null; }
+  for (const r of [2.5, 5, 9]) for (const k of steps) { const a = away + k * Math.PI / 6; if (!roadAt(a, r)) return a; }
+  return null;
+}

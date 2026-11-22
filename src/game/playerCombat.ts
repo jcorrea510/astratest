@@ -97,6 +97,9 @@ export class PlayerCombat {
   /** the last gun held that can be fired from a car seat (Round 7: aim in a car draws it) */
   lastCarGun: WeaponId | null = null;
   get aiming() { return this.ctl.aiming || this.hipAimT > 0 || this.driveAim; }
+  /** Round 8: a gun really pointed at people: the aim button held (or drive-by), or a shot in the last 1.5 s. A reload or a
+   * gun merely raised from the hip no longer counts (bystanders put their hands up for no reason). */
+  get threatening() { return isThreatening(this.ctl.aiming, this.driveAim, this.time - this.lastShot); }
   /** R6-K drive-by: holding aim inside a car with a one-handed gun puts it out the window; fire then shoots along the camera aim point. */
   driveAim = false;
   private wasDriveAim = false; private wasMode = 'none';
@@ -528,3 +531,6 @@ function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, 
     p.bolt.rotation.z = 1.1 * u; p.bolt.position.z -= 0.07 * b;
   }
 }
+
+/** Pure (tests): see PlayerCombat.threatening. */
+export function isThreatening(aimHeld: boolean, driveAim: boolean, sinceShot: number): boolean { return aimHeld || driveAim || sinceShot < 1.5; }

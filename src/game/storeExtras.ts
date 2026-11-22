@@ -105,7 +105,7 @@ export class StoreExtras {
   // ---------- raised gun: everybody reacts, then calms down ----------
   private aim(k: Kiosk, dt: number, insideK: Kiosk | null) {
     const g = this.game, ex = k.ex;
-    const aimed = insideK === k && g.pcombat.armed && g.pcombat.aiming && !g.playerVehicle && k.phase !== 'closed';
+    const aimed = insideK === k && g.pcombat.armed && g.pcombat.threatening && !g.playerVehicle && k.phase !== 'closed';
     const n = k.clerk;
     if (aimed) {
       ex.calmT = 0;

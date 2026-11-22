@@ -188,16 +188,6 @@ export class Game {
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.worldGlass = worldGlass;
     this.blood = new Blood(this.renderer.scene); this.blood.enabled = this.settings.blood; this.combat.blood = this.blood;
-    // Round 8 gore: a hard hit by a car leaves blood on the road (and keeps bleeding), sprayed along the car's path
-    this.pop.onCarHit = (ch, v, sp) => {
-      const b = this.blood; if (!b.enabled) return;
-      const vel = v.phys.body.linvel(), hd = Math.hypot(vel.x, vel.z) || 1, d = new THREE.Vector3(vel.x / hd, 0.2, vel.z / hd), k = Math.min(2, sp / 9);
-      const at = new THREE.Vector3(ch.pos.x, ch.pos.y + 1, ch.pos.z);
-      this.particles.blood(at.x, at.y, at.z, d.x, 0.5, d.z, 1.2 * k);
-      b.hit(at, d, ch.pos.y, k, null, null);
-      for (let i = 0; i < Math.round(2 + k * 2); i++) b.splat(ch.pos.x + d.x * (1 + i * 1.3), ch.pos.y + 0.01, ch.pos.z + d.z * (1 + i * 1.3), 0, 1, 0, 0.25 + Math.random() * 0.25);
-      if (!ch.alive) b.pool(ch.pos.x, ch.pos.y, ch.pos.z, ch.pos);
-    };
     try { this.fx = new CombatFx(this.canvas.parentElement ?? document.body); } catch { this.fx = null; }
     worldGlass.onBreak = pane => { this.particles.decals.clearIn(pane.x, pane.y, pane.z, pane.yaw, pane.w, pane.h, pane.inst >= 0 ? 1.7 : 0.4); }; // shot-out glass loses its bullet holes
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
@@ -213,7 +203,17 @@ export class Game {
       onLamp: (i, on) => this.setLamp(i, on), sfx: (n, at, vol) => this.audio.play(n as 'crash', { pos: at, volume: vol }),
       splash: (x, y, z, n) => this.particles.splash(x, y, z, n), sparks: (x, y, z, n) => this.particles.sparks(x, y, z, n, 6),
     });
-    this.pop.aimProvider = () => { if (!this.pcombat.aiming || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
+    // Round 8 gore: a hard hit by a car leaves blood on the road (and keeps bleeding), sprayed along the car's path
+    this.pop.onCarHit = (ch, v, sp) => {
+      const b = this.blood; if (!b.enabled) return;
+      const vel = v.phys.body.linvel(), hd = Math.hypot(vel.x, vel.z) || 1, d = new THREE.Vector3(vel.x / hd, 0.2, vel.z / hd), k = Math.min(2, sp / 9);
+      const at = new THREE.Vector3(ch.pos.x, ch.pos.y + 1, ch.pos.z);
+      this.particles.blood(at.x, at.y, at.z, d.x, 0.5, d.z, 1.2 * k);
+      b.hit(at, d, ch.pos.y, k, null, null);
+      for (let i = 0; i < Math.round(2 + k * 2); i++) b.splat(ch.pos.x + d.x * (1 + i * 1.3), ch.pos.y + 0.01, ch.pos.z + d.z * (1 + i * 1.3), 0, 1, 0, 0.25 + Math.random() * 0.25);
+      if (!ch.alive) b.pool(ch.pos.x, ch.pos.y, ch.pos.z, ch.pos);
+    };
+    this.pop.aimProvider = () => { if (!this.pcombat.threatening || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
@@ -503,7 +503,7 @@ export class Game {
   detachPlayer(v: Enterable, fast: boolean) {
     if (v === this.playerVehicle) {
       const car = this.playerVehicle;
-      this.playerVehicle = null; this.lastPlayerVehicle = car;
+      this.playerVehicle = null; this.lastPlayerVehicle = car; this.traffic.protect = car;
       car.input.throttle = 0; car.input.steer = 0; car.input.handbrake = !fast;
     }
     if (v === this.playerHeli) {
@@ -555,7 +555,7 @@ export class Game {
     void force;
     const pos = v.flooded ? v.position.clone().setY(WATER_LEVEL - 1.3) : this.findExitPoint(v);
     const fast = Math.abs(v.speed) > 9 && !v.destroyed;
-    this.playerVehicle = null; v.driver = null; this.player.inVehicle = null; this.lastPlayerVehicle = v;
+    this.playerVehicle = null; v.driver = null; this.player.inVehicle = null; this.lastPlayerVehicle = v; this.traffic.protect = v;
     v.input.throttle = 0; v.input.handbrake = !fast;
     const h = this.player.human;
     this.renderer.scene.add(h.root);

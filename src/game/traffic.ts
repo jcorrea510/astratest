@@ -53,6 +53,8 @@ export class Traffic {
   prewarming = false;
   private spawnT = 0; private laneT = 0; private nearLanes: Lane[] = [];
   private parkedBlocks = new Map<number, Vehicle[]>();
+  /** Round 8: seconds each untracked car has stood still; the player's last car is never towed */
+  private idleT = new WeakMap<Vehicle, number>(); protect: Vehicle | null = null;
   private frustum = new THREE.Frustum(); private m4 = new THREE.Matrix4();
   private rng = new Rng(7);
   private crashes: CrashSite[] = [];
@@ -619,8 +621,14 @@ export class Traffic {
     }
     for (const v of [...this.vehicles.list]) {
       if (v.persistent || v.driver || this.cars.some(c => c.v === v)) continue;
-      if (v.parked) continue;
       const dv = v.position.distanceTo(focus), vis = seen(v.position, dv);
+      // Round 8: a driverless car left standing in a driving lane (driver bailed out, knocked out of its kerb slot) is towed
+      // once nobody can see it, instead of blocking traffic until the player is 170 m away ("parked cars in the road")
+      const idle = Math.abs(v.speed) < 0.3 ? (this.idleT.get(v) ?? 0) + dt : 0; this.idleT.set(v, idle);
+      if (v !== this.protect && towAbandoned(idle, dv, vis, () => { const nl = nearestLane(this.city, v.position.x, v.position.z); return nl ? nl.dist : 99; })) {
+        for (const o of this.pop.npcs.filter(n => n.char.inVehicle === v)) this.pop.remove(o); this.vehicles.remove(v); this.idleT.delete(v); continue;
+      }
+      if (v.parked) continue;
       if ((dv > 170 && !vis) || dv > 260 || (v.destroyed && v.burnTime < 0 && dv > 60 && !vis)) { for (const o of this.pop.npcs.filter(n => n.char.inVehicle === v)) this.pop.remove(o); this.vehicles.remove(v); }
     }
     // Spawn (candidate lanes near the player, refreshed twice a second)
@@ -698,4 +706,9 @@ export class Traffic {
   }
   /** Marks a vehicle as no longer parked (stolen/driven) so the parked pool forgets it. */
   unpark(v: Vehicle) { v.parked = false; for (const [, l] of this.parkedBlocks) { const i = l.indexOf(v); if (i >= 0) l.splice(i, 1); } }
+}
+
+/** Round 8: tow a driverless car standing in the middle of a driving lane for 15 s, 40 m+ away and out of view. Pure (tests). */
+export function towAbandoned(idleS: number, dist: number, visible: boolean, laneDist: () => number): boolean {
+  return idleS > 15 && dist > 40 && !visible && laneDist() < 1.0;
 }

@@ -18,13 +18,19 @@ const SPOT: Record<ShopType, { x: number; z: number; dist: number; focusY: numbe
 };
 const TITLE: Record<ShopType, string> = { barber: 'Barber chair', clothing: 'Fitting room' };
 
+/** created once, kept in the scene (intensity 0 when unused) */
 interface Session { light: THREE.PointLight; t: number; face: number; k: Kiosk; type: ShopType; owned: FullLook; pending: FullLook; back: THREE.Vector3; backYaw: number; angle: number; focus: THREE.Vector3 }
 
 export class Salon {
   private session: Session | null = null;
   /** Called after a purchase (the game saves). */
   onChanged: (() => void) | null = null;
-  constructor(private game: Game, private ui: GameUI, private kiosks: () => Kiosk[]) {}
+  /** Round 8: the chair's key light lives in the scene from the start at zero brightness (a light added or removed mid-game
+   * recompiles every shader in three.js: a freeze), and is only turned up while a session is open. */
+  private keyLight: THREE.PointLight;
+  constructor(private game: Game, private ui: GameUI, private kiosks: () => Kiosk[]) {
+    this.keyLight = new THREE.PointLight('#fff2e0', 0, 7, 1.6); game.renderer.scene.add(this.keyLight);
+  }
   get isOpen() { return !!this.session; }
   /** The look the player owns (an unpaid preview does not count). */
   ownedLook(): FullLook { return this.session?.owned ?? this.game.player.human.look; }
@@ -64,7 +70,8 @@ export class Salon {
     const face = spot.front ? k.def.yaw : k.def.yaw + Math.PI;
     g.player.place(at.x, at.y + 0.02, at.z, face);
     g.player.updateVisual(0);
-    const light = new THREE.PointLight('#fff2e0', 5, 7, 1.6); g.renderer.scene.add(light);
+    // Round 8: one key light kept in the scene for good (adding / removing a light recompiles every shader: a freeze)
+    const light = this.keyLight; light.intensity = 5;
     this.session = { light, t: 0, k, type, owned, pending: { ...owned }, back, backYaw, angle: 0, face, focus: new THREE.Vector3(at.x, at.y + spot.focusY, at.z) };
     g.menuOpen = true; g.input.exitLock();
     window.addEventListener('mousemove', this.onMove);
@@ -97,7 +104,7 @@ export class Salon {
   /** Leaves the chair: an unpaid preview is thrown away, the player goes back to where they stood. */
   close(hideUi = true) {
     const s = this.session; if (!s) return;
-    this.session = null; s.light.removeFromParent(); s.light.dispose();
+    this.session = null; s.light.intensity = 0;
     window.removeEventListener('mousemove', this.onMove);
     const g = this.game;
     g.player.human.applyLook(s.owned);

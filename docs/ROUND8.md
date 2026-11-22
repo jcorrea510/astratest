@@ -1,7 +1,10 @@
 # Round 8 plan (BRIEF8) — lead works alone, one group at a time; tick + commit after each group
 Resume here after a limit/compaction: first unticked group. Every fix gets a regression test. Mac first, iPad second.
 
-- [ ] A Mac driving: freezes every ~1 s, car jitters back and forth, laggy even on Low; 40 fps walking on Medium. Measure with
+- [~] A (558ec14+) found: adaptive resolution resized on every 33 ms crossing and chased its own stalls (freeze ~1/s) -> hysteresis,
+  one change per 6 s; lights added mid-game (salon, heli searchlight) recompiled every shader -> created at load; camera follows the
+  drawn car heading; version label. Open: measure M1 fps; physics thread only if still CPU-bound.
+  Mac driving: freezes every ~1 s, car jitters back and forth, laggy even on Low; 40 fps walking on Medium. Measure with
   rendering on (shader compiles, light-count changes, uploads), fix hitches, then decide on the physics thread. Version number on screen.
 - [ ] B Visual glitches: High = green bar flashing (iPad); headlight reflections flicker at night; sky glitch on the map; store chains
   vanish up close; pistol jitters in hands; 2-door cars' tyres above the rims; peds popping in in front of you (even mid-crosswalk);

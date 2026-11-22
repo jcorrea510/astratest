@@ -84,7 +84,7 @@ export class Dispatch {
   private lanes: CityMap['lanes'] = [];
   private tankCd = new Map<AiCar, number>();
   private light: THREE.SpotLight | null = null; private beam: THREE.Mesh | null = null; private lightTarget = new THREE.Object3D();
-  constructor(private city: CityMap, private pop: Population, private traffic: Traffic, private scene: THREE.Scene) { }
+  constructor(private city: CityMap, private pop: Population, private traffic: Traffic, private scene: THREE.Scene) { this.ensureLight(); } // Round 8: the searchlight exists from the start (adding a light mid-game recompiles every shader)
 
   kindOf(car: AiCar): UnitKind { return this.kinds.get(car) ?? 'police'; }
   /** The unit kind that is missing for this wanted level, or null. */
