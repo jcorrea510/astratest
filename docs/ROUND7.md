@@ -21,3 +21,11 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
 - [x] G8 Controls (click-to-aim default on Mac + trackpad swipe aims; car wheel + aim draws last gun): KBM aim in the Mac app (pointer lock), in a car hold Tab = sidearm wheel, hold RMB = last weapon.
 - Published checkpoint 2 after G2 part 1 (see git log). Remaining after reset: G2 rest, G5 gore, G6 gun store/garages/cars.
 - [ ] Z: tsc, vitest, key e2e, publish gh-pages, rebuild Mac app, owner summary.
+
+## Overnight (owner, 22 Nov 00:15): wake up to a game that plays for hours
+- [ ] O1 AI driving: long soak with the player ramming / blocking: 0 AI-vs-AI crashes from bad turns, cars recover from player chaos, no lasting pile-ups.
+- [ ] O2 Peds: walk the sidewalks/crossings cleanly; shoppers browse, pay, leave (no piles).
+- [ ] O3 Only what you can see costs anything: per-instance culling of far cars/peds (instanced meshes are drawn whole today), shadow casters, off-screen updates.
+- [ ] O4 Long-session stability: 30+ min soak (memory, object counts, no leaks/stalls).
+- [ ] O5 Map polish found along the way.
+- [ ] Morning note: native rendering (Mac app = Electron/WebGL-on-Metal; iPad sideload options, WebGPU) - discuss, don't build blind.
