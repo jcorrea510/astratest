@@ -152,7 +152,9 @@ export class Character {
     const wasGrounded = this.grounded;
     let grounded = this.controller.computedGrounded();
     // Stay glued to the ground over small drops (curb edges, slopes) instead of flickering into the air.
-    if (!grounded && wasGrounded && this.vel.y <= 0.5) {
+    // (only on the way down: while the controller is lifting us up a kerb edge, gluing to the road below pulled us back every
+    // frame and walkers stalled half way up the kerb, stuck in the gutter - Round 7)
+    if (!grounded && wasGrounded && this.vel.y <= 0.5 && m.y <= 0.002) {
       const g = this.groundBelow(this.pos.x + m.x, this.pos.y + m.y, this.pos.z + m.z, 0.36);
       if (g !== null) { m.y = g - this.pos.y; grounded = true; }
     }
@@ -165,6 +167,15 @@ export class Character {
         const k = Math.min(1, (want - got) / want);
         m.y = ledge.rise + 0.01; m.x += delta.x * k * 0.5; m.z += delta.z * k * 0.5;
         grounded = true;
+      } else {
+        // Round 7: a kerb is lower than those face rays (0.25 m+): perched on its corner, walkers stalled in the gutter.
+        // Look at the ground just past the front of the capsule instead and step onto it.
+        const ux = delta.x / want, uz = delta.z / want, fx = this.pos.x + ux * (CAP_R + 0.1), fz = this.pos.z + uz * (CAP_R + 0.1);
+        const g = this.groundBelow(fx, this.pos.y + 0.45, fz, 0.6), rise = g === null ? 0 : g - this.pos.y;
+        // (rise ~0 too: feet level with the kerb top, the capsule just grazes its corner and stalls)
+        if (g !== null && rise > -0.01 && rise < 0.4 && !this.physics.overlapsCapsule(fx, g + CENTER + 0.04, fz, CAP_HALF, CAP_R - 0.04, groups(0xffff, G_STATIC | G_VEHICLE | G_CHAR), this.body)) {
+          m.y = Math.max(0, rise) + 0.03; m.x = ux * Math.max(want, 0.03); m.z = uz * Math.max(want, 0.03); grounded = true; this.kerbSteps++;
+        }
       }
     }
     this.grounded = grounded;
@@ -224,6 +235,9 @@ export class Character {
    * Looks for a ledge the character can climb in direction (dx, dz): an obstacle face within `reach` metres of the
    * capsule and a flat, free top between `minRise` and `maxRise` above the feet. Returns where to stand, or null.
    */
+  /** why the last findLedge failed (debug / tests) */
+  ledgeWhy = '';
+  /** kerb step-ups taken by the fallback (tests) */ kerbSteps = 0;
   findLedge(dx: number, dz: number, maxRise: number, minRise = 0.05, reach = 0.45, heights: number[] = [0.25, 0.65, 1.05]): { x: number; y: number; z: number; rise: number } | null {
     const w = this.physics.world, flt = groups(0xffff, G_STATIC | G_VEHICLE);
     const flags = RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
@@ -234,18 +248,19 @@ export class Character {
       const hit = w.castRayAndGetNormal(new RAPIER.Ray({ x: this.pos.x, y: this.pos.y + hgt, z: this.pos.z }, { x: dx, y: 0, z: dz }), CAP_R + reach, true, flags, flt, this.collider);
       if (hit && Math.abs(hit.normal.y) < 0.5) face = Math.min(face, hit.timeOfImpact);
     }
-    if (!Number.isFinite(face)) return null;
+    if (!Number.isFinite(face)) { this.ledgeWhy = 'noface'; return null; }
     // 2) a flat top just beyond the face
     const tx = this.pos.x + dx * (face + 0.42), tz = this.pos.z + dz * (face + 0.42);
     const fromY = this.pos.y + maxRise + 0.25;
     const down = w.castRayAndGetNormal(new RAPIER.Ray({ x: tx, y: fromY, z: tz }, { x: 0, y: -1, z: 0 }), maxRise + 0.25 - minRise, true, flags, flt, this.collider);
-    if (!down || down.timeOfImpact < 0.02 || down.normal.y < 0.75) return null;
+    if (!down || down.timeOfImpact < 0.02 || down.normal.y < 0.75) { this.ledgeWhy = down ? `top toi ${down.timeOfImpact.toFixed(2)} ny ${down.normal.y.toFixed(2)}` : 'notop'; return null; }
     const topY = fromY - down.timeOfImpact, rise = topY - this.pos.y;
-    if (rise < minRise || rise > maxRise) return null;
+    if (rise < minRise || rise > maxRise) { this.ledgeWhy = `rise ${rise.toFixed(2)}`; return null; }
     // 3) room to stand on top, and room to rise in place before stepping over
     const cflt = groups(0xffff, G_STATIC | G_VEHICLE | G_CHAR);
-    if (this.physics.overlapsCapsule(tx, topY + CENTER + 0.04, tz, CAP_HALF, CAP_R - 0.02, cflt, this.body)) return null;
-    if (this.physics.overlapsCapsule(this.pos.x, topY + CENTER + 0.04, this.pos.z, CAP_HALF, CAP_R - 0.06, cflt, this.body)) return null;
+    if (this.physics.overlapsCapsule(tx, topY + CENTER + 0.04, tz, CAP_HALF, CAP_R - 0.02, cflt, this.body)) { this.ledgeWhy = 'blocked top'; return null; }
+    if (this.physics.overlapsCapsule(this.pos.x, topY + CENTER + 0.04, this.pos.z, CAP_HALF, CAP_R - 0.06, cflt, this.body)) { this.ledgeWhy = 'blocked rise'; return null; }
+    this.ledgeWhy = 'ok';
     return { x: tx, y: topY, z: tz, rise };
   }
   setCollision(enabled: boolean) { this.collider.setEnabled(enabled); this.physicsEnabled = enabled; }
