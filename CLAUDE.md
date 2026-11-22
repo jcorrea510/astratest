@@ -5,7 +5,8 @@ Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` aft
 Current brief: docs/BRIEF6.md (earlier: BRIEF5..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
-- Usage: delegate coding to Sonnet subagents (`model: sonnet`); use Opus only for architecture or a bug Sonnet failed twice on.
+- Owner (21 Nov): bugs the owner reports are fixed by the lead personally (no subagents for those); measure with a headless probe first.
+- Usage: delegate other coding to Sonnet subagents (`model: sonnet`); use Opus only for architecture or a bug Sonnet failed twice on.
   Lead (main session) stays thin: plan, dispatch, review reports, commit. Agents start from this file, not by exploring.
 - Keep MDs tight (this file < 80 lines; PROGRESS short, newest first; old detail gets deleted, git has history).
 - Never open big/generated files (list below). Split giant scripts into modules so agents read only what they need.
@@ -41,6 +42,7 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
   places (named spots, HELIPADS), sandbox (tools panel; the game is sandbox-only), save, missions (story — disabled, kept for later).
 - ui/: ui.ts (screens/menus), attract (menu flyover), hud, minimap/mapdraw/fullmap, wheel, shop, settingsPanel, sandbox panel, contracts.
 - audio/: core/sfx/gunsynth (layered gunshots)/loops (engines, sirens)/music/ambience. (NPC voices removed.)
+- desktop/: Electron Mac app wrapper (app:// origin); built + released by .github/workflows/desktop.yml (release desktop-latest).
 - highway/: separate Highway game mode (streamed road, IDM/MOBIL traffic). core/units.ts = US units, core/fullscreen.ts.
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).
 

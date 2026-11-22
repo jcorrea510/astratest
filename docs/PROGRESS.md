@@ -2,6 +2,14 @@
 
 Resume: read CLAUDE.md, docs/BRIEF6.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 6b (owner play-test 21 Nov, lead fixing personally)
+- [x] Fake crashes: cars spawned moving 'crashed' into their own speed (damage, shattered windscreens, phantom accident stops). 63 → ~0 crashes / 90 s.
+- [x] Vanish / model swap: seamless pose hand-over, no deletion on overlap, no real spawn on a far car or a person, real+far cars queue behind each other (vanish.spec high+low with kind check, flips).
+- [x] Flips: CoM capped (half-track >= 1.35x CoM height), anti-roll damping, parked fully on road, courtyard ground check.
+- [x] Controller prompts follow device; Start opens Settings, LB/RB inside page, LT/RT pages. iPad not forced to Low.
+- [x] iPad home-screen app: full-screen sizing (no bars), audio unlock on any gesture. Mac app (Electron) workflow → release desktop-latest.
+- [ ] AI intersections: remaining deadlock 'ghost' pass-through; verify on device. Published gh-pages f91ffdc (main e42a8a5).
+
 ## Round 6 (BRIEF6 quality pass; started 12:15 UTC 20 Nov; work until done, then publish + owner summary)
 Handoffs: docs/handoff/R6-*.md (each agent keeps its own <=8 lines current). Waves of <=4 agents. Ports: own 52xx per agent.
 - [x] R6-V (+V2 near cars/peds always real within 20 m; vanish e2e: base 10 → 0) (Opus) vanishing + LOD + perf: near peds/cars/bus never vanish, no boxy cars/Minecraft peds up close, high playable, car shadow lag/shadow glitch. Uses R5-P2 WIP 975ebd9.
