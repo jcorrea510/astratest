@@ -1,6 +1,6 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-import { PAD_LAYOUTS, padHeld, setPadContext, type PadContext, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
+import { padHeld, setPadContext, type PadContext, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
 import { pointerLockSupported, isIPad } from './platform';
 export type { PadState };
 export type ActionSource = 'kbm' | 'pad';
