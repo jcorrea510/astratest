@@ -279,7 +279,9 @@ export class Population {
         const vp = (c.inVehicle as { position?: THREE.Vector3 }).position ?? c.pos, dv = vp.distanceTo(focus);
         const vis = dv < 14 || dv < 150 && this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(vp.x, vp.y + 1, vp.z), 3));
         h.mesh.visible = vis;
-        if (vis) { h.setBodyLod(dv > 36 ? 2 : dv > 13 ? 1 : 0); h.update(dt); }
+        // Round 7 perf: seated people barely move: full rate only up close
+        n.animAcc += dt;
+        if (vis) { h.setBodyLod(dv > 36 ? 2 : dv > 13 ? 1 : 0); if (n.animAcc >= (dv > 40 ? 0.1 : dv > 14 ? 0.05 : 0)) { h.update(n.animAcc); n.animAcc = 0; } }
         h.setDetail(vis && dv < 40); h.mesh.castShadow = dv < 18; for (const e of h.extras) e.castShadow = dv < 12;
         continue;
       }
@@ -288,11 +290,12 @@ export class Population {
       if (!h.root.visible) continue;
       n.animAcc += dt;
       // animation rate by distance: smooth near the player (the old 5-10 Hz far rates read as lagging people)
-      const every = d > 90 ? 0.1 : d > 65 ? 0.05 : d > 40 ? 0.033 : 0;
-      if (n.animAcc >= every || !c.alive) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
+      const inView = d < 14 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
+      // Round 7 perf: people out of view only tick their skeleton 4x a second (their shadows are budgeted to the nearest anyway)
+      const every = !inView && !c.ragdoll ? 0.25 : d > 90 ? 0.1 : d > 65 ? 0.05 : d > 40 ? 0.033 : 0;
+      if (n.animAcc >= every || !c.alive || c.ragdoll) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 32;
-      const inView = d < 14 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
       h.mesh.visible = inView;
       h.setBodyLod(d > 36 ? 2 : d > 13 ? 1 : 0); h.setDetail(d < 48 && inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }

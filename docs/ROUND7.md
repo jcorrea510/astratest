@@ -2,7 +2,16 @@
 Resume here after a limit/compaction: first unticked group, read its notes. Every fix gets a regression test.
 
 - [x] G1 Traffic (c684121; junction probe: 0 wrong-lane turns, 1 crash/90 s): turns only from the correct lane (right from kerb lane, left from inner lane; lane change early), left turns yield to oncoming + right turns yield to peds/crossing, intersection crashes, pile-ups clear fast (reverse/route around, despawn wrecks out of view), taxis work (hail/ride).
-- [~] G2 Performance (done: static chunk matrices frozen, cull every 3rd frame, Mac app Metal/no App Nap. Next: hair-shell builds cause 100 ms+ spikes on first sight of a style -> prebuild in idle time / lighter shells; profile shows physics + anim mixers next): M1 Air medium 60 fps incl. fast driving, High selectable on Mac, Electron throttling (background/GPU flags, rAF), iPad PWA. Don't reintroduce the old rendering bug (verify screenshots).
+- [~] G2 Performance. Done: static chunk matrices frozen, cull every 3rd frame, off-screen people animate at 4 Hz and seated people
+  throttled (fast-drive sim 17.4 -> 14.4 ms avg, p95 35 -> 25), Mac app on Metal, no App Nap.
+  Why we trail a pro engine (measured, headless profile of a 63 mph drive): everything runs on ONE JS thread - Rapier physics with
+  ray-cast tyres for ~65 cars, ~90 CPU-animated skeletons, traffic/crowd AI, scene-graph matrices; plus hitches from geometry built at
+  runtime (hair shells ~94k verts built the first time a style appears: 100 ms-1 s spikes) and full-res post passes (bloom + output + grade).
+  Pro engines spread this over worker threads, bake assets offline, GPU-skin/instance crowds and cull per frame with LOD budgets.
+  Next, in order: (1) prebuild/bake hair shells (or lighter shells) so no runtime builds while driving; (2) far / off-screen AI cars: tyre
+  rays + AI at 20-30 Hz instead of 60; (3) merge grade into the output pass (one full-screen pass less) and bloom at quarter res on Medium;
+  (4) physics + traffic in a Web Worker (big job: needs a message-passing car state); (5) measure on the M1 with ?showFps and the
+  renderer stats before/after each step.
 - [x] G3 Stores/robbery (c684121; early money = taxi job): register faces the cashier side, grab cash yourself after cashier is down, store peds browse + leave (no piles at register/door), shuttered windows don't crack, minimap rob icons only inside the visible map (no edge clamp), early-game money source.
 - [x] G4 NPC reactions (sliding car registered no hit -> body shoved into street; now ground-speed hits + unsink): hands up wrists-first (not elbows), "come here" — they don't flee before the order lands, walk briskly with hands still up, car side-hit ragdoll doesn't sink/jitter through the floor.
 - [ ] G5 Gore (cheap): headshot can remove the head (blood spurt), limb hits show a wound decal + blood spray/drip; budgeted particles; settings toggle.
