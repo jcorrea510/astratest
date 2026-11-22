@@ -5,7 +5,9 @@ export const PLACES = {
   juno: { x: -262, z: -106.6, yaw: Math.PI, name: 'Juno' },
   marlo: { x: -200, z: 306.6, yaw: 0, name: 'Marlo' },
   vesna: { x: -100, z: 922, yaw: 0, name: 'Vesna' },
-  arms: { x: -300, z: 10.2, yaw: Math.PI, name: 'Tidewater Arms' },
+  arms: { x: -300, z: 10.2, yaw: Math.PI, name: 'Tidewater Arms' } as Place & { yaw: number },
+  /** where the old street kiosk stood (the gun store is the shop nearest it) */
+  armsKiosk: { x: -300, z: 10.2, name: 'Tidewater Arms (old kiosk)' },
   garage: { x: -200, z: 102, yaw: Math.PI / 2, name: 'Glow Garage' },
   snack: { x: -46.5, z: 965.5, y: 1.2, yaw: 0, name: 'Pier 9 Snacks' },
   clinic: { x: -60, z: -110, yaw: Math.PI, name: 'Juniper Clinic' },
@@ -21,7 +23,7 @@ export const GARAGE_SLOTS: { x: number; z: number; yaw: number }[] = Array.from(
  * (front = (sin yaw, cos yaw)). Each one is a real interior (counter, register, shelves, fridges) entered through
  * a sliding door; cash = a full till. `standalone` shops have no building above (the gas station).
  */
-export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn' | 'pharmacy' | 'clothing' | 'electronics' | 'barber' | 'bank' | 'jewelry';
+export type StoreKind = 'convenience' | 'liquor' | 'gas' | 'diner' | 'pawn' | 'pharmacy' | 'clothing' | 'electronics' | 'barber' | 'bank' | 'jewelry' | 'guns';
 export interface Store { x: number; z: number; yaw: number; name: string; color: string; cash: number; kind: StoreKind; standalone?: boolean; generated?: boolean }
 export const STORE_W = 10.4, STORE_D = 9.8, STORE_H = 4.4;
 export const STORES: Store[] = [
@@ -33,7 +35,17 @@ export const STORES: Store[] = [
 ];
 const HANDMADE_STORES = STORES.length;
 /** Replaces the generated shops (the city generator picks lots for ~45 more; handmade ones above stay first). */
-export function setGeneratedStores(list: Store[]) { STORES.length = HANDMADE_STORES; STORES.push(...list); }
+export function setGeneratedStores(list: Store[]) {
+  STORES.length = HANDMADE_STORES; STORES.push(...list);
+  // Round 7: Tidewater Arms is a real walk-in gun store: the generated shop nearest its old street kiosk becomes it
+  const cand = list.filter(s => s.kind === 'convenience' || s.kind === 'pharmacy' || s.kind === 'electronics' || s.kind === 'liquor');
+  let best: Store | null = null, bd = Infinity; const home = PLACES.armsKiosk;
+  for (const s of cand) { const d = Math.hypot(s.x - home.x, s.z - home.z); if (d < bd) { bd = d; best = s; } }
+  if (best) {
+    best.kind = 'guns'; best.name = 'Tidewater Arms'; best.color = '#2f3d2a'; best.cash = 1400;
+    const f = STORE_D / 2 + 1.6; PLACES.arms = { x: best.x + Math.sin(best.yaw) * f, z: best.z + Math.cos(best.yaw) * f, yaw: best.yaw, name: 'Tidewater Arms' };
+  }
+}
 /** Gas station forecourt (canopy + pumps) next to the Fuel Stop shop. */
 export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas station' };
 /** True when a building lot centred at (x,z) is taken by a store (it then only gets the floors above). */

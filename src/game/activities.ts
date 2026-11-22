@@ -10,13 +10,14 @@ import { Marker, type MissionCtx } from './missions';
 import { WEAPONS, WEAPON_ORDER, type WeaponId } from '../combat/weapons';
 import { RAPIER, groups, G_STATIC } from '../core/physics';
 import { Robberies } from './robbery';
+import { GunStore } from './gunStore';
 import { Salon } from './salon';
 
 export class Activities {
   found = new Set<number>();
   jumpsDone = new Set<number>();
   private cards: (THREE.Object3D | null)[] = [];
-  private shopMk: Marker; private garageMk: Marker; private snackMk: Marker; private safeMk: Marker;
+  private garageMk: Marker; private snackMk: Marker; private safeMk: Marker;
   private shopOpen: 'arms' | 'snack' | 'dealer' | 'goals' | null = null;
   private dealerMk: Marker;
   /** Cars you bought (persisted in the save); they are parked in the garage row and come back there if lost. */
@@ -34,9 +35,10 @@ export class Activities {
   disarmGarage() { this.garageArmed = false; }
   onSaveRequested: (() => boolean) | null = null;
   robberies: Robberies;
+  /** Round 7: Tidewater Arms is a walk-in store (guns on the wall) */
+  guns: GunStore;
   salon: Salon;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
-    this.shopMk = ctx.marker(PLACES.arms, 1.4, '#ffd166', 'TIDEWATER ARMS');
     this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff', 'GLOW GARAGE  ·  RESPRAY $150');
     this.dealerMk = ctx.marker(PLACES.dealer, 1.4, '#ff6b5e', 'REDLINE MOTORS');
     this.snackMk = ctx.marker(PLACES.snack, 1.3, '#ff8fb1', 'PIER 9 SNACKS');
@@ -44,6 +46,7 @@ export class Activities {
     this.buildRamps();
     this.robberies = new Robberies(game, ui, (x, z) => ctx.groundY(x, z));
     this.salon = new Salon(game, ui, () => this.robberies.kiosks);
+    this.guns = new GunStore(game, () => this.robberies.kiosks);
     this.salon.onChanged = () => { this.onSaveRequested?.(); };
   }
   /** Re-creates postcard pickups after loading a save. */
@@ -199,7 +202,8 @@ export class Activities {
     if (g.playerVehicle) return this.garageMk.inside(p) && !this.missionActive() && this.garageArmed ? 'Stop to respray ($150)' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
     if (g.taxi?.riding) return g.taxi.prompt(key);
-    if (this.shopMk.inside(p, 2.5)) return `${key}  Browse Tidewater Arms`;
+    if (!this.robberies.robbing && this.guns.atCounter(p)) return `${key}  Browse Tidewater Arms`;
+    { const f = this.robberies.robbing ? null : this.guns.facing(p, g.player.yaw); if (f) return f.ammo ? `${key}  ${f.name} ammo  $${f.price}` : `${key}  Buy ${f.name}  $${f.price}`; }
     if (this.snackMk.inside(p, 2.5)) return `${key}  Grab a snack`;
     if (this.dealerMk.inside(p, 2.5)) return `${key}  Browse Redline Motors`;
     if (this.safeMk.inside(p, 2.5)) return `${key}  Save game`;
@@ -210,6 +214,7 @@ export class Activities {
     const g = this.game, p = g.player.pos, t = g.time;
     for (const c of this.cards) if (c) { c.rotation.y += dt * 1.5; c.position.y += Math.sin(t * 2) * 0.002; }
     if (!g.paused) this.robberies.update(dt, this.missionActive());
+    this.guns.update(); // hang the guns once the store interior is built
     if (!g.paused) {
       this.goalT -= dt; this.garageT -= dt;
       if (this.goalT <= 0) { this.goalT = 1.5; this.checkMilestones(); }
@@ -223,7 +228,8 @@ export class Activities {
     if (!g.playerVehicle && g.input.justPressed('interact')) {
       if (g.taxi?.riding) g.taxi.interact();
       else if (this.salon.inside() && !this.robberies.robbing) this.salon.open();
-      else if (this.shopMk.inside(p, 2.5)) this.openShop('arms');
+      else if (!this.robberies.robbing && this.guns.atCounter(p)) this.openShop('arms');
+      else if (!this.robberies.robbing && this.guns.facing(p, g.player.yaw)) { const f = this.guns.facing(p, g.player.yaw)!; this.shopOpen = 'arms'; this.buy(`${f.ammo ? 'a' : 'w'}:${f.id}:${WEAPONS[f.id].icon}`); this.shopOpen = null; }
       else if (this.snackMk.inside(p, 2.5)) this.openShop('snack');
       else if (this.dealerMk.inside(p, 2.5)) this.openShop('dealer');
       else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }

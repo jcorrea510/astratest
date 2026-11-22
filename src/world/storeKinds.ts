@@ -333,5 +333,35 @@ export function legacyBack(kind: Store['kind'], c: Ctx) {
     for (let k = 0; k < 10; k++) c.t.box(-4.8 + k * 0.4, 1.28, c.backZ + 0.15, 0.3, 0.14, 0.2, 0, K(k % 2 ? '#1f2a33' : '#cfd6da'), T_PLASTIC);
   }
 }
-export const NEW_KINDS: Partial<Record<Store['kind'], (c: Ctx) => void>> = { convenience, gas, liquor, pawn, jewelry, bank, pharmacy };
+/**
+ * Round 7: wall slots of the gun store (store-local; W 10.4 x D 9.8): a pegboard on the back wall (barrel along +x) and one
+ * on the right wall (barrel along z). The game hangs the real weapon models here and sells whatever the player looks at.
+ */
+export const GUN_SLOTS: { lx: number; ly: number; lz: number; yaw: number; wall: 'back' | 'right' }[] = (() => {
+  const out: { lx: number; ly: number; lz: number; yaw: number; wall: 'back' | 'right' }[] = [];
+  for (const ly of [1.95, 1.3]) for (let k = 0; k < 5; k++) out.push({ lx: 0.35 + k * 0.98, ly, lz: -4.9 + 0.3, yaw: Math.PI / 2, wall: 'back' });
+  for (const ly of [1.95, 1.3]) for (let k = 0; k < 5; k++) out.push({ lx: 5.2 - 0.3, ly, lz: -3.9 + k * 1.05, yaw: 0, wall: 'right' });
+  return out;
+})();
+/** Gun store: olive walls, pegboards of long guns and handguns, a glass pistol case, ammo shelves, range posters. */
+function guns(c: Ctx) {
+  const { hd, hw } = c;
+  // pegboards behind the wall slots
+  c.box(2.3, 1.62, -hd + 0.17, 4.9, 1.5, 0.06, '#7a6a4f', T_ROUGH); c.col(2.3, 1.62, -hd + 0.17, 2.45, 0.75, 0.05);
+  c.box(hw - 0.17, 1.62, -1.8, 0.06, 1.5, 5.2, '#7a6a4f', T_ROUGH); c.col(hw - 0.17, 1.62, -1.8, 0.05, 0.75, 2.6);
+  for (let k = 0; k < 40; k++) { c.t.box(0.0 + k * 0.12, 0.84, -hd + 0.21, 0.02, 0.02, 0.02, 0, K('#3a3226'), T_METAL); }
+  // price rail under each board, a long red stripe on top
+  c.box(2.3, 0.86, -hd + 0.24, 4.9, 0.05, 0.08, '#20221f', T_METAL); c.box(hw - 0.24, 0.86, -1.8, 0.08, 0.05, 5.2, '#20221f', T_METAL);
+  c.box(2.3, 2.45, -hd + 0.2, 4.9, 0.12, 0.04, '#8a1c1c', T_PAINT); c.box(hw - 0.2, 2.45, -1.8, 0.04, 0.12, 5.2, '#8a1c1c', T_PAINT);
+  // glass display case for handguns (smashable like a jewelry case, with the counter's pistols)
+  jewelCase(c, 1.3, -1.4, 2.2, 0.8, 0, 380);
+  // ammo shelf behind the counter: boxes in calibre colours
+  c.box(-3.0, 1.45, c.backZ - 0.1, 4.2, 2.9, 0.3, '#2b2a24', T_ROUGH); c.col(-3.0, 1.45, c.backZ - 0.1, 2.1, 1.45, 0.15);
+  for (let j = 0; j < 4; j++) for (let k = 0; k < 10; k++) c.t.box(-4.85 + k * 0.4, 0.55 + j * 0.55, c.backZ + 0.12, 0.3, 0.2, 0.18, 0, K(['#3d5a2a', '#8a6a1c', '#6b1f1f', '#2a3d5a'][(j + k) % 4]), T_PAINT);
+  // range posters and a neon sign
+  for (const x of [-1.2, 0.3]) { c.t.box(x, 2.0, c.hd - 0.25, 0.6, 0.8, 0.02, 0, K('#e8e2d0'), T_PAINT); c.t.cyl(x, 2.0, c.hd - 0.27, 0.18, 0.18, 0.01, 16, K('#8a1c1c'), T_PAINT, Math.PI / 2, 0, 0); }
+  neonPlane(c, 'TIDEWATER ARMS', '#ff5a3a', -3.0, 3.05, c.hd - 0.35, 1.6); neonPlane(c, 'RANGE & GUNS', '#ffd23f', 2.4, 3.0, -hd + 0.25, 1.3);
+  camera(c, 4.6, -3.9); camera(c, -4.6, 3.8);
+}
+export const NEW_KINDS: Partial<Record<Store['kind'], (c: Ctx) => void>> = { convenience, gas, liquor, pawn, jewelry, bank, pharmacy, guns };
 export { C_RING, C_VELVET };

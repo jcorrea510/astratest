@@ -226,7 +226,7 @@ export class Robberies {
     const g = this.game, c = k.clerkPos;
     const n = g.pop.spawn('civilian', c.x, c.z, c.y + 0.05);
     n.persistent = true; n.brain = 'scripted'; n.char.yaw = k.def.yaw; n.char.human.setState('talk'); n.tag = 'clerk';
-    k.clerk = n; k.brave = Math.random() < 0.12;
+    k.clerk = n; k.brave = Math.random() < (k.def.kind === 'guns' ? 0.6 : 0.12); // a gun-store clerk is usually armed
   }
   private releaseClerk(k: Kiosk) {
     const n = k.clerk; if (!n) return; k.clerk = null; k.ex.koT = 0; k.ex.hp = -1;

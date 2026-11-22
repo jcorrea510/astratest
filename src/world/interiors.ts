@@ -78,7 +78,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const r = new Rng(Math.round(def.x * 7 + def.z * 13));
   const t = new TrimBuilder();
   const W = STORE_W, D = STORE_D, H = STORE_H, ceil = 3.6, hw = W / 2, hd = D / 2;
-  const WALLS: Partial<Record<Store['kind'], string>> = { convenience: '#efe9dc', gas: '#f1f4f1', jewelry: '#1c1c20', diner: '#e8dcc4', pawn: '#4a3f35', liquor: '#2b2f45', pharmacy: '#eef4f0', clothing: '#e9dfe8', electronics: '#262b33', barber: '#d8c9b0', bank: '#e6e0d2' };
+  const WALLS: Partial<Record<Store['kind'], string>> = { convenience: '#efe9dc', gas: '#f1f4f1', jewelry: '#1c1c20', diner: '#e8dcc4', pawn: '#4a3f35', liquor: '#2b2f45', pharmacy: '#eef4f0', clothing: '#e9dfe8', electronics: '#262b33', barber: '#d8c9b0', bank: '#e6e0d2', guns: '#4f5640' };
   const wallC = C(WALLS[def.kind] ?? '#ece8e0');
   const outC = C(def.kind === 'gas' ? '#e9e5dc' : '#4b4743');
   const accent = C(def.color);
@@ -92,7 +92,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   // ceiling + lights
   box(0, ceil + 0.05, 0, W, 0.1, D, C('#e6e4de'), [0.9, 0, 0, 0]);
   box(0, (ceil + H) / 2, hd - 0.15, W, H - ceil, 0.3, outC, T_STONE);
-  const LIGHT: Partial<Record<Store['kind'], [string, number, number]>> = { liquor: ['#ffcf8a', 1.5, 0.7], pawn: ['#f2e6a8', 1.3, 1.0], jewelry: ['#fff4dc', 2.6, 0.4], bank: ['#fffdf2', 2.0, 1.4], gas: ['#f2fbff', 2.4, 1.2], convenience: ['#f6fbff', 2.4, 1.2] };
+  const LIGHT: Partial<Record<Store['kind'], [string, number, number]>> = { liquor: ['#ffcf8a', 1.5, 0.7], pawn: ['#f2e6a8', 1.3, 1.0], jewelry: ['#fff4dc', 2.6, 0.4], bank: ['#fffdf2', 2.0, 1.4], gas: ['#f2fbff', 2.4, 1.2], convenience: ['#f6fbff', 2.4, 1.2], guns: ['#fff1d6', 2.2, 1.2] };
   const [lightC, lightI, lightW] = LIGHT[def.kind] ?? ['#fffaf0', 2.2, 1.2];
   for (const lx of [-2.6, 0, 2.6]) for (const lz of [-2.8, 0, 2.8]) box(lx, ceil - 0.02, lz, lightW, 0.04, 0.3, C(lightC), T_GLOW(lightI));
   if (def.standalone) { box(0, H + 0.1, 0, W + 0.3, 0.2, D + 0.3, C('#5c5a57'), T_STONE); box(0, H + 0.55, hd + 0.05, W + 0.3, 0.9, 0.2, accent, T_PAINT); }
@@ -109,7 +109,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.8, 0.62), signMat(def.name, def.color)); sign.position.set(0, 4.05, hd + 0.08); root.add(sign);
   // interior: counter, register, back shelf, aisles, fridges, per kind
   const counterZ = 1.2;
-  const COUNTERS: Partial<Record<Store['kind'], [string, string]>> = { diner: ['#b23a3a', '#d9d4ca'], pawn: ['#1c1c1c', '#3a3028'], convenience: ['#2f6f8f', '#e8e6df'], gas: ['#115e44', '#d8dcd9'], liquor: ['#3b2a1f', '#6b4a32'], jewelry: ['#0e0e12', '#1b1b22'], bank: ['#5a3d28', '#d9d4c4'] };
+  const COUNTERS: Partial<Record<Store['kind'], [string, string]>> = { diner: ['#b23a3a', '#d9d4ca'], pawn: ['#1c1c1c', '#3a3028'], convenience: ['#2f6f8f', '#e8e6df'], gas: ['#115e44', '#d8dcd9'], liquor: ['#3b2a1f', '#6b4a32'], jewelry: ['#0e0e12', '#1b1b22'], bank: ['#5a3d28', '#d9d4c4'], guns: ['#2a2a24', '#5a4a35'] };
   const [wood0, top0] = COUNTERS[def.kind] ?? ['#6b4a32', '#2b2b2b'];
   box(-3.0, 0.52, counterZ, 4.0, 1.04, 0.7, C(wood0), [0.5, 0.1, 0, 0]);
   box(-3.0, 1.06, counterZ, 4.1, 0.05, 0.8, C(top0), [0.3, 0.2, 0, 0]);
@@ -198,7 +198,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
   if (def.kind === 'barber') { t.cyl(-4.6, 0.6, hd + 0.35, 0.12, 0.12, 2.0, 10, C('#f4f4f4'), T_PLASTIC); for (let k = 0; k < 5; k++) t.cyl(-4.6, 0.7 + k * 0.38, hd + 0.35, 0.125, 0.125, 0.14, 10, C('#c0392b'), T_PLASTIC); }
   const mesh = new THREE.Mesh(t.build(), trimMat); mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
   if (prod.count) { const pm = new THREE.Mesh(prod.build(), productMaterial()); pm.castShadow = false; pm.receiveShadow = true; root.add(pm); }
-  const FLOORS: Partial<Record<Store['kind'], [FloorKind, string, string]>> = { convenience: ['vinyl', '#e9e6dc', '#bfd2d8'], gas: ['concrete', '#8e9490', '#8e9490'], liquor: ['darkwood', '#4a2f1c', '#3b2414'], pawn: ['concrete', '#6e675c', '#6e675c'], jewelry: ['marble', '#ece8e0', '#2a2a30'], bank: ['marble', '#e4dccb', '#c9bfa6'], diner: ['checker', '#d9d4ca', '#a3242b'], barber: ['checker', '#f2f2f2', '#222222'], clothing: ['wood', '#c9a77a', '#b8946a'], electronics: ['concrete', '#3a3d42', '#3a3d42'], pharmacy: ['vinyl', '#eef2ee', '#cfe0d6'] };
+  const FLOORS: Partial<Record<Store['kind'], [FloorKind, string, string]>> = { convenience: ['vinyl', '#e9e6dc', '#bfd2d8'], gas: ['concrete', '#8e9490', '#8e9490'], liquor: ['darkwood', '#4a2f1c', '#3b2414'], pawn: ['concrete', '#6e675c', '#6e675c'], jewelry: ['marble', '#ece8e0', '#2a2a30'], bank: ['marble', '#e4dccb', '#c9bfa6'], diner: ['checker', '#d9d4ca', '#a3242b'], barber: ['checker', '#f2f2f2', '#222222'], clothing: ['wood', '#c9a77a', '#b8946a'], electronics: ['concrete', '#3a3d42', '#3a3d42'], pharmacy: ['vinyl', '#eef2ee', '#cfe0d6'], guns: ['concrete', '#5d5a52', '#5d5a52'] };
   const fl = FLOORS[def.kind]; const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.4, D - 0.3).rotateX(-Math.PI / 2), fl ? floorMaterial(fl[0], fl[1], fl[2]) : floorTiles());
   const fuv = floor.geometry.attributes.uv; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * (W - 0.4) / 2.4, fuv.getY(i) * (D - 0.3) / 2.4);
   floor.position.y = 0.02; floor.receiveShadow = true; root.add(floor);
