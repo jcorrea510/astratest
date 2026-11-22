@@ -185,8 +185,8 @@ export class PlayerCombat {
     const onFoot = c.alive && !c.inVehicle;
     const veh = c.inVehicle as Vehicle | null;
     const inCar = c.alive && !!veh && typeof veh.kind === 'string' && veh.kind !== 'tank';
-    // Round 7: aiming in a car with fists / a heavy weapon / a throwable out draws the last gun you used (that works from a seat)
-    if (inCar && !blocked && this.input.held('aim') && (inv.def.melee || inv.def.cat === 'heavy' || inv.def.cat === 'throw')) {
+    // Round 7: aiming in a car with fists or a heavy weapon out draws the last gun you used (that works from a seat)
+    if (inCar && !blocked && this.input.held('aim') && (inv.def.melee || inv.def.cat === 'heavy')) { // throwables are thrown from the window as before
       const g = this.lastCarGun && inv.weapons[this.lastCarGun] ? this.lastCarGun : (['pistol', 'smg', 'shotgun', 'rifle'] as const).map(c => inv.categoryPick(c)).find(Boolean);
       if (g) inv.select(g);
     }

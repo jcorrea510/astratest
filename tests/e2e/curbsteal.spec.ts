@@ -53,7 +53,7 @@ test('driver glass already broken: no second smash', async ({ page }) => {
   clean(p);
 });
 
-test('hold aim in a car with a pistol: gun comes out, fire shoots along the aim point; no gun, nothing', async ({ page }) => {
+test('hold aim in a car with a pistol: gun comes out, fire shoots along the aim point; fists / RPG out: the last gun comes out (Round 7)', async ({ page }) => {
   const p = watch(page); await boot(page); await quietStreets(page);
   const r = await page.evaluate(`(() => {
     const g = window.__game;
@@ -93,9 +93,9 @@ test('hold aim in a car with a pistol: gun comes out, fire shoots along the aim 
   expect(r.fired).toBeGreaterThan(0);
   expect(r.seated).toBe(true);
   expect(r.after).toBe(false);
-  expect(r.fistsAim).toBe(false);
+  expect(r.fistsAim).toBe(true); // Round 7 (owner): aiming with fists out draws the last gun
   for (const k of ['rifle', 'smg', 'grenade']) { expect(r[k].aim, k).toBe(true); expect(r[k].rolled, k).toBe(true); expect(r[k].rolledBack, k).toBe(true); }
-  expect(r.rpg.aim).toBe(false);
+  expect(r.rpg.aim).toBe(true); // Round 7: an RPG cannot fire from a seat: the last gun comes out instead
   expect(r.rifleFar.rolled).toBe(true);
   expect(r.rifleFar.gunOut).toBeGreaterThan(-0.6); // far side: leaning and reaching over the dash
   expect(r.rifle.gunOut).toBeGreaterThan(-0.35); // the long gun is at the window plane, not inside the cabin

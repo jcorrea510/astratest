@@ -262,6 +262,15 @@ export class Population {
         n.char.knockT -= dt;
         if (!n.alive || n.char.knockT > 0.4) { n.char.vel.multiplyScalar(Math.exp(-dt * 3)); n.char.move(n.char.vel.clone().setY(0), dt, false); continue; }
       }
+      // Round 7 perf: calm (or simply fleeing / cowering) civilians beyond ~28 m think and sweep their collision capsule at
+      // 30 Hz (20 Hz past 50 m) with the accumulated dt: 1-1.5 cm steps at walking pace, invisible at that range
+      if (n.role === 'civilian' && fd > 28 && (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'cower') && !n.char.ragdoll) {
+        n.accDt += dt;
+        if ((this.tick + n.id) % (fd > 50 ? 3 : 2) !== 0) continue;
+        const step = Math.min(n.accDt, 0.1); n.accDt = 0;
+        this.runner.update(n, step);
+        continue;
+      }
       // distance LOD for officers and gang members: far fighters think every 2nd/4th tick with the accumulated dt
       if (n.role !== 'civilian' && fd > 55 && n.brain !== 'scripted' && n.brain !== 'passenger') {
         n.accDt += dt;

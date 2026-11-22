@@ -9,8 +9,8 @@ Resume here after a limit/compaction: first unticked group, read its notes. Ever
   runtime (hair shells ~94k verts built the first time a style appears: 100 ms-1 s spikes) and full-res post passes (bloom + output + grade).
   Pro engines spread this over worker threads, bake assets offline, GPU-skin/instance crowds and cull per frame with LOD budgets.
   Next, in order: (1) DONE: hitches were emergency-car models + body LODs built during play (0.6-0.75 s each) -> built at load;
-  looks warmed ahead from the far crowd (perf7.spec: worst frame 758 -> ~60-90 ms); (2) far / off-screen AI cars: tyre
-  rays + AI at 20-30 Hz instead of 60; (3) merge grade into the output pass (one full-screen pass less) and bloom at quarter res on Medium;
+  looks warmed ahead from the far crowd (perf7.spec: worst frame 758 -> ~60-90 ms); (2) DONE differently (the profile pointed at
+  people, not cars): civilians past 28 m think + sweep at 30/20 Hz, parked cars asleep skip their tyre update; (3) skipped for now: bloom already starts at quarter res; merging grade into output risks double tone mapping (needs an M1 check);
   (4) physics + traffic in a Web Worker (big job: needs a message-passing car state); (5) measure on the M1 with ?showFps and the
   renderer stats before/after each step.
 - [x] G3 Stores/robbery (c684121; early money = taxi job): register faces the cashier side, grab cash yourself after cashier is down, store peds browse + leave (no piles at register/door), shuttered windows don't crack, minimap rob icons only inside the visible map (no edge clamp), early-game money source.

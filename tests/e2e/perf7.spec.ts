@@ -28,9 +28,10 @@ test('fast drive: no build hitches (worst frame well under 300 ms in software GL
     }
     const big = t.filter(x => x > 60).length; t.sort((a, b) => a - b);
     return { avg: +(t.reduce((a, b) => a + b, 0) / t.length).toFixed(2), p95: +t[855].toFixed(2), max: +t[899].toFixed(0), over60: big,
-      loadWarm: { n: w0.length, sum: Math.round(w0.reduce((a: number, b: number) => a + b, 0)), top: w0.slice(0, 6).map((x: number) => Math.round(x)) }, warmedLater: g.pop.warmMs.length - w0.length, pending: g.pop.warmPending, spikes };
+      loadWarm: { n: w0.length, sum: Math.round(w0.reduce((a: number, b: number) => a + b, 0)), top: w0.slice(0, 6).map((x: number) => Math.round(x)) }, warmedLater: g.pop.warmMs.length - w0.length, pending: g.pop.warmPending, spikes, slept: g.vehicles.list.filter((v: any) => v.phys.sleptSteps > 0).length };
   });
   console.log('PERF', boot, JSON.stringify(r));
   expect(r.max).toBeLessThan(300);
   expect(r.pending).toBe(0);
+  expect(r.slept).toBeGreaterThan(0); // parked cars asleep skip their tyre update
 });
