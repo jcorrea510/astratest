@@ -300,7 +300,8 @@ export class Vehicle {
    * so bullet-hole decals are snapped here. Only front-facing triangles count. Returns the distance along `d`, or -1.
    */
   surfaceRay(o: THREE.Vector3, d: THREE.Vector3, t0: number, t1: number, outN: THREE.Vector3): number {
-    const mesh = this.bodyMesh, g = mesh.geometry, pos = g.attributes.position, idx = g.index;
+    // Round 7: always the full-detail rest pose (a far LOD's CPU arrays are freed after upload: holes stopped appearing)
+    const mesh = this.bodyMesh, g = this.ownGeo ? mesh.geometry : this.tpl.lods[0].body, pos = g.attributes.position, idx = g.index;
     mesh.updateWorldMatrix(true, false);
     const inv = _sm.copy(mesh.matrixWorld).invert();
     const lo = _sa.copy(o).applyMatrix4(inv), ld = _sb.copy(d).transformDirection(inv); // matrixWorld is rigid (scale 1)

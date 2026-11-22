@@ -213,7 +213,7 @@ export function freeAfterUpload(g: THREE.BufferGeometry, keep: readonly string[]
     ba.onUpload(() => { ba.array = new Ctor(0); });
   };
   for (const k in g.attributes) if (!keep.includes(k)) drop(g.attributes[k]);
-  if (g.index) drop(g.index);
+  if (g.index && !keep.includes('index')) drop(g.index);
 }
 
 /** Spatial buckets of builders so every chunk is one draw call per material. */

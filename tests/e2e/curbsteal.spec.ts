@@ -139,7 +139,7 @@ test('real shots at a car leave decals on its surface (<5 cm) that travel with t
     const wp = d => d.getWorldPosition(new V3());
     // nearest visible-surface distance along each decal's normal: Moller-Trumbore over the skinned body mesh
     const mesh = v.bodyMesh; mesh.updateMatrixWorld(true); v.syncTransform(); mesh.updateMatrixWorld(true);
-    const geo = mesh.geometry, idx = geo.index, nV = geo.attributes.position.count;
+    const geo = v.tpl.lods[0].body, idx = geo.index, nV = geo.attributes.position.count; // (far LODs free their CPU arrays after upload)
     const P = []; for (let i = 0; i < nV; i++) P.push(new V3(geo.attributes.position.getX(i), geo.attributes.position.getY(i), geo.attributes.position.getZ(i)).applyMatrix4(mesh.matrixWorld));
     const nT = idx ? idx.count / 3 : nV / 3;
     const surfDist = (o, dn) => {

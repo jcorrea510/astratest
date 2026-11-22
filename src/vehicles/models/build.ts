@@ -108,7 +108,7 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
       lods.push(e);
       if (lods.length === 3) far = farGeometry(e.body, e.glass);
       // CPU copies are dead weight once uploaded (~7 MB per kind); only the lod-0 body keeps what dent deformation reads.
-      freeAfterUpload(e.body, lods.length === 1 ? ['position', 'normal', 'skinIndex'] : []); if (e.glass) freeAfterUpload(e.glass);
+      freeAfterUpload(e.body, lods.length === 1 ? ['position', 'normal', 'skinIndex', 'index'] : []); // (index: bullet holes are snapped to the lod-0 surface) if (e.glass) freeAfterUpload(e.glass);
     }
     if (lod === 0) {
       lods[0].body.computeBoundingBox(); bbox = lods[0].body.boundingBox!.clone();
