@@ -1,5 +1,6 @@
 /** In-game HUD. update() runs every frame and only touches the DOM when a value changes. */
 import type { CityMap } from '../world/citymap';
+import { BUILD } from '../build';
 import { MPS_TO_MPH } from '../core/units';
 import type { HudState, WeaponIcon } from './contracts';
 import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
@@ -429,7 +430,7 @@ export class Hud {
     // FPS
     const showF = showFps && s.fps !== null;
     setClass(this.fpsEl, 'is-visible', showF);
-    if (showF) this.fps.set(`${Math.round(s.fps ?? 0)} FPS`);
+    if (showF) this.fps.set(`${Math.round(s.fps ?? 0)} FPS  ·  ${BUILD}`);
   }
 }
 

@@ -211,7 +211,7 @@ function jewelry(c: Ctx) {
 }
 
 /** Free-standing or wall glass display case with jewels inside; registers a SmashCase. */
-export function jewelCase(c: Ctx, x: number, z: number, w: number, d: number, yaw: number, value: number) {
+export function jewelCase(c: Ctx, x: number, z: number, w: number, d: number, yaw: number, value: number, smash = true) {
   const h = 0.9, gh = 0.5;
   c.box(x, h / 2, z, w, h, d, '#17171c', T_PAINT); c.box(x, h + 0.01, z, w + 0.04, 0.03, d + 0.04, '#d4af37', T_METAL);
   c.box(x, h + 0.03, z, w - 0.12, 0.02, d - 0.12, '#12213f', T_FABRIC);
@@ -224,7 +224,7 @@ export function jewelCase(c: Ctx, x: number, z: number, w: number, d: number, ya
     else { lt.box(px, h + 0.07, pz, 0.14, 0.06, 0.14, 0, K('#241a1f'), T_FABRIC); lt.sphere(px, h + 0.12, pz, 0.025, K(k % 2 ? '#e0c25a' : '#bfefff'), T_GLOW(1.4)); lt.cyl(px, h + 0.1, pz + 0.03, 0.022, 0.022, 0.01, 10, K('#e0c25a'), T_METAL); }
   }
   const loot = new THREE.Mesh(lt.build(), c.trimMat); c.root.add(loot);
-  c.extras.cases.push({ lx: x, ly: h, lz: z, w, d, yaw, value, glass, loot, broken: false });
+  if (smash) c.extras.cases.push({ lx: x, ly: h, lz: z, w, d, yaw, value, glass, loot, broken: false });
 }
 
 /** Bank: marble hall, three teller windows behind security glass, safe-deposit wall, ATM bay, a real vault room with a swinging door. */
@@ -353,8 +353,8 @@ function guns(c: Ctx) {
   // price rail under each board, a long red stripe on top
   c.box(2.3, 0.86, -hd + 0.24, 4.9, 0.05, 0.08, '#20221f', T_METAL); c.box(hw - 0.24, 0.86, -1.8, 0.08, 0.05, 5.2, '#20221f', T_METAL);
   c.box(2.3, 2.45, -hd + 0.2, 4.9, 0.12, 0.04, '#8a1c1c', T_PAINT); c.box(hw - 0.2, 2.45, -1.8, 0.04, 0.12, 5.2, '#8a1c1c', T_PAINT);
-  // glass display case for handguns (smashable like a jewelry case, with the counter's pistols)
-  jewelCase(c, 1.3, -1.4, 2.2, 0.8, 0, 380);
+  // glass display case for handguns: display only (Round 8: smashing it paid out $1000 cash, which made no sense in a gun store)
+  jewelCase(c, 1.3, -1.4, 2.2, 0.8, 0, 0, false);
   // ammo shelf behind the counter: boxes in calibre colours
   c.box(-3.0, 1.45, c.backZ - 0.1, 4.2, 2.9, 0.3, '#2b2a24', T_ROUGH); c.col(-3.0, 1.45, c.backZ - 0.1, 2.1, 1.45, 0.15);
   for (let j = 0; j < 4; j++) for (let k = 0; k < 10; k++) c.t.box(-4.85 + k * 0.4, 0.55 + j * 0.55, c.backZ + 0.12, 0.3, 0.2, 0.18, 0, K(['#3d5a2a', '#8a6a1c', '#6b1f1f', '#2a3d5a'][(j + k) % 4]), T_PAINT);

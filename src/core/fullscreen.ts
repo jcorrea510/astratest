@@ -23,7 +23,7 @@ export function exitFullscreen(): void {
 }
 export function toggleFullscreen(): void { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); }
 
-/** A page reload (save and quit, leaving the highway) drops fullscreen; remember it so the next key press or click puts it back. */
+/** A page reload (save and quit) drops fullscreen; remember it so the next key press or click puts it back. */
 export function rememberFullscreen(): void { try { if (isFullscreen()) sessionStorage.setItem(KEY, '1'); } catch { /* storage blocked */ } }
 function wantsRestore(): boolean { try { return sessionStorage.getItem(KEY) === '1'; } catch { return false; } }
 function clearRestore(): void { try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } }

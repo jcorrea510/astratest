@@ -5,12 +5,12 @@
  */
 import * as THREE from 'three';
 
-export const BLOOD_SPLAT_MAX = 120;
-export const BLOOD_POOL_MAX = 18;
+export const BLOOD_SPLAT_MAX = 220;
+export const BLOOD_POOL_MAX = 28;
 /** wounds bleeding at once (Round 7 gore budget) */
 export const BLEED_MAX = 6;
-const POOL_FULL = 0.62; // metres of radius when fully grown
-const POOL_GROW_S = 14;
+const POOL_FULL = 0.85; // metres of radius when fully grown (Round 8: bigger)
+const POOL_GROW_S = 11;
 
 function bloodTexture(kind: 'splat' | 'pool'): THREE.CanvasTexture {
   const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d')!;
@@ -79,10 +79,11 @@ export class Blood {
    */
   hit(at: THREE.Vector3, dir: THREE.Vector3, groundY: number, strength: number, wall: { x: number; y: number; z: number; nx: number; ny: number; nz: number } | null, bone?: THREE.Object3D | null) {
     if (!this.enabled) return;
-    const s = Math.min(1.4, 0.7 + strength * 0.5);
-    this.splat(at.x + dir.x * (0.5 + Math.random() * 0.8), groundY + 0.01, at.z + dir.z * (0.5 + Math.random() * 0.8), 0, 1, 0, 0.28 * s + Math.random() * 0.12);
-    if (Math.random() < 0.6) this.splat(at.x + (Math.random() - 0.5) * 0.5, groundY + 0.01, at.z + (Math.random() - 0.5) * 0.5, 0, 1, 0, 0.14 + Math.random() * 0.1);
-    if (wall) this.splat(wall.x, wall.y, wall.z, wall.nx, wall.ny, wall.nz, 0.34 * s + Math.random() * 0.14);
+    const s = Math.min(1.8, 0.9 + strength * 0.6); // Round 8: bigger spatter, a trail of drops behind the body
+    this.splat(at.x + dir.x * (0.5 + Math.random() * 0.8), groundY + 0.01, at.z + dir.z * (0.5 + Math.random() * 0.8), 0, 1, 0, 0.36 * s + Math.random() * 0.16);
+    this.splat(at.x + dir.x * (1.3 + Math.random() * 1.2), groundY + 0.01, at.z + dir.z * (1.3 + Math.random() * 1.2), 0, 1, 0, 0.18 * s + Math.random() * 0.1);
+    this.splat(at.x + (Math.random() - 0.5) * 0.5, groundY + 0.01, at.z + (Math.random() - 0.5) * 0.5, 0, 1, 0, 0.16 + Math.random() * 0.12);
+    if (wall) { this.splat(wall.x, wall.y, wall.z, wall.nx, wall.ny, wall.nz, 0.5 * s + Math.random() * 0.2); this.splat(wall.x, wall.y - 0.25 - Math.random() * 0.3, wall.z, wall.nx, wall.ny, wall.nz, 0.22 * s); }
     if (bone) this.wound(bone, at);
   }
   /** Dark wound mark on the bone nearest the hit (rides with the animation). 3 per bone, 40 in the world. */
@@ -93,7 +94,7 @@ export class Blood {
     const mesh = new THREE.Mesh(this.woundGeo, this.woundMat); mesh.userData.wound = true; mesh.renderOrder = 3;
     bone.updateWorldMatrix(true, false);
     bone.worldToLocal(this.p.copy(at));
-    mesh.position.copy(this.p); mesh.scale.setScalar(0.07 + Math.random() * 0.04);
+    mesh.position.copy(this.p); mesh.scale.setScalar(0.1 + Math.random() * 0.06);
     // face outwards from the bone axis (towards the shooter side): world +Z-ish; good enough for a spot this small
     const out = this.p.clone().normalize(); if (out.lengthSq() < 1e-6) out.set(0, 0, 1);
     mesh.quaternion.setFromUnitVectors(this.z, out);

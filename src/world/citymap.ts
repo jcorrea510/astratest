@@ -484,6 +484,46 @@ function nearestCoord(arr: number[], v: number): number {
   return best;
 }
 
+/**
+ * Round 8: true when a ground-level carriageway passes within `margin` of (x, z): grid avenues/streets, Broadway, the
+ * non-elevated paths and their junction pads. Elevated decks above the point don't count (used to keep freeway pillars
+ * off the roads underneath).
+ */
+export function groundRoadAt(city: CityMap, x: number, z: number, groundY: number, margin = 1.5): boolean {
+  for (const p of city.paths) {
+    const h = pathHeightAt(p, x, z);
+    if (h.d < p.half + margin && h.y - groundY < 2.5) return true;
+  }
+  for (const i of city.intersections) {
+    if (i.ix >= 0) continue;
+    if (Math.hypot(x - i.x, z - i.z) < Math.max(i.halfX, i.halfZ) * 1.42 + margin && Math.abs(groundY) < 50) {
+      const deck = city.paths.some(p => (p.from === i.id || p.to === i.id) && p.elevated && pathHeightAt(p, i.x, i.z).y - groundY > 2.5);
+      if (!deck) return true;
+    }
+  }
+  const inGrid = z > STREETS[0] - 9 - margin && z < STREETS[STREETS.length - 1] + 9 + margin && x > AVENUES[0] - 9 - margin && x < AVENUES[AVENUES.length - 1] + 9 + margin;
+  if (inGrid) {
+    for (let i = 0; i < AVENUES.length; i++) if (Math.abs(x - AVENUES[i]) < halfWidth(lanesForAvenue(i)) + margin) return true;
+    for (let j = 0; j < STREETS.length; j++) if (Math.abs(z - STREETS[j]) < halfWidth(lanesForStreet(j)) + margin) return true;
+    if (bwDist(x, z) < BROADWAY.channel + margin) return true;
+  }
+  return false;
+}
+
+/** Tidewell Ave elevated rail: the column positions (one each side every 30 m, kerb-side), skipping any that would stand in a
+ * cross street or Broadway (Round 8: some stood in Broadway's carriageway). Pure: citybuild builds them, tests check them. */
+export const RAIL = { x: AVENUES[7], y: 7.4, z0: STREETS[3], z1: STREETS[12] };
+export function railColumns(): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const blocked = (x: number, z: number) => STREETS.some((sz, j) => Math.abs(z - sz) < halfWidth(lanesForStreet(j)) + 1.4) || bwDist(x, z) < BROADWAY.channel + 1.4;
+  for (let z = RAIL.z0 + 6; z < RAIL.z1; z += 30) for (const sg of [-1, 1]) {
+    const cz = z + 6, cx = RAIL.x + sg * (halfWidth(2) + 0.7);
+    if (blocked(cx, cz) || blocked(cx, cz + 2) || blocked(cx, cz - 2)) continue;
+    out.push({ x: cx, z: cz });
+  }
+  return out;
+}
+
 export type Surface = 'road' | 'sidewalk' | 'lot' | 'park' | 'beach' | 'water' | 'quay' | 'offmap';
 /** Classifies a point on the ground plane. */
 export function surfaceAt(city: CityMap, x: number, z: number): Surface {

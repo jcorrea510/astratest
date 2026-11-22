@@ -28,3 +28,8 @@ export function isStandalone(): boolean {
     return n.standalone === true || ['standalone', 'fullscreen'].some(m => window.matchMedia(`(display-mode: ${m})`).matches);
   } catch { return false; }
 }
+/**
+ * Round 8: multisampled half-float render targets are not trusted on iPad / iPhone (Safari's Metal backend showed a green bar
+ * flashing over the screen on High, the only preset with MSAA). Elsewhere the preset's sample count is used. Pure (tests).
+ */
+export function safeMsaa(samples: number, nav: NavLike = navigator): number { return isIPad(nav) || isIPhone(nav) ? 0 : samples; }

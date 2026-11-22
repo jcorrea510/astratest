@@ -188,6 +188,9 @@ export class Vehicle {
   get position() { return this.group.position; }
   get speed() { return this.phys.speed; }
   get yaw() { return this.phys.yaw; }
+  /** Round 8: heading of the drawn (interpolated) car; the chase camera follows this, not the last physics step, so the car
+   * doesn't shimmy against the camera when the frame rate and the 60 Hz physics beat against each other. */
+  get visualYaw() { return yawOfQuat(this.group.quaternion); }
   get name() { return this.spec.name; }
   get size() { return Math.max(1, (this.tpl.front - this.tpl.rear) / 4.7) * (this.tpl.roofY > 1.8 ? 1.15 : 1); }
   get layout(): VehicleLayout { return this.tpl.layout; }
@@ -571,3 +574,6 @@ function distToTris(p: THREE.Vector3, tris: Float32Array): number {
   return best;
 }
 void _q;
+
+/** Heading (yaw, atan2 of the forward +Z axis) of a rotation. Pure. */
+export function yawOfQuat(q: { x: number; y: number; z: number; w: number }): number { return Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y)); }

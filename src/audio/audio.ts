@@ -50,6 +50,8 @@ export class Audio implements GameAudio, AudioExtras {
       // Avoid the browser's autoplay warning: only create the context once the page has had a user gesture.
       const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
       if (ua && !ua.hasBeenActive) return;
+      // Round 8: iPad/iPhone treat web audio as 'ambient' (muted by Silent mode, odd volume); a game is 'playback'
+      try { const n = navigator as Navigator & { audioSession?: { type: string } }; if (n.audioSession) n.audioSession.type = 'playback'; } catch { /* older Safari */ }
       const ctx = new AC({ latencyHint: 'balanced' });
       this.ctx = ctx;
       const core = new AudioCore(ctx);

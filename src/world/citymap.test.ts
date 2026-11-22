@@ -135,7 +135,10 @@ describe('west extension + stores', () => {
   it('has ~50 stores of twelve kinds (Round 7: + the gun store), each on its own street-facing lot, spread over the map', () => {
     expect(STORES.length).toBeGreaterThanOrEqual(45);
     expect(new Set(STORES.map(s => s.kind)).size).toBe(12);
-    expect(STORES.filter(s => s.kind === 'guns').map(s => s.name)).toEqual(['Tidewater Arms']);
+    // Round 8: three gun stores, far apart (robbing one still leaves somewhere to buy)
+    const guns = STORES.filter(s => s.kind === 'guns');
+    expect(guns.map(s => s.name).sort()).toEqual(['Crestline Firearms', 'Ironside Outfitters', 'Tidewater Arms']);
+    for (const a of guns) for (const b of guns) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(250);
     expect(new Set(STORES.map(s => s.name)).size).toBe(STORES.length);
     for (const s of STORES) {
       expect(s.cash).toBeGreaterThan(100);

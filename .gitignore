@@ -9,3 +9,4 @@ test-results/
 .citydbg.mjs
 .cityshots.mjs
 dist-local/
+tests/e2e/tmp/

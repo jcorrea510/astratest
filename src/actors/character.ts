@@ -357,6 +357,17 @@ export class Character {
     const lift = fx.lift > 0 && lu < 1 ? fx.lift * 4 * lu * (1 - lu) : 0;
     return { pitch: fx.p, roll: fx.r, spin, lift };
   }
+  /** Round 8: a round into a body on the ground: a ragdoll gets a real shove, a settled body twitches and slides a little. */
+  corpseJolt(dx: number, dz: number, power: number) {
+    if (this.alive || this.inVehicle) return;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const r = this.ragdoll;
+    if (r && !r.frozen) { const m = power * 6; r.torso.applyImpulse({ x: dx * m, y: power * 2.5, z: dz * m }, true); return; }
+    const fx = this.dfx; fx.pv += (Math.random() - 0.5) * 3 * power; fx.rv += (Math.random() - 0.5) * 4 * power;
+    this.joltT = 0.18; this.joltX = dx * 0.07 * power; this.joltZ = dz * 0.07 * power;
+  }
+  /** corpse jolt: seconds left and the slide it adds */
+  joltT = 0; private joltX = 0; private joltZ = 0;
   revive(health = 100) {
     this.alive = true; this.health = health; this.downT = 0; this.human.setState('loco'); this.human.stopAction(); this.deathStyle = ''; this.lastHit = null;
     this.collider.setCollisionGroups(groups(G_CHAR, G_STATIC | G_CHAR));
@@ -369,6 +380,9 @@ export class Character {
     if (!this.alive || this.inVehicle) return;
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
     if (this.blockT > 0 && power < 2) { this.vel.x += dx * 0.5; this.vel.z += dz * 0.5; return; } // guarded: the blow is soaked up
+    // Round 8: already lying on the floor: another blow keeps them down longer (a standing stagger used to pull a
+    // knocked-out clerk back onto their feet)
+    if (this.downT > this.getUpAt) { this.downT = Math.min(6, this.downT + 1.2); this.knockT = Math.max(this.knockT, this.downT); return; }
     if (power >= 1 && !(this.isPlayer && power < 1.2)) {
       this.yaw = Math.atan2(-dx, -dz); // face the attacker, fall backwards
       this.human.playAction('knockdown');
@@ -417,6 +431,7 @@ export class Character {
     }
     this.lastYaw = this.yaw;
     if (this.ragdoll) { this.ragdoll.syncRoot(h); h.update(dt); this.ragdoll.applyBend(h); return; }
+    if (this.joltT > 0) { const k = Math.min(dt, this.joltT) / 0.18; this.pos.x += this.joltX * k; this.pos.z += this.joltZ * k; this.joltT -= dt; } // corpse hit: slides a few cm
     h.root.position.copy(this.pos);
     h.root.position.y += this.stepOffset;
     if (this.swimming) h.root.position.y += 0.15;

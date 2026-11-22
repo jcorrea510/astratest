@@ -3,6 +3,7 @@
  * Plain DOM + Canvas 2D + inline SVG. One full-screen root overlay (pointer-events: none except on panels).
  */
 import '@fontsource/big-shoulders-display/latin-700';
+import { BUILD } from '../build';
 import '@fontsource/big-shoulders-display/latin-800';
 import '@fontsource/big-shoulders-display/latin-900';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -53,7 +54,6 @@ const TITLE_ITEMS: Record<string, string> = {
   continue: 'Pick up your saved game right where you left off.',
   settings: 'Graphics, audio, camera and controls.',
   controls: 'Every key and gamepad button.',
-  highway: 'Endless multi-lane highway at speed: weave through traffic, pass close for points. Pick your car and the time of day.',
   credits: 'Who made this, and the open assets and fonts it uses.',
 };
 
@@ -260,6 +260,7 @@ export class UI implements GameUI {
     const press = h('div', 'ma-title-press');
     press.appendChild(h('span', 'ma-title-press-text', 'Press any key'));
     content.appendChild(press);
+    el.appendChild(h('div', 'ma-version', BUILD));
     const shot = h('div', 'ma-title-shot');
     this.titleShotName = h('div', 'ma-title-shot-name');
     this.titleShotCap = h('div', 'ma-title-shot-cap');
@@ -304,7 +305,7 @@ export class UI implements GameUI {
       if (this.hasSave) this.confirm('Start a new game? Your saved game will be replaced the next time you save.', 'Start new game', () => this.pickMode(start));
       else this.pickMode(start);
     }, false, 'newgame');
-    const items = [play, this.menuItem('Highway', () => { this.sound('click'); this.closeAllLayers(); this.callbacks.onHighway?.(); }, false, 'highway')];
+    const items = [play];
     let cont: HTMLButtonElement | null = null;
     if (hasSave) { cont = this.menuItem('Continue', () => start(true), false, 'continue', saveSummary || 'saved game'); items.unshift(cont); }
     items.push(
@@ -464,6 +465,7 @@ export class UI implements GameUI {
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Paused');
     el.appendChild(h('div', 'ma-pause-backdrop'));
+    el.appendChild(h('div', 'ma-version', BUILD));
     const head = h('div', 'ma-pause-head');
     const brand = h('div', 'ma-pause-brand');
     brand.appendChild(logo('ma-logo-pause'));

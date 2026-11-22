@@ -163,7 +163,7 @@ export class Combat {
   /** fallback broken-pane memory when vehicles don't implement GlassApi */
   private brokenPanes = new WeakMap<object, Set<string | number>>();
   private caps: Capsule[] = [];
-  private v1 = new THREE.Vector3(); private v2 = new THREE.Vector3(); private v3 = new THREE.Vector3();
+  private v1 = new THREE.Vector3(); private v2 = new THREE.Vector3(); private v3 = new THREE.Vector3(); private v4 = new THREE.Vector3(); private v5 = new THREE.Vector3();
   constructor(private physics: Physics, private particles: Particles, private audio: GameAudio, private scene: THREE.Scene) {
     this.tracers = new Tracers(scene);
     this.flash = new THREE.PointLight(0xffb36b, 0, 12, 2); scene.add(this.flash);
@@ -214,8 +214,12 @@ export class Combat {
     const api = v as unknown as GlassApi;
     if (typeof api.glassAt === 'function') {
       // the physics hull is coarser than the body: look for the pane a little further along the ray
-      const q = this.v2;
-      for (let s = 0; s <= 0.9; s += 0.05) {
+      // Round 8: a shot over the hood meets the coarse hull well before the raked windshield (it used to look only 0.9 m on,
+      // so front-windshield shots often did nothing): search up to where the round really meets paint, up to 2.8 m
+      const q = this.v2, sr = (v as unknown as { surfaceRay?: (o: THREE.Vector3, d: THREE.Vector3, t0: number, t1: number, n: THREE.Vector3) => number }).surfaceRay;
+      let reach = 0.9;
+      if (d && typeof sr === 'function') { const paint = sr.call(v, this.v4.copy(p).addScaledVector(d, -0.3), d, 0, 3.1, this.v5); reach = paint < 0 ? 2.8 : Math.min(2.8, Math.max(0.9, paint - 0.3 + 0.08)); }
+      for (let s = 0; s <= reach; s += 0.05) {
         q.copy(p); if (d) q.addScaledVector(d, s); else if (s > 0) break;
         const id = api.glassAt(q); if (id !== null && id !== undefined) return id;
       }
@@ -268,14 +272,16 @@ export class Combat {
       // people (bone capsules) in front of the world hit
       let best: { t: number; zone: Zone; c: Character } | null = null;
       for (const c of this.targets()) {
-        if (c === shooter || !c.alive || c.heldBy === shooter) continue; // a human shield never takes the holder's own rounds
+        if (c === shooter || c.heldBy === shooter) continue; // a human shield never takes the holder's own rounds
+        if (!c.alive && !corpseShootable(c)) continue; // Round 8: fresh bodies on the ground take rounds too (blood, holes, a jolt)
         if (c.inVehicle && !res.glass.includes(c.inVehicle as Vehicle) && !through.has(c.inVehicle as Vehicle) && c.inVehicle !== opts.excludeVehicle) continue;
         const root = c.human.root; root.getWorldPosition(this.v1); this.v1.y += 0.9;
         // broad phase: ray vs bounding sphere
         const qx = this.v1.x - o.x, qy = this.v1.y - o.y, qz = this.v1.z - o.z; const along = qx * d.x + qy * d.y + qz * d.z;
         if (along < start - 1.2 || along > worldT + 1.2) continue;
         const px = qx - d.x * along, py = qy - d.y * along, pz = qz - d.z * along;
-        if (px * px + py * py + pz * pz > 1.45 * 1.45) continue;
+        const br = c.alive ? 1.45 : 2.2; // a body lying flat reaches ~1.8 m from its root
+        if (px * px + py * py + pz * pz > br * br) continue;
         const look = c.human.look as { height?: number; build?: number };
         bodyCapsules(c.human.model, c.pos, c.yaw, look.height ?? 1, look.build ?? 1, this.caps);
         const bh = rayBody(o.x, o.y, o.z, d.x, d.y, d.z, this.caps, worldT, c.isPlayer && shooter && !shooter.isPlayer ? opts.inflate ?? 0 : 0);
@@ -375,6 +381,14 @@ export class Combat {
       const loud = impactSounds < (w.pellets > 1 ? 2 : 1);
       if (tr.kind === 'character' && tr.character) {
         const c = tr.character, zone = tr.zone!;
+        if (!c.alive) { // Round 8: shooting a corpse: more blood and wounds, the body jolts, no score / heat bookkeeping
+          this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength);
+          this.corpseHit(c, end, d, zone, strength, w, tr.t);
+          info.target = c; info.zone = zone; info.surface = 'body';
+          if (loud) { this.sfx(IMPACT_SND.body, end, 0.9, 1); impactSounds++; }
+          if (p < (w.pellets > 1 ? 4 : 1)) this.tracers.add(origin, end, isPlayer ? 0.12 : 0.3, w.pellets > 1 ? 0.7 : 1);
+          hits.push(info); continue;
+        }
         const apply = () => {
           const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
           this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
@@ -427,6 +441,21 @@ export class Combat {
     }
     this.onShot?.({ shooter, weapon: w, origin: origin.clone(), hits });
     return hits;
+  }
+
+  /** Round 8: a round into a body already on the ground: the body jolts; with Blood & gore on, a fresh wound, spray, a
+   * longer bleed, the pool grows, and a heavy round to the head at close range can still take it off. */
+  private corpseHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, w: WeaponDef, dist: number) {
+    c.corpseJolt(d.x, d.z, Math.min(2, w.knockback * 0.5 + strength * 0.6));
+    const b = this.blood; if (!b || !b.enabled) return;
+    b.onSpurt ??= (x, y, z, dx, dy, dz, s) => this.particles.blood(x, y, z, dx, dy, dz, s);
+    const left = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
+    const head = zoneBone(c.human.model, 'head', left);
+    if (zone === 'head' && dist < 30 && decapitates(w) && head && !head.userData.gone) b.decapitate(head, zoneBone(c.human.model, 'neck', left), c.pos.y);
+    else { const bone = zoneBone(c.human.model, zone, left); if (bone) b.bleed(bone, c.pos.y, 4, Math.min(1.5, strength + w.damage / 60)); }
+    this.particles.blood(end.x, end.y, end.z, d.x, 0.6, d.z, strength * 1.2);
+    b.hit(end, d, c.pos.y, strength, null, zoneBone(c.human.model, zone, left));
+    if (!c.inVehicle) b.pool(c.pos.x + d.x * 0.2, c.pos.y, c.pos.z + d.z * 0.2, c.pos);
   }
 
   /** Spray, ground / wall spatter, a wound mark on the hit bone and (on a kill) a growing pool. Skipped when Blood is off. */
@@ -721,4 +750,9 @@ export function slumpOccupant(c: Character, v: Vehicle) {
   if (typeof h.slump === 'function') h.slump();
   else { h.stopOnce(); h.setState('drive'); h.root.rotation.order = 'YXZ'; h.root.rotation.x = 0.5; h.root.rotation.z = (Math.random() < 0.5 ? -1 : 1) * 0.22; }
   if (v.driver === c) { v.input.throttle = 0; v.input.steer *= 0.3; v.input.handbrake = false; v.input.brake = 0; }
+}
+
+/** Round 8: a dead body still lying in the world (not in a car, not yet cleaned up) can be shot. Pure (tests). */
+export function corpseShootable(c: { alive: boolean; inVehicle: unknown; deadTime: number }): boolean {
+  return !c.alive && !c.inVehicle && c.deadTime > 0.15 && c.deadTime < 120;
 }

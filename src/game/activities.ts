@@ -88,7 +88,7 @@ export class Activities {
   }
   blips(): MinimapBlip[] {
     const b: MinimapBlip[] = [
-      { x: PLACES.arms.x, z: PLACES.arms.z, kind: 'arms', label: 'Tidewater Arms' }, { x: PLACES.garage.x, z: PLACES.garage.z, kind: 'garage', label: 'Glow Garage' }, { x: GAS_STATION.x, z: GAS_STATION.z, kind: 'garage', label: 'Fuel Stop service bay' },
+      { x: PLACES.garage.x, z: PLACES.garage.z, kind: 'garage', label: 'Glow Garage' }, { x: GAS_STATION.x, z: GAS_STATION.z, kind: 'garage', label: 'Fuel Stop service bay' },
       { x: PLACES.dealer.x, z: PLACES.dealer.z, kind: 'garage', label: 'Redline Motors' },
       { x: PLACES.snack.x, z: PLACES.snack.z, kind: 'shop', label: 'Pier 9 Snacks' }, { x: PLACES.safehouse.x, z: PLACES.safehouse.z, kind: 'safehouse', label: 'Safehouse' },
       ...this.robberies.blips(),
@@ -215,7 +215,7 @@ export class Activities {
   private openShop(kind: 'arms' | 'snack' | 'dealer') {
     const g = this.game;
     this.shopOpen = kind; g.menuOpen = true; g.input.exitLock();
-    this.ui.openShop(kind === 'arms' ? 'Tidewater Arms' : kind === 'dealer' ? 'Redline Motors' : 'Pier 9 Snacks', this.shopItems(), g.money, id => this.buy(id), () => this.closeShop());
+    this.ui.openShop(kind === 'arms' ? (this.guns.kiosk?.def.name ?? 'Tidewater Arms') : kind === 'dealer' ? 'Redline Motors' : 'Pier 9 Snacks', this.shopItems(), g.money, id => this.buy(id), () => this.closeShop());
   }
   closeShop() { this.salon.close(); if (!this.shopOpen) return; this.shopOpen = null; this.game.menuOpen = false; this.ui.closeShop(); }
   get shopIsOpen() { return !!this.shopOpen || this.salon.isOpen; }

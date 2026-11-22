@@ -88,6 +88,7 @@ export class Orders {
   findTarget(): Npc | null {
     const g = this.g, p = g.player;
     for (const s of this.seated) if (s.n.alive && s.v.position.distanceTo(p.pos) < 7) return s.n;
+    if (g.playerVehicle) return null; // in a car: only your own passenger can be addressed
     let best: Npc | null = null, bs = 1e9;
     const aimFrom = this.v1, aimDir = this.v2;
     const aimed = g.pcombat.armed && g.pcombat.aiming;
@@ -119,7 +120,10 @@ export class Orders {
     this.updateBoarding();
     this.updateSeated();
     this.updateShield();
-    const can = !blocked && !g.paused && p.alive && !g.playerVehicle && !g.playerHeli && !g.carEntry.active && !this.shield;
+    this.lastDt = dt;
+    // Round 8: from the driver's seat you can still order your passenger out (orders used to be off in a car)
+    const inCarWithPassenger = !!g.playerVehicle && this.seated.some(s => s.v === g.playerVehicle && s.n.alive);
+    const can = !blocked && !g.paused && p.alive && (!g.playerVehicle || inCarWithPassenger) && !g.playerHeli && !g.carEntry.active && !this.shield;
     if (this.open) {
       const look = inp.lookDelta(raw); this.px = Math.max(-90, Math.min(90, this.px + look.x)); this.py = Math.max(-90, Math.min(90, this.py + look.y));
       for (let i = 0; i < this.items.length; i++) if (inp.rawPressed(`Digit${i + 1}`)) { this.sel = i; this.finish(true); return; }
@@ -186,14 +190,41 @@ export class Orders {
   private updateBoarding() {
     for (const [n, v] of [...this.boarding]) {
       if (!n.alive || n.brain !== 'ordered' || v.destroyed) { this.boarding.delete(n); continue; }
-      if (n.order === 'board' || (n.order === 'car' && n.destPt && n.pos.distanceTo(v.position) < 1.9)) { this.boarding.delete(n); this.seat(n, v); }
+      if (n.order === 'board' || (n.order === 'car' && n.destPt && n.pos.distanceTo(n.destPt) < 0.6)) { this.boarding.delete(n); if (!this.climbIn(n, v)) this.seat(n, v); }
+    }
+    // Round 8: climbing in: step into the door gap, sit down onto the seat (they used to pop straight into it)
+    for (const c of [...this.climbing]) {
+      const { n, v } = c; c.t += this.lastDt;
+      if (!n.alive || v.destroyed || n.disposed) { this.climbing.splice(this.climbing.indexOf(c), 1); if (n.alive && !n.disposed) { v.visual.remove(n.char.human.root); this.g.renderer.scene.add(n.char.human.root); n.char.inVehicle = null; n.char.setCollision(true); n.brain = 'flee'; } continue; }
+      const k = climbPose(c.t, c.from, c.gap, c.to, n.char.human.root.position);
+      if (k >= 1) { this.climbing.splice(this.climbing.indexOf(c), 1); n.char.inVehicle = null; this.seat(n, v, c.seat); }
     }
   }
+  private climbing: { n: Npc; v: Vehicle; seat: number; t: number; from: THREE.Vector3; gap: THREE.Vector3; to: THREE.Vector3 }[] = [];
+  private lastDt = 0;
+  /** Starts the get-in: the person is parented to the car at the door and eased onto the seat over ~1.1 s. */
+  private climbIn(n: Npc, v: Vehicle): boolean {
+    const seat = this.freeSeat(v); if (seat === undefined || !n.alive) return false;
+    const to = v.seatLocal(seat).clone(), sg = Math.sign(to.x) || 1;
+    const gap = new THREE.Vector3(to.x + sg * 0.55, to.y - 0.05, to.z);
+    const from = v.visual.worldToLocal(n.char.human.root.getWorldPosition(new THREE.Vector3()));
+    const sl = v.seatLocal(seat), side = sl.x > 0 ? 'left' : 'right', row = sl.z < -0.4 ? 1 : 0;
+    let di = v.doorIndex(side, row as 0 | 1); if (di < 0) di = v.doorIndex(side, 0);
+    if (di >= 0) v.setDoor(di, 1);
+    n.brain = 'scripted'; n.persistent = true; n.char.inVehicle = v; n.char.setCollision(false);
+    const h = n.char.human; h.stopAction(); v.visual.add(h.root); h.root.position.copy(from); h.root.rotation.set(0, sg > 0 ? -Math.PI / 2 : Math.PI / 2, 0);
+    h.setSpeed(0); h.playAction('enter_car', { rate: 1.7 });
+    this.climbing.push({ n, v, seat, t: 0, from, gap, to });
+    return true;
+  }
+  private freeSeat(v: Vehicle) {
+    const used = new Set([...this.seated.filter(s => s.v === v).map(s => s.seat), ...this.climbing.filter(c => c.v === v).map(c => c.seat)]);
+    return [1, 2, 3].find(i => i < v.tpl.seats.length && !used.has(i));
+  }
   /** Puts a person in the front passenger seat (or a rear one) of `v`. */
-  seat(n: Npc, v: Vehicle): boolean {
+  seat(n: Npc, v: Vehicle, seatIdx?: number): boolean {
     const g = this.g; if (!n.alive) return false;
-    const used = new Set(this.seated.filter(s => s.v === v).map(s => s.seat));
-    const free = [1, 2, 3].find(i => i < v.tpl.seats.length && !used.has(i));
+    const free = seatIdx ?? this.freeSeat(v);
     if (free === undefined) return false;
     const sl = v.seatLocal(free), side = sl.x > 0 ? 'left' : 'right', row = sl.z < -0.4 ? 1 : 0;
     let di = v.doorIndex(side, row as 0 | 1); if (di < 0) di = v.doorIndex(side, 0);
@@ -284,4 +315,14 @@ export class Orders {
     if (this.shield) this.releaseShield(false);
     this.open = false; this.target = null; this.g.fx?.hideMenu();
   }
+}
+
+/**
+ * Round 8: position (car-local) of someone climbing into a seat at time t: 0-0.4 s step from where they stood into the
+ * door gap, 0.4-1.1 s ease down and across onto the seat. Writes `out`, returns progress 0..1. Pure (tests).
+ */
+export function climbPose(t: number, from: THREE.Vector3, gap: THREE.Vector3, to: THREE.Vector3, out: THREE.Vector3): number {
+  const e = (x: number) => x * x * (3 - 2 * x);
+  if (t < 0.4) { out.lerpVectors(from, gap, e(Math.max(0, t) / 0.4)); return t / 1.1; }
+  const k = Math.min(1, (t - 0.4) / 0.7); out.lerpVectors(gap, to, e(k)); return k >= 1 ? 1 : t / 1.1;
 }

@@ -17,20 +17,27 @@ export function wallGuns(): WeaponId[] {
 }
 
 export class GunStore {
-  private decorated: THREE.Object3D | null = null;
+  private decorated = new WeakSet<THREE.Object3D>();
   private guns = wallGuns();
   constructor(private g: Game, private kiosks: () => Kiosk[]) {}
-  get kiosk(): Kiosk | undefined { return this.kiosks().find(k => k.def.kind === 'guns'); }
-  /** Hangs the weapon models once the store interior exists (it is built lazily near the camera). */
+  /** The gun store the player is nearest (Round 8: there are three). */
+  get kiosk(): Kiosk | undefined {
+    const p = this.g.player.pos; let best: Kiosk | undefined, bd = Infinity;
+    for (const k of this.kiosks()) { if (k.def.kind !== 'guns') continue; const d = Math.hypot(k.def.x - p.x, k.def.z - p.z); if (d < bd) { bd = d; best = k; } }
+    return best;
+  }
+  /** Hangs the weapon models in every gun store whose interior exists (they are built lazily near the camera). */
   update() {
-    const k = this.kiosk, sh = k?.shell; if (!sh || this.decorated === sh.root) return;
-    this.decorated = sh.root;
-    this.guns.forEach((id, i) => {
-      const s = GUN_SLOTS[i], m = weaponMesh(id);
-      m.position.set(s.lx, s.ly, s.lz); m.rotation.set(0, s.yaw, 0); m.scale.setScalar(1.15);
-      m.traverse(o => { (o as THREE.Mesh).castShadow = false; });
-      sh.root.add(m);
-    });
+    for (const k of this.kiosks()) {
+      const sh = k.def.kind === 'guns' ? k.shell : null; if (!sh || this.decorated.has(sh.root)) continue;
+      this.decorated.add(sh.root);
+      this.guns.forEach((id, i) => {
+        const s = GUN_SLOTS[i], m = weaponMesh(id);
+        m.position.set(s.lx, s.ly, s.lz); m.rotation.set(0, s.yaw, 0); m.scale.setScalar(1.15);
+        m.traverse(o => { (o as THREE.Mesh).castShadow = false; });
+        sh.root.add(m);
+      });
+    }
   }
   /** Customer side of the counter, inside the store. */
   atCounter(p: THREE.Vector3): boolean {

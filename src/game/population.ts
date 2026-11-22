@@ -40,6 +40,8 @@ export class Population {
   }
   /** Where the player is pointing a gun (set by the game each frame; null when not aiming). */
   aimProvider: (() => { from: THREE.Vector3; dir: THREE.Vector3 } | null) | null = null;
+  /** Round 8: a pedestrian struck hard by a car (the game adds blood on the road and on the car) */
+  onCarHit: ((ch: Character, v: Vehicle, speed: number) => void) | null = null;
   private reactT = 0;
   /** Civilians react to the player: brushing past ("Watch it!"), running into them, aiming a gun at them. */
   private reactToPlayer(dt: number) {
@@ -115,6 +117,9 @@ export class Population {
   /** Civilians in a radius react to danger (gunfire, explosions, crashes): near ones react at once, far ones a beat later (a wave). */
   danger(at: THREE.Vector3, radius: number, source: Character | null) {
     const from = source ? source.pos : at;
+    // Round 8: sustained gunfire / chaos: the scare spreads further and nobody stops to film or freeze
+    const now = this.env.time(); this.dangerAt = this.dangerAt.filter(t => now - t < 6); this.dangerAt.push(now);
+    const level = this.dangerAt.length; radius *= panicRadiusScale(level);
     for (const n of this.npcs) {
       if (n.alive && n.role === 'civilian' && n.pos.distanceTo(at) <= radius) n.shotAt = this.env.time(); // store shoppers (scripted) read this to drop their hands
       if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.brain === 'hostage') continue; // a hostage in your grip does not bolt
@@ -128,8 +133,15 @@ export class Population {
       this.panic(n, from, d);
     }
   }
+  private dangerAt: number[] = [];
   private panic(n: Npc, from: THREE.Vector3, d: number) {
     if (n.activity || n.brain === 'idle') this.runner.endAct(n);
+    if (this.dangerAt.length >= 3) { // a real shootout: everybody runs for it
+      const cornered = n.brain === 'surrender' && d < 2.5;
+      n.brain = cornered ? 'cower' : 'flee'; n.stateT = 0; n.fleeFrom.copy(from);
+      if (n.char.human.actionName === 'hands_up') n.char.human.stopAction();
+      return;
+    }
     if (n.brain !== 'surrender' && d > 24 && Math.random() < 0.4) { // too far to be scared: stop and stare / film
       this.runner.startAct(n, 'film', 8 + Math.random() * 14, Math.atan2(from.x - n.pos.x, from.z - n.pos.z)); return;
     }
@@ -209,6 +221,7 @@ export class Population {
         const im = pedImpact(sp, lateralOf(n.char), Math.random()), hd = Math.hypot(vel.x, vel.z) || 1, hx2 = vel.x / hd, hz2 = vel.z / hd;
         n.char.knockT = 1;
         if (this.ragdolls && im.outcome !== 'brush') this.ragHit(n.char, v, sp, false, lateralOf(n.char));
+        if (im.outcome !== 'brush' && sp > 6) this.onCarHit?.(n.char, v, sp); // Round 8: gore on a hard hit
         n.char.lastHit = { zone: 'torso', dx: hx2, dz: hz2, power: im.outcome === 'over' ? 3.5 : im.outcome === 'hood' ? 3 : 0.8, blast: im.outcome === 'over' };
         const killed = n.char.damage(im.damage, v.driver, this.env.time());
         if (!killed && !n.char.ragdoll) n.char.hitReact(hx2, hz2, im.outcome === 'brush' ? 0.6 : 1.5); // stagger or full knockdown
@@ -368,3 +381,6 @@ export class Population {
   }
   clearNonPersistent() { for (const n of [...this.npcs]) if (!n.persistent) this.remove(n); }
 }
+
+/** Round 8: how far a scare reaches, by how many scares (shots, blasts, crashes) happened in the last 6 s. Pure (tests). */
+export function panicRadiusScale(recent: number): number { return recent >= 6 ? 1.8 : recent >= 3 ? 1.4 : 1; }

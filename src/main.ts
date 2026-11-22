@@ -29,7 +29,7 @@ import { defaultQualityFor, isPhoneLike } from './core/platform';
 
 installFullscreenShortcut();
 
-declare global { interface Window { __meridian?: unknown; __game?: Game; __highway?: unknown } }
+declare global { interface Window { __meridian?: unknown; __game?: Game} }
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = '';
@@ -73,7 +73,6 @@ function webglOk(): boolean {
 ui.init({
   city, settings, callbacks: {
     onStart: (cont, mode) => { void play(cont, mode); },
-    onHighway: () => { void openHighway(); },
     onOpenSandbox: () => { if (game?.mode === 'regular') { activities?.openGoals(); return; } if (sandbox && game) { game.menuOpen = true; sandbox.openPanel(() => { if (game) game.menuOpen = false; }); } },
     onResume: () => resume(),
     onPauseRequest: () => { if (game && started && !game.paused && !ui.isMenuOpen()) pause(); },
@@ -259,6 +258,7 @@ function wireGame(g: Game) {
   g.events.onBeforeDown = () => { if (g.wheelOpen) closeWheel(true); activities?.closeShop(); };
   g.events.onRespawn = () => {
     g.respawnDelay = 4.2; g.targetTimeScale = 1; g.timeScale = 1; audio?.setSlowMo(0); setGrade(g, 0);
+    activities?.robberies.reopenAll(); // Round 8: every robbed / closed store is open again after you die or get arrested
     ui.toast(g.deathKind === 'down' ? 'Patched up at Juniper Clinic' : 'Released from Meridian PD', 'info');
     if (g.deathNotice) { const n = g.deathNotice; g.deathNotice = ''; setTimeout(() => ui.toast(n, 'warning'), 900); activities?.parkOwned(); }
   };
@@ -399,35 +399,11 @@ function exposeApi() {
   };
 }
 
-// ---------------- Highway mode (endless traffic driving; shares the renderer, never loads the city) ----------------
-async function openHighway(auto?: { kind?: string; time?: string; density?: number }) {
-  const hw = await import('./highway/hud');
-  const start = async (c: { kind: import('./vehicles/specs').VehicleKind; time: 'night' | 'dusk' | 'day'; density: number }) => {
-    const { HighwayGame } = await import('./highway');
-    void audio?.resume();
-    // reuse the city renderer when the title flyover is running (its geometry already lives on that GL context)
-    const shared = game ? game.renderer.renderer : null;
-    game?.stop();
-    ui.setHudVisible(false);
-    const renderer = shared ?? new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    if (!shared) { renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; }
-    started = true; attract = null;
-    const g = new HighwayGame({ renderer, model: c.kind, time: c.time, density: c.density, onQuit: () => { rememberFullscreen(); location.href = location.pathname; } });
-    window.__highway = g;
-    g.start();
-  };
-  if (auto) { await start({ kind: (auto.kind ?? 'sedan') as never, time: (auto.time ?? 'night') as never, density: auto.density ?? 1 }); return; }
-  hw.showHighwayMenu(c => { void start(c); }, () => { showTitle(); });
-}
-
 // ---------------- Boot ----------------
 if (!webglOk()) {
   ui.showMobileGate();
 } else if (isMobile()) {
   ui.showMobileGate();
-} else if (params.get('highway') === '1') {
-  // direct boot into the highway (no city): ?highway=1&car=coupe&time=night&traffic=1
-  void openHighway({ kind: params.get('car') ?? undefined, time: params.get('time') ?? undefined, density: Number(params.get('traffic') ?? '1') });
 } else if (params.get('autostart') === '1') {
   void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
 } else {

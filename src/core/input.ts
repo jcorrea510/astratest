@@ -15,7 +15,7 @@ export class Input {
   virtualLock = false;
   private lastTouch = new Map<number, { x: number; y: number }>();
   pad: PadState = { ...EMPTY_PAD, buttons: [] };
-  private padPrev: boolean[] = [];
+  private padPrev: PadState = { ...EMPTY_PAD, buttons: [] };
   lastSource: ActionSource = 'kbm';
   /** What the gamepad buttons mean right now; the game sets it each frame (on foot / in a car / in a helicopter). */
   private _padCtx: PadContext = 'foot';
@@ -86,16 +86,15 @@ export class Input {
   justPressed(a: Action): boolean {
     if (!this.enabled && a !== 'pause') return false;
     if (this.codes(a).some(c => this.pressed.has(c))) return true;
-    const pb = PAD_LAYOUTS[this._padCtx].buttons[a];
-    if (pb && pb.some(b => this.pad.buttons[b] && !this.padPrev[b])) return true;
+    // edges of the pad's level state, so trigger-bound actions (RT fire, LT aim) get presses too (Round 8: a pistol on RT never fired)
+    if (this.pad.connected && padHeld(a, this.pad, this._padCtx) && !padHeld(a, this.padPrev, this._padCtx)) return true;
     return false;
   }
   /** A raw key code pressed this frame (menu digits, tests); not tied to a rebindable action. */
   rawPressed(code: string): boolean { return this.enabled && this.pressed.has(code); }
   justReleased(a: Action): boolean {
     if (this.codes(a).some(c => this.released.has(c))) return true;
-    const pb = PAD_LAYOUTS[this._padCtx].buttons[a];
-    if (pb && pb.some(b => !this.pad.buttons[b] && this.padPrev[b])) return true;
+    if (!padHeld(a, this.pad, this._padCtx) && padHeld(a, this.padPrev, this._padCtx)) return true;
     return false;
   }
   /** Movement axes in [-1,1]: x = right, y = forward. */
@@ -124,7 +123,7 @@ export class Input {
     return (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0);
   }
   pollGamepad() {
-    this.padPrev = this.pad.buttons.slice();
+    this.padPrev = this.pad;
     this.pad = readPad();
     if (padActive(this.pad)) this.lastSource = 'pad';
   }

@@ -44,8 +44,18 @@ export class Robberies {
       this.kiosks.push({ ex: newEx(), def, shell: null, frame, pos: new THREE.Vector3(def.x, 0, def.z), clerk: null, phase: 'open', progress: 0, cash: 0, uncoveredT: 0, reopenAt: 0, alarmT: 0, pickT: 0, brave: false, shoppers: [], refillT: 8, clerkT: 4, clerkTurn: 0, panicT: -1, callT: 0, called: false, looting: 0, looted: false, front, clerkPos: frame.clerk, customer: frame.customer, door: 0 });
     }
   }
-  blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: (k.def.kind === 'barber' ? 'barber' : k.def.kind === 'clothing' ? 'clothing' : 'shop') as 'shop' | 'barber' | 'clothing', label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
+  blips(): MinimapBlip[] { return this.kiosks.map(k => ({ x: k.def.x, z: k.def.z, kind: (k.def.kind === 'guns' ? 'arms' : k.def.kind === 'bank' ? 'bank' : k.def.kind === 'barber' ? 'barber' : k.def.kind === 'clothing' ? 'clothing' : 'shop') as 'shop' | 'barber' | 'clothing' | 'arms' | 'bank', label: k.phase === 'closed' ? `${k.def.name} (closed)` : k.def.name })); }
   get robbing() { return !!this.active; }
+  /** Round 8: reopen every closed store now (on death / arrest): shutters up, till refilled, alarm off, a fresh clerk on the next visit. */
+  reopenAll() {
+    if (this.active) this.reset();
+    for (const k of this.kiosks) {
+      if (k.phase !== 'closed') continue;
+      k.phase = 'open'; k.reopenAt = 0; k.shell?.setClosed(false); this.extras.reset(k); k.panicT = -1; k.called = false; k.looted = false; k.alarmT = 0; k.vacant = false;
+      for (const s of k.shoppers) { s.n.persistent = false; if (s.n.alive && s.n.brain === 'scripted') s.n.brain = 'wander'; }
+      k.shoppers = [];
+    }
+  }
   /** The store the player is standing in, if any. */
   inside(): Kiosk | null {
     const p = this.game.player.pos;
@@ -266,12 +276,15 @@ export class Robberies {
       if (k.phase === 'closed' && t > k.reopenAt && dist > 60) { k.phase = 'open'; k.shell?.setClosed(false); this.extras.reset(k); k.panicT = -1; k.called = false; k.looted = false; k.alarmT = 0; for (const s of k.shoppers) { s.n.persistent = false; if (s.n.alive && s.n.brain === 'scripted') s.n.brain = 'wander'; } k.shoppers = []; }
       const sh = k.shell;
       if (sh) {
-        const closedNow = k.phase === 'closed' && dist > 9;
+        // Round 8: the shutter stays down whenever the player is outside (it used to lift within 9 m, so the door let you back
+        // in); it is only up while the player is still inside, so they can get out, and drops once they are clear of the door
+        const doorW = k.frame.toWorld(3.1, 0.05, 4.4), atDoor = Math.hypot(p.x - doorW.x, p.z - doorW.z) < 2.4;
+        const closedNow = k.phase === 'closed' && insideK !== k && !(atDoor && !sh.shutter.visible);
         if (closedNow !== sh.shutter.visible) sh.setClosed(closedNow);
         // automatic sliding doors
         // the doors also open for shoppers coming and going (they used to stay shut unless the player was close)
-        const doorW = k.frame.toWorld(3.1, 0.05, 4.4), shopperAt = k.phase !== 'closed' && k.shoppers.some(q => q.n.alive && Math.hypot(q.n.pos.x - doorW.x, q.n.pos.z - doorW.z) < 2.2);
-        const near = (dist < 8.5 || shopperAt) && k.phase !== 'closed' || (k.phase === 'closed' && dist < 9 && !sh.shutter.visible);
+        const shopperAt = k.phase !== 'closed' && k.shoppers.some(q => q.n.alive && Math.hypot(q.n.pos.x - doorW.x, q.n.pos.z - doorW.z) < 2.2);
+        const near = (dist < 8.5 || shopperAt) && k.phase !== 'closed' || (k.phase === 'closed' && (insideK === k || atDoor) && !sh.shutter.visible);
         const door0 = k.door; k.door = THREE.MathUtils.clamp(k.door + (near ? dt : -dt) * 2.2, 0, 1);
         if ((door0 === 0) !== (k.door === 0) && dist < 20) (g.audio as unknown as { storeBell?: (p: THREE.Vector3) => void }).storeBell?.(k.pos); // R6-A door chime on open / shut
         sh.setDoor(k.door * k.door * (3 - 2 * k.door));
@@ -289,7 +302,7 @@ export class Robberies {
       if (k.phase === 'open' && k.panicT < 0 && k !== this.active && k.shoppers.length && g.pcombat.lastShot > this.shotClip[this.kiosks.indexOf(k)] && dist < 28) this.panic(k);
       this.shotClip[this.kiosks.indexOf(k)] = g.pcombat.lastShot;
       this.extras.update(k, dt, dist, insideK);
-      if (k.phase === 'open' && k.clerk?.alive && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
+      if (k.phase === 'open' && k.clerk?.alive && k.clerk.role === 'civilian' && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
     }
     // one shared interior light follows the player into a store
     const inS = this.inside();
@@ -308,7 +321,8 @@ export class Robberies {
       // this one keeps a pistol under the counter
       n.role = 'gang'; n.hostile = true; n.arm('pistol', g.renderer.scene); n.brain = 'combat'; n.target = g.player; n.seenTime = t; n.lastSeen.copy(p);
       this.ui.toast('The clerk pulled a gun!', 'warning');
-      this.end(false, null); return;
+      // Round 8: the store stays open (it used to close, so the till could not be robbed after winning the shootout)
+      this.active = null; this.ui.robberyMeter(null); this.game.audio.setMusicMood('none'); this.panic(k); return;
     }
     if (this.covering(k)) {
       k.uncoveredT = 0;

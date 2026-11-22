@@ -85,6 +85,12 @@ export class StoreExtras {
         ex.koT = 28; if (c.downT <= 0) c.hitReact(Math.sin(k.def.yaw), Math.cos(k.def.yaw), 2);
         this.host.panic(k); ex.aimOnly = false;
         this.ui.toast('The clerk is out cold. The register is yours.', 'info');
+      } else if (n.brain === 'fight') { n.fightT = 0; } // already swinging back
+      else if (!g.pcombat.armed && dist < 40 && Math.random() < clerkFightChance(k.def.kind)) {
+        // Round 8: punched (not out): most clerks swing back instead of just putting their hands up
+        n.brain = 'fight'; n.target = g.player; n.fightT = 0; n.stateT = 0; n.cooldown = 0.25; n.dodgeCool = 0.4; n.playerSwung = false;
+        if (h.actionName) h.stopAction(h.actionName); h.setState('loco'); this.host.panic(k);
+        this.ui.toast('The clerk is fighting back!', 'warning');
       } else if (n.brain !== 'scripted' && dist < 40) { n.brain = 'scripted'; n.stateT = 0; h.playAction('hands_up', { hold: true }); this.host.panic(k); } // stunned, not out: stays at the till with hands up
     }
     if (ex.koT > 0) {
@@ -234,3 +240,6 @@ export class StoreExtras {
     }
   }
 }
+
+/** Round 8: odds that a clerk punched (but not knocked out) fights back with their fists. Pure (tests). */
+export function clerkFightChance(kind: string): number { return kind === 'guns' ? 0.8 : kind === 'bank' || kind === 'jewelry' ? 0.35 : 0.55; }

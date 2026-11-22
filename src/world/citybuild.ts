@@ -12,7 +12,7 @@ import { buildExpansion, expansionPads } from './expansion';
 import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
 import { buildQuay } from './quaybuild';
-import { CHANNEL, EAST_SHORE, pathHeightAt } from './citymap';
+import { CHANNEL, EAST_SHORE, pathHeightAt, railColumns } from './citymap';
 import { registerBench } from './benches';
 import { planPark, onLake, LAKE_POOLS } from './parkplan';
 import { signalPosts } from './signals';
@@ -685,16 +685,14 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   {
     const RX = AVENUES[7], RY = 7.4, z0 = STREETS[3], z1 = STREETS[12];
     const conc = C('#8b8984'), steelC = C('#4f5459'), railC2 = C('#2c2d2f');
-    const crossRoad = (z: number) => STREETS.some((sz, j) => Math.abs(z - sz) < halfWidth(lanesForStreet(j)) + 1.4);
     for (let z = z0 + 6; z < z1; z += 30) {
       const ze = Math.min(z + 30, z1), zm = (z + ze) / 2, tb = trim.at(RX, zm);
       tb.box(RX, RY, zm, 8.4, 0.9, ze - z, 0, conc, T_STONE); // deck
       tb.box(RX, RY - 0.65, zm, 1.4, 0.5, ze - z, 0, steelC, T_METAL);
       for (const sg of [-1, 1]) { tb.box(RX + sg * 4, RY + 0.9, zm, 0.14, 1.1, ze - z, 0, steelC, T_METAL); tb.box(RX + sg * 0.72, RY + 0.55, zm, 0.12, 0.2, ze - z, 0, railC2, T_METAL); }
-      for (const sg of [-1, 1]) {
-        const cz = z + 6;
-        if (crossRoad(cz) || crossRoad(cz + 2)) continue;
-        const cx = RX + sg * (halfWidth(2) + 0.7);
+      for (const col of railColumns()) {
+        if (col.z !== z + 6) continue;
+        const cx = col.x, cz = col.z;
         tb.box(cx, RY / 2, cz, 0.9, RY, 0.9, 0, steelC, T_METAL);
         tb.box((cx + RX) / 2, RY - 0.55, cz, Math.abs(cx - RX), 0.7, 0.7, 0, steelC, T_METAL);
         physics.addStaticBox(cx, RY / 2, cz, 0.45, RY / 2, 0.45);

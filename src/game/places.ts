@@ -37,15 +37,25 @@ const HANDMADE_STORES = STORES.length;
 /** Replaces the generated shops (the city generator picks lots for ~45 more; handmade ones above stay first). */
 export function setGeneratedStores(list: Store[]) {
   STORES.length = HANDMADE_STORES; STORES.push(...list);
-  // Round 7: Tidewater Arms is a real walk-in gun store: the generated shop nearest its old street kiosk becomes it
+  // Round 7: Tidewater Arms is a real walk-in gun store: the generated shop nearest its old street kiosk becomes it.
+  // Round 8: two more gun stores in other parts of town (one robbed and shuttered no longer leaves you nowhere to buy).
   const cand = list.filter(s => s.kind === 'convenience' || s.kind === 'pharmacy' || s.kind === 'electronics' || s.kind === 'liquor');
-  let best: Store | null = null, bd = Infinity; const home = PLACES.armsKiosk;
-  for (const s of cand) { const d = Math.hypot(s.x - home.x, s.z - home.z); if (d < bd) { bd = d; best = s; } }
-  if (best) {
-    best.kind = 'guns'; best.name = 'Tidewater Arms'; best.color = '#2f3d2a'; best.cash = 1400;
-    const f = STORE_D / 2 + 1.6; PLACES.arms = { x: best.x + Math.sin(best.yaw) * f, z: best.z + Math.cos(best.yaw) * f, yaw: best.yaw, name: 'Tidewater Arms' };
+  const made: Store[] = [];
+  for (const g of GUN_STORES) {
+    let best: Store | null = null, bd = Infinity;
+    for (const s of cand) { if (s.kind === 'guns' || made.some(m => Math.hypot(m.x - s.x, m.z - s.z) < 250)) continue; const d = Math.hypot(s.x - g.near.x, s.z - g.near.z); if (d < bd) { bd = d; best = s; } }
+    if (!best) continue;
+    best.kind = 'guns'; best.name = g.name; best.color = g.color; best.cash = 1400; made.push(best);
   }
+  const first = made[0];
+  if (first) { const f = STORE_D / 2 + 1.6; PLACES.arms = { x: first.x + Math.sin(first.yaw) * f, z: first.z + Math.cos(first.yaw) * f, yaw: first.yaw, name: first.name }; }
 }
+/** The gun stores: each takes over the generated shop nearest its spot (west midtown, the east side, uptown). */
+export const GUN_STORES = [
+  { name: 'Tidewater Arms', near: { x: -300, z: 10 }, color: '#2f3d2a' },
+  { name: 'Ironside Outfitters', near: { x: 300, z: 450 }, color: '#3a3326' },
+  { name: 'Crestline Firearms', near: { x: 50, z: -300 }, color: '#2a2f3a' },
+];
 /** Gas station forecourt (canopy + pumps) next to the Fuel Stop shop. */
 export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas station' };
 /** True when a building lot centred at (x,z) is taken by a store (it then only gets the floors above). */

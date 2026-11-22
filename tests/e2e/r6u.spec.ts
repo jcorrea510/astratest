@@ -15,7 +15,7 @@ async function mockFullscreen(page: Page) {
 }
 const count = (page: Page, k: string) => page.evaluate(k2 => Number(sessionStorage.getItem(k2) ?? 0), k);
 
-test('fullscreen: one icon button (no menu row), survives menu/highway transitions, restored after the quit reload', async ({ page }) => {
+test('fullscreen: one icon button (no menu row), stays on in the title menu; no Highway mode (Round 8)', async ({ page }) => {
   test.setTimeout(420_000);
   const prob = watch(page);
   await mockFullscreen(page);
@@ -30,23 +30,8 @@ test('fullscreen: one icon button (no menu row), survives menu/highway transitio
   expect(box.x).toBeGreaterThan(1280 - 120); expect(box.y).toBeLessThan(80); // top-right corner
   await btn.dispatchEvent('click');
   expect(await count(page, 'fsEnter')).toBe(1);
-  // into the highway setup and a run: nothing may leave fullscreen
-  await page.locator('[data-item="highway"]:visible').click();
-  await expect(page.locator('#hw-menu')).toBeVisible();
-  await expect(page.locator('#hw-menu .hw-fs-btn')).toBeVisible();
-  await expect(page.getByText('Fullscreen', { exact: true })).toHaveCount(0);
-  await page.locator('#hw-start').dispatchEvent('click');
-  await page.waitForFunction(() => !!(window as any).__highway, null, { timeout: 120_000 });
-  await page.evaluate(() => (window as any).__highway.stop());
-  expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(true);
-  expect(await count(page, 'fsExit')).toBe(0);
-  // pause -> quit to title reloads the page; the next key press puts fullscreen back
-  await page.evaluate(() => (window as any).__highway.quit());
-  await page.waitForFunction(() => !(window as any).__highway && !!document.querySelector('.ma-root'), null, { timeout: 120_000 });
-  expect(await page.evaluate(() => sessionStorage.getItem('ma.wantFullscreen'))).toBe('1');
-  expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(false);
-  await page.keyboard.press('Space');
-  expect(await count(page, 'fsEnter')).toBe(2);
+  // Round 8: Highway mode is gone from the title menu
+  await expect(page.locator('[data-item="highway"]')).toHaveCount(0);
   expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(true);
   expect(await count(page, 'fsExit')).toBe(0);
   clean({ errors: prob.errors.filter(e => !/WebGL|GPU stall|swiftshader/i.test(e)), failed: prob.failed });

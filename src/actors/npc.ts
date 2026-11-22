@@ -304,11 +304,12 @@ export class NpcBrainRunner {
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           const facingOk = Math.abs(wrapAngle(faceYaw - c.yaw)) < 0.35;
           if (n.clip <= 0 && n.reloadT <= 0) { n.reloadT = w.reload * 1.3; c.human.playOnce('Pistol_Reload', 'upper', 0.1); }
-          else if (facingOk && n.cooldown <= 0 && n.reloadT <= 0 && n.aimT > 0.8 && tgt.alive) {
-            if (n.burst <= 0) n.burst = w.auto ? 3 + Math.floor(Math.random() * 4) : 1;
+          else if (facingOk && n.cooldown <= 0 && n.reloadT <= 0 && n.aimT > (n.role === 'police' ? 0.45 : 0.8) && tgt.alive) {
+            const t = npcFireTiming(n.role === 'police', w.auto, w.interval, n.burst, Math.random());
+            if (n.burst <= 0) n.burst = t.burst;
             this.fire(n, tgt, d);
             n.burst--;
-            n.cooldown = n.burst > 0 ? w.interval * 1.4 : w.interval + 0.8 + Math.random() * 1.2;
+            n.cooldown = n.burst > 0 ? t.between : t.pause;
           }
         }
         break;
@@ -569,7 +570,7 @@ export class NpcBrainRunner {
     const from = nodes[n.node];
     // lateral offset to keep two-way foot traffic apart
     const ex = target.x - from.x, ez = target.z - from.z; const el = Math.hypot(ex, ez) || 1;
-    const ox = (-ez / el) * n.laneOffset, oz = (ex / el) * n.laneOffset;
+    const off = keepRight(n.laneOffset), ox = (-ez / el) * off, oz = (ex / el) * off; // Round 8: everyone keeps to their right, so the two directions pass
     tv.set(target.x + ox - n.pos.x, 0, target.z + oz - n.pos.z);
     const d = tv.length();
     if (d < 0.9 || (n.node === n.nextNode)) {
@@ -587,7 +588,9 @@ export class NpcBrainRunner {
       if (e.crossing) {
         const inter = city.intersections[e.crossing.intersection], here = nodes[n.node], there = nodes[e.to];
         const L = Math.hypot(there.x - here.x, there.z - here.z) || 1, k = (NODE_INSET - KERB_WAIT_BACK) / L;
-        tv.set(here.x + (there.x - here.x) * k - n.pos.x, 0, here.z + (there.z - here.z) * k - n.pos.z);
+        // wait at the kerb on the right-hand half of the crosswalk (not all on one spot, walking into the people coming over)
+        const wo = keepRight(n.laneOffset) / L, wx = -(there.z - here.z) * wo, wz = (there.x - here.x) * wo;
+        tv.set(here.x + (there.x - here.x) * k + wx - n.pos.x, 0, here.z + (there.z - here.z) * k + wz - n.pos.z);
         if (tv.length() > 0.35) { dir.copy(tv.normalize()); return 1.3; } // step up to the kerb first
         if (pedSignal(inter, e.crossing.axis, this.env.time()) !== 'walk') { n.waitT += dt; n.idleFace = Math.atan2(there.x - here.x, there.z - here.z); this.faceIdle(n, dt); return 0; }
       }
@@ -662,3 +665,16 @@ export class NpcBrainRunner {
     return n.avSlow;
   }
 }
+
+/**
+ * Round 8: how an armed NPC paces its shots. Police fire controlled pairs/triples of aimed shots with short pauses (they
+ * used to fire one pistol round every 1-2 s, far too slow); gangs and others keep the looser cadence. Pure (tests).
+ */
+export function npcFireTiming(police: boolean, auto: boolean, interval: number, burstLeft: number, r: number): { burst: number; between: number; pause: number } {
+  if (police) return { burst: burstLeft > 0 ? burstLeft : auto ? 4 + Math.floor(r * 4) : 2 + Math.floor(r * 3), between: Math.max(interval * 1.3, auto ? 0.09 : 0.24), pause: 0.35 + r * 0.5 };
+  return { burst: burstLeft > 0 ? burstLeft : auto ? 3 + Math.floor(r * 4) : 1, between: interval * 1.4, pause: interval + 0.8 + r * 1.2 };
+}
+
+/** Round 8: sideways place on a footpath / crosswalk for a walker (negative = right of the walking direction): always on
+ * the right half, spread 0.3-0.95 m from the centre line by the person's own random `laneOffset` (-0.8..0.8). Pure (tests). */
+export function keepRight(laneOffset: number): number { return -(0.3 + Math.min(0.8, Math.abs(laneOffset)) * 0.8); }

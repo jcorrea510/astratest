@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { RAPIER, groups, G_STATIC, ALL, type Physics } from '../core/physics';
-import { type CityMap, type P3, pathHeightAt, CHANNEL, EAST_RIVER, AIRFIELD, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
+import { type CityMap, type P3, pathHeightAt, groundRoadAt, CHANNEL, EAST_RIVER, AIRFIELD, LOOKOUT, CUL_DE_SAC_R, FREEWAY_Z, DECK_Y, LANE_WIDTH } from './citymap';
 import { Chunked, FacadeBuilder, TrimBuilder, SOLID, ROOF, type WallSpec, T_METAL, T_STONE, T_PAINT, T_NIGHTGLOW, T_GLOW } from './builders';
 import { type BuildCtx, type Helipad, house, warehouse } from './buildings';
 import type { ChunkInstancer } from './geometry';
@@ -122,10 +122,12 @@ export function buildExpansion(
         if (p.lanes === 2) tb.beam(a.x, a.y + 0.4, a.z, b.x, b.y + 0.4, b.z, 0.5, 0.8, C('#c4c0b8'), T_STONE);
         since += segLen;
         if (since > 28 && top > 3) {
-          since = 0;
           const gy = groundAt(b.x, b.z);
           const h = b.y - 1.3 - gy;
-          if (h > 1) { for (const sg of (p.lanes === 2 ? [-1, 1] : [0])) tb.cyl(b.x + nx * sg * 4.5, gy, b.z + nz * sg * 4.5, 0.85, 0.85, h, 14, conc, T_STONE); tb.beam(b.x - nx * (p.half + 0.4), b.y - 1.65, b.z - nz * (p.half + 0.4), b.x + nx * (p.half + 0.4), b.y - 1.65, b.z + nz * (p.half + 0.4), 1.6, 0.9, conc, T_STONE); for (const sg of (p.lanes === 2 ? [-1, 1] : [0])) physics.addStaticCylinder(b.x + nx * sg * 4.5, gy + h / 2, b.z + nz * sg * 4.5, h / 2, 0.85); }
+          // Round 8: never stand a pillar in a street under the freeway (try the next segment instead)
+          const clear = (p.lanes === 2 ? [-1, 1] : [0]).every(sg => !groundRoadAt(city, b.x + nx * sg * 4.5, b.z + nz * sg * 4.5, gy, 1.2));
+          if (clear) since = 0;
+          if (h > 1 && clear) { for (const sg of (p.lanes === 2 ? [-1, 1] : [0])) tb.cyl(b.x + nx * sg * 4.5, gy, b.z + nz * sg * 4.5, 0.85, 0.85, h, 14, conc, T_STONE); tb.beam(b.x - nx * (p.half + 0.4), b.y - 1.65, b.z - nz * (p.half + 0.4), b.x + nx * (p.half + 0.4), b.y - 1.65, b.z + nz * (p.half + 0.4), 1.6, 0.9, conc, T_STONE); for (const sg of (p.lanes === 2 ? [-1, 1] : [0])) physics.addStaticCylinder(b.x + nx * sg * 4.5, gy + h / 2, b.z + nz * sg * 4.5, h / 2, 0.85); }
         }
       }
       // lights

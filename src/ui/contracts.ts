@@ -23,7 +23,7 @@ export interface HudState {
   fps: number | null;
 }
 export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
-export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing'; label?: string; pulse?: boolean }
+export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank'; label?: string; pulse?: boolean }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
 export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean }
 export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean;
@@ -91,7 +91,6 @@ export interface DeathOpts { arrestAnimationDone?: (done: () => void) => void }
 export interface UICallbacks {
   onStart(continueGame: boolean, mode?: 'regular' | 'sandbox'): void; // title: Continue, or New game with the chosen mode
   onSandbox?(): void; // unused: the game is sandbox-only (the title's Play starts it)
-  onHighway?(): void; // title: the endless highway mode
   onOpenSandbox(): void; // pause menu (sandbox games only): open the tools panel
   onResume(): void;
   onPauseRequest?(): void; // HUD gear button / P key: open the pause + settings menu (Esc also exits fullscreen)

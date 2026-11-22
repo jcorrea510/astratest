@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { QUALITY, type QualityName, type QualityPreset } from '../core/settings';
+import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
 
 const GradeShader = {
@@ -60,8 +61,6 @@ export function shadowFrame(wantDir: THREE.Vector3, cx: number, cz: number, texe
   const a = Math.round(c.dot(_r) / texel) * texel, b = Math.round(c.dot(_u) / texel) * texel, l = c.dot(dir);
   return out.copy(_r).multiplyScalar(a).addScaledVector(_u, b).addScaledVector(dir, l);
 }
-/** ...but never below native CSS-pixel resolution unless the game is really struggling (sustained < ~30 fps). */
-const NATIVE_FLOOR_MS = 33;
 /** The size the game should fill. Launched from the home screen the app owns the whole screen, whatever the viewport claims. */
 export function viewportSize(): { w: number; h: number; full: boolean } {
   let w = Math.max(window.innerWidth, document.documentElement.clientWidth || 0), h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
@@ -153,30 +152,28 @@ export class Renderer {
   }
   /** Pixel ratio = preset cap x the adaptive resolution scale (dynScale drops under load and recovers when there is headroom). */
   private applyPixelRatio() { this.renderer.setPixelRatio(this.effectivePixelRatio()); }
-  /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames stay under ~33 ms. */
+  /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames are fine. */
   effectivePixelRatio() {
-    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio), r = cap * this.dynScale;
-    return this.frameEma < NATIVE_FLOOR_MS ? Math.max(r, Math.min(1, cap)) : r;
+    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio), r = cap * this.dyn.scale;
+    return this.dyn.floor ? Math.max(r, Math.min(1, cap)) : r;
   }
   /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
-  dynScale = 1; adaptive = typeof navigator === 'undefined' || !navigator.webdriver;
-  private lastRender = 0; private frameEma = 16; private slowT = 0; private fastT = 0;
+  get dynScale() { return this.dyn.scale; }
+  set dynScale(v: number) { this.dyn.scale = v; }
+  adaptive = typeof navigator === 'undefined' || !navigator.webdriver;
+  private lastRender = 0; private dyn: DynState = newDyn();
+  get frameEma() { return this.dyn.ema; }
   private adapt(now: number) {
     const dt = now - this.lastRender; this.lastRender = now;
-    if (dt <= 0 || dt > 250) return; // first frame / tab was hidden
-    const was = this.frameEma < NATIVE_FLOOR_MS;
-    this.frameEma += (dt - this.frameEma) * 0.08;
-    // (the shadow map is refreshed every frame: skipping frames made the shadow of a moving car trail behind it)
-    if (!this.adaptive) return;
-    if (was !== this.frameEma < NATIVE_FLOOR_MS && this.dynScale < 1) { this.applyPixelRatio(); this.resize(); }
-    if (this.frameEma > 20) { this.slowT += dt; this.fastT = 0; } else if (this.frameEma < 13.5) { this.fastT += dt; this.slowT = 0; } else { this.slowT = 0; this.fastT = 0; }
-    if (this.slowT > 1500 && this.dynScale > DYN_MIN) { const before = this.effectivePixelRatio(); this.dynScale = Math.max(DYN_MIN, +(this.dynScale - 0.1).toFixed(2)); this.slowT = 0; if (this.effectivePixelRatio() !== before) { this.applyPixelRatio(); this.resize(); } }
-    else if (this.fastT > 5000 && this.dynScale < 1) { this.dynScale = Math.min(1, +(this.dynScale + 0.1).toFixed(2)); this.fastT = 0; this.applyPixelRatio(); this.resize(); }
+    if (!adaptStep(this.dyn, dt, now, this.adaptive)) return;
+    // Round 8: a resize reallocates every full-screen target (a visible stall); adaptStep allows one at most every 6 s, with
+    // hysteresis, so it can no longer chase its own hitch (it used to resize on every crossing of 33 ms: a freeze ~every second)
+    this.applyPixelRatio(); this.resize();
   }
   private buildComposer() {
     this.composer?.dispose();
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: this.quality.msaa });
+    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: safeMsaa(this.quality.msaa) });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
@@ -237,4 +234,25 @@ export class Renderer {
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }
+}
+
+/** Adaptive-resolution state (Round 8): smoothed frame time, scale, native-floor flag, timers. */
+export interface DynState { ema: number; scale: number; floor: boolean; slowT: number; fastT: number; lastResize: number }
+export const newDyn = (): DynState => ({ ema: 16, scale: 1, floor: true, slowT: 0, fastT: 0, lastResize: -1e9 });
+/**
+ * One frame of adaptive resolution. Returns true when the pixel ratio must be re-applied (the caller resizes). Single
+ * hitches are clipped (50 ms) so they can't swing it; the native floor has hysteresis (off above 38 ms, back on below
+ * 26 ms); after a change nothing else may change for 6 s. Pure (tests).
+ */
+export function adaptStep(s: DynState, dt: number, now: number, adaptive: boolean): boolean {
+  if (dt <= 0 || dt > 250) return false; // first frame / tab was hidden
+  s.ema += (Math.min(dt, 50) - s.ema) * 0.06;
+  if (!adaptive) return false;
+  if (now - s.lastResize < 6000) { s.slowT = 0; s.fastT = 0; return false; }
+  const floor = s.floor ? s.ema < 38 : s.ema < 26;
+  if (floor !== s.floor) { s.floor = floor; if (s.scale < 1) { s.lastResize = now; return true; } }
+  if (s.ema > 20) { s.slowT += dt; s.fastT = 0; } else if (s.ema < 13.5) { s.fastT += dt; s.slowT = 0; } else { s.slowT = 0; s.fastT = 0; }
+  if (s.slowT > 2500 && s.scale > DYN_MIN) { s.scale = Math.max(DYN_MIN, +(s.scale - 0.1).toFixed(2)); s.slowT = 0; s.lastResize = now; return true; }
+  if (s.fastT > 8000 && s.scale < 1) { s.scale = Math.min(1, +(s.scale + 0.1).toFixed(2)); s.fastT = 0; s.lastResize = now; return true; }
+  return false;
 }

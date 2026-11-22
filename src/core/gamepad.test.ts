@@ -47,6 +47,20 @@ describe('gamepad', () => {
     mockPads(null); input.pollGamepad();
     expect(input.pad.connected).toBe(false); expect(input.held('fire')).toBe(false);
   });
+  it('a trigger pull is a press (semi-auto pistol on RT fires once per pull)', () => {
+    const noop = { addEventListener() {}, removeEventListener() {} };
+    vi.stubGlobal('window', noop); vi.stubGlobal('document', { ...noop, pointerLockElement: null });
+    const input = new Input(structuredClone(DEFAULT_SETTINGS), noop as unknown as HTMLElement);
+    input.padContext = 'foot';
+    mockPads(fakePad({ buttons: {} })); input.pollGamepad();
+    expect(input.justPressed('fire')).toBe(false);
+    mockPads(fakePad({ buttons: { 7: 1 } })); input.pollGamepad();
+    expect(input.justPressed('fire')).toBe(true);
+    input.endFrame(); input.pollGamepad();
+    expect(input.justPressed('fire')).toBe(false); expect(input.held('fire')).toBe(true);
+    mockPads(fakePad({ buttons: {} })); input.pollGamepad();
+    expect(input.justReleased('fire')).toBe(true);
+  });
   it('glyph labels follow the action map', () => {
     expect(padGlyph('fire')).toBe('RT'); expect(padGlyph('aim')).toBe('LT');
     expect(padGlyph('pause')).toBe('Menu'); expect(padGlyph('enter')).toBe('Y');

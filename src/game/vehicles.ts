@@ -107,29 +107,42 @@ export class VehicleManager {
   shadowBudget = 10;
   /** Round 7: real headlight spots (no shadows) for the player's car and the nearest lit cars; the count is fixed per
    * graphics preset (set by the game) so the light count never changes mid-play (no shader recompiles). */
-  private heads: { l: THREE.SpotLight; t: THREE.Object3D }[] = [];
+  private heads: { l: THREE.SpotLight; t: THREE.Object3D; v: Vehicle | null; w: number }[] = [];
   setHeadlightCount(n: number) {
     while (this.heads.length < n) {
       const l = new THREE.SpotLight(0xfff0d8, 0, 55, 0.5, 0.55, 1.1), t = new THREE.Object3D();
-      l.target = t; l.castShadow = false; this.scene.add(l, t); this.heads.push({ l, t });
+      l.target = t; l.castShadow = false; this.scene.add(l, t); this.heads.push({ l, t, v: null, w: 0 });
     }
     while (this.heads.length > n) { const h = this.heads.pop()!; this.scene.remove(h.l, h.t); h.l.dispose(); }
   }
-  private updateHeadlights(night: number, listener: THREE.Vector3, pv: Vehicle | null) {
+  /**
+   * Round 8: the few real headlight beams stick to their car and fade in/out (~0.3 s) instead of jumping between cars
+   * every frame as distances changed (the road reflections flickered on and off at night).
+   */
+  private updateHeadlights(night: number, listener: THREE.Vector3, pv: Vehicle | null, dt: number) {
     if (!this.heads.length) return;
-    const lit = this.list.filter(v => v.headOn && v.position.distanceToSquared(listener) < 90 * 90);
-    lit.sort((a, b) => (a === pv ? -1e9 : a.position.distanceToSquared(listener)) - (b === pv ? -1e9 : b.position.distanceToSquared(listener)));
-    for (let i = 0; i < this.heads.length; i++) {
-      const h = this.heads[i], v = lit[i];
+    const want = pickHeadlightCars(this.list, this.heads.map(h => h.v), listener, pv, this.heads.length);
+    for (const h of this.heads) {
+      const keep = !!h.v && want.includes(h.v) && !h.v.destroyed;
+      if (!keep) { h.w = Math.max(0, h.w - dt * 3.5); if (h.w === 0) h.v = null; }
+      else h.w = Math.min(1, h.w + dt * 3.5);
+    }
+    for (const v of want) {
+      if (this.heads.some(h => h.v === v)) continue;
+      const free = this.heads.find(h => !h.v); if (!free) break;
+      free.v = v; free.w = 0;
+    }
+    for (const h of this.heads) {
+      const v = h.v;
       if (!v || night < 0.05) { h.l.intensity = 0; continue; }
       const f = v.phys.forward(), L = v.phys.layout, front = (L.half[2] ?? 2.2) + (L.zCenter ?? 0);
       h.l.position.set(v.position.x + f.x * front, v.position.y + 0.35, v.position.z + f.z * front);
       h.t.position.set(v.position.x + f.x * (front + 22), v.position.y - 1.2, v.position.z + f.z * (front + 22));
-      h.l.intensity = HEADLIGHT_CD * Math.min(1, night * 1.6);
+      h.l.intensity = HEADLIGHT_CD * Math.min(1, night * 1.6) * h.w * h.w * (3 - 2 * h.w);
     }
   }
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
-    this.updateHeadlights(night, listener, playerVehicle);
+    this.updateHeadlights(night, listener, playerVehicle, dt);
     this.updateSkidAudio(playerVehicle);
     this.updatePlayerSiren(playerVehicle);
     for (const v of [...this.list]) {
@@ -210,4 +223,15 @@ export class VehicleManager {
     this.onExplode?.(v, p);
   }
   stopAllSounds() { for (const e of this.engines.values()) e.stop(); this.engines.clear(); this.skidVoice?.stop(); this.skidVoice = null; this.sirenVoice?.stop(); this.sirenVoice = null; }
+}
+
+/**
+ * Round 8: which lit cars get the real headlight beams: the player's car first, then the nearest within 90 m. A car that
+ * already has a beam keeps it until another is clearly nearer (35 % margin), so the beams don't hop between two cars at
+ * similar distances. Pure (tests).
+ */
+export function pickHeadlightCars<V extends { headOn: boolean; destroyed: boolean; position: { distanceToSquared(p: THREE.Vector3): number } }>(
+  cars: V[], current: (V | null)[], listener: THREE.Vector3, pv: V | null, n: number): V[] {
+  const score = (v: V) => v === pv ? -1 : v.position.distanceToSquared(listener) * (current.includes(v) ? 0.55 : 1);
+  return cars.filter(v => v.headOn && !v.destroyed && v.position.distanceToSquared(listener) < 90 * 90).sort((a, b) => score(a) - score(b)).slice(0, n);
 }

@@ -158,8 +158,10 @@ export class Particles {
    */
   blood(x: number, y: number, z: number, dx: number, dy: number, dz: number, strength = 1) {
     const S = strength;
-    for (let i = 0; i < Math.round(6 * S); i++) this.normal.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 4) + rnd(-0.8, 0.8), vy: dy * rnd(1.5, 4) + rnd(0.2, 1.4), vz: dz * rnd(1.5, 4) + rnd(-0.8, 0.8), max: rnd(0.25, 0.5), size: rnd(0.035, 0.06), r: 0.45, g: 0.03, b: 0.04, a: 0.9, drag: 2.2, grav: 7, hold: 0.5 }));
-    for (let i = 0; i < Math.round(3 * S); i++) this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1, 3) + rnd(-0.6, 0.6), vy: rnd(0.4, 1.8), vz: dz * rnd(1, 3) + rnd(-0.6, 0.6), max: rnd(0.5, 0.9), size: rnd(0.02, 0.035), r: 0.35, g: 0.02, b: 0.03, a: 1, drag: 0.8, grav: 12, hold: 0.9, floor: Math.max(0, y - 1.7) }));
+    // Round 8 (owner: "a lot more gore"): a denser exit spray, a puff back out of the entry wound, more heavy drops
+    for (let i = 0; i < Math.round(14 * S); i++) this.normal.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 5) + rnd(-1, 1), vy: dy * rnd(1.5, 4) + rnd(0.2, 1.8), vz: dz * rnd(1.5, 5) + rnd(-1, 1), max: rnd(0.3, 0.6), size: rnd(0.04, 0.08), r: 0.45, g: 0.03, b: 0.04, a: 0.92, drag: 2.2, grav: 7, hold: 0.5 }));
+    for (let i = 0; i < Math.round(5 * S); i++) this.normal.emit(this.p(x, y, z, { vx: -dx * rnd(0.8, 2) + rnd(-0.6, 0.6), vy: rnd(0.2, 1.2), vz: -dz * rnd(0.8, 2) + rnd(-0.6, 0.6), max: rnd(0.2, 0.4), size: rnd(0.03, 0.06), r: 0.42, g: 0.03, b: 0.04, a: 0.9, drag: 2.6, grav: 7, hold: 0.5 }));
+    for (let i = 0; i < Math.round(7 * S); i++) this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1, 3) + rnd(-0.6, 0.6), vy: rnd(0.4, 1.8), vz: dz * rnd(1, 3) + rnd(-0.6, 0.6), max: rnd(0.5, 0.9), size: rnd(0.02, 0.035), r: 0.35, g: 0.02, b: 0.03, a: 1, drag: 0.8, grav: 12, hold: 0.9, floor: Math.max(0, y - 1.7) }));
   }
   smoke(x: number, y: number, z: number, dark = 0.5, amount = 1) {
     const c = 0.85 - dark * 0.7;

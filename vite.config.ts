@@ -1,6 +1,15 @@
 import { defineConfig } from 'vitest/config';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
+
+/** Round 8: a version the owner can read on screen ("v0.8.<commits> · <sha>"), so it is clear which build is running. */
+const build = (() => {
+  try {
+    const n = execSync('git rev-list --count HEAD').toString().trim(), sha = execSync('git rev-parse --short HEAD').toString().trim();
+    return `v0.8.${n} · ${sha}`;
+  } catch { return 'v0.8 dev'; }
+})();
 
 /** Stamps the service worker with a per-build id so each deploy gets a fresh cache (and old ones are removed). */
 const stampServiceWorker = () => {
@@ -17,6 +26,7 @@ const stampServiceWorker = () => {
 export default defineConfig({
   base: process.env.MA_BASE ?? '/astratest/', // npm run local builds for the root path
   plugins: [stampServiceWorker()],
+  define: { __BUILD__: JSON.stringify(build) },
   test: { include: ['src/**/*.test.ts'], environment: 'node' },
   build: {
     target: 'es2022',

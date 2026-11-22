@@ -255,7 +255,9 @@ export function seatsFor(kind: VehicleKind): SeatDef[] {
   const gh = s.gh;
   const zB = gh ? gh.zB : 0;
   const hipY = GROUND + s.clear + (s.type === 'car' ? 0.3 : 0.42) + (kind === 'super' || kind === 'race' ? -0.06 : 0);
-  const fz = s.type === 'car' ? zB + (s.doors.length > 1 ? 0.18 : 0.28) : (gh ? gh.zC + 0.45 : 0);
+  // Round 8: 2-door cars have long doors (B-pillar far back): seat the driver from the windshield like a sedan, not from the pillar
+  // (they sat ~0.5 m back, at the rear bench, with the wheel floating far from the dash)
+  const fz = s.type === 'car' ? (s.doors.length > 1 ? zB + 0.18 : Math.max(zB + 0.28, gh ? Math.min(gh.zA - 0.95, gh.zR1 - 0.12) : zB + 0.28)) : (gh ? gh.zC + 0.45 : 0);
   const sx = s.W / 2 * (s.seatRows === 1 && s.type !== 'car' ? 0.5 : 0.42);
   const out: SeatDef[] = [{ x: sx, y: hipY, z: fz, door: s.doors.length ? 0 : -1 }, { x: -sx, y: hipY, z: fz, door: s.doors.length ? 1 : -1 }];
   if (s.seatRows > 1) {

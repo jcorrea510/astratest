@@ -64,7 +64,7 @@ export interface DispatchHooks {
 
 interface Arrest { base: THREE.Vector3; cop: Npc; t: number; done: (() => void) | null; finished: boolean; phase: number; yaw: number; from: THREE.Vector3; tase: boolean; pre: number; zapped: boolean; fromSet: boolean; shock: number }
 /** Seconds the taser phase of an on-foot arrest lasts (fire, convulse, drop to the knees) before the officer walks up to cuff. */
-export const TASE_T = 2.4;
+export const TASE_T = 1.6; // Round 8: quicker (the whole arrest took up to ~9 s)
 /** A police helicopter appears at least this far from the player (and at most this far; a further pad is reached by flying). */
 /** Reinforcement cars spawn at least this many metres from the player and the camera, outside the view. */
 export const REINFORCE_MIN = 120;
@@ -338,7 +338,7 @@ export class Dispatch {
     if (this.arrest || !this.hooks) return;
     const yaw = Math.atan2(player.pos.x - cop.pos.x, player.pos.z - cop.pos.z);
     const dist = Math.hypot(player.pos.x - cop.pos.x, player.pos.z - cop.pos.z);
-    const approach = tase ? Math.min(3, Math.max(0, (dist - 1.3) / 3.4)) : 0;
+    const approach = tase ? Math.min(1.6, Math.max(0, (dist - 1.3) / 4.5)) : 0;
     this.arrest = { base: player.pos.clone(), cop, t: 0, done: null, finished: false, phase: 0, yaw, from: cop.pos.clone(), tase, pre: tase ? TASE_T + approach : 0, zapped: false, fromSet: !tase, shock: 0 };
     cop.brain = 'scripted'; cop.stateT = 0; cop.char.human.setSpeed(0);
     this.hooks.busted(); // sets the death flow (the card waits for our animation hook)
@@ -405,31 +405,33 @@ export class Dispatch {
           ph.playAction('tased'); this.hooks?.cam.addShake(0.12);
         }
         a.shock -= dt; if (a.shock <= 0) { a.shock = 0.16; this.hooks?.cam.addShake(0.035); }
-        if (a.t >= 1.25 && a.phase === 0) { a.phase = 1; ph.stopAction('tased'); ph.playAction('kneel'); }
+        // Round 8: down onto the knees as a pose state (a kneel *action* was replaced by every later hands / cuff action: the
+        // suspect stood up and knelt again, which looked glitchy)
+        if (a.t >= 0.8 && a.phase === 0) { a.phase = 1; ph.stopAction('tased'); ph.setState('crouch'); }
         this.drawWire(cop, player, a.t < TASE_T - 0.15);
       } else {
         this.drawWire(cop, player, false); ch.setUpperMode('loco');
         const k = THREE.MathUtils.smoothstep(a.t, TASE_T, a.pre);
         const gx = THREE.MathUtils.lerp(a.from.x, behind.x, k), gz = THREE.MathUtils.lerp(a.from.z, behind.z, k);
-        cop.char.place(gx, player.pos.y, gz, a.yaw); ch.setSpeed(k < 0.97 ? 3.4 : 0);
+        cop.char.place(gx, player.pos.y, gz, a.yaw); ch.setSpeed(k < 0.97 ? 4.2 : 0);
       }
       this.frame(player);
       return;
     }
     if (!a.fromSet) { a.fromSet = true; a.from.copy(behind); this.drawWire(cop, player, false); ch.setSpeed(0); ch.setUpperMode('loco'); }
     const u = a.t - a.pre;
-    // ~4 s: hands up, kneel, officer walks round behind, takes both wrists, cuffs click, suspect led one step
-    if (u >= 0.15 && a.phase <= 1) { a.phase = 2; ph.stopAction('tased'); ph.playAction('hands_up'); this.shout(cop); }
-    if (u >= 0.9 && a.phase === 2) { a.phase = 3; ph.playAction('kneel'); }
-    const k = THREE.MathUtils.smoothstep(u, 0.2, 1.9);
-    const lead = THREE.MathUtils.smoothstep(u, 3.2, 3.9) * 0.7;
+    // ~2.7 s: on the knees with hands up, officer steps in behind, takes both wrists, cuffs click, suspect led one step
+    if (u >= 0.05 && a.phase <= 1) { a.phase = 2; ph.stopAction('tased'); ph.setState('crouch'); ph.playAction('hands_up'); this.shout(cop); }
+    if (u >= 0.5 && a.phase === 2) { a.phase = 3; ph.setState('crouch'); }
+    const k = THREE.MathUtils.smoothstep(u, 0.05, 1.1);
+    const lead = THREE.MathUtils.smoothstep(u, 2.1, 2.6) * 0.7;
     const fx = Math.sin(a.yaw), fz = Math.cos(a.yaw);
     cop.char.place(THREE.MathUtils.lerp(a.from.x, behind.x, k) + fx * lead, player.pos.y, THREE.MathUtils.lerp(a.from.z, behind.z, k) + fz * lead, a.yaw);
     if (lead > 0) player.place(a.base.x + fx * lead, player.pos.y, a.base.z + fz * lead, a.yaw);
-    if (u >= 1.9 && a.phase === 3) { a.phase = 4; ch.playAction('cuff_reach'); }
-    if (u >= 2.35 && a.phase === 4) { a.phase = 5; ph.stopAction('hands_up'); ph.playAction('wrists_back'); ch.stopAction('cuff_reach'); ch.playAction('cuffing'); }
-    if (u >= 3.0 && a.phase === 5) { a.phase = 6; ph.stopAction('wrists_back'); ph.playAction('handcuffed'); this.hooks?.cam.addShake(0.04); } // the click
-    if (u >= 4.0 && !a.finished) { a.finished = true; const d = a.done; a.done = null; d?.(); }
+    if (u >= 1.1 && a.phase === 3) { a.phase = 4; ch.playAction('cuff_reach'); }
+    if (u >= 1.4 && a.phase === 4) { a.phase = 5; ph.stopAction('hands_up'); ph.playAction('wrists_back'); ch.stopAction('cuff_reach'); ch.playAction('cuffing'); }
+    if (u >= 1.9 && a.phase === 5) { a.phase = 6; ph.stopAction('wrists_back'); ph.playAction('handcuffed'); this.hooks?.cam.addShake(0.04); } // the click
+    if (u >= 2.7 && !a.finished) { a.finished = true; const d = a.done; a.done = null; d?.(); }
     this.frame(player);
   }
   /** Called when the arrest scene is over (respawn). */

@@ -182,6 +182,7 @@ function glyph(name: string): Path2D {
       car: new Path2D('M8 3h8q3 0 3 3v12q0 3-3 3H8q-3 0-3-3V6q0-3 3-3z'),
       pin: new Path2D('M12 23C12 23 4 14.5 4 9.5A8 8 0 0 1 20 9.5C20 14.5 12 23 12 23Z'),
       diamond: new Path2D('M12 2L22 12L12 22L2 12Z'),
+      bank: new Path2D('M12 2.5L2.5 8V10H21.5V8ZM4.5 11.5H7V18H4.5ZM10.75 11.5H13.25V18H10.75ZM17 11.5H19.5V18H17ZM2.5 19.5H21.5V21.5H2.5Z'),
       // scissors: two rings with crossed blades
       scissors: new Path2D('M7 3a3.2 3.2 0 1 0 .01 6.4A3.2 3.2 0 0 0 7 3zm0 1.7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM7 14.6a3.2 3.2 0 1 0 .01 6.4 3.2 3.2 0 0 0-.01-6.4zm0 1.7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9.3 8.6l12.2 9.2-1 1.3L8.4 10.3zM9.3 15.4l1.1 1.3-3.2 2.4-.9-1.2zM20.5 4.9l1 1.3L12 13.4l-1-1.3z'),
       // shirt: sleeves, collar notch
@@ -208,7 +209,7 @@ function drawGlyph(ctx: CanvasRenderingContext2D, name: string, x: number, y: nu
 
 export const BLIP_COLORS: Record<MinimapBlip['kind'], string> = {
   mission: '#ffc37e', target: '#ff6f5e', checkpoint: '#ffe08a', waypoint: '#ffb066', safehouse: '#fcf2d9', shop: '#7fcf9a',
-  arms: '#f08a5d', barber: '#e8a3c9', clothing: '#b7a4ee', garage: '#8fb8d8', vehicle: '#e8dcc0', collectible: '#f7d5a1', enemy: '#ff5a4e', police: '#6fb6ff',
+  arms: '#f08a5d', bank: '#ffd45e', barber: '#e8a3c9', clothing: '#b7a4ee', garage: '#8fb8d8', vehicle: '#e8dcc0', collectible: '#f7d5a1', enemy: '#ff5a4e', police: '#6fb6ff',
 };
 
 /** Draws a blip glyph centred at (x, y) in pixel space. r is the base radius in pixels, t is time in seconds. */
@@ -257,6 +258,10 @@ export function drawBlip(ctx: CanvasRenderingContext2D, kind: MinimapBlip['kind'
     case 'clothing':
       disc(ctx, x, y, r, col);
       drawGlyph(ctx, 'shirt', x, y + r * 0.04, r * 1.2, '#12363a');
+      break;
+    case 'bank': // Round 8: a big gold pillared-bank badge, so the big score is easy to spot on the map
+      disc(ctx, x, y, r * 1.35, col);
+      drawGlyph(ctx, 'bank', x, y, r * 1.6, '#3a2a06');
       break;
     case 'arms':
       disc(ctx, x, y, r, col);

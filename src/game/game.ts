@@ -188,6 +188,16 @@ export class Game {
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.worldGlass = worldGlass;
     this.blood = new Blood(this.renderer.scene); this.blood.enabled = this.settings.blood; this.combat.blood = this.blood;
+    // Round 8 gore: a hard hit by a car leaves blood on the road (and keeps bleeding), sprayed along the car's path
+    this.pop.onCarHit = (ch, v, sp) => {
+      const b = this.blood; if (!b.enabled) return;
+      const vel = v.phys.body.linvel(), hd = Math.hypot(vel.x, vel.z) || 1, d = new THREE.Vector3(vel.x / hd, 0.2, vel.z / hd), k = Math.min(2, sp / 9);
+      const at = new THREE.Vector3(ch.pos.x, ch.pos.y + 1, ch.pos.z);
+      this.particles.blood(at.x, at.y, at.z, d.x, 0.5, d.z, 1.2 * k);
+      b.hit(at, d, ch.pos.y, k, null, null);
+      for (let i = 0; i < Math.round(2 + k * 2); i++) b.splat(ch.pos.x + d.x * (1 + i * 1.3), ch.pos.y + 0.01, ch.pos.z + d.z * (1 + i * 1.3), 0, 1, 0, 0.25 + Math.random() * 0.25);
+      if (!ch.alive) b.pool(ch.pos.x, ch.pos.y, ch.pos.z, ch.pos);
+    };
     try { this.fx = new CombatFx(this.canvas.parentElement ?? document.body); } catch { this.fx = null; }
     worldGlass.onBreak = pane => { this.particles.decals.clearIn(pane.x, pane.y, pane.z, pane.yaw, pane.w, pane.h, pane.inst >= 0 ? 1.7 : 0.4); }; // shot-out glass loses its bullet holes
     this.combat.groundSurface = (x, z) => surfaceAt(this.city, x, z); // dirt on park/beach ground, splashes on water
@@ -704,8 +714,8 @@ export class Game {
     this.cam.baseFov = this.settings.fov;
     if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
-    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.yaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
-    else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.yaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
+    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.visualYaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
+    else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.visualYaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
     const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
     this.audio.setListener(this.renderer.camera.position, camDir);

@@ -2,7 +2,7 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/tender-turing-bkf701.
-Current brief: docs/BRIEF6.md (earlier: BRIEF5..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current brief: docs/BRIEF8.md, plan docs/ROUND8.md (earlier: BRIEF7..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Owner (21 Nov): bugs the owner reports are fixed by the lead personally (no subagents for those); measure with a headless probe first.
@@ -43,7 +43,7 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
 - ui/: ui.ts (screens/menus), attract (menu flyover), hud, minimap/mapdraw/fullmap, wheel, shop, settingsPanel, sandbox panel, contracts.
 - audio/: core/sfx/gunsynth (layered gunshots)/loops (engines, sirens)/music/ambience. (NPC voices removed.)
 - desktop/: Electron Mac app wrapper (app:// origin); built + released by .github/workflows/desktop.yml (release desktop-latest).
-- highway/: separate Highway game mode (streamed road, IDM/MOBIL traffic). core/units.ts = US units, core/fullscreen.ts.
+- core/units.ts = US units, core/fullscreen.ts. (Highway mode was removed in Round 8.)
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).
 
 ## Conventions
