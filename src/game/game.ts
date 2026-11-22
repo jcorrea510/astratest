@@ -38,6 +38,7 @@ import { downPenalty, type GameMode } from './modes';
 import { CarEntry, type Enterable } from './carEntry';
 import { COP_LOOK } from './dispatch';
 import { getTemplate } from '../vehicles/models/build';
+import { TRAFFIC_MIX, PARKED_MIX } from '../vehicles/specs';
 import { HeliManager } from '../vehicles/helicopterManager';
 import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
@@ -432,6 +433,7 @@ export class Game {
     // Round 7 perf: build the emergency-vehicle models and the body LODs behind the loading screen (they were built during
     // the first seconds of play: 0.6-0.75 s freezes each)
     warmBodies(this.humanTpl); for (const k of this.warmKinds.splice(0)) getTemplate(k);
+    for (const k of new Set([...TRAFFIC_MIX.map(m => m.kind), ...PARKED_MIX])) getTemplate(k); // every street car model too (a far parked car of an unbuilt kind was simply not drawn)
     this.pop.prewarming = this.traffic.prewarming = this.crowd.prewarming = false;
     // compile the cop/gun shader variants now (off to the side, one frame) so the first fight doesn't hitch
     try {

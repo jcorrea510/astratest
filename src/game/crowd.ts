@@ -532,7 +532,9 @@ export class Crowd {
   private promote(s: Slot) {
     // something stands on the spot: a stopped/parked car takes the slot for good; a car driving past only delays the swap
     const o = this.vehicles.list.find(o => Math.abs(o.position.x - s.x) < 3 && Math.abs(o.position.z - s.z) < 3);
-    if (o) { if (!o.driver && Math.abs(o.speed) < 0.5) s.taken = true; return; } // a car waiting at the lights beside the slot is not parked there
+    // a car waiting at the lights beside the slot is not parked there; only a stopped car really on the spot retires the far car
+    // (Round 7: one up to 3 m off used to retire it too, so it vanished in view next to a car that did not cover it)
+    if (o) { if (!o.driver && Math.abs(o.speed) < 0.5 && Math.abs(o.position.x - s.x) < 1.8 && Math.abs(o.position.z - s.z) < 1.8) s.taken = true; return; }
     const v = this.vehicles.spawn(PARKED_MIX[s.kind % PARKED_MIX.length], s.x, s.z, s.yaw, s.paint, 0.25);
     v.settleParked(0); // settled at rest height and asleep: tall trucks neither drop nor tip
     if (s.hp !== undefined) v.health = Math.max(1, v.spec.health * s.hp);
