@@ -1,7 +1,8 @@
 /** Vehicle definitions: every model drives differently. Makes and models are original (fictional 2000s cars). */
 export type VehicleKind =
   | 'hatch' | 'sedan' | 'fullsize' | 'luxury' | 'wagon' | 'coupe' | 'muscle' | 'super' | 'convertible'
-  | 'pickup' | 'suv' | 'minivan' | 'van' | 'race' | 'taxi' | 'police' | 'fbi' | 'swat' | 'army' | 'tank' | 'bus';
+  | 'pickup' | 'suv' | 'minivan' | 'van' | 'race' | 'taxi' | 'police' | 'fbi' | 'swat' | 'army' | 'tank' | 'bus'
+  /** Round 7: more variety */ | 'crossover' | 'citycar' | 'sportsedan';
 export type VehicleClass = 'compact' | 'sedan' | 'luxury' | 'sports' | 'muscle' | 'super' | 'utility' | 'service' | 'emergency' | 'military';
 export interface VehicleSpec {
   name: string; cls: VehicleClass;
@@ -29,6 +30,13 @@ const spec = (name: string, cls: VehicleClass, tune: Tune, paints: string[]): Ve
 const CIVIL = ['#c8ccd0', '#1d1f22', '#f1f0ec', '#7a1f24', '#26385a', '#5c6670', '#2f4a3a', '#8a8f94', '#b8a98c', '#4a1e2c', '#9c9fa3', '#2b2e33'];
 
 export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
+  // Round 7: more variety in traffic and at the dealer
+  crossover: spec('Solano Terra', 'utility', t({ mass: 1620, engine: 10800, brake: 10.5, topSpeed: 43, grip: 0.78, rearGrip: 0.78, stability: 0.66, suspRest: 0.36, suspTravel: 0.28, stiffness: 28, comY: -0.28, drive: 'all', health: 1200 }),
+    ['#c8ccd0', '#1d1f22', '#f1f0ec', '#3d5a6e', '#7a1f24', '#5d6b4c', '#9c9fa3', '#b06a2e']),
+  citycar: spec('Pipit Dot', 'compact', t({ mass: 880, engine: 5200, brake: 11, topSpeed: 35, maxSteer: 0.74, highSteer: 0.2, grip: 0.84, rearGrip: 0.84, stability: 0.5, suspRest: 0.28, suspTravel: 0.22, stiffness: 34, comY: -0.3, downforce: 1.6, drive: 'front', health: 700 }),
+    ['#e6c34a', '#6fb7c9', '#f1efe9', '#d4544a', '#8fb36a', '#2b2e33', '#c98bb0']),
+  sportsedan: spec('Brandt Vireo GT', 'sports', t({ mass: 1520, engine: 13200, brake: 12.5, topSpeed: 55, maxSteer: 0.66, highSteer: 0.16, grip: 0.9, rearGrip: 0.88, traction: 0.9, stability: 0.6, stiffness: 36, comY: -0.38, downforce: 2.6, drive: 'rear', health: 1050 }),
+    ['#15171a', '#e9e7e1', '#2b4a7a', '#8a1c1c', '#5c6670', '#c9a227']),
   hatch: spec('Pipit Hopper', 'compact', t({ mass: 1020, engine: 6300, brake: 11, topSpeed: 39, maxSteer: 0.7, highSteer: 0.18, grip: 0.84, rearGrip: 0.84, stability: 0.5, suspRest: 0.3, suspTravel: 0.24, stiffness: 34, comY: -0.32, downforce: 1.8, drive: 'front', health: 800 }),
     ['#c43a31', '#f1efe9', '#2f6f9a', '#e0a33b', '#6f8f4e', '#9a9da1', '#1f2226', '#7c4a8a']),
   sedan: spec('Solano Vista', 'sedan', t({ drive: 'front' }), CIVIL),
@@ -77,6 +85,7 @@ export const TRAFFIC_MIX: { kind: VehicleKind; weight: number }[] = [
   { kind: 'sedan', weight: 6 }, { kind: 'hatch', weight: 4.5 }, { kind: 'fullsize', weight: 3 }, { kind: 'suv', weight: 3 }, { kind: 'minivan', weight: 2.2 },
   { kind: 'pickup', weight: 2.5 }, { kind: 'wagon', weight: 1.8 }, { kind: 'taxi', weight: 2 }, { kind: 'van', weight: 1.2 }, { kind: 'luxury', weight: 1.2 },
   { kind: 'coupe', weight: 1 }, { kind: 'convertible', weight: 0.8 }, { kind: 'muscle', weight: 0.8 }, { kind: 'super', weight: 0.25 },
+  { kind: 'crossover', weight: 2.6 }, { kind: 'citycar', weight: 1.6 }, { kind: 'sportsedan', weight: 0.9 },
 ];
 /** Parked cars along the curbs. */
-export const PARKED_MIX: VehicleKind[] = ['sedan', 'sedan', 'hatch', 'hatch', 'fullsize', 'suv', 'wagon', 'pickup', 'minivan', 'coupe', 'muscle', 'luxury', 'convertible', 'van'];
+export const PARKED_MIX: VehicleKind[] = ['sedan', 'sedan', 'hatch', 'hatch', 'fullsize', 'suv', 'wagon', 'pickup', 'minivan', 'coupe', 'muscle', 'luxury', 'convertible', 'van', 'crossover', 'crossover', 'citycar', 'sportsedan'];

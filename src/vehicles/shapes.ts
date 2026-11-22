@@ -70,7 +70,20 @@ const fullsize = sh({
   bumperF: [0.26, 0.6], bumperR: [0.3, 0.64], extras: ['wipers', 'handles', 'rubstrip'], metallic: 0.5,
 }, { zA: 1.12, zC: -1.72, zR1: 0.3, zR2: -1.05, roof: 1.47, roofW: 0.7, zB: -0.02, winEnd: -1.12, wsAngle: 60, rearAngle: 125, pB: 5, pR: 7 });
 
-export const SHAPES: Record<VehicleKind, CarShape> = {
+/** Round 7: a body scaled from another (length / width / height factors): proportions, deck line, greenhouse, lamps, cargo. */
+function scaled(o: CarShape, kL: number, kW: number, kH: number, extra: Partial<CarShape> = {}): CarShape {
+  const L = (l: Lamp) => ({ ...l, y: l.y * kH });
+  const gh = o.gh ? { ...o.gh, zA: o.gh.zA * kL, zC: o.gh.zC * kL, zR1: o.gh.zR1 * kL, zR2: o.gh.zR2 * kL, zB: o.gh.zB * kL, winEnd: o.gh.winEnd * kL, roof: o.gh.roof * kH, roofW: o.gh.roofW * kW } : null;
+  return {
+    ...o, L: o.L * kL, W: o.W * kW, zOff: o.zOff * kL, wb: o.wb * kL, R: o.R * Math.min(1, kH), tw: o.tw * kW, clear: o.clear * kH,
+    top: o.top.map(([z, y]) => [z * kL, y * kH] as [number, number]), doors: o.doors.map(([a, b]) => [a * kL, b * kL] as [number, number]),
+    head: o.head.map(L), tail: o.tail.map(L), grille: { ...o.grille, y: o.grille.y * kH }, intake: o.intake ? L(o.intake) : undefined,
+    bumperF: [o.bumperF[0] * kH, o.bumperF[1] * kH], bumperR: [o.bumperR[0] * kH, o.bumperR[1] * kH], gh,
+    cargo: o.cargo ? { z0: o.cargo.z0 * kL, z1: o.cargo.z1 * kL, y0: o.cargo.y0 * kH, y1: o.cargo.y1 * kH, hw: o.cargo.hw * kW } : undefined,
+    ...extra,
+  };
+}
+export const SHAPES = {
   sedan: base,
   hatch: sh({
     L: 3.86, W: 1.68, zOff: 0.08, wb: 2.45, R: 0.29, tw: 0.185, rim: 'hubcap', rimColor: '#a9adb2', plan: 4.6, noseIn: 0.14, tailIn: 0.03,
@@ -205,7 +218,11 @@ export const SHAPES: Record<VehicleKind, CarShape> = {
     grille: { x: 0, y: 1.0, w: 0.01, h: 0.01, p: 4, style: 1 }, bumper: 'paint', bumperF: [0, 0], bumperR: [0, 0],
     extras: ['tracks', 'turret'], metallic: 0, tint: 0.2, livery: 7,
   }, null),
-};
+} as Record<VehicleKind, CarShape>;
+// Round 7 variety (scaled from their nearest relatives, with their own trim)
+SHAPES.crossover = scaled(SHAPES.suv, 0.89, 0.92, 0.9, { rim: 'spoke5', rimColor: '#c3c6ca', extras: ['wipers', 'handles', 'rails', 'flares'], metallic: 0.6 });
+SHAPES.citycar = scaled(SHAPES.hatch, 0.9, 0.96, 1.02, { rim: 'hubcap', seatRows: 2, metallic: 0.25 });
+SHAPES.sportsedan = { ...SHAPES.sedan, rim: 'spoke5', rimColor: '#3a3c40', clear: 0.15, extras: [...SHAPES.sedan.extras, 'lip', 'exhaust2'], metallic: 0.85, tint: 0.45 };
 /** Fills shared data a few kinds borrow from others. */
 SHAPES.fbi = { ...SHAPES.suv, ...SHAPES.fbi, top: SHAPES.suv.top, L: SHAPES.suv.L, W: SHAPES.suv.W, zOff: SHAPES.suv.zOff, wb: SHAPES.suv.wb, R: SHAPES.suv.R, tw: SHAPES.suv.tw,
   plan: SHAPES.suv.plan, noseIn: SHAPES.suv.noseIn, tailIn: 0, rs: SHAPES.suv.rs, clear: SHAPES.suv.clear, endRise: SHAPES.suv.endRise, tumble: SHAPES.suv.tumble, doors: SHAPES.suv.doors,

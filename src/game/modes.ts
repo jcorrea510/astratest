@@ -36,6 +36,7 @@ export function downPenalty(mode: GameMode, kind: 'down' | 'busted', cash: numbe
 export const CAR_PRICES: Partial<Record<VehicleKind, number>> = {
   hatch: 6500, sedan: 9500, wagon: 12000, minivan: 13500, van: 15000, fullsize: 16500, pickup: 19000, suv: 26000,
   taxi: 8000, coupe: 38000, convertible: 46000, muscle: 54000, luxury: 72000, race: 120000, super: 185000,
+  citycar: 4800, crossover: 21000, sportsedan: 31000,
 };
 export const DEALER_KINDS = (Object.keys(CAR_PRICES) as VehicleKind[]).sort((a, b) => CAR_PRICES[a]! - CAR_PRICES[b]!);
 /** What an owned car counts for in net worth (resale). */
