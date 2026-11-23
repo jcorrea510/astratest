@@ -8,6 +8,8 @@ import type { Rng } from '../core/rng';
 
 /** Blocks (i,i) for i in 1..3 are cut; the chain passes through intersections (1,1) .. (4,4). */
 export const BROADWAY = { half: 4.4, channel: 4.5, first: 1, last: 4, name: 'Broadway' };
+/** Round 9: junction centre to where Broadway's lanes begin (beyond the cross streets' carriageways). */
+export const BW_LANE_R0 = 16;
 export const BW_U = { x: Math.SQRT1_2, z: Math.SQRT1_2 }; // travel direction north-west -> south-east
 export const BW_N = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }; // normal toward the north-east
 
@@ -108,8 +110,10 @@ export function addBroadwayLanes(
   const r0 = 11.5; // intersection centre to the corner where the channel starts
   for (let i = BROADWAY.first; i < BROADWAY.last; i++) {
     const A = interGrid[i][i], B = interGrid[i + 1][i + 1];
-    const a = { x: A.x + BW_U.x * r0, y: 0, z: A.z + BW_U.z * r0 }, b = { x: B.x - BW_U.x * r0, y: 0, z: B.z - BW_U.z * r0 };
-    paths.push({ id: paths.length, name: BROADWAY.name, kind: 'street', pts: [a, { x: (a.x + b.x) / 2, y: 0, z: (a.z + b.z) / 2 }, b], half: BROADWAY.half, lanes: 1, elevated: false, from: A.id, to: B.id });
+    const a0 = { x: A.x + BW_U.x * r0, y: 0, z: A.z + BW_U.z * r0 }, b0 = { x: B.x - BW_U.x * r0, y: 0, z: B.z - BW_U.z * r0 };
+    paths.push({ id: paths.length, name: BROADWAY.name, kind: 'street', pts: [a0, { x: (a0.x + b0.x) / 2, y: 0, z: (a0.z + b0.z) / 2 }, b0], half: BROADWAY.half, lanes: 1, elevated: false, from: A.id, to: B.id });
+    // Round 9: the lanes start / end past the cross streets (a queued car leaving on Broadway sat across the street's lanes)
+    const a = { x: A.x + BW_U.x * BW_LANE_R0, y: 0, z: A.z + BW_U.z * BW_LANE_R0 }, b = { x: B.x - BW_U.x * BW_LANE_R0, y: 0, z: B.z - BW_U.z * BW_LANE_R0 };
     for (const dir of [1, -1]) {
       const off = 0.5 * LANE_WIDTH + 0.2;
       const sx = dir * BW_U.x, sz = dir * BW_U.z, rx = -sz, rz = sx; // right of travel

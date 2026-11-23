@@ -1,19 +1,16 @@
-# Round 9 plan (BRIEF9). Lead fixes owner bugs personally; features go to Sonnet agents (handoffs docs/handoff/R9-*.md).
-Resume after a limit: first unticked line. Every fix gets a regression test.
+# Round 9 plan (BRIEF9). Lead fixed owner bugs personally; features went to Sonnet agents (handoffs docs/handoff/R9-*.md).
+Resume after a limit: first unticked line. Every fix has a regression test.
 
-Agents (features):
-- [ ] R9-G gore: limbs sever (arms/legs) on the right hits, gore with every gun, much more blood.
-- [ ] R9-S gun sounds: real recorded CC0 gunshot samples (online sources), credited.
-- [ ] R9-W map character: less boxy streets (street life props, varied facades/setbacks, plazas, trees, awnings) at no perf cost.
-- [ ] R9-C physical garage (drive in, door, paused menu, fixed UI) + selling cars (balanced).
-- [ ] R9-B bank heist: vault not see-through, multi-stage robbery beyond the register.
-- [ ] R9-O outfit store: better clothes/items.
-Lead (owner bugs):
-- [ ] L1 Mac perf: Low not smooth -> profile CPU per system, cut.
-- [ ] L2 diagonal streets get signals; cars stop before the crosswalk on red; left turns yield to oncoming.
-- [ ] L3 AI turns smoother/slower; player drift recovers (no endless slide).
-- [ ] L4 police: lights cast light at night + brighter; no shooting through walls; no shooting an unarmed player; chase harder
-      (ignore lights, quick), traffic + peds clear the way; balance (cops stay on you after a robbery).
-- [ ] L5 robbery: gun-point hold-up reliable; till after shooting the clerk always works; hands-up only when it makes sense.
-- [ ] L6 car-hit ragdoll glitching.
-- [ ] Z gate + publish + owner summary.
+- [x] R9-G gore: limbs sever (dismember.ts), every gun gores harder, mist/gibs/wall splats/trails (e2e gore9).
+- [x] R9-S gun sounds: 42 recorded CC0 takes (gunSamples.ts, public/assets/audio/guns, CREDITS.md); synth fallback.
+- [x] R9-W map character: tower setbacks/crowns/belt courses, streetscape.ts dressing baked into trim chunks (+2% calls).
+- [x] R9-C physical garage halls (garageBay.ts, garageMenu.ts; game pauses), car selling (stolen 5%, owned 57.5%, cooldowns).
+- [x] Bank: vault door covers its opening; job = guard, set-and-defend drill (jams), deposit boxes, bag paid after getaway (e2e bank9).
+- [x] Outfit store: 3 new prints, 8 colours, cloth folds/AO, per-fabric sheen.
+- [x] L1 Mac perf: every shader compiled at load (store interiors prebuilt, car/person materials not disposed): 14 -> ~2 mid-game compiles per tour.
+- [x] L2 Broadway signal phase + heads (diagSignals.test), stop bar behind the zebra, left-turn yield (5.5 s gap, re-check in the turn), 2.2 s all-red, no parking near junctions; Broadway lanes start past the cross streets.
+- [x] L3 AI turn speed from radius (calm 2.4 m/s^2), gentle braking into turns; drift bends the path and recovers ~1 s after straightening (drift9.test).
+- [x] L4 police: bar light pools + red/blue point light (Medium+), brighter bar; no shooting the unarmed (<5 stars), rounds start at the shoulder (no shooting through walls); pursuit speed matches the suspect, overtakes, leads the target; peds clear for sirens / a fast car; robbery = 2 stars, heat lasts longer.
+- [x] L5 robbery: facing the clerk with a gun drawn counts as covering; 4 s grace; till reachable from both sides, meter pauses instead of resetting; hands-up pose.
+- [x] L6 car-hit ragdoll: spin cap, waist spring, spine bend limit, rate-limited root.
+- [ ] Z gate (tsc, vitest, key e2e) + publish + owner summary.

@@ -1,6 +1,6 @@
 /** Pure placement of mast-arm traffic signals: one per approach, post on the far-right corner (sidewalk), arm over the lanes. */
 import { type CityMap, type SigAxis, LANE_WIDTH, surfaceAt } from './citymap';
-import { BROADWAY } from './broadway';
+import { BROADWAY, BW_LANE_R0 } from './broadway';
 
 const clear = (city: CityMap, x: number, z: number) => [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]].every(([ox, oz]) => surfaceAt(city, x + ox, z + oz) !== 'road');
 
@@ -37,7 +37,7 @@ export function signalPosts(city: CityMap): SignalPost[] {
     }
     for (const ap of approaches) {
       const rx = -ap.dz, rz = ap.dx;
-      const along = ap.axis === 'd' ? 11.5 : ap.axis === 'z' ? inter.halfZ : inter.halfX;
+      const along = ap.axis === 'd' ? BW_LANE_R0 : ap.axis === 'z' ? inter.halfZ : inter.halfX;
       const across = ap.axis === 'd' ? BROADWAY.half : ap.axis === 'z' ? inter.halfX : inter.halfZ;
       // far side of the junction, right-hand kerb: head hangs over the approach lanes facing back at traffic
       // Broadway cuts diagonally through a few junctions: fall back to the near-side corner, else skip the approach

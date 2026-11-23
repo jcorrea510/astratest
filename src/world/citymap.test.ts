@@ -274,6 +274,7 @@ describe('traffic signal posts', () => {
       for (const [ox, oz] of [[0, 0], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4]]) {
         expect(surfaceAt(city, p.x + ox, p.z + oz), `post at ${p.x.toFixed(1)},${p.z.toFixed(1)} inter ${p.inter}`).not.toBe('road');
       }
+      if (p.axis === 'd') continue; // Broadway's diagonal posts: see diagSignals.test.ts
       const inter = city.intersections[p.inter];
       // outside the cross street's crosswalk band and the avenue's kerb
       const alongHalf = p.axis === 'z' ? inter.halfZ : inter.halfX, acrossHalf = p.axis === 'z' ? inter.halfX : inter.halfZ;

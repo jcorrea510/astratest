@@ -36,12 +36,14 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
   (doors/seats/glass API: setDoor, doorIndex, doorWorldPos, seatWorldPos, seatLocal, glassAt, breakGlass, setTurret), vehiclePhysics
   (ray-cast tyres), helicopter* (flight model, model, manager).
 - combat/: weapons (18 guns + melee + throwables), weaponModels, combat (trace, hitPerson zone damage, projectiles, explosions),
-  hitzones (bone capsules), aim (camera-ray aim point), wheelSlots.
+  hitzones (bone capsules), aim (camera-ray aim point), wheelSlots, dismember (limb severing rules; render/blood draws it).
 - game/: game (orchestrator + main loop), player, camera, playerCombat, carEntry (walk-to-door/carjack/hotwire state machine),
   vehicles (manager), traffic, population, police (heat 0-5), robbery (store hold-ups), activities (shops, garage, postcards, jumps),
-  places (named spots, HELIPADS), sandbox (tools panel; the game is sandbox-only), save, missions (story — disabled, kept for later).
+  places (named spots, HELIPADS), sandbox (tools panel; the game is sandbox-only), save, missions (story — disabled, kept for later),
+  storeExtras (register, cases, bank job: guard/drill/deposit boxes/bag), garageBay + bays (drive-in garage halls, paused menu ui/garageMenu).
 - ui/: ui.ts (screens/menus), attract (menu flyover), hud, minimap/mapdraw/fullmap, wheel, shop, settingsPanel, sandbox panel, contracts.
-- audio/: core/sfx/gunsynth (layered gunshots)/loops (engines, sirens)/music/ambience. (NPC voices removed.)
+- audio/: core/sfx/gunSamples (recorded CC0 gunshots, public/assets/audio/guns; gunsynth = fallback)/loops/music/ambience.
+- world/streetscape: street dressing baked into trim chunks. Shaders: Game.warmShaders compiles everything at load (keep it so).
 - desktop/: Electron Mac app wrapper (app:// origin); built + released by .github/workflows/desktop.yml (release desktop-latest).
 - core/units.ts = US units, core/fullscreen.ts. (Highway mode was removed in Round 8.)
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).
