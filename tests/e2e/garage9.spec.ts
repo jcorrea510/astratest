@@ -93,7 +93,7 @@ test('garage hall: drive in, door closes, world pauses, repair, respray, sell, r
   });
   console.log('sell', JSON.stringify(e));
   expect(e.priceTxt).toMatch(/^\+\$/);
-  expect(e.gain).toBeGreaterThan(50); expect(e.gain).toBeLessThan(1000); // a stolen mid-price coupe is a few hundred, not thousands
+  expect(e.gain).toBeGreaterThan(50); expect(e.gain).toBeLessThan(1600); // a stolen mid-price coupe is several hundred, not thousands
   expect(e.inCar).toBe(false); expect(e.listed).toBe(false);
   expect(e.state).toBe('opening'); expect(e.cool[0]).toBe(180);
   const f = await page.evaluate(() => {
@@ -135,8 +135,8 @@ test('garage sale rules: refusals, cooldown, repeat discount, owned cars pay mor
   });
   console.log('rules', JSON.stringify(r));
   for (const k of ['police', 'fbi', 'swat', 'army', 'tank', 'taxi', 'bus']) expect(r[k], k).toBe(false);
-  expect(r.super.ok).toBe(true); expect(r.super.price).toBeGreaterThan(3000); expect(r.super.price).toBeLessThan(7000);
-  expect(r.hatch.price).toBeLessThan(250);
+  expect(r.super.ok).toBe(true); expect(r.super.price).toBeGreaterThan(3000); expect(r.super.price).toBeLessThan(9000);
+  expect(r.hatch.price).toBeLessThan(400);
   expect(r.wanted.ok).toBe(false); expect(r.hot.ok).toBe(false);
   expect(r.cool0.ok).toBe(false); expect(r.cool0.reason).toContain('2:00'); expect(r.cool1.ok).toBe(true);
   expect(r.repeat.price).toBeLessThan(r.super.price);

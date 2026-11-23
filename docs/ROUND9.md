@@ -13,4 +13,4 @@ Resume after a limit: first unticked line. Every fix has a regression test.
 - [x] L4 police: bar light pools + red/blue point light (Medium+), brighter bar; no shooting the unarmed (<5 stars), rounds start at the shoulder (no shooting through walls); pursuit speed matches the suspect, overtakes, leads the target; peds clear for sirens / a fast car; robbery = 2 stars, heat lasts longer.
 - [x] L5 robbery: facing the clerk with a gun drawn counts as covering; 4 s grace; till reachable from both sides, meter pauses instead of resetting; hands-up pose.
 - [x] L6 car-hit ragdoll: spin cap, waist spring, spine bend limit, rate-limited root.
-- [ ] Z gate (tsc, vitest, key e2e) + publish + owner summary.
+- [x] Z gate: tsc, eslint, vitest 482/482, e2e game/stores/stores7/stores8/bank9/garage9/gore9/gunsamples9/crash6x/arrest8/regressions green (regressions "pier deck save" was already failing before Round 9: stale coordinates). Published.

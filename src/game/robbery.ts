@@ -311,7 +311,9 @@ export class Robberies {
       if (k.phase === 'open' && k.panicT < 0 && k !== this.active && k.shoppers.length && g.pcombat.lastShot > this.shotClip[this.kiosks.indexOf(k)] && dist < 28) this.panic(k);
       this.shotClip[this.kiosks.indexOf(k)] = g.pcombat.lastShot;
       this.extras.update(k, dt, dist, insideK);
-      if (k.phase === 'open' && k.clerk?.alive && k.clerk.role === 'civilian' && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
+      // Round 9: a hurt or panicking clerk can't be "held up" again: the till is free to grab by hand (a fresh hold-up used to
+      // start whenever the gun pointed at them, and an active hold-up locks the register: manual robbing "worked half the time")
+      if (k.phase === 'open' && k.clerk?.alive && k.clerk.role === 'civilian' && (k.panicT < 0 || k.ex.aimOnly) && k.clerk.char.health >= k.clerk.char.maxHealth && k !== this.active && !missionActive && this.covering(k) && !g.inputBlocked) this.begin(k);
     }
     // one shared interior light follows the player into a store
     const inS = this.inside();
