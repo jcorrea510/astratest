@@ -12,6 +12,6 @@ it('no kerbside parking on one-lane streets (Round 8: a parked car took half the
 });
 
 import { kerbSlotOk } from './crowd';
-it('Round 9: no parked cars in the last 28 m before a junction (the right-turn queue) or 12 m after one', () => {
-  expect(kerbSlotOk(60, 84)).toBe(false); expect(kerbSlotOk(5, 84)).toBe(false); expect(kerbSlotOk(30, 84)).toBe(true);
+it('Round 9: no parked cars in the last 28 m before a junction (the right-turn queue) or 24 m after one', () => {
+  expect(kerbSlotOk(60, 84)).toBe(false); expect(kerbSlotOk(5, 84)).toBe(false); expect(kerbSlotOk(30, 84)).toBe(true); expect(kerbSlotOk(18, 84)).toBe(false);
 });

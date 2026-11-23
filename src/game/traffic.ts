@@ -382,7 +382,7 @@ export class Traffic {
         if (o === v || o === car.avoid?.v) continue;
         if (ghost && o !== playerVehicle && this.carOf(o)) continue; // deadlock breaker: drive through (the bodies just nudge each other)
         // a stopped car nobody drives (kerbside parked, wrecked): judged by its real width and by where we are steering
-        if (!o.driver && Math.abs(o.speed) < 0.6 && o !== playerVehicle) check(o.position.x, o.position.z, v.phys.layout.half[0] + o.phys.layout.half[0] + 0.2, 'car', o, car.shift ?? 0);
+        if (!o.driver && Math.abs(o.speed) < 0.6 && o !== playerVehicle) check(o.position.x, o.position.z, v.phys.layout.half[0] + o.phys.layout.half[0] + 0.45, 'car', o, car.shift ?? 0);
         else check(o.position.x, o.position.z, 2.3, 'car', o);
       }
       // far-crowd cars ahead (drawn, not simulated physically): queue behind them like any car instead of driving into them

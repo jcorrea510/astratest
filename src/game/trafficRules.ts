@@ -8,7 +8,7 @@ export interface Violation { kind: ViolationKind; pos: THREE.Vector3 }
  * How far (m, to the left) a car must shift inside its lane to clear a stopped car on its right.
  * latS = lateral offset of the obstacle's centre (negative = right of us).
  */
-export function curbShift(latS: number, ownHalf: number, otherHalf: number, margin = 0.3): number {
+export function curbShift(latS: number, ownHalf: number, otherHalf: number, margin = 0.6): number { // Round 9: 0.3 m left cars scraping parked ones
   if (latS > 0.4) return 0;
   const clearance = ownHalf + otherHalf + margin;
   return Math.max(0, Math.min(1.4, clearance - Math.abs(latS)));

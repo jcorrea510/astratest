@@ -148,7 +148,7 @@ export class Crowd {
             if (nl) samplePath(nl.lane, nl.s, sp);
             const yaw = nl ? Math.atan2(sp.dx, sp.dz) : (road.axis === 'x' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI));
             const paint = r.int(0, CAR_PAINT.length - 1), kind = r.int(0, PARKED_MIX.length - 1);
-            // Round 9: no parking in the last 28 m before a junction or 12 m after one (like real no-standing zones): parked cars
+            // Round 9: no parking in the last 28 m before a junction or 24 m after one (like real no-standing zones): parked cars
             // there blocked the kerb lane right-turners queue in, the probe's main AI crash source
             if (nl && !kerbSlotOk(nl.s, nl.lane.length)) continue;
             this.slots.push({ x, z, yaw, paint, kind, taken: false, real: null });
@@ -557,4 +557,4 @@ export function spawnHidden(dist: number, inView: boolean): boolean { return inV
 /** Round 8: streets with kerbside parking (two lanes each way; a one-lane street has no room). Pure (tests). */
 export function kerbParking(lanes: number): boolean { return lanes >= 2; }
 /** Round 9: kerbside parking is allowed at lane position `s` of a lane `len` m long only away from both junctions. Pure. */
-export function kerbSlotOk(s: number, len: number): boolean { return s >= 12 && len - s >= 28; }
+export function kerbSlotOk(s: number, len: number): boolean { return s >= 24 && len - s >= 28; } // 24 m: room for a right-turner to straighten out

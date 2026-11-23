@@ -150,10 +150,10 @@ export function districtFor(ix: number, iz: number): District {
  * of lateral acceleration, like a real driver in town: a tight right turn ~4 m/s (9 mph), a wide left ~6 m/s. Pure.
  */
 export function turnSpeed(R: number): number { return Math.max(3.6, Math.min(8, Math.sqrt(2.4 * Math.max(0, R)))); }
-export const SIGNAL_CYCLE = [13, 3, 1.5, 13, 3, 1.5];
+export const SIGNAL_CYCLE = [13, 3, 2.2, 13, 3, 2.2]; // Round 9: 2.2 s all-red (1.5 let late-amber cars meet the next green in wide junctions)
 export const SIGNAL_PERIOD = SIGNAL_CYCLE.reduce((a, b) => a + b, 0);
 /** Round 9: junctions Broadway cuts through get a third phase (the diagonal goes while both grid roads hold at red). */
-export const DIAG_CYCLE = [13, 3, 1.5, 13, 3, 1.5, 10, 3, 1.5];
+export const DIAG_CYCLE = [13, 3, 2.2, 13, 3, 2.2, 10, 3, 2.2];
 export const DIAG_PERIOD = DIAG_CYCLE.reduce((a, b) => a + b, 0);
 /** Current signal group (0 = z, 1 = x, 2 = diagonal), step in it (0 green, 1 amber, 2 all-red) and seconds left in that step. */
 export function signalPhase(inter: Intersection, time: number): { group: number; step: number; left: number } {
