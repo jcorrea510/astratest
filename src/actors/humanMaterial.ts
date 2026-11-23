@@ -10,7 +10,7 @@ import type { BodyBase } from './humanAssets';
 
 export const TOP_IDS: Record<FullLook['topStyle'], number> = { tee: 0, tank: 1, longsleeve: 2, hoodie: 3, jacket: 4, suit: 5, shirt: 6, polo: 7, dress: 8, uniform: 9, blouse: 10 };
 const BOTTOM_IDS: Record<FullLook['bottomStyle'], number> = { jeans: 0, trousers: 1, shorts: 2, skirt: 3, sweats: 4 };
-const PATTERN_IDS: Record<FullLook['pattern'], number> = { plain: 0, stripes: 1, plaid: 2, graphic: 3, twotone: 4 };
+const PATTERN_IDS: Record<FullLook['pattern'], number> = { plain: 0, stripes: 1, plaid: 2, graphic: 3, twotone: 4, pinstripe: 5, camo: 6, houndstooth: 7 };
 const HAIR_PAINT: Partial<Record<FullLook['hairStyle'], number>> = { buzz: 2, fade: 3, bald: 0, cornrows: 5, braids: 5, crew: 2, long: 6, bob: 6, buns: 6, parted: 6, pixie: 6 };
 const FACIAL: Record<FullLook['facial'], number> = { none: 0, stubble: 1, beard: 2, moustache: 3, goatee: 4 };
 const SHOE_IDS: Record<FullLook['shoeStyle'], number> = { sneakers: 0, boots: 1, formal: 2 };
@@ -162,7 +162,16 @@ if (part == 0) {
     float r = length(c / vec2(1.0, 1.15));
     float print = front * step(r, 0.07) * (step(0.045, r) + step(r, 0.028));
     col = mix(col, uC[2], print);
-  } else if (pat > 3.5 && ri == 2) col = uC[2];
+  } else if (pat > 3.5 && pat < 4.5 && ri == 2) col = uC[2];
+  // Round 9 (owner: "make all the things in the outfit store better"): more prints
+  else if (pat > 4.5 && pat < 5.5) col = mix(col, uC[2], 0.7 * smoothstep(0.0035, 0.0, abs(fract(vBind.x * 38.0) - 0.5) / 38.0)); // pinstripe
+  else if (pat > 5.5 && pat < 6.5) { // woodland camo: three noise blobs
+    float n1 = vnoise(vBind * 9.0), n2 = vnoise(vBind * 14.0 + 7.3), n3 = vnoise(vBind * 21.0 + 2.1);
+    col = mix(col, uC[2], smoothstep(0.52, 0.56, n1)); col = mix(col, uC[2] * 0.45, smoothstep(0.58, 0.62, n2)); col = mix(col, col * 1.35 + 0.03, smoothstep(0.62, 0.66, n3));
+  } else if (pat > 6.5) { // houndstooth: broken check
+    vec2 q = vec2(vBind.x, vBind.y) * 60.0; vec2 f = fract(q); float chk = step(0.5, f.x) == step(0.5, f.y) ? 1.0 : 0.0;
+    float tooth = step(f.x + f.y, 0.75) * step(0.5, f.x) * (1.0 - step(0.5, f.y)); col = mix(col, uC[2], clamp(chk + tooth, 0.0, 1.0) * 0.85);
+  }
   // garment construction details
   if (ri == 1) {
     float cx = abs(vBind.x);
@@ -196,7 +205,15 @@ if (part == 0) {
     }
   }
   col *= 0.94 + 0.1 * grain;
-  rough = topId > 4.5 && topId < 5.5 ? 0.7 : 0.9;
+  // Round 9: cloth folds (bunching at the elbow crease and the waist, soft drape lines) and occlusion at the collar / hem
+  if (ri == 2) col *= 1.0 - 0.16 * smoothstep(0.08, 0.0, abs(vCloth - 0.5)) * (0.55 + 0.45 * sin(vBind.x * 90.0 + vBind.z * 70.0));
+  if (ri == 1) {
+    col *= 1.0 - 0.08 * smoothstep(0.6, 1.0, sin(vCloth * 46.0 + vnoise(vBind * 18.0) * 5.0)) * (1.0 - front * 0.4);
+    col *= 1.0 - 0.18 * smoothstep(0.03, 0.0, abs(vCloth - uTop.y - 0.01));
+  }
+  // fabric: bomber = worn leather sheen, suit = wool, hoodie / sweats = matte knit, shirts = cotton
+  rough = topId > 3.5 && topId < 4.5 ? 0.48 : topId > 4.5 && topId < 5.5 ? 0.7 : topId > 2.5 && topId < 3.5 ? 0.97 : 0.88;
+  if (topId > 3.5 && topId < 4.5) col *= 0.92 + 0.16 * vnoise(vBind * 120.0);
 } else if (part == 3) {
   col = uC[3];
   float bs = uBottom.y;
@@ -209,7 +226,12 @@ if (part == 0) {
     col *= 0.92 + 0.12 * grain;
     if (ri == 3) col = mix(col, uC[2], smoothstep(0.93, 0.96, abs(bn.x)));
   } else col *= 0.93 + 0.1 * grain;
-  rough = 0.9;
+  // Round 9: knee and ankle bunching on long pants, pocket shadow at the hip
+  if (ri == 3) {
+    col *= 1.0 - 0.12 * smoothstep(0.07, 0.0, abs(vCloth - 0.5)) * (0.5 + 0.5 * sin(vBind.x * 120.0 + vBind.z * 80.0));
+    col *= 1.0 - 0.1 * smoothstep(0.1, 0.0, abs(vCloth - uBottom.x + 0.06)) * (0.5 + 0.5 * sin(vBind.z * 150.0));
+  }
+  rough = bs < 0.5 ? 0.92 : bs > 3.5 ? 0.97 : 0.86;
 } else if (part == 4) {
   col = uC[4]; float s = uPat.w;
   rough = s > 1.5 ? 0.3 : s > 0.5 ? 0.55 : 0.7;

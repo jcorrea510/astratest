@@ -84,6 +84,7 @@ export class Blood {
     this.sc.set(0, 0, 0); this.m.compose(this.p.set(0, -50, 0), this.q.identity(), this.sc);
     for (let i = 0; i < MAX_PIECES; i++) this.pieces.setMatrixAt(i, this.m);
     scene.add(this.pieces);
+    const warm = new THREE.Mesh(this.stumpGeo, this.stumpMat); warm.position.set(0, -60, 0); warm.scale.setScalar(0.001); warm.frustumCulled = false; scene.add(warm); // keeps the stump shader compiled with the scene
   }
   readonly pieces: THREE.InstancedMesh;
   private pieceList: Piece[] = []; private pi = 0;

@@ -13,7 +13,7 @@ export type HatStyle = 'none' | 'cap' | 'beanie' | 'police';
 export type TopStyle = 'tee' | 'tank' | 'longsleeve' | 'hoodie' | 'jacket' | 'suit' | 'shirt' | 'polo' | 'dress' | 'uniform' | 'blouse';
 export type BottomStyle = 'jeans' | 'trousers' | 'shorts' | 'skirt' | 'sweats';
 export type ShoeStyle = 'sneakers' | 'boots' | 'formal';
-export type Pattern = 'plain' | 'stripes' | 'plaid' | 'graphic' | 'twotone';
+export type Pattern = 'plain' | 'stripes' | 'plaid' | 'graphic' | 'twotone' | 'pinstripe' | 'camo' | 'houndstooth';
 
 export interface Look {
   skin: string; top: string; bottom: string; shoes: string; hair: string; hat: string; detail: string;
