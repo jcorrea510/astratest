@@ -23,7 +23,7 @@ export const SELL_REFUSED: ReadonlySet<VehicleKind> = new Set<VehicleKind>(['pol
 /** In-game seconds between two sales at the same garage (3 in-game minutes). */
 export const SELL_COOLDOWN = 180;
 /** Fence rates on the car's resale value (carValue): a hot street car is a fraction of a legit one, cars you bought pay far more. */
-export const FENCE_STOLEN = 0.03, FENCE_OWNED = 0.575;
+export const FENCE_STOLEN = 0.05, FENCE_OWNED = 0.575;
 /** Each further sale of the same kind within one in-game day pays this much less (compounding). */
 export const REPEAT_FACTOR = 0.8;
 /** Seconds after the heat drops before a hot car is clean enough to sell (the cops were looking for it). */

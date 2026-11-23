@@ -18,8 +18,8 @@ const base: SellCtx = { kind: 'super', healthFrac: 1, owned: false, heat: 0, sin
 describe('selling cars (Round 9)', () => {
   it('a stolen supercar is worth a few thousand, a cheap car almost nothing, and owned cars pay far more', () => {
     const sup = sellQuote(base), hatch = sellQuote({ ...base, kind: 'hatch' });
-    expect(sup.ok && sup.price).toBeGreaterThan(3000); expect(sup.price).toBeLessThan(7000);
-    expect(hatch.price).toBeLessThan(250);
+    expect(sup.ok && sup.price).toBeGreaterThan(3000); expect(sup.price).toBeLessThan(9000);
+    expect(hatch.price).toBeLessThan(400);
     expect(sellPrice('super', 1, true)).toBeGreaterThan(sup.price * 10);
     expect(sellPrice('sedan', 1, true) / sellPrice('sedan', 1, false)).toBeGreaterThan(10);
   });

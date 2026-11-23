@@ -278,6 +278,7 @@ export class Robberies {
     const g = this.game, t = g.time, p = g.player.pos;
     if (missionActive && this.active) this.reset();
     const insideK = this.inside();
+    this.extras.tickBag(); // Round 9: the bank take pays out once the heat is gone
     for (const k of this.kiosks) {
       const dist = Math.hypot(p.x - k.def.x, p.z - k.def.z);
       // shutters come down once the player has left a robbed store; it reopens later
