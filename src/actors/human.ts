@@ -561,6 +561,6 @@ export class Human {
     this.mesh.geometry = l === 0 ? this.base.geo : lowBody(this.base.geo, l === 1 ? 4500 : 1800);
   }
   dispose() {
-    this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); this.material.dispose(); this.root.removeFromParent(); this.mesh.skeleton.dispose();
+    this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); /* Round 9: material not disposed (keeps its shader program alive: no recompile hitch) */ this.root.removeFromParent(); this.mesh.skeleton.dispose();
   }
 }

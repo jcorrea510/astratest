@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseSave } from './save';
 import { repairPrice, GARAGE_PAINTS, sellQuote, sellPrice, newSaleLog, tickSales, recordSale, recentOfKind, SELL_COOLDOWN, type SellCtx } from './garage';
 
 describe('garages (Round 7)', () => {
@@ -46,5 +47,14 @@ describe('selling cars (Round 9)', () => {
     expect(recentOfKind(log, 'coupe')).toBe(1);
     expect(sellPrice('coupe', 1, false, 1)).toBeLessThan(sellPrice('coupe', 1, false, 0));
     tickSales(log, 1500); expect(recentOfKind(log, 'coupe')).toBe(0); // a day later the market has recovered
+  });
+});
+
+describe('garage sale log in the save (Round 9)', () => {
+  it('round-trips cooldowns and drops unknown kinds', () => {
+    const raw = JSON.stringify({ version: 2, money: 5, pos: { x: 0, z: 0 }, garage: { cool: [100, -5, 'x'], sold: [{ kind: 'super', age: 3 }, { kind: 'bogus', age: 1 }] } });
+    const d = parseSave(raw)!;
+    expect(d.garage).toEqual({ cool: [100, 0, 0], sold: [{ kind: 'super', age: 3 }] });
+    expect(parseSave(JSON.stringify({ version: 2, money: 5, pos: { x: 0, z: 0 } }))!.garage).toBeUndefined();
   });
 });

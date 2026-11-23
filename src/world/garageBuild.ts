@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
-import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_PAINT, T_GLOW, T_PLASTIC, T_ROUGH } from './builders';
+import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_PAINT, T_GLOW } from './builders';
 import { BAYS, type BaySpec } from '../game/bays';
 
 const C = (h: string) => new THREE.Color(h);

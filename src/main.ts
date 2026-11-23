@@ -182,6 +182,7 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     activities.spawnCards();
     g.cam.update(0.016, g.player.pos, 'foot');
     ui.showLoading(0.85, 'Waking up the city');
+    activities.robberies.prebuildAll(); // Round 9: every store interior built (and its shaders compiled) behind the loading screen
     g.prewarm();
     // a short beat on the loading art so the switch from the flyover never flickers
     if (!params.get('autostart')) await new Promise(r => setTimeout(r, Math.max(0, 1300 - (performance.now() - t0))));

@@ -50,7 +50,7 @@ describe('streetscape plan', () => {
   });
   it('sheds sit on stretches with no other furniture and do not touch the kerb strip lamp line', () => {
     const taken = [{ x: -1000, z: -1000 }];
-    for (const s of planStreetscape(city, 1, taken).pieces.filter(q => q.kind === 'shed')) expect(s.len).toBe(16);
+    for (const s of planStreetscape(city, 1, taken).pieces.filter(q => q.kind === 'shed')) expect(s.len).toBe(12);
   });
 });
 

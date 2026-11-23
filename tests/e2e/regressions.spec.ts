@@ -20,7 +20,7 @@ test('bailing out of a fast car at low health shows the down screen and respawns
   clean(p);
 });
 
-test('a respray never dents other cars of the same model; the garage only charges once per visit and not for clean cars', async ({ page }) => {
+test('a repair never dents other cars of the same model; the garage hall charges only for a real repair, once per visit', async ({ page }) => {
   const p = watch(page);
   await boot(page);
   const r = await page.evaluate(() => {
@@ -28,23 +28,27 @@ test('a respray never dents other cars of the same model; the garage only charge
     const sum = (geo: any) => { const arr = geo.attributes.position.array; let s = 0; for (let i = 0; i < arr.length; i += 7) s += arr[i]; return s; };
     const other = g.vehicles.spawn('sedan', -150, 60, 0); other.persistent = true;
     const tplSum = sum(other.tpl.body);
-    const v = g.vehicles.spawn('sedan', -200, 102, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
-    // clean car: no charge
-    const m0 = g.money; for (let i = 0; i < 120; i++) g.frame(1 / 30, false);
-    const cleanCharge = m0 - g.money;
-    // damaged car: one charge, then sitting there costs nothing more
-    g.playerVehicle.phys.teleport(-260, 0.6, 102, Math.PI / 2); for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
-    v.damage(400, v.position.clone(), null);
+    const v = g.vehicles.spawn('sedan', -182, 100, 0); v.persistent = true; g.seatPlayer(v);
+    const visit = (click: boolean) => {
+      v.phys.teleport(-182, 0.6, 121, 0); for (let i = 0; i < 110; i++) g.frame(1 / 30, false); // door closes, menu opens
+      const m0 = g.money, open = a.garage.state === 'menu';
+      if (click) (document.querySelector('[data-act="repair"]') as HTMLElement).click();
+      const spent = m0 - g.money;
+      (document.querySelector('.ma-garage .ma-btn') as HTMLElement).click(); // Leave
+      for (let i = 0; i < 70; i++) g.frame(1 / 30, false);
+      v.phys.teleport(-182, 0.6, 100, 0); for (let i = 0; i < 10; i++) g.frame(1 / 30, false); // out of the hall again
+      return { spent, open, idle: a.garage.state === 'idle' && !g.paused };
+    };
     g.money = 1000;
-    g.playerVehicle.phys.teleport(-200, 0.6, 102, Math.PI / 2);
-    for (let i = 0; i < 600; i++) g.frame(1 / 30, false);
-    const charged = 1000 - g.money;
-    v.damage(400, v.position.clone(), null); // dent again after respray
-    void a;
-    return { cleanCharge, charged, tplUnchanged: Math.abs(sum(other.tpl.body) - tplSum) < 1e-6, otherShared: other.tpl.lods.some((l: any) => l.body === other.bodyMesh.geometry), vOwn: v.bodyMesh.geometry !== v.tpl.body };
+    const clean = visit(true); // clean car: nothing to repair, nothing charged
+    v.damage(400, v.position.clone(), null);
+    const dirty = visit(true); // damaged car: one charge
+    v.damage(400, v.position.clone(), null); // dent again after the repair
+    return { clean, dirty, tplUnchanged: Math.abs(sum(other.tpl.body) - tplSum) < 1e-6, otherShared: other.tpl.lods.some((l: any) => l.body === other.bodyMesh.geometry), vOwn: v.bodyMesh.geometry !== v.tpl.body };
   });
-  expect(r.cleanCharge).toBe(0);
-  expect(r.charged).toBe(150);
+  expect(r.clean).toEqual({ spent: 0, open: true, idle: true });
+  expect(r.dirty.open).toBe(true); expect(r.dirty.idle).toBe(true);
+  expect(r.dirty.spent).toBeGreaterThan(60);
   expect(r.tplUnchanged).toBe(true);
   expect(r.otherShared).toBe(true);
   expect(r.vOwn).toBe(true);

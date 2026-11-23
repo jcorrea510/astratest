@@ -264,7 +264,7 @@ export class Activities {
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
-    if (g.playerVehicle) return this.garageAt(p) >= 0 && !this.missionActive() && this.garageArmed ? 'Stop inside: repair, respray, sell' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
+    if (g.playerVehicle) return this.garageAt(g.playerVehicle.position) >= 0 && !this.missionActive() && this.garageArmed ? 'Stop inside: repair, respray, sell' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
     if (g.taxi?.riding) return g.taxi.prompt(key);
     if (!this.robberies.robbing && this.guns.atCounter(p)) return `${key}  Browse Tidewater Arms`;
@@ -307,7 +307,7 @@ export class Activities {
     // Garage halls: stop inside and the visit starts (door, camera, pause: see garageBay.ts)
     const pv = g.playerVehicle;
     const bay = pv ? this.garage.bayFor(pv) : -1;
-    if (!pv || this.garageAt(p) < 0) this.garageArmed = true;
+    if (!pv || this.garageAt(pv.position) < 0) this.garageArmed = true; // (the car's own position: the player's is only synced on a fixed step)
     else if (this.missionActive()) this.garageArmed = false; // a mission drop-off here is not a visit
     if (pv && bay >= 0 && this.garageArmed && !pv.destroyed && !this.missionActive() && this.garage.begin(bay)) this.garageArmed = false;
     // Postcards

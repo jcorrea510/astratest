@@ -553,10 +553,11 @@ export class Vehicle {
     if (this.disposed) return; this.disposed = true;
     this.phys.dispose(); this.group.removeFromParent();
     if (this.ownGeo) this.disposeOwnGeo();
-    this.material.dispose(); this.glassMat?.dispose();
+    // Round 9 (Mac perf): the shared car materials are not disposed: disposing the last one released the shader program,
+    // and the next car of that kind recompiled it mid-game (a hitch). The material itself is garbage-collected.
     this.skeleton.dispose();
     this.phys.physics.untag(this.phys.collider);
-    this.visual.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.shared && !(m as THREE.SkinnedMesh).isSkinnedMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
+    this.visual.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.shared && !(m as THREE.SkinnedMesh).isSkinnedMesh) { m.geometry.dispose(); } });
     this.driver = null;
   }
 }

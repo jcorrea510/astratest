@@ -269,6 +269,8 @@ export class Robberies {
       if (k.shell) k.shell.root.visible = d < 110;
     }
   }
+  /** Round 9 (Mac perf): builds every interior now (loading screen). Built on approach they compiled new shaders mid-game. */
+  prebuildAll() { for (const k of this.kiosks) if (!k.shell) { k.shell = buildStoreShell(this.game.renderer.scene, this.game.physics, k.def, CURB_HEIGHT); k.shell.root.visible = false; } }
   /** Interiors built so far (they are created on approach). */
   get builtCount() { return this.kiosks.filter(k => k.shell).length; }
   update(dt: number, missionActive = false) {

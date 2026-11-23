@@ -65,20 +65,22 @@ function planBlock(b: Block, city: CityMap, density: number, grid: Grid, out: Pi
     { ax: 'z' as const, fixed: b.x0, from: b.z0, to: b.z1, nx: -1, nz: 0 }, { ax: 'z' as const, fixed: b.x1, from: b.z0, to: b.z1, nx: 1, nz: 0 },
   ];
   const busy = BUSY.has(b.district), downtown = DOWNTOWN.has(b.district), old = OLD.has(b.district);
-  let shedBudget = (old || b.district === 'midtown') && density >= 0.7 && r.chance(0.18) ? 1 : 0;
+  let shedBudget = (old || b.district === 'midtown') && density >= 0.7 && r.chance(0.4) ? 1 : 0;
   for (const e of edges) {
     const P = (s: number, inset: number) => e.ax === 'x' ? { x: s, z: e.fixed - e.nz * inset } : { x: e.fixed - e.nx * inset, z: s };
     const len = e.to - e.from;
     const mk = (kind: PieceKind, s: number, inset: number, l: number, solid: boolean): Piece => { const p = P(s, inset); return { kind, x: p.x, z: p.z, ax: e.ax, nx: e.nx, nz: e.nz, len: l, seed: r.int(1, 99999), solid }; };
     const road = roadAt(e.ax, e.ax === 'x' ? e.fixed + e.nz * 1 : e.fixed + e.nx * 1);
     // sidewalk shed + scaffold on a stretch with nothing else in it
-    if (shedBudget > 0 && len > 60) {
-      const L = 16, s0 = r.range(e.from + 16, e.to - 16 - L);
-      let clear = true;
-      for (let s = s0 - 1; s <= s0 + L + 1 && clear; s += 1) for (const inset of [0.6, 1.5, 2.5, 3.5, 4.3]) { const p = P(s, inset); if (grid.near(p.x, p.z, 1.3)) { clear = false; break; } }
-      if (clear) {
+    if (shedBudget > 0 && len > 50) {
+      const L = 12;
+      for (let attempt = 0; attempt < 8 && shedBudget > 0; attempt++) {
+        const s0 = r.range(e.from + 14, e.to - 14 - L);
+        let clear = true;
+        for (let s = s0 - 1; s <= s0 + L + 1 && clear; s += 1) for (const inset of [0.6, 1.5, 2.5, 3.5, 4.3]) { const p = P(s, inset); if (grid.near(p.x, p.z, 1.1)) { clear = false; break; } }
+        if (!clear) continue;
         const c = P(s0 + L / 2, 0); out.push({ kind: 'shed', x: c.x, z: c.z, ax: e.ax, nx: e.nx, nz: e.nz, len: L, seed: r.int(1, 9999), solid: true });
-        for (let s = s0 - 1; s <= s0 + L + 1; s += 1) for (const inset of [0.6, 2.5, 4.3]) { const p = P(s, inset); grid.add(p); }
+        for (let s = s0 - 1; s <= s0 + L + 1; s += 1) for (const inset of [0.6, 2.5, 4.3]) grid.add(P(s, inset));
         shedBudget--;
       }
     }
@@ -130,6 +132,9 @@ const BAG = ['#1c1d1f', '#23262a', '#2a3028', '#33322f'];
 /** Bakes the plan into the trim chunks; solid pieces get small static colliders. */
 export function emitStreetscape(plan: StreetscapePlan, trim: Chunked<TrimBuilder>, physics: Physics) {
   const y0 = CURB_HEIGHT;
+  const counts: Record<string, number> = {}; for (const p of plan.pieces) counts[p.kind] = (counts[p.kind] ?? 0) + 1;
+  (globalThis as { __streetscape?: Record<string, number> }).__streetscape = counts; // debug hook (e2e)
+  (globalThis as { __streetscapeSheds?: Piece[] }).__streetscapeSheds = plan.pieces.filter(q => q.kind === 'shed');
   for (const p of plan.pieces) {
     const tb = trim.at(p.x, p.z), r = new Rng(p.seed);
     const along = p.ax === 'x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
@@ -226,7 +231,7 @@ export function emitStreetscape(plan: StreetscapePlan, trim: Chunked<TrimBuilder
         // scaffold tower above the shed: standards, ledgers, planks and netting
         for (let s = -L / 2; s <= L / 2 + 0.01; s += L / 5) { const q = at(s, inset0 + depth - 0.2); tb.box(q.x, y0 + 3.4 + 4.2, q.z, 0.09, 8.4, 0.09, 0, steel, T_METAL); }
         for (let h = 5.6; h < 11.6; h += 2.2) { const a = at(0, inset0 + depth - 0.2); const [lx, lz] = sz(L, 0.07); tb.box(a.x, y0 + h, a.z, lx, 0.07, lz, 0, steel, T_METAL); const b = at(0, inset0 + depth - 0.6); const [px, pz] = sz(L, 0.8); tb.box(b.x, y0 + h + 0.05, b.z, px, 0.06, pz, 0, ply, T_ROUGH); }
-        const nt = at(0, inset0 + depth - 0.12); const [nx2, nz2] = sz(L, 0.02); tb.box(nt.x, y0 + 3.5 + 3.9, nt.z, nx2, 7.8, nz2, 0, col('#46604f'), T_FABRIC);
+        const nt = at(0, inset0 + depth - 0.12); const [nx2, nz2] = sz(L, 0.02); tb.box(nt.x, y0 + 3.5 + 3.9, nt.z, nx2, 7.8, nz2, 0, col('#46604f'), T_PAINT);
         break;
       }
     }

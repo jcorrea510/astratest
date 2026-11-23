@@ -72,7 +72,9 @@ export const ACTIONS: Record<string, ActionDef> = {
   // --- reactions / civilians
   cower: { clip: 'Crouch_Idle_Loop', layer: 'full', loop: true, hold: true, fade: 0.2, poses: [[0, sym({ chest: [18, 0, 0], neck: [15, 0, 0], head: [20, 0, 0], armL: [-120, 0, 30], foreL: [-110, 0, 0] })]] },
   // Round 7: hands lead (forearms come up in front of the chest first, then open out beside the head), not the elbows
-  hands_up: { layer: 'upper', hold: true, dur: 0.5, fade: 0.15, poses: [[0, {}], [0.45, sym({ armL: [-34, 0, 12], foreL: [-82, 0, 26], handL: [-20, 0, 0], head: [-2, 0, 0] })], [1, sym({ armL: [-35, 0, 34], foreL: [0, 0, 105], handL: [-10, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
+  // Round 9 (owner: people "put their hands up weirdly" - it read as a shrug): upper arms out level with the shoulders, forearms
+  // straight up, open hands by the head
+  hands_up: { layer: 'upper', hold: true, dur: 0.5, fade: 0.15, poses: [[0, {}], [0.45, sym({ armL: [-20, 0, 55], foreL: [-30, 0, 60], handL: [-10, 0, 0], head: [-2, 0, 0] })], [1, sym({ armL: [-14, 0, 84], foreL: [-6, 0, 92], handL: [-6, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
   // fist-fight stance: fists up by the chin, elbows tucked, slight forward lean
   guard: { layer: 'upper', hold: true, dur: 0.25, fade: 0.15, poses: [[0, {}], [1, sym({ armL: [-38, 0, 12], foreL: [-118, 0, 0], head: [6, 0, 0], chest: [8, 0, 0] })]] },
   // covering up: forearms in front of the face

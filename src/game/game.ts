@@ -455,6 +455,17 @@ export class Game {
       this.renderer.render(); this.pop.remove(cop);
     } catch { /* warm-up only */ }
     for (let i = 0; i < 30; i++) this.fixedUpdate(1 / 60);
+    this.warmShaders();
+  }
+  /**
+   * Round 9 (Mac perf): compiles every material in the scene, hidden ones included (store interiors, light pools, gore,
+   * far LODs), behind the loading screen. A program first compiled mid-game is a visible hitch on Macs (slow Metal compiles).
+   */
+  warmShaders() {
+    const hidden: THREE.Object3D[] = [];
+    this.renderer.scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    try { this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera); } catch { /* warm-up only */ }
+    for (const o of hidden) o.visible = false;
   }
   /** Enter the nearest vehicle (walk to the door; carjacking if occupied) or get out of the current one. */
   toggleVehicle() {
