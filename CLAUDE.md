@@ -1,8 +1,8 @@
 # Meridian Afterglow — project map (read this first; don't re-explore the tree)
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
-Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/tender-turing-bkf701.
-Current brief: docs/BRIEF8.md, plan docs/ROUND8.md (earlier: BRIEF7..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/game-polish-balance-pu1cvc.
+Current brief: docs/BRIEF9.md, plan docs/ROUND9.md (earlier: BRIEF8..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Owner (21 Nov): bugs the owner reports are fixed by the lead personally (no subagents for those); measure with a headless probe first.
