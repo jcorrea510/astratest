@@ -11,6 +11,7 @@
  */
 import type { Vec3Like } from '../ui/contracts';
 import { type BankSpec, type Kit, makeKit, bq, gain, impulseResponse, ceilingCurve, openAirResponse, growBank } from './dsp';
+import { gunSampleCount } from './gunSamples';
 import { ALL_META, type Acoustics, type SfxKey, allBanks, renderSfx } from './sfx';
 import { VoicePool } from './voicepool';
 import { CULL_DISTANCE, MAX_DISTANCE, REF_DISTANCE, ROLLOFF, SPEED_OF_SOUND, airCutoff, distance, echoSend, inverseGain, isFiniteVec } from './spatial';
@@ -125,7 +126,11 @@ export class AudioCore {
 
   /** Renders one pending procedural sample variant (call from idle time); returns false when everything is warm. */
   warmStep(): boolean {
-    while (this.warmQ.length) { if (growBank(this.kit, this.warmQ[0])) return true; this.warmQ.shift(); }
+    while (this.warmQ.length) {
+      // recorded gunshots replace the synthesised ones: no point rendering those variants once the takes are decoded
+      if (/^gun(Far)?:/.test(this.warmQ[0].key) && gunSampleCount(this.kit) > 0) { this.warmQ.shift(); continue; }
+      if (growBank(this.kit, this.warmQ[0])) return true; this.warmQ.shift();
+    }
     return false;
   }
   /** Renders every procedural sample now (offline rendering / tests). */

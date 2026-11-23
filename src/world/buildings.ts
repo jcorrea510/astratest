@@ -140,6 +140,17 @@ function streetBuildingBlock(ctx: BuildCtx, s: StreetBuildingSpec) {
   } else if (s.cornice === 'bands') {
     for (let f = 1; f <= s.floors; f++) pt(0, s.base + s.groundH + f * s.floorH - 0.05, hd + 0.06, s.w + 0.04, 0.16, 0.12, tc, T_PAINT);
   }
+  // R9-W: quoin strips at the front corners and a raised centre parapet / pediment on the older cornice styles
+  if ((s.cornice === 'heavy' || s.cornice === 'simple') && s.mat !== 5 && s.floors >= 2) {
+    const qh = top - s.base - s.groundH;
+    for (const sx of [-1, 1]) if (s.exposed[sx === 1 ? 1 : 3] || s.w > 9) pt(sx * (hw - 0.17), s.base + s.groundH + qh / 2, hd + 0.05, 0.34, qh, 0.12, tc, T_STONE);
+    if (s.w >= 7 && r.chance(0.45)) {
+      const pw = Math.min(s.w * 0.4, 6);
+      pt(0, top + 0.6, hd - 0.15, pw, 1.0, 0.3, tc, T_STONE);
+      pt(0, top + 1.18, hd - 0.15, pw + 0.3, 0.14, 0.42, tc, T_STONE);
+      pt(0, top + 1.5, hd - 0.15, pw * 0.4, 0.5, 0.3, tc, T_STONE);
+    }
+  }
   // belt course over the ground floor
   pt(0, s.base + s.groundH - 0.05, hd + 0.08, s.w, 0.28, 0.16, tc, T_STONE);
   // window sills on the front (and exposed sides)
@@ -315,7 +326,7 @@ export function tower(ctx: BuildCtx, t: TowerSpec) {
   // shaft with setbacks
   const inset = r.range(1.0, 2.5);
   let w = t.w - inset * 2, d = t.d - inset * 2, y = t.base + podiumH;
-  const tiers = t.height > 70 ? r.int(1, 3) : 1;
+  const tiers = t.height > 70 ? r.int(1, 3) : t.height > 38 ? r.int(1, 2) : 1;
   const floorH = 3.7;
   for (let k = 0; k < tiers; k++) {
     const yTop = k === tiers - 1 ? t.base + t.height : y + (t.base + t.height - y) * r.range(0.45, 0.65);
@@ -326,9 +337,35 @@ export function tower(ctx: BuildCtx, t: TowerSpec) {
         ? { kind: 2, seed: seed + k, cellW: 4.5, cellH: floorH, winW: 4.1, winH: 1.9, sill: 1.0, mat: 2, originV: y - t.base, baseY: t.base, lit: r.range(0.35, 0.6), floors }
         : { kind: 2, seed: seed + k, cellW: 2.2, cellH: floorH, winW: 1.3, winH: 2.2, sill: 0.7, mat: 3, originV: y - t.base, baseY: t.base, lit: r.range(0.3, 0.55), floors };
     const col = style === 'glass' ? tint : stone;
-    fb.box(t.cx, t.cz, w, d, y, yTop, yaw, col, [spec], { ...ROOF, seed: seed + 11 }, C('#5d5a57'));
+    // R9-W: stone / ribbon shafts sometimes get notched corners (two overlapping slabs: a cross-shaped plan, a real skyline silhouette)
+    const notch = style !== 'glass' && w > 14 && d > 14 && r.chance(0.4);
+    const rf = { ...ROOF, seed: seed + 11 }, rc = C('#5d5a57');
+    if (notch) { fb.box(t.cx, t.cz, w, d * 0.7, y, yTop, yaw, col, [spec], rf, rc); fb.box(t.cx, t.cz, w * 0.7, d, y, yTop, yaw, col, [spec], rf, rc); }
+    else fb.box(t.cx, t.cz, w, d, y, yTop, yaw, col, [spec], rf, rc);
     // crown band / spandrel at the top of each tier
-    fb.box(t.cx, t.cz, w + 0.3, d + 0.3, yTop - 0.2, yTop + 1.4, yaw, style === 'glass' ? C('#8d9294') : stone, [SOLID(7, seed, t.base)], { ...ROOF, seed: seed + 13 }, C('#5d5a57'));
+    const crownC = style === 'glass' ? C('#8d9294') : stone, crownS = [SOLID(7, seed, t.base)], crownR = { ...ROOF, seed: seed + 13 };
+    if (notch) { fb.box(t.cx, t.cz, w + 0.3, d * 0.7 + 0.3, yTop - 0.2, yTop + 1.4, yaw, crownC, crownS, crownR, rc); fb.box(t.cx, t.cz, w * 0.7 + 0.3, d + 0.3, yTop - 0.2, yTop + 1.4, yaw, crownC, crownS, crownR, rc); }
+    else fb.box(t.cx, t.cz, w + 0.3, d + 0.3, yTop - 0.2, yTop + 1.4, yaw, crownC, crownS, crownR, rc);
+    // setback terrace parapet, a belt course every ~8 floors, corner piers and (stone) pilasters up the shaft
+    { const pc = style === 'glass' ? C('#9a9fa1') : stone, pw = notch ? w * 0.7 : w, pd = notch ? d * 0.7 : d;
+      const edge = (lx: number, lz: number, sx: number, sz: number, yy: number, hh: number, cc: THREE.Color) => { const q = L(lx, lz); tb.box(q.x, yy, q.z, sx, hh, sz, yaw, cc, T_STONE); };
+      if (k < tiers - 1) { // parapet ring around the terrace the next tier stands on
+        edge(0, d / 2 + 0.05, w + 0.3, 0.2, yTop + 1.4 + 0.4, 0.8, pc); edge(0, -d / 2 - 0.05, w + 0.3, 0.2, yTop + 1.4 + 0.4, 0.8, pc);
+        edge(w / 2 + 0.05, 0, 0.2, d + 0.3, yTop + 1.4 + 0.4, 0.8, pc); edge(-w / 2 - 0.05, 0, 0.2, d + 0.3, yTop + 1.4 + 0.4, 0.8, pc);
+      }
+      for (let by = y + floorH * 8; by < yTop - 3; by += floorH * 8) { // belt course
+        edge(0, pd / 2 + 0.12, pw + 0.3, 0.36, by, 0.5, pc); edge(0, -pd / 2 - 0.12, pw + 0.3, 0.36, by, 0.5, pc);
+        edge(pw / 2 + 0.12, 0, 0.36, pd + 0.3, by, 0.5, pc); edge(-pw / 2 - 0.12, 0, 0.36, pd + 0.3, by, 0.5, pc);
+      }
+      if (style !== 'glass' && !notch) {
+        const cp = C('#b8b2a4');
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) edge(sx * (w / 2 + 0.05), sz * (d / 2 + 0.05), 0.7, 0.7, (y + yTop) / 2, yTop - y, cp);
+        if (style === 'stone') for (let i = 0; i < 4; i++) {
+          const len = i % 2 === 0 ? w : d, off = (i % 2 === 0 ? d : w) / 2, ang = yaw + i * Math.PI / 2, n = Math.floor(len / 4.4);
+          for (let j = 1; j < n; j++) { const lat = -len / 2 + (len / n) * j; tb.box(t.cx + Math.sin(ang) * (off + 0.08) + Math.cos(ang) * lat, (y + yTop) / 2, t.cz + Math.cos(ang) * (off + 0.08) - Math.sin(ang) * lat, 0.4, yTop - y, 0.3, ang, cp, T_STONE); }
+        }
+      }
+    }
     if (style === 'glass' && r.chance(0.45)) {
       // vertical fins
       for (let i = 0; i < 4; i++) {
@@ -356,7 +393,14 @@ export function tower(ctx: BuildCtx, t: TowerSpec) {
         ctx.physics.addStaticBox(hp.x, yTop + 1.45, hp.z, R * 0.7, 0.1, R * 0.7, yaw);
       } else {
         const pw = w * r.range(0.35, 0.55), pd = d * r.range(0.35, 0.55);
-        fb.box(t.cx, t.cz, pw, pd, yTop + 1.4, yTop + 1.4 + r.range(3, 6), yaw, C('#7c8084'), [SOLID(7, seed, t.base)], { ...ROOF, seed: seed + 17 }, C('#555'));
+        const ph = r.range(3, 6);
+        fb.box(t.cx, t.cz, pw, pd, yTop + 1.4, yTop + 1.4 + ph, yaw, C('#7c8084'), [SOLID(7, seed, t.base)], { ...ROOF, seed: seed + 17 }, C('#555'));
+        if (t.height > 55 && r.chance(0.55)) { // R9-W: stepped crown + spire (wedding-cake top)
+          const s1 = Math.min(pw, pd) * 0.7, y1 = yTop + 1.4 + ph;
+          fb.box(t.cx, t.cz, s1, s1, y1, y1 + 3, yaw, stone, [SOLID(3, seed, t.base)], { ...ROOF, seed: seed + 19 }, C('#555'));
+          tb.cyl(t.cx, y1 + 3, t.cz, 0.35, 0.05, r.range(7, 12), 6, C('#c9ccce'), T_METAL);
+          tb.sphere(t.cx, y1 + 3 + 0.2, t.cz, 0.2, C('#ff3020'), T_GLOW(2));
+        }
         rooftop(ctx, tb, fb, t.cx, t.cz, w - 2, d - 2, yaw, yTop + 1.4, r.int(2, 4), r, 2, stone);
         if (t.height > 90 && r.chance(0.6)) { tb.cyl(t.cx + pw * 0.3, yTop + 1.4, t.cz, 0.3, 0.06, r.range(12, 22), 6, C('#b9bcbe'), T_METAL); }
         if (r.chance(0.3) && w > 12) ctx.billboards.push({ x: t.cx, y: yTop + 1.4, z: t.cz - d / 4, yaw: yaw + r.int(0, 3) * Math.PI / 2, idx: r.int(0, 7), w: Math.min(14, w * 0.8) });

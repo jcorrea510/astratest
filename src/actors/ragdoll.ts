@@ -12,6 +12,8 @@ import type { Human } from './human';
 import type { Pose } from './actions';
 import { sym } from './actions';
 
+/** Round 9: tumble spin cap (rad/s), waist fold where the spring starts, max drawn spine bend (rad) */
+export const MAX_SPIN = 11, FOLD = 1.05, BEND_MAX = 1.3, ROOT_STEP = 0.38;
 const LEG = { hh: 0.27, r: 0.15, cy: 0.42, mass: 32 };
 const TOR = { hh: 0.26, r: 0.19, cy: 1.33, mass: 42 };
 const WAIST_Y = 0.86;
@@ -52,7 +54,7 @@ export class Ragdoll {
     const lp = at(LEG.cy, new THREE.Vector3()), tp = at(TOR.cy, new THREE.Vector3());
     const mk = (p: THREE.Vector3, hh: number, r: number, mass: number) => {
       const rb = w.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setRotation({ x: R.x, y: R.y, z: R.z, w: R.w })
-        .setLinvel(o.vx, o.vy, o.vz).setAngvel({ x: 0, y: o.spin ?? 0, z: 0 }).setLinearDamping(0.12).setAngularDamping(1.6).setCcdEnabled(true).setCanSleep(true));
+        .setLinvel(o.vx, o.vy, o.vz).setAngvel({ x: 0, y: o.spin ?? 0, z: 0 }).setLinearDamping(0.12).setAngularDamping(2.4).setCcdEnabled(true).setCanSleep(true));
       w.createCollider(RAPIER.ColliderDesc.capsule(hh * s, r * s).setMass(mass).setFriction(0.9).setRestitution(0.06)
         .setCollisionGroups(groups(G_RAG, G_STATIC | G_PROP | sys.vragMask)), rb);
       return rb;
@@ -69,8 +71,9 @@ export class Ragdoll {
     if (this.frozen) return;
     const lp = this.legs.translation(), lq = this.legs.rotation(), tq = this.torso.rotation();
     _lq.set(lq.x, lq.y, lq.z, lq.w); _pq.set(tq.x, tq.y, tq.z, tq.w);
-    this.rootQuat.copy(_lq);
-    this.rootPos.set(0, -LEG.cy * this.s, 0).applyQuaternion(_lq).add(_v.set(lp.x, lp.y, lp.z));
+    // Round 9: the drawn body turns at most ~22 degrees per tick (a contact impulse could snap it 50+ degrees in one step)
+    { const a = this.rootQuat.angleTo(_lq); if (a > ROOT_STEP && this.t > 0.02) this.rootQuat.rotateTowards(_lq, ROOT_STEP); else this.rootQuat.copy(_lq); }
+    this.rootPos.set(0, -LEG.cy * this.s, 0).applyQuaternion(this.rootQuat).add(_v.set(lp.x, lp.y, lp.z));
     this.bend.copy(_pq).multiply(_q.copy(_lq).invert()); // torso * legs^-1 (world delta)
     const wp = _v2.set(0, (WAIST_Y - LEG.cy) * this.s, 0).applyQuaternion(_lq).add(_v.set(lp.x, lp.y, lp.z));
     const c = this.char; c.pos.set(wp.x, Math.max(-50, Math.min(this.rootPos.y, wp.y - 0.15)), wp.z); c.vel.set(0, 0, 0);
@@ -82,7 +85,9 @@ export class Ragdoll {
     h.applyPose(LIMP, 1);
     h.root.updateMatrixWorld(true);
     const sp = h.spine; if (!sp.parent || !sp.parent.parent) return;
-    const part = _q2.copy(_I.identity()).slerp(this.bend, 1 / 3);
+    // Round 9: the drawn spine never folds past ~75 degrees (the bodies can briefly, mid-impact)
+    const ba = 2 * Math.acos(Math.min(1, Math.abs(this.bend.w)));
+    const part = _q2.copy(_I.identity()).slerp(this.bend, (ba > BEND_MAX ? BEND_MAX / ba : 1) / 3);
     for (const b of [sp.parent.parent, sp.parent, sp]) {
       b.parent!.getWorldQuaternion(_pq);
       // local' = (P^-1 * D * P) * local
@@ -128,13 +133,36 @@ export class RagdollSystem {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const r = this.list[i], c = r.char;
       if (r.frozen) { if (!c.ragdoll) this.list.splice(i, 1); continue; }
-      r.t += dt; r.sync(); r.checkGlass(); this.unsink(r, dt);
+      r.t += dt; this.tame(r, dt); r.sync(); r.checkGlass(); this.unsink(r, dt);
       const sleeping = r.legs.isSleeping() && r.torso.isSleeping();
       if (r.speed < 0.5 || sleeping) r.still += dt; else r.still = 0;
       if (r.o.getUp && c.alive && r.t > 1.0 && r.still > 0.6) { this.release(r); this.list.splice(i, 1); continue; }
       if (r.o.getUp && !c.alive) r.o.getUp = false;
       if (!r.o.getUp && r.t > 30 && r.still > 2) r.freeze();
       if (c.isDisposed) { r.freeze(); this.list.splice(i, 1); }
+    }
+  }
+  /**
+   * Round 9 (owner: hit pedestrians "start glitching everywhere"): a 45 mph hit spun the bodies at ~40 rad/s and folded the
+   * torso 180 degrees over the legs (the waist joint has no limits). Spin is capped at a human tumble rate and a waist
+   * spring pulls the torso back toward the legs once the fold passes ~60 degrees.
+   */
+  private tame(r: Ragdoll, dt: number) {
+    for (const b of [r.legs, r.torso]) {
+      const w = b.angvel(), m = Math.hypot(w.x, w.y, w.z);
+      if (m > MAX_SPIN) { const k = MAX_SPIN / m; b.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true); }
+    }
+    const lq = r.legs.rotation(), tq = r.torso.rotation();
+    _lq.set(lq.x, lq.y, lq.z, lq.w); _pq.set(tq.x, tq.y, tq.z, tq.w);
+    const rel = _q.copy(_pq).multiply(_q2.copy(_lq).invert()); // world delta legs -> torso
+    if (rel.w < 0) { rel.x = -rel.x; rel.y = -rel.y; rel.z = -rel.z; rel.w = -rel.w; }
+    const ang = 2 * Math.acos(Math.min(1, rel.w));
+    if (ang > FOLD) {
+      const sn = Math.sqrt(Math.max(1e-6, 1 - rel.w * rel.w)), ax = rel.x / sn, ay = rel.y / sn, az = rel.z / sn;
+      const k = Math.min(1, (ang - FOLD) / 0.6) * 60 * dt; // impulse-ish: angular speed change per step (rad/s)
+      const tw = r.torso.angvel(), lw = r.legs.angvel();
+      r.torso.setAngvel({ x: tw.x - ax * k, y: tw.y - ay * k, z: tw.z - az * k }, true);
+      r.legs.setAngvel({ x: lw.x + ax * k * 0.6, y: lw.y + ay * k * 0.6, z: lw.z + az * k * 0.6 }, true);
     }
   }
   /**

@@ -5,6 +5,7 @@
 import type { SfxName, Vec3Like } from '../ui/contracts';
 import { type Kit, type BankSpec, bq, gain, noise, osc, perc, ahr, glide, sample, variant, playBuf } from './dsp';
 import { EXTRA2_RECIPES, type Extra2Sfx } from './sfx2';
+import { gunSampleBuf } from './gunSamples';
 import { GUNS, renderGun, renderFoley, type FoleyName, type GunSound } from './gunsynth';
 
 export interface SfxArgs { kit: Kit; out: AudioNode; t: number; /** pitch multiplier */ p: number }
@@ -159,8 +160,14 @@ const ACTION: Partial<Record<GunSound, [FoleyName, number, number]>> = {
  */
 function gunshot(a: SfxArgs, g: GunSound, far = false): number {
   const { kit: k, out, t, p } = a;
-  const eq = bq(k.ctx, 'peaking', R(k, 1800, 4200), 0.9); eq.gain.value = R(k, -3, 2); eq.connect(out);
-  let end = playBuf(k, eq, variant(k, gunSpec(g, far)), t, p, R(k, 0.9, 1));
+  const rec = gunSampleBuf(k, g, far); let end: number;
+  if (rec) {
+    // recorded take: +-4 % pitch and a little level variation so automatic fire never repeats exactly
+    end = playBuf(k, out, rec.buf, t, p * rec.rate * R(k, 0.96, 1.04), rec.gain * R(k, 0.85, 1));
+  } else {
+    const eq = bq(k.ctx, 'peaking', R(k, 1800, 4200), 0.9); eq.gain.value = R(k, -3, 2); eq.connect(out);
+    end = playBuf(k, eq, variant(k, gunSpec(g, far)), t, p, R(k, 0.9, 1));
+  }
   const act = ACTION[g];
   if (act && !far) end = mx(end, fol(a, act[0], act[1] * R(k, 0.96, 1.06), act[2] * R(k, 0.8, 1)));
   return end;

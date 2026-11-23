@@ -144,7 +144,7 @@ export function diagConnectors(inter: Intersection, ins: number[], outs: number[
     for (let t = 0; t <= 8; t++) { const u = t / 8, v = 1 - u; pts.push({ x: v * v * v * p0.x + 3 * v * v * u * p1.x + 3 * v * u * u * p2.x + u * u * u * p3.x, z: v * v * v * p0.z + 3 * v * v * u * p1.z + 3 * v * u * u * p2.z + u * u * u * p3.z }); }
     const { length, cum } = polyLength(pts);
     const straight = ta.x * tb.x + ta.z * tb.z > 0.98;
-    const c: Lane = { id: lanes.length, points: pts, length, cum, next: [lo], connector: true, intersection: inter.id, axis: a.axis, speed: straight ? a.speed : 7.5, lane: 0, lanes: 1, roadId: -1 };
+    const c: Lane = { id: lanes.length, points: pts, length, cum, next: [lo], connector: true, intersection: inter.id, axis: a.axis, speed: straight ? a.speed : 6.5, lane: 0, lanes: 1, roadId: -1 };
     lanes.push(c); a.next.push(c.id);
   }
 }

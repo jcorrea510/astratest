@@ -102,7 +102,11 @@ export function halfWidth(lanes: number): number { return lanes * LANE_WIDTH + 0
 
 export interface V2 { x: number; z: number }
 export interface Road { id: number; axis: 'x' | 'z'; index: number; coord: number; from: number; to: number; lanes: 1 | 2; half: number; name: string }
-export interface Intersection { id: number; ix: number; iz: number; x: number; z: number; halfX: number; halfZ: number; offset: number; signalized: boolean }
+export interface Intersection { id: number; ix: number; iz: number; x: number; z: number; halfX: number; halfZ: number; offset: number; signalized: boolean; /** Round 9: Broadway crosses here: a third signal phase for the diagonal */ diag?: boolean }
+/** Signal group: 'z' north/south road, 'x' east/west road, 'd' Broadway's diagonal (only at diag junctions). */
+export type SigAxis = 'x' | 'z' | 'd';
+/** The signal group a lane is controlled by. */
+export function laneSigAxis(lane: { axis: 'x' | 'z'; diag?: boolean }): SigAxis { return lane.diag ? 'd' : lane.axis; }
 export interface Block { id: number; ix: number; iz: number; x0: number; x1: number; z0: number; z1: number; district: District; kind: 'buildings' | 'park' | 'plaza' | 'docks'; /** cut diagonally by Broadway into two triangles */ diag?: boolean }
 export type LotKind = 'brownstone' | 'pastel' | 'tower' | 'midrise' | 'warehouse' | 'house';
 export interface Lot { id: number; blockId: number; /** lots outside the grid (blockId -1) carry their own district; street=false means no street frontage */ district?: District; street?: boolean; x: number; z: number; w: number; d: number; rot: number; kind: LotKind; height: number; seed: number }
@@ -141,27 +145,38 @@ export function districtFor(ix: number, iz: number): District {
   return 'midtown';
 }
 
+/**
+ * Round 9 (owner: AI cars turned "crazy recklessly and quickly"): speed through a turn of radius R (m) at a calm ~2.4 m/s²
+ * of lateral acceleration, like a real driver in town: a tight right turn ~4 m/s (9 mph), a wide left ~6 m/s. Pure.
+ */
+export function turnSpeed(R: number): number { return Math.max(3.6, Math.min(8, Math.sqrt(2.4 * Math.max(0, R)))); }
 export const SIGNAL_CYCLE = [13, 3, 1.5, 13, 3, 1.5];
 export const SIGNAL_PERIOD = SIGNAL_CYCLE.reduce((a, b) => a + b, 0);
-/** State of the traffic signal for vehicles travelling along `axis` ('z' = north/south road). */
-export function signalState(inter: Intersection, axis: 'x' | 'z', time: number): 'green' | 'yellow' | 'red' {
+/** Round 9: junctions Broadway cuts through get a third phase (the diagonal goes while both grid roads hold at red). */
+export const DIAG_CYCLE = [13, 3, 1.5, 13, 3, 1.5, 10, 3, 1.5];
+export const DIAG_PERIOD = DIAG_CYCLE.reduce((a, b) => a + b, 0);
+/** Current signal group (0 = z, 1 = x, 2 = diagonal), step in it (0 green, 1 amber, 2 all-red) and seconds left in that step. */
+export function signalPhase(inter: Intersection, time: number): { group: number; step: number; left: number } {
+  const cyc = inter.diag ? DIAG_CYCLE : SIGNAL_CYCLE, per = inter.diag ? DIAG_PERIOD : SIGNAL_PERIOD;
+  let t = (((time + inter.offset) % per) + per) % per, phase = 0;
+  while (phase < cyc.length - 1 && t >= cyc[phase]) { t -= cyc[phase]; phase++; }
+  return { group: Math.floor(phase / 3), step: phase % 3, left: cyc[phase] - t };
+}
+const groupOf = (axis: SigAxis) => axis === 'z' ? 0 : axis === 'x' ? 1 : 2;
+/** State of the traffic signal for vehicles travelling along `axis` ('z' = north/south road, 'd' = Broadway). */
+export function signalState(inter: Intersection, axis: SigAxis, time: number): 'green' | 'yellow' | 'red' {
   if (!inter.signalized) return 'green';
-  let t = (((time + inter.offset) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD;
-  let phase = 0;
-  while (t >= SIGNAL_CYCLE[phase]) { t -= SIGNAL_CYCLE[phase]; phase++; }
-  const nsPhase = phase < 3;
-  const mine = axis === 'z' ? nsPhase : !nsPhase;
-  const p = phase % 3;
-  if (!mine || p === 2) return 'red';
-  return p === 0 ? 'green' : 'yellow';
+  if (axis === 'd' && !inter.diag) axis = 'z';
+  const ph = signalPhase(inter, time);
+  if (ph.group !== groupOf(axis) || ph.step === 2) return 'red';
+  return ph.step === 0 ? 'green' : 'yellow';
 }
 /** Seconds until the amber for `axis` ends (Infinity unless it is amber now). */
-export function yellowLeft(inter: Intersection, axis: 'x' | 'z', time: number): number {
+export function yellowLeft(inter: Intersection, axis: SigAxis, time: number): number {
   if (!inter.signalized) return Infinity;
-  let t = (((time + inter.offset) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD, phase = 0;
-  while (t >= SIGNAL_CYCLE[phase]) { t -= SIGNAL_CYCLE[phase]; phase++; }
-  const mine = axis === 'z' ? phase < 3 : phase >= 3;
-  return mine && phase % 3 === 1 ? SIGNAL_CYCLE[phase] - t : Infinity;
+  if (axis === 'd' && !inter.diag) axis = 'z';
+  const ph = signalPhase(inter, time);
+  return ph.group === groupOf(axis) && ph.step === 1 ? ph.left : Infinity;
 }
 /** Seconds of each green phase during which the walking person shows (nobody should start crossing after that). */
 export const PED_WALK_TIME = 5;
@@ -173,13 +188,10 @@ export type PedSignal = 'walk' | 'flash' | 'dont';
  */
 export function pedSignal(inter: Intersection, roadAxis: 'x' | 'z', time: number): PedSignal {
   if (!inter.signalized) return 'walk';
-  const other = roadAxis === 'x' ? 'z' : 'x';
-  let t = (((time + inter.offset) % SIGNAL_PERIOD) + SIGNAL_PERIOD) % SIGNAL_PERIOD;
-  let phase = 0;
-  while (t >= SIGNAL_CYCLE[phase]) { t -= SIGNAL_CYCLE[phase]; phase++; }
-  const p = phase % 3, otherPhase = other === 'z' ? phase < 3 : phase >= 3;
-  if (!otherPhase || p === 2) return 'dont';
-  return p === 0 && t < PED_WALK_TIME ? 'walk' : 'flash';
+  const ph = signalPhase(inter, time), other = roadAxis === 'x' ? 0 : 1; // walk with the cross street's green
+  if (ph.group !== other || ph.step === 2) return 'dont';
+  const cyc = inter.diag ? DIAG_CYCLE : SIGNAL_CYCLE, intoGreen = cyc[other * 3] - (ph.step === 0 ? ph.left : 0);
+  return ph.step === 0 && intoGreen < PED_WALK_TIME ? 'walk' : 'flash';
 }
 /** Pedestrians may START crossing a road running along `roadAxis` only while the walk sign shows. */
 export function pedestrianMayCross(inter: Intersection, roadAxis: 'x' | 'z', time: number): boolean {
@@ -357,6 +369,7 @@ export function generateCity(seed = 1977): CityMap {
   }
   const paths = buildExpansion(intersections, interGrid, lanes, push);
   addBroadwayLanes(interGrid, lanes, paths, push, polyLength);
+  for (let i = BROADWAY.first; i <= BROADWAY.last; i++) { const I = interGrid[i]?.[i]; if (I) I.diag = true; }
   // connectors
   for (const inter of intersections) {
     const ins = laneEnds.get(`${inter.id}:in`) ?? [];
@@ -396,7 +409,8 @@ export function generateCity(seed = 1977): CityMap {
           }
         }
         const { length, cum } = polyLength(pts);
-        const c: Lane = { id: lanes.length, points: pts, length, cum, next: [lo], connector: true, intersection: inter.id, axis: a.axis, speed: straight ? a.speed : 7.5, lane: 0, lanes: 1, roadId: -1 };
+        const R = straight ? Infinity : Math.min(Math.hypot(ae.x - pts[4].x, ae.z - pts[4].z), Math.hypot(bs.x - pts[4].x, bs.z - pts[4].z)) * 1.2;
+        const c: Lane = { id: lanes.length, points: pts, length, cum, next: [lo], connector: true, intersection: inter.id, axis: a.axis, speed: straight ? a.speed : turnSpeed(R), lane: 0, lanes: 1, roadId: -1 };
         if (a.ys || b.ys) { const y0 = a.ys ? a.ys[a.ys.length - 1] : 0, y1 = b.ys ? b.ys[0] : 0; c.ys = pts.map((_, k) => y0 + (y1 - y0) * (k / Math.max(1, pts.length - 1))); }
         lanes.push(c);
         a.next.push(c.id);

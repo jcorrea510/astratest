@@ -433,7 +433,7 @@ export class Vehicle {
     const sg = lit && this.signal !== 0;
     u.uInd.value.set(hz || (sg && this.signal > 0) || (steerBlink && this.input.steer > 0) ? blink : 0, hz || (sg && this.signal < 0) || (steerBlink && this.input.steer < 0) ? blink : 0);
     const bar = barStrobe(time);
-    u.uBar.value.set(this.barOn ? 0.15 + 5.85 * bar[0] : 0.15, this.barOn ? 0.15 + 6.85 * bar[1] : 0.15);
+    u.uBar.value.set(this.barOn ? 0.15 + 11.85 * bar[0] : 0.15, this.barOn ? 0.15 + 13.85 * bar[1] : 0.15); // Round 9: brighter
     u.uLight.value = this.destroyed ? 0 : Math.max(0.6, night * 2.5);
     u.uDirt.value = Math.min(1, this.baseDirt + (1 - this.health / spec.health) * 0.8);
     if (this.glassMesh) this.glassMesh.visible = !this.destroyed;

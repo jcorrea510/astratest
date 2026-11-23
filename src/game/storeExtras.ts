@@ -13,7 +13,7 @@ import type { Kiosk } from './robbery';
 
 export interface ExState {
   /** seconds the clerk stays knocked out, last health seen */
-  koT: number; hp: number;
+  koT: number; hp: number; /** Round 9: seconds since E was last held at the till (meter pauses) */ regIdle?: number;
   /** panic was started by a raised gun only (calms down again), game time of the last shot at that moment */
   aimOnly: boolean; calmT: number; shot0: number;
   /** register robbing (seconds, 0..1), loot grab sound timer */
@@ -152,7 +152,7 @@ export class StoreExtras {
     // staffed by a calm, unhurt clerk: hold them up instead. Round 7: a shot / cowering clerk (or a store in panic) no longer guards the till
     const c = k.clerk; if (c?.alive && k.ex.koT <= 0 && k.panicT < 0 && c.char.health >= c.char.maxHealth) return false;
     const l = k.frame.toLocal(g.player.pos);
-    return Math.abs(g.player.pos.y - k.clerkPos.y) < 2.2 && Math.abs(l.x - sh.register.lx) < 1.5 && l.z > k.frame.counterZ - 1.8 && l.z < k.frame.counterZ + 1.6;
+    return regReach(l.x - sh.register.lx, l.z - k.frame.counterZ, g.player.pos.y - k.clerkPos.y);
   }
   private register(k: Kiosk, dt: number) {
     const g = this.game, sh = k.shell!, ex = k.ex;
@@ -170,7 +170,13 @@ export class StoreExtras {
         this.ui.toast(`Register emptied: $${amt}`, 'money');
         k.phase = 'closed'; k.reopenAt = g.time + 240; this.holdupDone(k);
       }
-    } else if (k.looting > 0) { k.looting = 0; this.ui.robberyMeter(null); sh.setDrawer(0); sh.setBills(1); }
+    } else if (k.looting > 0) {
+      // Round 9 (owner: manual robbing "only works half the time"): letting go of E for a moment (or a step out of reach)
+      // pauses the meter instead of wiping it; it resets only after 2 s away
+      ex.regIdle = (ex.regIdle ?? 0) + dt;
+      if (ex.regIdle > 2) { k.looting = 0; ex.regIdle = 0; this.ui.robberyMeter(null); sh.setDrawer(0); sh.setBills(1); }
+    }
+    if (can && held) ex.regIdle = 0;
   }
 
   // ---------- jewelry cases ----------
@@ -243,3 +249,6 @@ export class StoreExtras {
 
 /** Round 8: odds that a clerk punched (but not knocked out) fights back with their fists. Pure (tests). */
 export function clerkFightChance(kind: string): number { return kind === 'guns' ? 0.8 : kind === 'bank' || kind === 'jewelry' ? 0.35 : 0.55; }
+
+/** Round 9: the register can be reached from either side of the counter within ~2 m (it used to need a 1.5 m-wide spot). Pure. */
+export function regReach(dx: number, dz: number, dy: number): boolean { return Math.abs(dy) < 2.2 && Math.abs(dx) < 2.1 && dz > -2.0 && dz < 2.2; }

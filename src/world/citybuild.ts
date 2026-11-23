@@ -12,13 +12,15 @@ import { buildExpansion, expansionPads } from './expansion';
 import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
 import { buildQuay } from './quaybuild';
-import { CHANNEL, EAST_SHORE, pathHeightAt, railColumns } from './citymap';
+import { type SigAxis, CHANNEL, EAST_SHORE, pathHeightAt, railColumns } from './citymap';
 import { registerBench } from './benches';
 import { planPark, onLake, LAKE_POOLS } from './parkplan';
 import { signalPosts } from './signals';
 import type { BreakableDef, BreakKind } from '../game/breakables';
 import { buildPedSignals, type PedSignals } from './pedsignals';
 import { buildPrecinct, precinctFootprint } from './precinct';
+import { buildGarages } from './garageBuild';
+import { BAYS, bayRect } from '../game/bays';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
@@ -29,6 +31,8 @@ import {
   asphaltSurface, pavementSurface, grassSurface, sandSurface, buildingMaterial, trimMaterial, signAtlas, billboardAtlas, paintWearTexture, leafTexture, addMacroVariation,
   nightUniform, timeUniform, BRANDS, type Surface,
 } from '../render/materials';
+import { loadSettings } from '../core/settings';
+import { planStreetscape, emitStreetscape, densityFor } from './streetscape';
 import { Chunked, FacadeBuilder, TrimBuilder, SOLID, T_METAL, T_STONE, T_PAINT, T_NIGHTGLOW, T_GLOW } from './builders';
 import {
   type BuildCtx, type Helipad, type SignSpec, type BillboardSpec, streetBuilding, tower, house, warehouse,
@@ -39,7 +43,7 @@ import {
   powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
-export interface SignalHead { inter: number; axis: 'x' | 'z'; lamps: [number, number, number] }
+export interface SignalHead { inter: number; axis: SigAxis; lamps: [number, number, number] }
 export interface CityVisuals {
   root: THREE.Group;
   lampHeads: THREE.Vector3[];
@@ -421,6 +425,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // ---------- Metro Police precinct ----------
   buildPrecinct({ root, physics, trim, helipads, curb: CURB_HEIGHT, nightUniform });
+  buildGarages({ root, physics, trim, curb: CURB_HEIGHT, nightUniform }); // Round 9: Glow Garage + Fuel Stop service bay (drive-in halls)
   // ---------- Freeway, bridge, Vista Drive, airfield, Fort Calder ----------
   const propsX = new ChunkInstancer(300);
   propsX.register('streetlight', streetLightGeo(), trimMaterial());
@@ -449,6 +454,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   bbMat.onBeforeCompile = signMat.onBeforeCompile;
   const bg: THREE.BufferGeometry[] = [];
   const props = new ChunkInstancer(300);
+  const taken: { x: number; z: number }[] = []; const streetTrees: { x: number; z: number }[] = []; let treeSink: { x: number; z: number }[] | null = streetTrees; // R9-W: furniture spots for the streetscape planner
+  { const add0 = props.add.bind(props); props.add = (key, x, y, z, yaw, scale, color) => { taken.push({ x, z }); return add0(key, x, y, z, yaw, scale, color); }; }
   const tmat = trimMaterial();
   props.register('bbframe', billboardFrameGeo(12), tmat);
   const addBillboard = (b: BillboardSpec) => {
@@ -485,7 +492,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   for (let t = 0; t < 4; t++) { const g = treeGeos(100 + t); props.register(`tree${t}`, g.trunk, tmat); props.register(`leaf${t}`, g.leaves, leafMat); }
   for (let t = 0; t < 3; t++) { const g = palmGeos(200 + t); props.register(`palm${t}`, g.trunk, tmat); props.register(`frond${t}`, g.leaves, palmMat); }
   for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat);
-  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { const k = rr.int(0, 3); props.add(`tree${k}`, x, y, z, yaw, s); props.add(`leaf${k}`, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
+  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); props.add(`tree${k}`, x, y, z, yaw, s); props.add(`leaf${k}`, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
   const addPalm = (x: number, y: number, z: number, yaw: number, rr: Rng, collide = true) => { const k = rr.int(0, 2); props.add(`palm${k}`, x, y, z, yaw); props.add(`frond${k}`, x, y, z, yaw); if (collide) physics.addStaticCylinder(x, y + 2, z, 2, 0.25); };
 
   // Kerbside furniture along each block edge: street lights, trees, hydrants, meters, benches, bins, bus stops...
@@ -558,6 +565,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     }
   };
   for (const b of city.blocks) kerb(b);
+  treeSink = null;
+  { const plan = planStreetscape(city, densityFor(loadSettings().quality), taken, streetTrees); emitStreetscape(plan, trim, physics); } // R9-W: sidewalk / road dressing baked into the trim chunks (no extra draw calls)
 
   // Traffic lights: one mast arm per approach on the far-right corner (sidewalk), heads over the lanes facing traffic.
   const signalHeads: SignalHead[] = [];
@@ -633,8 +642,14 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         const x = r.range(ix0 + 4, ix1 - 4), z = r.range(iz0 + 4, iz1 - 4);
         if (merged.some(l => l.blockId === b.id && Math.abs(l.x - x) < l.w / 2 + 3 && Math.abs(l.z - z) < l.d / 2 + 3)) continue;
         if (x < GAS_STATION.x + 25 && x > GAS_STATION.x - 20 && z > GAS_STATION.z - 40 && z < GAS_STATION.z + 16) continue;
+        if (BAYS.some(b => { const r = bayRect(b, 5); return x > r.x0 && x < r.x1 && z > r.z0 - 3 && z < r.z1; })) continue; // garage halls (Round 9)
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), 1.1, r);
         trim.at(x, z).box(x, CURB_HEIGHT + 0.25, z, 2.6, 0.5, 2.6, 0, C('#a8a296'), T_STONE);
+        { // R9-W pocket plaza: round paver inlay around the planter, two facing benches and a bin
+          const tb2 = trim.at(x, z);
+          tb2.cyl(x, CURB_HEIGHT, z, 4.6, 4.6, 0.02, 20, C('#c7c0b2'), T_STONE); tb2.cyl(x, CURB_HEIGHT, z, 3.9, 3.9, 0.03, 20, C('#aaa395'), T_STONE);
+          if (r.chance(0.7)) for (const sg of [1, -1]) { const bz = z + sg * 2.4, by = sg > 0 ? 0 : Math.PI; props.add('bench', x, CURB_HEIGHT, bz, by); registerBench(x, CURB_HEIGHT, bz, by); physics.addStaticBox(x, 0.45, bz, 0.95, 0.45, 0.35); }
+        }
       }
     } else if (b.district === 'hillside') {
       for (let i = 0; i < 14; i++) { const x = r.range(ix0 + 12, ix1 - 12), z = r.range(iz0 + 12, iz1 - 12); addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), r.range(1.0, 1.4), r); }

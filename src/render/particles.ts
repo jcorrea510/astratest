@@ -157,11 +157,23 @@ export class Particles {
    * `floorY`. Always small and quick; gated by the Settings "Blood" toggle in the caller.
    */
   blood(x: number, y: number, z: number, dx: number, dy: number, dz: number, strength = 1) {
-    const S = strength;
-    // Round 8 (owner: "a lot more gore"): a denser exit spray, a puff back out of the entry wound, more heavy drops
-    for (let i = 0; i < Math.round(14 * S); i++) this.normal.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 5) + rnd(-1, 1), vy: dy * rnd(1.5, 4) + rnd(0.2, 1.8), vz: dz * rnd(1.5, 5) + rnd(-1, 1), max: rnd(0.3, 0.6), size: rnd(0.04, 0.08), r: 0.45, g: 0.03, b: 0.04, a: 0.92, drag: 2.2, grav: 7, hold: 0.5 }));
-    for (let i = 0; i < Math.round(5 * S); i++) this.normal.emit(this.p(x, y, z, { vx: -dx * rnd(0.8, 2) + rnd(-0.6, 0.6), vy: rnd(0.2, 1.2), vz: -dz * rnd(0.8, 2) + rnd(-0.6, 0.6), max: rnd(0.2, 0.4), size: rnd(0.03, 0.06), r: 0.42, g: 0.03, b: 0.04, a: 0.9, drag: 2.6, grav: 7, hold: 0.5 }));
-    for (let i = 0; i < Math.round(7 * S); i++) this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1, 3) + rnd(-0.6, 0.6), vy: rnd(0.4, 1.8), vz: dz * rnd(1, 3) + rnd(-0.6, 0.6), max: rnd(0.5, 0.9), size: rnd(0.02, 0.035), r: 0.35, g: 0.02, b: 0.03, a: 1, drag: 0.8, grav: 12, hold: 0.9, floor: Math.max(0, y - 1.7) }));
+    const S = Math.min(3, strength);
+    // Round 9 (owner: "a lot more gore with all guns"): a big exit spray, a puff back out of the entry, many heavy drops, a red mist
+    for (let i = 0; i < Math.round(22 * S); i++) this.normal.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 6) + rnd(-1.2, 1.2), vy: dy * rnd(1.5, 4) + rnd(0.2, 2), vz: dz * rnd(1.5, 6) + rnd(-1.2, 1.2), max: rnd(0.3, 0.7), size: rnd(0.04, 0.09), r: 0.45, g: 0.03, b: 0.04, a: 0.92, drag: 2.2, grav: 7, hold: 0.5 }));
+    for (let i = 0; i < Math.round(7 * S); i++) this.normal.emit(this.p(x, y, z, { vx: -dx * rnd(0.8, 2) + rnd(-0.6, 0.6), vy: rnd(0.2, 1.2), vz: -dz * rnd(0.8, 2) + rnd(-0.6, 0.6), max: rnd(0.2, 0.4), size: rnd(0.03, 0.06), r: 0.42, g: 0.03, b: 0.04, a: 0.9, drag: 2.6, grav: 7, hold: 0.5 }));
+    for (let i = 0; i < Math.round(11 * S); i++) this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1, 4) + rnd(-0.8, 0.8), vy: rnd(0.4, 2.2), vz: dz * rnd(1, 4) + rnd(-0.8, 0.8), max: rnd(0.5, 1), size: rnd(0.02, 0.04), r: 0.35, g: 0.02, b: 0.03, a: 1, drag: 0.8, grav: 12, hold: 0.9, floor: Math.max(0, y - 1.7) }));
+    this.bloodMist(x, y, z, dx, dz, S);
+  }
+  /** A soft, slow red cloud hanging in the air where a round went through. */
+  bloodMist(x: number, y: number, z: number, dx: number, dz: number, S = 1) {
+    for (let i = 0; i < Math.round(3 * S); i++) this.normal.emit(this.p(x, y + rnd(-0.05, 0.1), z, { vx: dx * rnd(0.4, 1.4) + rnd(-0.3, 0.3), vy: rnd(0.1, 0.6), vz: dz * rnd(0.4, 1.4) + rnd(-0.3, 0.3), max: rnd(0.5, 0.9), size: rnd(0.16, 0.3) * (0.7 + 0.3 * S), grow: 1.6, r: 0.4, g: 0.03, b: 0.04, a: 0.4, drag: 2.8, grav: 0.5 }));
+  }
+  /** Chunks of skull / flesh (and brain when `brain`): heavy, tumbling bits that land on the ground. */
+  gibs(x: number, y: number, z: number, dx: number, dy: number, dz: number, n: number, brain = false) {
+    for (let i = 0; i < n; i++) {
+      const b = brain && Math.random() < 0.6;
+      this.debris.emit(this.p(x, y, z, { vx: dx * rnd(1.5, 5) + rnd(-1.5, 1.5), vy: dy * 2 + rnd(1, 4), vz: dz * rnd(1.5, 5) + rnd(-1.5, 1.5), max: rnd(1.2, 2.2), size: rnd(0.035, 0.07), r: b ? 0.62 : 0.5, g: b ? 0.3 : 0.06, b: b ? 0.33 : 0.07, a: 1, drag: 0.5, grav: 12, hold: 0.95, floor: Math.max(0, y - 1.7), bounce: 0.18 }));
+    }
   }
   smoke(x: number, y: number, z: number, dark = 0.5, amount = 1) {
     const c = 0.85 - dark * 0.7;

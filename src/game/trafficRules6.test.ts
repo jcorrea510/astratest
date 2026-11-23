@@ -72,3 +72,10 @@ d2('R6-T spawn at signals', () => {
     e2(safeSpawn('red', 'red', 100)).toBe(true);
   });
 });
+
+import { stopBack, STOP_BAR } from './trafficRules';
+describe('Round 9 stop line', () => {
+  it('a stopped car keeps its nose behind the stop bar, so off the crosswalk (car, bus)', () => {
+    for (const half of [2.2, 2.4, 6]) expect(stopBack(half) - half).toBeGreaterThan(STOP_BAR);
+  });
+});

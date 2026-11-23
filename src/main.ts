@@ -211,7 +211,7 @@ function newGameSetup(mode: GameMode) {
 }
 function applySave(s: SaveData) {
   const g = game!, a = activities!;
-  g.mode = s.mode; a.loadOwned(s.cars, s.milestones, s.robberies);
+  g.mode = s.mode; a.loadOwned(s.cars, s.milestones, s.robberies); a.loadSales(s.garage);
   g.money = s.money; g.player.health = s.health; g.player.armor = s.armor; g.hour = s.hour;
   g.pcombat.inv.load({ weapons: s.weapons, current: s.current, medkits: s.medkits });
   g.pcombat.inv.holster(); // resuming never puts a gun in your hand
@@ -243,6 +243,7 @@ function saveGame(): boolean {
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
     missions: [], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
     pos, hour: g.hour, stats: g.stats, tools: sandbox.tools(),
+    garage: activities.salesState(),
     ...(Object.keys(appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook())).length ? { appearance: appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook()) } : {}),
   });
 }
@@ -332,6 +333,7 @@ function frame(raw: number) {
   const g = game!, a = activities!;
   const input = g.input;
   ui.setInputSource(input.lastSource); setPromptSource(input.lastSource);
+  a.garage.tick(raw); // Round 9: the garage door / camera / menu run in real time, also while the world is frozen
   // pause / map
   if (input.justPressed('pause') && !a.shopIsOpen) { if (g.paused) { /* UI handles Esc in menus */ } else pause(); }
   if (mapByKey && g.paused && !ui.isMenuOpen()) { mapByKey = false; resume(); }

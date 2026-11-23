@@ -25,6 +25,7 @@ import { FullMap } from './fullmap';
 import { Wheel } from './wheel';
 import { Shop } from './shop';
 import { GroomPanel, type GroomConfig, type GroomState } from './groom';
+import { GaragePanel, type GarageView, type GarageHandlers } from './garageMenu';
 import { SettingsPanel } from './settingsPanel';
 import { ControlsPanel } from './controlsPanel';
 import { SandboxPanel } from './sandbox';
@@ -35,7 +36,7 @@ import { createFullscreenButton } from '../core/fullscreen';
 import { padGlyph } from '../core/gamepad';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
-type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'groom' | 'sandbox' | 'credits';
+type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'groom' | 'garage' | 'sandbox' | 'credits';
 interface Layer { id: LayerId; el: HTMLElement; back: () => void; action?: (a: NavAction) => boolean; openedAt: number; prevFocus: Element | null }
 type PauseTab = 'map' | 'sandbox' | 'settings' | 'controls' | 'quit';
 const PAUSE_TABS: { id: PauseTab; label: string }[] = [
@@ -92,6 +93,7 @@ export class UI implements GameUI {
   private wheel: Wheel;
   private shop: Shop;
   private groom: GroomPanel;
+  private garagePanel: GaragePanel;
   private settingsPanel: SettingsPanel;
   private controlsPanel: ControlsPanel;
   private sandbox: SandboxPanel;
@@ -169,6 +171,8 @@ export class UI implements GameUI {
     this.root.appendChild(this.shop.el);
     this.groom = new GroomPanel(sound);
     this.root.appendChild(this.groom.el);
+    this.garagePanel = new GaragePanel(sound);
+    this.root.appendChild(this.garagePanel.el);
     this.settingsPanel = new SettingsPanel({
       get: () => this.settings,
       set: (s, q) => this.applySettings(s, q),
@@ -798,6 +802,13 @@ export class UI implements GameUI {
     this.groom.show({ ...cfg, onClose: () => { this.popLayer('groom', false); cfg.onClose(); } }, state);
     this.pushLayer({ id: 'groom', el: this.groom.el, back: () => this.groom.requestClose() });
   }
+  openGarage(view: GarageView, hs: GarageHandlers): void {
+    if (this.garagePanel.isOpen()) this.popLayer('garage', false);
+    this.garagePanel.show(view, { ...hs, onLeave: () => { this.popLayer('garage', false); hs.onLeave(); } });
+    this.pushLayer({ id: 'garage', el: this.garagePanel.el, back: () => this.garagePanel.requestClose() }, this.garagePanel.el.querySelector<HTMLElement>('[data-act="repair"]') ?? undefined);
+  }
+  updateGarage(view: GarageView): void { if (this.garagePanel.isOpen()) this.garagePanel.update(view); }
+  closeGarage(): void { if (!this.garagePanel.isOpen()) return; this.garagePanel.hide(); this.popLayer('garage'); }
   updateGroom(state: GroomState): void { if (this.groom.isOpen()) this.groom.update(state); }
   closeGroom(): void { if (!this.groom.isOpen()) return; this.groom.hide(); this.popLayer('groom'); }
 
@@ -894,6 +905,7 @@ export class UI implements GameUI {
     if (layer.id === 'map') this.fullmap?.hide();
     if (layer.id === 'shop') this.shop.hide();
     if (layer.id === 'groom') this.groom.hide();
+    if (layer.id === 'garage') this.garagePanel.hide();
     if (layer.id === 'sandbox') this.sandbox.hide();
   }
 

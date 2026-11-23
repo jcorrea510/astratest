@@ -245,8 +245,14 @@ export class Robberies {
   }
   /** True when the camera is pointing at the clerk and the player holds a gun up. */
   private covering(k: Kiosk): boolean {
-    const g = this.game, n = k.clerk; if (!n?.alive || k.ex.koT > 0 || !g.pcombat.armed || !g.pcombat.aiming || g.playerVehicle) return false;
+    const g = this.game, n = k.clerk; if (!n?.alive || k.ex.koT > 0 || !g.pcombat.armed || g.playerVehicle) return false;
     if (this.customerDist(k) > 13) return false;
+    // Round 9 (owner: "holding a gun at store clerks to rob isn't really working"): a drawn gun with the player squarely facing
+    // the clerk from across the counter counts too, not only aiming down the sights
+    if (!g.pcombat.aiming) {
+      const pp = g.player.pos, dx = n.pos.x - pp.x, dz = n.pos.z - pp.z, d = Math.hypot(dx, dz);
+      return d < 7.5 && Math.cos(Math.atan2(dx, dz) - g.player.yaw) > Math.cos(0.6);
+    }
     const cam = g.renderer.camera, dir = cam.getWorldDirection(new THREE.Vector3());
     const to = new THREE.Vector3(n.pos.x, n.pos.y + 1.25, n.pos.z).sub(cam.position);
     const d = to.length(); to.normalize();
@@ -330,7 +336,7 @@ export class Robberies {
       k.pickT -= dt; if (k.pickT <= 0) { k.pickT = 1.3; n.char.human.playOnce('PickUp_Table', 'full', 0.15); g.audio.play('money', { pos: n.pos, volume: 0.4 }); }
     } else {
       k.uncoveredT += dt;
-      if (k.uncoveredT > 2.5 || this.customerDist(k) > 16) { this.end(false, 'You let the clerk off the hook.'); return; }
+      if (k.uncoveredT > 4 || this.customerDist(k) > 16) { this.end(false, 'You let the clerk off the hook.'); return; }
     }
     k.cash = Math.round(this.till(k) * k.progress);
     k.shell?.setDrawer(k.progress > 0.12 ? 1 : 0); k.shell?.setBills(1 - k.progress);

@@ -183,13 +183,14 @@ export class VehiclePhysics {
     if (input.handbrake && absV > 7 && fwdSpeed > 0) { this.drift = 1; if (Math.abs(yawRate) > 0.3) this.driftDir = Math.sign(yawRate); else if (Math.abs(sInRaw) > 0.2) this.driftDir = Math.sign(sInRaw); }
     else if (this.drift > 0) {
       // R6-D: a slide is only kept alive on purpose (throttle or steering into it); hands off it dies in ~0.5 s
-      const intent = thr > 0.3 || Math.abs(sInRaw) > 0.3;
+      // Round 9 (owner: "you slide sideways forever"): only steering keeps a slide alive; straighten the wheel and it ends
+      const intent = Math.abs(sInRaw) > 0.15 || (thr > 0.3 && this.driftLazy < 0.6);
       const holding = Math.abs(this.beta) > 0.1 && planar > 6 && thr > -0.3 && intent;
       this.drift = holding ? Math.min(1, this.drift + dt) : this.drift - dt * 2.5;
       if (this.drift < 0) this.drift = 0;
     }
     // power oversteer (no traction control): a spinning rear that steps out becomes a holdable drift too
-    if (!spec.tc && this.wheelspin > 0.5 && thr > 0.5 && Math.abs(this.beta) > 0.3 && fwdSpeed > 6 && Math.abs(yawRate) > 0.3 && Math.abs(sInRaw) < 0.9 /* R6-D: full-lock cornering is not a drift */) {
+    if (!spec.tc && this.wheelspin > 0.5 && thr > 0.5 && Math.abs(this.beta) > 0.3 && fwdSpeed > 6 && Math.abs(yawRate) > 0.3 && Math.abs(sInRaw) < 0.9 /* R6-D: full-lock cornering is not a drift */ && Math.abs(sInRaw) > 0.2 /* Round 9: a straight wheel lets it gather up */) {
       if (this.drift <= 0) this.driftDir = Math.sign(yawRate);
       this.drift = Math.max(this.drift, 0.6);
     }
@@ -341,18 +342,26 @@ export class VehiclePhysics {
           // hold the drift: keep the slide angle inside a fun window, throttle keeps the speed up
           // steering into the drift deepens it, countersteering straightens it out; the throttle keeps it alive
           const b = this.beta, dir = this.driftDir || -Math.sign(b) || 1;
-          const want = -dir * clamp((0.42 + 0.3 * this.steerIn * dir) * (1 - 0.9 * smooth(0.25, 1.1, this.driftLazy)), 0.04, 0.78);
+          const want = -dir * clamp((0.36 + 0.25 * this.steerIn * dir) * (1 - 0.9 * smooth(0.25, 1.1, this.driftLazy)), 0.04, 0.7);
           const k = thr > 0.2 ? 1 : 0.35;
           const tau = I * (5.5 * (b - want) + 2.4 * dBeta) * k * this.drift;
           body.applyTorqueImpulse({ x: 0, y: clamp(tau, -I * 6, I * 6) * dt, z: 0 }, true);
           if (thr > 0.1) {
-            const vx = lv.x / planar, vz = lv.z / planar, push = spec.mass * 3.2 * thr * Math.min(1, Math.abs(b) * 3) * dt;
+            const vx = lv.x / planar, vz = lv.z / planar, push = spec.mass * 1.6 * thr * Math.min(1, Math.abs(b) * 3) * dt;
             body.applyImpulse({ x: vx * push, y: 0, z: vz * push }, true);
           }
-        } else if (this.hb < 0.1 && Math.abs(this.beta) > 0.12 && Math.abs(this.steerIn) < 0.25 && thr < 0.3 && fwdSpeed > 2) {
+          // Round 9: the sliding rear tyres still bend the path toward where the nose points, so a drift carries the car
+          // round the corner instead of sliding on in a straight line (no energy added: the impulse is across the velocity)
+          {
+            const vx = lv.x / planar, vz = lv.z / planar, fxh = f.x, fzh = f.z;
+            const cr = vx * fzh - vz * fxh, px = -vz * Math.sign(cr), pz = vx * Math.sign(cr); // unit normal to v, toward the nose
+            const turn = Math.min(1.5, Math.abs(b) * 2.6) * planar * spec.mass * this.drift * dt;
+            body.applyImpulse({ x: px * turn, y: 0, z: pz * turn }, true);
+          }
+        } else if (this.hb < 0.1 && Math.abs(this.beta) > 0.12 && Math.abs(this.steerIn) < 0.25 && fwdSpeed > 2) { // Round 9: throttle held too
           // R6-D: sliding with hands off the wheel and the throttle: yaw damping + sideslip pull so the slide dies out in ~1 s
           const k = clamp(Math.abs(this.beta) / 0.3, 0.4, 1.5);
-          body.applyTorqueImpulse({ x: 0, y: (-yawRate * 4.5 - this.beta * 6) * k * I * dt, z: 0 }, true);
+          body.applyTorqueImpulse({ x: 0, y: (-yawRate * 4.5 + this.beta * 6) * k * I * dt, z: 0 }, true);
         } else if (this.hb < 0.05 && Math.abs(this.steerIn) > 0.05 && fwdSpeed > 2) {
           // turn-in assist: an under-rotating car gets help up to the yaw rate its front wheels ask for
           // (fades out at speed, where stability matters more than agility)

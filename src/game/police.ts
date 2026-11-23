@@ -12,7 +12,7 @@ import { Dispatch, COP_LOOK, wantedUnits, wantsHelicopter, type UnitKind, type D
 export type Crime = 'robbery' | 'assault' | 'shooting' | 'kill' | 'copAttack' | 'copKill' | 'carjack' | 'vehicleWreck' | 'copCarTheft' | 'hitPerson' | 'heliTheft' | 'policeHeliTheft' | 'traffic' | 'brandish';
 /** min = star level this crime guarantees once reported; further stars come from sustained fighting (see HeatState.tick). */
 const CRIME: Record<Crime, { min: number }> = {
-  robbery: { min: 1 }, assault: { min: 1 }, shooting: { min: 1 }, kill: { min: 2 }, copAttack: { min: 2 }, copKill: { min: 2 },
+  robbery: { min: 2 } /* Round 9 (owner: robbing was too easy): an armed hold-up is a two-star call */, assault: { min: 1 }, shooting: { min: 1 }, kill: { min: 2 }, copAttack: { min: 2 }, copKill: { min: 2 },
   carjack: { min: 1 }, vehicleWreck: { min: 1 }, copCarTheft: { min: 2 }, hitPerson: { min: 1 }, heliTheft: { min: 3 }, policeHeliTheft: { min: 4 }, traffic: { min: 1 }, brandish: { min: 2 },
 };
 export { COP_LOOK };
@@ -42,6 +42,8 @@ export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz
 }
 
 /** Pure heat bookkeeping (unit tested). */
+/** Seconds out of sight (and outside the search radius) before the stars go. Pure. */
+export function heatLoseTime(heat: number): number { return 14 + heat * 6; }
 export class HeatState {
   heat = 0;
   lastSeen = new THREE.Vector3();
@@ -61,7 +63,8 @@ export class HeatState {
     if (this.heat > before) this.unseenT = 0;
     return this.heat > before;
   }
-  searchRadius() { return 45 + this.heat * 25; }
+  /** Round 9 balance (owner: "cops don't stay on you"): wider search, longer to lose them (1 star ~20 s, 3 stars ~32 s). */
+  searchRadius() { return 60 + this.heat * 30; }
   /** Returns true when heat was lost this tick. `engaged`: the player is fighting right now. */
   tick(dt: number, seen: boolean, playerPos: THREE.Vector3, engaged = false): boolean {
     this.seen = seen; this.raised = false;
@@ -75,8 +78,8 @@ export class HeatState {
     if (seen) { this.unseenT = 0; this.lastSeen.copy(playerPos); return false; }
     this.unseenT += dt;
     const outside = playerPos.distanceTo(this.lastSeen) > this.searchRadius();
-    const needed = 7 + this.heat * 3;
-    if ((outside && this.unseenT > needed) || this.unseenT > needed * 3.5) { this.heat = 0; this.unseenT = 0; this.combatT = 0; this.copKills = 0; return true; }
+    const needed = heatLoseTime(this.heat);
+    if ((outside && this.unseenT > needed) || this.unseenT > needed * 3) { this.heat = 0; this.unseenT = 0; this.combatT = 0; this.copKills = 0; return true; }
     return false;
   }
 }
@@ -135,7 +138,9 @@ export class Police {
   }
   setHooks(h: DispatchHooks) { this.dispatch.hooks = h; }
   /** Cops use lethal force at 3+ stars, or at 2 once the player has been violent. */
-  get lethal() { return this.state.heat >= 3 || (this.state.heat === 2 && this.violentT > 0); }
+  get lethal() { return copsMayShoot(this.state.heat, this.violentT > 0, this.playerArmed); }
+  /** set every frame by Game: the player has a firearm out (equipped, on foot or in a car). Round 9: unarmed = never shot. */
+  playerArmed = false;
   get heat() { return this.state.heat; }
   /** Pending 911 calls: a witness has seen the crime and is dialling. */
   pending: { crime: Crime; at: THREE.Vector3; t: number; witness: Npc | null }[] = [];
@@ -412,6 +417,9 @@ export class Police {
       for (const u of this.units) {
         const kind = D.kindOf(u), idx = ui++;
         if (u.target) u.target.copy(target); else u.target = target.clone(); u.mode = 'pursuit'; u.ram = st.heat >= 3 && playerInVehicle;
+        // Round 9: chase where the suspect is going (half a second ahead), at the suspect's speed
+        u.targetVel = seen && pv ? Math.abs(pv.speed) : 0;
+        if (seen && pv && Math.abs(pv.speed) > 5) u.target.set(pp.x + Math.sin(pv.yaw) * pv.speed * 0.5, pp.y, pp.z + Math.cos(pv.yaw) * pv.speed * 0.5);
         // tactics against a driving player: ram, cut in ahead to box in, or PIT the rear quarter
         if (playerInVehicle && pv && kind !== 'tank' && u.v.position.distanceTo(pp) < 45 && pv.speed > 6) {
           const fx = Math.sin(pv.yaw), fz = Math.cos(pv.yaw), role = idx % 3;
@@ -488,3 +496,12 @@ export class Police {
 }
 export { wantedUnits };
 
+
+/**
+ * Round 9 (owner: "cops shoot you even if you're unarmed"): officers use their guns only against a suspect with a firearm
+ * out, at 3+ stars (or 2 once violent); an unarmed suspect is chased, tased and cuffed. At 5 stars (army) anything goes. Pure.
+ */
+export function copsMayShoot(heat: number, violent: boolean, playerArmed: boolean): boolean {
+  if (heat >= 5) return true;
+  return playerArmed && (heat >= 3 || (heat === 2 && violent));
+}

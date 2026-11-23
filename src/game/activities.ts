@@ -2,8 +2,11 @@
 import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, MinimapBlip, ShopItem } from '../ui/contracts';
-import { PLACES, POSTCARDS, RAMPS, GARAGE_SLOTS, GAS_STATION } from './places';
-import { RESPRAY, GARAGE_PAINTS, GARAGE_NAMES, repairPrice } from './garage';
+import { PLACES, POSTCARDS, RAMPS, GARAGE_SLOTS } from './places';
+import { RESPRAY, GARAGE_PAINTS, repairPrice, sellQuote, newSaleLog, recordSale, recentOfKind, type SaleLog } from './garage';
+import { BAYS, bayPark } from './bays';
+import { GarageBays } from './garageBay';
+import type { GarageView } from '../ui/garageMenu';
 import { CAR_PRICES, DEALER_KINDS, MILESTONES, carValue, netWorth, newMilestones, type OwnedCar } from './modes';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import type { Vehicle } from '../vehicles/vehicle';
@@ -18,8 +21,13 @@ export class Activities {
   found = new Set<number>();
   jumpsDone = new Set<number>();
   private cards: (THREE.Object3D | null)[] = [];
-  private garageMk: Marker; private gasMk: Marker | null = null; private snackMk: Marker; private safeMk: Marker;
-  private shopOpen: 'arms' | 'snack' | 'dealer' | 'goals' | 'garage' | null = null;
+  private bayMk: Marker[] = []; private snackMk: Marker; private safeMk: Marker;
+  private shopOpen: 'arms' | 'snack' | 'dealer' | 'goals' | null = null;
+  /** Round 9: the physical garages (door, camera, pause) and their sale cooldowns / repeat-sale log (persisted in the save) */
+  garage: GarageBays;
+  sales: SaleLog = newSaleLog(BAYS.length);
+  /** seconds since the player last had a wanted level (a car taken with the cops watching stays too hot to sell for a while) */
+  private sinceHeat = Infinity;
   private dealerMk: Marker;
   /** Cars you bought (persisted in the save); they are parked in the garage row and come back there if lost. */
   ownedCars: OwnedCar[] = [];
@@ -29,7 +37,6 @@ export class Activities {
   private goalT = 0; private garageT = 0;
   private airborne: { t: number; start: THREE.Vector3; ramp: number } | null = null;
   private lastRamp = -1; private rampT = 0;
-  private garageCool = 0;
   private garageArmed = true;
   missionActive: () => boolean = () => false;
   /** Called when a mission ends: a delivery into the garage must not turn into a paid respray. */
@@ -40,8 +47,9 @@ export class Activities {
   guns: GunStore;
   salon: Salon;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
-    this.garageMk = ctx.marker(PLACES.garage, 4.5, '#7ff3ff', 'GLOW GARAGE  ·  REPAIR & PAINT');
-    this.gasMk = ctx.marker({ x: GAS_STATION.x, z: GAS_STATION.z }, 5, '#7ff3ff', 'SERVICE BAY  ·  REPAIR & PAINT');
+    this.bayMk = BAYS.map((b, i) => ctx.marker(bayPark(b), 2.6, '#7ff3ff', i === 0 ? 'GLOW GARAGE  ·  REPAIR, PAINT, SELL' : 'SERVICE BAY  ·  REPAIR, PAINT, SELL'));
+    this.garage = new GarageBays(game, ui, { view: i => this.garageView(i), repair: () => this.garageRepair(), paint: hex => this.garagePaint(hex), sell: i => this.garageSell(i) });
+    this.garage.onDone = () => { this.garageArmed = false; this.onSaveRequested?.(); }; // not again until you drive out and back in
     this.dealerMk = ctx.marker(PLACES.dealer, 1.4, '#ff6b5e', 'REDLINE MOTORS');
     this.snackMk = ctx.marker(PLACES.snack, 1.3, '#ff8fb1', 'PIER 9 SNACKS');
     this.safeMk = ctx.marker(PLACES.safehouse, 1.3, '#9be8a6', 'SAFEHOUSE  ·  SAVE');
@@ -88,7 +96,7 @@ export class Activities {
   }
   blips(): MinimapBlip[] {
     const b: MinimapBlip[] = [
-      { x: PLACES.garage.x, z: PLACES.garage.z, kind: 'garage', label: 'Glow Garage' }, { x: GAS_STATION.x, z: GAS_STATION.z, kind: 'garage', label: 'Fuel Stop service bay' },
+      ...BAYS.map(bb => ({ x: bb.cx, z: bb.zf + bb.d / 2, kind: 'garage' as const, label: bb.name })),
       { x: PLACES.dealer.x, z: PLACES.dealer.z, kind: 'garage', label: 'Redline Motors' },
       { x: PLACES.snack.x, z: PLACES.snack.z, kind: 'shop', label: 'Pier 9 Snacks' }, { x: PLACES.safehouse.x, z: PLACES.safehouse.z, kind: 'safehouse', label: 'Safehouse' },
       ...this.robberies.blips(),
@@ -116,15 +124,7 @@ export class Activities {
       { id: 'medkit', label: 'First-aid kit', description: `For later. Use it from the wheel (carrying ${g.pcombat.inv.medkits}).`, price: 140, disabled: g.money < 140 || g.pcombat.inv.medkits >= 5 },
     ];
   }
-  private shopItems(): ShopItem[] { return this.shopOpen === 'garage' ? this.garageItems() : this.shopOpen === 'snack' ? this.snackItems() : this.shopOpen === 'dealer' ? this.dealerItems() : this.armsItems(); }
-  /** Round 7 garage: repair priced by the damage, pick a paint colour (a respray also loses the heat if nobody is watching). */
-  garageItems(): ShopItem[] {
-    const g = this.game, v = g.playerVehicle; if (!v) return [];
-    const rep = repairPrice(v.health / v.spec.health, v.lightsBroken), seen = g.police.heat > 0 && g.police.state.seen;
-    const items: ShopItem[] = [{ id: 'g:repair', label: 'Repair', description: rep ? 'Engine, body panels, glass and lights back to new.' : 'Nothing to fix.', price: rep, disabled: !rep || g.money < rep, owned: !rep }];
-    for (const [hex, name] of GARAGE_PAINTS) items.push({ id: `g:paint:${hex}`, label: `Respray: ${name}`, description: seen ? 'Not while the police are watching.' : g.police.heat > 0 ? 'New colour, and the heat is off.' : 'A fresh coat in a new colour.', price: RESPRAY, disabled: seen || g.money < RESPRAY });
-    return items;
-  }
+  private shopItems(): ShopItem[] { return this.shopOpen === 'snack' ? this.snackItems() : this.shopOpen === 'dealer' ? this.dealerItems() : this.armsItems(); }
   // ---------------------------------------------------------------- dealership, garage, net worth, milestones
   dealerItems(): ShopItem[] {
     const g = this.game, full = this.ownedCars.length >= GARAGE_SLOTS.length;
@@ -177,18 +177,61 @@ export class Activities {
       this.ui.toast(`Goal reached: ${m.label}`, 'mission'); g.audio.play('checkpoint');
     }
   }
-  /** Index of the garage bay the point is in (-1: none). */
-  garageAt(p: THREE.Vector3): number { if (this.garageMk.inside(p)) return 0; if (this.gasMk?.inside(p)) return 1; return -1; }
-  private garageBuy(id: string, pay: (n: number) => boolean) {
-    const g = this.game, pv = g.playerVehicle; if (!pv) return;
-    if (id === 'g:repair') { const rep = repairPrice(pv.health / pv.spec.health, pv.lightsBroken); if (rep && pay(rep)) { pv.health = pv.spec.health; pv.lightsBroken = false; pv.phys.enginePower = 1; pv.resetBody(); this.ui.toast('Good as new.', 'money'); } return; }
-    if (id.startsWith('g:paint:')) {
-      if (g.police.heat > 0 && g.police.state.seen) { this.ui.toast('Not while the police are watching', 'warning'); return; }
-      if (!pay(RESPRAY)) return;
-      pv.respray(id.slice(8)); const hadHeat = g.police.heat > 0; g.police.clear();
-      this.ui.toast(hadHeat ? 'Fresh paint. The heat is off.' : 'Fresh paint.', 'money');
-    }
+  /** Index of the garage hall the point is in (-1: none). */
+  garageAt(p: THREE.Vector3): number { return BAYS.findIndex(b => Math.abs(p.x - b.cx) < b.w / 2 && p.z > b.zf && p.z < b.zf + b.d); }
+  private ownedIndex(v: Vehicle | null): number { return v ? this.ownedVeh.indexOf(v) : -1; }
+  /** What the garage panel shows for the car in the bay. */
+  garageView(bay: number): GarageView | null {
+    const g = this.game, v = g.playerVehicle; if (!v) return null;
+    const frac = v.health / v.spec.health, rep = repairPrice(frac, v.lightsBroken), seen = g.police.heat > 0 && g.police.state.seen;
+    const q = this.sellOffer(bay, v);
+    const need = (n: number) => `Need $${(n - g.money).toLocaleString('en-US')} more.`;
+    return {
+      title: BAYS[bay]?.name ?? 'Garage', money: g.money, car: v.spec.name, healthPct: Math.max(0, Math.min(1, frac)) * 100,
+      paintName: GARAGE_PAINTS.find(p => p[0].toLowerCase() === '#' + v.paint.getHexString(THREE.SRGBColorSpace))?.[1] ?? 'Factory paint',
+      repair: { price: rep, enabled: rep > 0 && g.money >= rep, note: !rep ? 'Nothing to fix.' : g.money < rep ? need(rep) : 'Engine, body panels, glass and lights back to new.' },
+      paints: GARAGE_PAINTS.map(([hex, name]) => ({ hex, name })), paintPrice: RESPRAY,
+      paintEnabled: !seen && g.money >= RESPRAY,
+      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New colour, and the heat is off.' : 'Hover a colour to see it on the car.',
+      sell: { price: q.price, ok: q.ok, note: q.reason },
+    };
   }
+  /** The buyer's offer (or refusal) for a car at a garage. */
+  sellOffer(bay: number, v: Vehicle) {
+    const owned = this.ownedIndex(v) >= 0;
+    return sellQuote({ kind: v.kind, healthFrac: v.health / v.spec.health, owned, heat: this.game.police.heat, sinceHeat: this.sinceHeat, cooldownLeft: this.sales.cool[bay] ?? 0, recentSameKind: recentOfKind(this.sales, v.kind) });
+  }
+  private garageRepair() {
+    const g = this.game, pv = g.playerVehicle; if (!pv) return;
+    const rep = repairPrice(pv.health / pv.spec.health, pv.lightsBroken);
+    if (!rep || g.money < rep) return;
+    g.addMoney(-rep); g.audio.play('purchase');
+    pv.health = pv.spec.health; pv.lightsBroken = false; pv.phys.enginePower = 1; pv.resetBody(); this.ui.toast('Good as new.', 'money');
+  }
+  private garagePaint(hex: string): boolean {
+    const g = this.game, pv = g.playerVehicle; if (!pv) return false;
+    if (g.police.heat > 0 && g.police.state.seen) { this.ui.toast('Not while the police are watching', 'warning'); return false; }
+    if (g.money < RESPRAY) return false;
+    g.addMoney(-RESPRAY); g.audio.play('purchase');
+    pv.respray(hex); const hadHeat = g.police.heat > 0; g.police.clear();
+    this.ui.toast(hadHeat ? 'Fresh paint. The heat is off.' : 'Fresh paint.', 'money');
+    return true;
+  }
+  /** Sells the player's car: pays, logs the sale (cooldown, repeat discount) and drops it from your garage row. Returns the car to remove. */
+  private garageSell(bay: number): Vehicle | null {
+    const g = this.game, pv = g.playerVehicle; if (!pv) return null;
+    const q = this.sellOffer(bay, pv);
+    if (!q.ok) { this.ui.toast(q.reason, 'warning'); return null; }
+    const i = this.ownedIndex(pv);
+    if (i >= 0) { this.ownedCars.splice(i, 1); this.ownedVeh.splice(i, 1); }
+    g.addMoney(q.price); g.audio.play('money');
+    recordSale(this.sales, bay, pv.kind);
+    this.ui.toast(`${pv.spec.name} sold  ·  +$${q.price.toLocaleString('en-US')}`, 'money');
+    return pv;
+  }
+  /** Sale cooldowns and the repeat-sale log for the save (in-game seconds). */
+  salesState(): SaleLog { return { cool: [...this.sales.cool], sold: this.sales.sold.map(s => ({ ...s })) }; }
+  loadSales(s: SaleLog | undefined) { this.sales = s ? { cool: BAYS.map((_, i) => s.cool[i] ?? 0), sold: s.sold.map(x => ({ ...x })) } : newSaleLog(BAYS.length); }
   /** Net worth and goals, shown in the shop panel (read-only). */
   goalItems(): ShopItem[] {
     const g = this.game, f = (n: number) => `$${n.toLocaleString('en-US')}`;
@@ -203,7 +246,6 @@ export class Activities {
   private buy(id: string) {
     const g = this.game, inv = g.pcombat.inv;
     const pay = (n: number) => { if (g.money < n) return false; g.addMoney(-n); g.audio.play('purchase'); return true; };
-    if (id.startsWith('g:')) { this.garageBuy(id, pay); this.ui.refreshShop(this.shopItems(), g.money); return; }
     if (id.startsWith('car:')) this.buyCar(id.slice(4) as VehicleKind);
     else if (id.startsWith('w:')) { const w = id.split(':')[1] as WeaponId; if (pay(WEAPONS[w].price)) { g.pcombat.give(w, WEAPONS[w].ammoPack + WEAPONS[w].clip); inv.select(w); } }
     else if (id.startsWith('a:')) { const w = id.split(':')[1] as WeaponId; if (pay(WEAPONS[w].ammoPrice)) g.pcombat.give(w, WEAPONS[w].ammoPack); }
@@ -217,12 +259,12 @@ export class Activities {
     this.shopOpen = kind; g.menuOpen = true; g.input.exitLock();
     this.ui.openShop(kind === 'arms' ? (this.guns.kiosk?.def.name ?? 'Tidewater Arms') : kind === 'dealer' ? 'Redline Motors' : 'Pier 9 Snacks', this.shopItems(), g.money, id => this.buy(id), () => this.closeShop());
   }
-  closeShop() { this.salon.close(); if (!this.shopOpen) return; this.shopOpen = null; this.game.menuOpen = false; this.ui.closeShop(); }
-  get shopIsOpen() { return !!this.shopOpen || this.salon.isOpen; }
+  closeShop() { this.salon.close(); this.garage.abort(); if (!this.shopOpen) return; this.shopOpen = null; this.game.menuOpen = false; this.ui.closeShop(); }
+  get shopIsOpen() { return !!this.shopOpen || this.salon.isOpen || this.garage.active; }
   /** Contextual prompt for the HUD. */
   prompt(): string | null {
     const g = this.game, p = g.player.pos;
-    if (g.playerVehicle) return this.garageAt(p) >= 0 && !this.missionActive() && this.garageArmed ? 'Stop here: repair and respray' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
+    if (g.playerVehicle) return this.garageAt(p) >= 0 && !this.missionActive() && this.garageArmed ? 'Stop inside: repair, respray, sell' : (this.missionActive() ? null : g.taxiJob?.prompt() ?? null); // not again until you drive out and back in
     const key = (g.settings.bindings.interact[0] ?? 'KeyE').replace('Key', '');
     if (g.taxi?.riding) return g.taxi.prompt(key);
     if (!this.robberies.robbing && this.guns.atCounter(p)) return `${key}  Browse Tidewater Arms`;
@@ -240,6 +282,10 @@ export class Activities {
     this.guns.update(); // hang the guns once the store interior is built
     if (!g.paused) {
       this.goalT -= dt; this.garageT -= dt;
+      for (let i = 0; i < this.sales.cool.length; i++) this.sales.cool[i] = Math.max(0, this.sales.cool[i] - dt);
+      for (const sl of this.sales.sold) sl.age += dt;
+      this.sales.sold = this.sales.sold.filter(sl => sl.age < g.dayLength);
+      this.sinceHeat = g.police.heat > 0 ? 0 : this.sinceHeat + dt;
       if (this.goalT <= 0) { this.goalT = 1.5; this.checkMilestones(); }
       if (this.garageT <= 0) { this.garageT = 4; if (g.deathT < 0) this.parkOwned(); }
     }
@@ -258,17 +304,12 @@ export class Activities {
       else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }
       else if (!this.robberies.robbing && !this.missionActive()) g.taxi?.interact(); // hail a cab
     }
-    // Respray garage
-    this.garageCool = Math.max(0, this.garageCool - dt);
+    // Garage halls: stop inside and the visit starts (door, camera, pause: see garageBay.ts)
     const pv = g.playerVehicle;
-    const inGarage = !!pv && this.garageAt(p) >= 0;
-    if (!inGarage) this.garageArmed = true;
-    else if (this.missionActive()) this.garageArmed = false; // a mission drop-off here is not a respray visit
-    if (pv && inGarage && this.garageArmed && Math.abs(pv.speed) < 2 && this.garageCool <= 0 && !pv.destroyed && !this.missionActive()) {
-      this.garageArmed = false; this.garageCool = 2; // Round 7: a real garage menu (repair, pick a colour) instead of a random respray
-      this.shopOpen = 'garage'; g.menuOpen = true; g.input.exitLock();
-      this.ui.openShop(GARAGE_NAMES[this.garageAt(p)] ?? 'Glow Garage', this.shopItems(), g.money, id => this.buy(id), () => this.closeShop());
-    }
+    const bay = pv ? this.garage.bayFor(pv) : -1;
+    if (!pv || this.garageAt(p) < 0) this.garageArmed = true;
+    else if (this.missionActive()) this.garageArmed = false; // a mission drop-off here is not a visit
+    if (pv && bay >= 0 && this.garageArmed && !pv.destroyed && !this.missionActive() && this.garage.begin(bay)) this.garageArmed = false;
     // Postcards
     for (let i = 0; i < this.cards.length; i++) {
       const c = this.cards[i]; if (!c) continue;

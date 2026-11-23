@@ -1,7 +1,7 @@
 /** Ambient traffic and police driving: lane following, signals, spacing, reactions, parked cars, pursuit. */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, yellowLeft, nearestLane, routeField, routeStep, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, laneSigAxis, yellowLeft, nearestLane, routeField, routeStep, districtAt, DISTRICT_INFO, SIDEWALK, CURB_HEIGHT } from '../world/citymap';
 import type { VehicleManager } from './vehicles';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { Population } from './population';
@@ -13,11 +13,11 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
-export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number;
+export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: DriveMode; target: THREE.Vector3 | null; /** pursuit: the suspect's speed (m/s) */ targetVel?: number; stuckT: number; honkT: number; reverseT: number; persistent: boolean; ram: boolean; arriveDist: number; onArrive?: () => void; maxSpeed?: number;
   /** lane picked at the end of the current one, and the routing target it was picked for */
   nextChoice?: number; nextKey?: string;
   /** steering around a stopped, undriven obstacle: which vehicle, which side, time spent */
@@ -94,7 +94,7 @@ export class Traffic {
     v.phys.settleAt(px, lane.ys ? (sp.y ?? 0) : 0, pz, yaw);
     // start at the speed the caller handed over (a far-crowd car being promoted), never faster than it could stop for a red
     let v0 = speed0 ?? lane.speed * 0.6;
-    if (!lane.connector && mode === 'cruise') v0 = Math.min(v0, signalCap(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), lane.length - s - 5.2, v0));
+    if (!lane.connector && mode === 'cruise') v0 = Math.min(v0, signalCap(signalState(this.city.intersections[lane.intersection], laneSigAxis(lane), this.time()), lane.length - s - 5.2, v0));
     v.phys.setVelocity(Math.sin(yaw) * v0, 0, Math.cos(yaw) * v0); // syncs the crash detector: a car spawned moving must not 'crash' into its own speed
     const driver = this.pop.spawn(role, sp.x, sp.z, 0.5, look);
     this.seat(driver, v);
@@ -219,7 +219,8 @@ export class Traffic {
     }
     return false;
   }
-  private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - 5.2; }
+  /** Round 9 (owner: cars stopped on the crosswalk): the stop point keeps the nose behind the zebra (3 m) whatever the car's length. */
+  private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - stopBack(car.v.phys.layout.half[2]); }
 
   fixedUpdate(dt: number, player: Character, playerVehicle: Vehicle | null) {
     const t = this.time();
@@ -246,7 +247,8 @@ export class Traffic {
       const speed = v.speed;
       // progress along the lane
       if (car.mode !== 'pursuit' && car.mode !== 'goto' || !car.target || pos.distanceTo(car.target) > 40) this.advanceLane(car, pos, car.target);
-      let targetSpeed = car.maxSpeed ?? car.lane.speed * (car.mode === 'flee' ? 1.6 : car.mode === 'pursuit' ? 1.8 : 1);
+      // Round 9 (owner: cops should chase quickly): a pursuit car runs at ~2.6x the limit (60-70 mph in town) on its route
+      let targetSpeed = car.maxSpeed ?? (car.mode === 'pursuit' ? Math.max(28, car.lane.speed * 2.6) : car.lane.speed * (car.mode === 'flee' ? 1.6 : 1));
       let legit = false, depth = 0;
       const civ = car.mode === 'cruise' && !car.persistent && car.driver.role === 'civilian';
       // shot at: a driver whose car just took damage from the player floors it
@@ -296,7 +298,9 @@ export class Traffic {
       if ((car.mode === 'pursuit' || car.mode === 'goto') && car.target && pos.distanceTo(car.target) < 40) {
         aim.copy(car.target);
         const d = pos.distanceTo(car.target);
-        targetSpeed = car.mode === 'pursuit' ? (car.ram ? 26 : Math.min(26, Math.max(0, d - 9) * 1.2)) : Math.min(car.maxSpeed ?? 14, Math.max(0, d - car.arriveDist) * 1.5);
+        // Round 9: close in at the suspect's own speed plus the gap (it was capped at 26 m/s: a fast car simply drove away)
+        const tsp = Math.abs(car.targetVel ?? 0);
+        targetSpeed = car.mode === 'pursuit' ? (car.ram ? Math.max(26, tsp + 6) : Math.min(42, tsp * 1.05 + Math.max(0, d - 9) * 1.2)) : Math.min(car.maxSpeed ?? 14, Math.max(0, d - car.arriveDist) * 1.5);
         if (car.mode === 'goto' && d < car.arriveDist + 1 && car.onArrive) { const cb = car.onArrive; car.onArrive = undefined; cb(); }
       } else {
         let s = car.s + look, lane = car.lane;
@@ -307,18 +311,18 @@ export class Traffic {
         { const l = Math.hypot(sp.dx, sp.dz) || 1, off = (car.avoid ? car.avoid.side * 3.4 : 0) + (car.shift ?? 0); aim.x += off * (sp.dz / l); aim.z += off * (-sp.dx / l); }
       }
       // Slow for corners: angle between heading and the aim point
-      { const ax = aim.x - pos.x, az = aim.z - pos.z, al = Math.hypot(ax, az) || 1; const cosA = (ax * f.x + az * f.z) / al; const ang = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); if (ang > 0.25) targetSpeed = Math.min(targetSpeed, Math.max(6, targetSpeed * (1.15 - ang * 1.1))); }
+      { const ax = aim.x - pos.x, az = aim.z - pos.z, al = Math.hypot(ax, az) || 1; const cosA = (ax * f.x + az * f.z) / al; const ang = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); if (ang > 0.25) targetSpeed = Math.min(targetSpeed, Math.max(car.mode === 'pursuit' ? 8 : 3.6, targetSpeed * (1.15 - ang * 1.1))); }
       // Brake ahead of a turn on the route (matters at race speed): v² = v_turn² + 2·a·d
       if (!car.lane.connector && car.nextChoice !== undefined) {
         const nl = this.city.lanes[car.nextChoice];
-        if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * 6 * Math.max(0, car.lane.length - car.s - 3)));
+        if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * (car.mode === 'pursuit' ? 6 : 2.6) * Math.max(0, car.lane.length - car.s - 3))); // Round 9: brake gently into a turn
       }
       // Signals
       if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20)))) {
         const inter = this.city.intersections[car.lane.intersection];
-        const st = signalState(inter, car.lane.axis, t);
+        const st = signalState(inter, laneSigAxis(car.lane), t);
         const dStop = this.distToStop(car);
-        const cap = signalCap(st, dStop, Math.max(0, speed), yellowLeft(inter, car.lane.axis, t));
+        const cap = signalCap(st, dStop, Math.max(0, speed), yellowLeft(inter, laneSigAxis(car.lane), t));
         if (cap < Infinity) { targetSpeed = Math.min(targetSpeed, cap); legit = true; }
         else if (dStop > -1 && dStop < 45) {
           // no protection from the light: stop signs at plain junctions, yield for a left turn across oncoming traffic
@@ -331,8 +335,21 @@ export class Traffic {
           } else if (dStop < 22 && car.nextChoice !== undefined) {
             if (this.turnOf(car.nextChoice) === 1) {
               if (standing) car.ssWait = (car.ssWait ?? 0) + dt;
-              if (this.leftBlocked(inter, v, f, (car.ssWait ?? 0) < 8)) { targetSpeed = Math.min(targetSpeed, stopSpeed(dStop - 0.4)); legit = true; }
+              if (this.leftBlocked(inter, v, f, (car.ssWait ?? 0) < 20)) { targetSpeed = Math.min(targetSpeed, stopSpeed(dStop - 0.4)); legit = true; }
             }
+          }
+        }
+      }
+      // Round 9 (owner: left turns caused the most disruption): a left-turner that has just started into the junction still
+      // stops for an oncoming car about to arrive (one that sped up or appeared after the gap check at the line)
+      if (car.mode === 'cruise' && car.lane.connector && car.s < car.lane.length * 0.35 && this.turnOf(car.lane.id) === 1) {
+        const inter = this.city.intersections[car.lane.intersection], p0 = car.lane.points[0], p1 = car.lane.points[1];
+        const l0 = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1, ax = (p1.x - p0.x) / l0, az = (p1.z - p0.z) / l0;
+        for (const o of this.vehicles.list) {
+          if (o === v || Math.abs(o.speed) < 3) continue;
+          const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1, ox = o.position.x - inter.x, oz = o.position.z - inter.z;
+          if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, Math.abs(o.speed), ax, az) && Math.hypot(ox, oz) / Math.abs(o.speed) < 2.6) {
+            targetSpeed = Math.min(targetSpeed, stopSpeed(Math.max(0, car.lane.length * 0.35 - car.s - 1.5))); legit = true; break;
           }
         }
       }
@@ -396,8 +413,10 @@ export class Traffic {
         }
         // ...or an AI car that is itself stuck (wrecked, tangled in a pile-up, its driver gone): go round it quickly
         const stuckAi = !!boc && !boc.legitWait && ((boc.jamT ?? 0) > 1.5 || !boc.driver.alive || boc.driver.char.inVehicle !== bv || (bv?.destroyed ?? false));
-        if (bv && Math.abs(bv.speed) < 0.6 && (!boc || stuckAi) && Math.abs(speed) < 1 && car.mode !== 'pursuit') {
-          car.blockedT = (car.blockedT ?? 0) + dt;
+        // Round 9: a pursuit car goes round anything slow in its way at once (traffic yields, but not always in time)
+        const chaseBlock = car.mode === 'pursuit' && !!bv && bv !== playerVehicle && Math.abs(bv.speed) < 6 && blockDist < 18;
+        if (chaseBlock || (bv && Math.abs(bv.speed) < 0.6 && (!boc || stuckAi) && Math.abs(speed) < 1 && car.mode !== 'pursuit')) {
+          car.blockedT = (car.blockedT ?? 0) + dt * (chaseBlock ? 3 : 1);
           if (car.blockedT > 1.5 && !car.avoid) { car.avoid = { v: bv, side: blockerLat > 0.4 ? -1 : 1, t: 0 }; car.blockedT = 0; }
         } else car.blockedT = 0;
         // honk at somebody stepping out in front of a moving car (jaywalkers)
@@ -451,7 +470,7 @@ export class Traffic {
       }
     }
     let probe: LaneProbe | null = null;
-    if (best) { samplePath(best, bs, sp); probe = { id: best.id, limit: best.speed, dist: bd, dx: sp.dx, dz: sp.dz, toStop: best.length - bs - 5.2, signal: signalState(this.city.intersections[best.intersection], best.axis, t) }; }
+    if (best) { samplePath(best, bs, sp); probe = { id: best.id, limit: best.speed, dist: bd, dx: sp.dx, dz: sp.dz, toStop: best.length - bs - 5.2, signal: signalState(this.city.intersections[best.intersection], laneSigAxis(best), t) }; }
     this.lastProbe = probe;
     let near = 0; for (const c of this.cars) if (c.v !== pv && c.v.position.distanceToSquared(p) < 625) near++;
     this.monitor.update(adt, { x: p.x, z: p.z, fx: pv.speed < 0 ? -f.x : f.x, fz: pv.speed < 0 ? -f.z : f.z, speed: Math.abs(pv.speed), beta: Math.abs(pv.phys.beta), nearCars: near, hitCar: this.hitLatch }, probe);
@@ -550,7 +569,7 @@ export class Traffic {
     if (blocker === 'car' && blockerV && blockDist < 24) {
       const slow = blockerV.speed < lane.speed * 0.55 && blockerV.speed > 0.3;
       const oc = this.carOf(blockerV), dead = oc ? (oc.stopT ?? 0) > 0 : Math.abs(blockerV.speed) < 0.6; // parked, wrecked, or a taxi / double-parked van standing in the lane
-      const st = signalState(this.city.intersections[lane.intersection], lane.axis, this.time());
+      const st = signalState(this.city.intersections[lane.intersection], laneSigAxis(lane), this.time());
       if ((slow || dead) && (st === 'green' || lane.length - car.s > 45)) want = true;
     }
     if (!want && Math.random() < dt * 0.015) want = true;
@@ -656,7 +675,7 @@ export class Traffic {
         if (d < (this.prewarming ? 20 : 45) || d > 125) continue;
         if (Math.random() > DISTRICT_INFO[districtAt(this.city, p.x, p.z)].trafficDensity) continue;
         if (!this.prewarming && d < 100 && this.frustum.containsPoint(p)) continue;
-        { const I = this.city.intersections[lane.intersection]; if (!this.prewarming && !spawnSafeAtSignal(signalState(I, lane.axis, this.time()), signalState(I, lane.axis, this.time() + 5), lane.length - s - 5.2)) continue; }
+        { const I = this.city.intersections[lane.intersection]; if (!this.prewarming && !spawnSafeAtSignal(signalState(I, laneSigAxis(lane), this.time()), signalState(I, laneSigAxis(lane), this.time() + 5), lane.length - s - 5.2)) continue; }
         if (this.vehicles.list.some(o => o.position.distanceTo(p) < 11) || this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 16)) continue;
         if (this.farObs.some(o => Math.abs(o.x - p.x) < 12 && Math.abs(o.z - p.z) < 12)) continue;
         if (this.pop.npcs.some(n => !n.char.inVehicle && Math.hypot(n.char.pos.x - p.x, n.char.pos.z - p.z) < 4)) continue; // never on top of a person // a far-crowd car is drawn there: never spawn a second (different) car on top of it

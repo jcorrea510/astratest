@@ -8,6 +8,7 @@
 import type { EngineVoice, GameAudio, LoopVoice, SfxName, Vec3Like } from '../ui/contracts';
 import { AudioCore } from './core';
 import { type SampleName, registerSample } from './dsp';
+import { decodeGunSamples, fetchGunSampleBytes, gunSampleCount, gunSamplesPlayed } from './gunSamples';
 import { EngineVoiceImpl, SirenVoice, SkidVoice } from './loops';
 import { STATIONS } from './composer';
 import { isFiniteVec } from './spatial';
@@ -33,7 +34,16 @@ export class Audio implements GameAudio, AudioExtras {
   private radioActive = false; private station = 0; private slow = 0; private paused = false; private mood: Mood = 'none';
   private acoustics: Acoustics | null = null;
 
-  constructor(private buffers: Record<string, ArrayBuffer>) {}
+  /** Compressed gunshot recordings, fetched at game load (decoded once the context exists, never during play). */
+  private gunBytes: Promise<Record<string, ArrayBuffer>> | null = null;
+  /** Resolves with the number of decoded gun takes once the context exists (0 until then / when nothing loaded). */
+  gunSamplesReady: Promise<number> = Promise.resolve(0);
+
+  constructor(private buffers: Record<string, ArrayBuffer>) {
+    if (typeof document !== 'undefined' && typeof fetch === 'function') {
+      try { this.gunBytes = fetchGunSampleBytes(new URL('./', document.baseURI).href); this.gunBytes.catch(() => undefined); } catch { /* synth fallback */ }
+    }
+  }
 
   /** Must be called from a user gesture. Idempotent; never throws or rejects. */
   resume(): Promise<void> {
@@ -65,6 +75,7 @@ export class Audio implements GameAudio, AudioExtras {
       core.setMood(this.mood);
       if (this.acoustics) core.setAcoustics(this.acoustics, 0);
       this.decodeSamples(ctx, core);
+      if (this.gunBytes) this.gunSamplesReady = this.gunBytes.then(b => decodeGunSamples(ctx, core.kit, b)).catch(() => 0);
       this.lastTick = performance.now();
       this.timer = setInterval(() => this.tick(), 25);
     }
@@ -167,9 +178,9 @@ export class Audio implements GameAudio, AudioExtras {
   /** Name of the currently selected station (null = off). */
   get stationName(): string | null { return this.station >= 0 ? STATIONS[this.station].name : null; }
   /** Diagnostics for dev tools / tests. */
-  stats(): { running: boolean; voices: number; engines: number; sirens: number; skids: number; samples: string[]; diag: { started: number; stolen: number; rejected: number; limited: number; engineBuilds: number } | null } {
+  stats(): { running: boolean; voices: number; engines: number; sirens: number; skids: number; samples: string[]; gunTakes: number; gunPlayed: number; diag: { started: number; stolen: number; rejected: number; limited: number; engineBuilds: number } | null } {
     const c = this.core;
-    return { running: this.ctx?.state === 'running', voices: c?.activeVoices ?? 0, engines: c?.engines.active.size ?? 0, sirens: c?.sirens.active.size ?? 0, skids: c?.skids.active.size ?? 0, samples: c ? Object.keys(c.kit.samples) : [], diag: c ? { ...c.diag } : null };
+    return { running: this.ctx?.state === 'running', voices: c?.activeVoices ?? 0, engines: c?.engines.active.size ?? 0, sirens: c?.sirens.active.size ?? 0, skids: c?.skids.active.size ?? 0, samples: c ? Object.keys(c.kit.samples) : [], gunTakes: c ? gunSampleCount(c.kit) : 0, gunPlayed: c ? gunSamplesPlayed(c.kit) : 0, diag: c ? { ...c.diag } : null };
   }
   /** Stop everything and close the context. */
   dispose(): void {

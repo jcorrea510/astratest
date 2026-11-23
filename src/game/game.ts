@@ -78,6 +78,8 @@ export class Game {
   targetTimeScale = 1;
   paused = false;
   menuOpen = false;
+  /** Round 9: a scripted camera (the garage bay) that takes over the rig while it returns true. */
+  camOverride: ((raw: number) => boolean) | null = null;
   dayLength = 24 * 60;
   private acc = 0;
   private last = 0;
@@ -194,7 +196,7 @@ export class Game {
     this.pcombat = new PlayerCombat(this.player, this.playerCtl, this.input, this.cam, this.combat, this.physics, this.audio, this.renderer.scene);
     this.pop = new Population(this.renderer.scene, this.humanTpl, this.city, {
       physics: this.physics, city: this.city, combat: this.combat, scene: this.renderer.scene, time: () => this.time,
-      player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(),
+      player: this.player, playerHeat: () => this.police.heat, others: () => this.pop.characters(), movers: () => this.movers(),
       onArrest: (by) => { if (this.deathT < 0 && !this.playerVehicle) this.police.dispatch.beginArrest(by, this.player); }, copsLethal: () => this.police.lethal, copsHoldFire: (by) => this.police.dispatch.arresting || (!!by && !this.orders.clearShot(by.pos)), armedThreat: () => this.police.armedThreat, onWitness: () => { },
     }, this.audio);
     this.combat.onIgnite = c => this.pop.panicBurn(c);
@@ -694,6 +696,7 @@ export class Game {
     this.pop.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 26 : 16;
     this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
     this.vehicles.setHeadlightCount(this.renderer.quality.headlights ?? 1);
+    this.vehicles.setBarLightCount(this.renderer.quality.bloom ? 1 : 0); // Round 9: real red/blue light on Medium+ (fixed count: no recompiles)
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
@@ -705,6 +708,7 @@ export class Game {
     this.taxi.update(dt); this.taxiJob.update(dt);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.pop.warmStep(2);
+    this.police.playerArmed = this.player.alive && this.pcombat.armed;
     this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);
@@ -713,7 +717,8 @@ export class Game {
     if (this.deathT >= 0 && !this.paused) { this.deathT += raw; if (this.deathT > this.respawnDelay) this.respawn(); }
     if (!this.player.alive && this.deathT < 0) this.playerDown('down'); // safety net: never leave a dead player without the respawn flow
     this.cam.baseFov = this.settings.fov;
-    if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
+    if (this.camOverride?.(raw)) { /* scripted shot (garage) */ }
+    else if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.visualYaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
     else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.visualYaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
@@ -837,6 +842,14 @@ export class Game {
     }
     // Lights stay in the scene (constant light count avoids shader recompiles); intensity fades them.
     this.lampLights.forEach((l, k) => { l.intensity = k < n ? on * 28 : 0; });
+  }
+  /** Round 9: vehicles pedestrians must get out of the way of: siren cars, and the player's car when it comes fast. */
+  private moverList: { x: number; z: number; fx: number; fz: number; speed: number; siren: boolean }[] = [];
+  private movers() {
+    const out = this.moverList; out.length = 0;
+    for (const s of this.traffic.sirenSources) out.push({ ...s, siren: true });
+    const pv = this.playerVehicle; if (pv && !pv.sirenOn && Math.abs(pv.speed) > 8) { const f = pv.phys.forward(), sg = pv.speed < 0 ? -1 : 1; out.push({ x: pv.position.x, z: pv.position.z, fx: f.x * sg, fz: f.z * sg, speed: Math.abs(pv.speed), siren: false }); }
+    return out;
   }
   private signalTimer = 0;
   private updateSignals() {

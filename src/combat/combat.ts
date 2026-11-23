@@ -19,6 +19,7 @@ import { WEAPONS, type WeaponDef } from './weapons';
 import { WATER_LEVEL } from '../world/citymap';
 import { bodyCapsules, rayBody, zoneDamage, zoneBone, type Capsule, type Zone } from './hitzones';
 import type { Blood } from '../render/blood';
+import { dismemberHit } from './dismember';
 import { coneSample } from './aim';
 
 /** Weapons that take a head off at close range (Round 7 gore): shotguns, rifles, heavy guns, or a magnum-class round (85+ damage). Pure: tests. */
@@ -393,7 +394,7 @@ export class Combat {
         const apply = () => {
           const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
           this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
-          this.bloodHit(c, end, d, zone, strength, res.killed, w, tr.t);
+          this.bloodHit(c, end, d, zone, strength, res.killed, w, tr.t, shooter);
           return res;
         };
         const delay = tr.t > 100 ? flightTime(v0, tr.t) : 0; // long shots take time to arrive
@@ -452,28 +453,42 @@ export class Combat {
     b.onSpurt ??= (x, y, z, dx, dy, dz, s) => this.particles.blood(x, y, z, dx, dy, dz, s);
     const left = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
     const head = zoneBone(c.human.model, 'head', left);
-    if (zone === 'head' && dist < 30 && decapitates(w) && head && !head.userData.gone) b.decapitate(head, zoneBone(c.human.model, 'neck', left), c.pos.y);
-    else { const bone = zoneBone(c.human.model, zone, left); if (bone) b.bleed(bone, c.pos.y, 4, Math.min(1.5, strength + w.damage / 60)); }
-    this.particles.blood(end.x, end.y, end.z, d.x, 0.6, d.z, strength * 1.2);
+    const gs = Math.min(2.4, strength * (0.8 + w.damage / 70));
+    if (zone === 'head' && head && !head.userData.gone && ((dist < 30 && decapitates(w)) || dist < 4)) { b.decapitate(head, zoneBone(c.human.model, 'neck', left), c.pos.y); this.particles.gibs(end.x, end.y, end.z, d.x, 0.5, d.z, 6 + Math.round(gs * 3), true); }
+    else if (zone === 'arm' || zone === 'leg') { const j = dismemberHit(b, c, end, d, zone, w, dist); if (!j) { const bone = zoneBone(c.human.model, zone, left); if (bone) b.bleed(bone, c.pos.y, 4, Math.min(1.5, gs)); } }
+    else { const bone = zoneBone(c.human.model, zone, left); if (bone) b.bleed(bone, c.pos.y, 4, Math.min(1.5, gs)); }
+    this.particles.blood(end.x, end.y, end.z, d.x, 0.6, d.z, gs * 1.2);
     b.hit(end, d, c.pos.y, strength, null, zoneBone(c.human.model, zone, left));
-    if (!c.inVehicle) b.pool(c.pos.x + d.x * 0.2, c.pos.y, c.pos.z + d.z * 0.2, c.pos);
+    if (!c.inVehicle) b.pool(c.pos.x + d.x * 0.2, c.pos.y, c.pos.z + d.z * 0.2, c.pos, 0.6);
   }
 
   /** Spray, ground / wall spatter, a wound mark on the hit bone and (on a kill) a growing pool. Skipped when Blood is off. */
-  private bloodHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, killed: boolean, w?: WeaponDef, dist = 0) {
+  private bloodHit(c: Character, end: THREE.Vector3, d: THREE.Vector3, zone: Zone, strength: number, killed: boolean, w?: WeaponDef, dist = 0, from?: Character) {
     const b = this.blood; if (!b || !b.enabled) return;
     b.onSpurt ??= (x, y, z, dx, dy, dz, s) => this.particles.blood(x, y, z, dx, dy, dz, s);
-    // Round 7 gore: a heavy round to the head at close range takes it off; other hits keep bleeding for a while
-    const left0 = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
-    if (zone === 'head' && killed && w && c.team !== 'player' && dist < 30 && decapitates(w)) {
-      const head = zoneBone(c.human.model, 'head', left0); if (head) b.decapitate(head, zoneBone(c.human.model, 'neck', left0), c.pos.y);
-    } else if (zone !== 'head') { const bone = zoneBone(c.human.model, zone, left0); if (bone) b.bleed(bone, c.pos.y, killed ? 6 : 3.5, Math.min(1.5, strength + (w ? w.damage / 60 : 0))); }
-    this.particles.blood(end.x, end.y, end.z, d.x, d.y * 0.3, d.z, strength * (zone === 'head' ? 1.3 : 1));
-    const wr = this.physics.ray(end.x, end.y, end.z, d.x, d.y, d.z, 3.5, WORLD, c.collider);
-    const wall = wr ? { x: end.x + d.x * wr.toi, y: end.y + d.y * wr.toi, z: end.z + d.z * wr.toi, nx: wr.normal.x, ny: wr.normal.y, nz: wr.normal.z } : null;
+    const gs = Math.min(2.4, strength * (0.7 + (w ? w.damage : 40) / 70)); // Round 9: gore scales with the round's damage
     const left = (end.x - c.pos.x) * Math.cos(c.yaw) - (end.z - c.pos.z) * Math.sin(c.yaw) > 0;
-    b.hit(end, d, c.pos.y, strength, wall, zoneBone(c.human.model, zone, left));
-    if (killed && !c.inVehicle) b.pool(c.pos.x + d.x * 0.35, c.pos.y, c.pos.z + d.z * 0.35, c.pos);
+    const npc = c.team !== 'player';
+    // Round 7/9 gore: a heavy round (or any round at point blank) to the head takes it off; limbs can come off; other hits keep bleeding
+    if (zone === 'head' && killed && w && npc && ((dist < 30 && decapitates(w)) || (dist < 4 && Math.random() < 0.6))) {
+      const head = zoneBone(c.human.model, 'head', left); if (head) b.decapitate(head, zoneBone(c.human.model, 'neck', left), c.pos.y);
+    }
+    if (zone === 'head' && killed) this.particles.gibs(end.x, end.y, end.z, d.x, 0.6, d.z, 5 + Math.round(gs * 4), true); // exit wound: brain and bone
+    let severed = false;
+    if (w && from && (zone === 'arm' || zone === 'leg') && npc) {
+      severed = !!dismemberHit(b, c, end, d, zone, w, dist);
+      if (severed && c.alive) { // a lost leg drops them for good, a lost arm is a bad wound
+        const hurt = zone === 'leg' ? c.health + c.armor + 1 : 55; killed = c.damage(hurt, from, this.time) || killed;
+      }
+    }
+    if (zone !== 'head' && !severed) { const bone = zoneBone(c.human.model, zone, left); if (bone) b.bleed(bone, c.pos.y, killed ? 7 : 4.5, Math.min(1.8, gs)); }
+    this.particles.blood(end.x, end.y, end.z, d.x, d.y * 0.3, d.z, gs * (zone === 'head' ? 1.5 : 1));
+    if (zone === 'torso' || zone === 'head') this.particles.blood(end.x + d.x * 0.15, end.y, end.z + d.z * 0.15, d.x, d.y * 0.2 + 0.1, d.z, gs * 0.7); // exit spray out the back
+    const wr = this.physics.ray(end.x, end.y, end.z, d.x, d.y, d.z, 6, WORLD, c.collider);
+    const wall = wr ? { x: end.x + d.x * wr.toi, y: end.y + d.y * wr.toi, z: end.z + d.z * wr.toi, nx: wr.normal.x, ny: wr.normal.y, nz: wr.normal.z } : null;
+    b.hit(end, d, c.pos.y, gs, wall, zoneBone(c.human.model, zone, left));
+    if (killed && !c.inVehicle) b.pool(c.pos.x + d.x * 0.35, c.pos.y, c.pos.z + d.z * 0.35, c.pos, Math.max(0.9, Math.min(1.7, gs)));
+    else if (c.alive && !c.inVehicle) b.trail(c.pos, c.pos.y, 5 + gs * 3); // a wounded person leaves a trail of drops
   }
 
   /** Applies zone damage and the hit reaction. */

@@ -101,12 +101,12 @@ export class Npc {
 
 export interface NpcEnv {
   physics: Physics; city: CityMap; combat: Combat; scene: THREE.Scene; time: () => number;
-  player: Character; playerHeat: () => number; copsLethal?: () => boolean; /** an arrest is in progress: every other officer holds fire */ copsHoldFire?: (by?: Npc) => boolean; /** the player is pointing a gun */ armedThreat?: () => boolean; others: () => Iterable<Character>;
+  player: Character; playerHeat: () => number; /** Round 9: cars people should get out of the way of (sirens, a car coming fast) */ movers?: () => ReadonlyArray<{ x: number; z: number; fx: number; fz: number; speed: number; siren: boolean }>; copsLethal?: () => boolean; /** an arrest is in progress: every other officer holds fire */ copsHoldFire?: (by?: Npc) => boolean; /** the player is pointing a gun */ armedThreat?: () => boolean; others: () => Iterable<Character>;
   onArrest: (by: Npc) => void; onWitness: (npc: Npc, what: 'shot' | 'attack' | 'kill' | 'carjack') => void;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
-const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3();
+const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3(), tvS = new THREE.Vector3();
 export class NpcBrainRunner {
   private rng = new Rng(99);
   private ball = new RAPIER.Ball(0.35);
@@ -121,6 +121,11 @@ export class NpcBrainRunner {
     if (d < 0.01) return true;
     const hit = this.env.physics.ray(from.x, from.y, from.z, dx / d, dy / d, dz / d, d - 0.3, groups(0xffff, G_STATIC | G_VEHICLE));
     return !hit;
+  }
+  /** Full-length static/vehicle ray (no end margin): is the segment a -> b free? */
+  clearPath(a: THREE.Vector3, b: THREE.Vector3): boolean {
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz); if (d < 0.01) return true;
+    return !this.env.physics.ray(a.x, a.y, a.z, dx / d, dy / d, dz / d, d + 0.05, groups(0xffff, G_STATIC));
   }
   private eye(c: Character, out: THREE.Vector3) { return out.set(c.pos.x, c.pos.y + EYE * c.human.look.height, c.pos.z); }
   private chest(c: Character, out: THREE.Vector3) { return out.set(c.pos.x, c.pos.y + 1.2 * c.human.look.height, c.pos.z); }
@@ -176,8 +181,22 @@ export class NpcBrainRunner {
         if (sees) { n.seenTime = t; n.lastSeen.copy(p.pos); const want2 = n.role === 'police' && !this.lethal() ? 'chase' : 'combat'; if (n.brain !== want2) { n.brain = want2; n.stateT = 0; n.goal = null; } n.target = p; }
         else if (n.brain === 'combat' && t - n.seenTime > 12) { n.brain = 'chase'; }
         if (n.role === 'police' && this.lethal() && n.brain === 'chase') n.brain = 'combat';
+        else if (n.role === 'police' && !this.lethal() && n.brain === 'combat') n.brain = 'chase'; // Round 9: the suspect put the gun away
         if (n.brain !== 'combat' && n.brain !== 'chase' && d < 30) { n.brain = 'chase'; n.target = p; n.lastSeen.copy(p.pos); }
       } else if (n.brain === 'combat' || n.brain === 'chase') { n.brain = n.role === 'police' ? 'idle' : 'idle'; n.target = null; }
+    }
+    // Round 9 (owner: pedestrians should get out of the way of cops): a person in the path of a siren car (or of a car
+    // coming fast at them) steps / runs clear, away from the car's line
+    if (n.think <= 0 && n.role === 'civilian' && (n.brain === 'wander' || n.brain === 'idle') && env.movers) {
+      for (const m of env.movers()) {
+        const rx = c.pos.x - m.x, rz = c.pos.z - m.z, ahead = rx * m.fx + rz * m.fz;
+        if (ahead < 1 || ahead > Math.max(14, m.speed * (m.siren ? 2.2 : 1.6))) continue;
+        const lat = rx * m.fz - rz * m.fx; if (Math.abs(lat) > (m.siren ? 4.5 : 3)) continue;
+        if (this.endAct) this.endAct(n);
+        n.brain = 'flee'; n.stateT = 5.6; n.callCops = false; // a short dash (flee ends at 7 s)
+        n.fleeFrom.set(c.pos.x - m.fz * Math.sign(lat || 1) * 3 - m.fx * 0.5, c.pos.y, c.pos.z + m.fx * Math.sign(lat || 1) * 3 - m.fz * 0.5);
+        break;
+      }
     }
     if (n.think <= 0 && !deferThink) n.think = 0.25 + Math.random() * 0.25;
 
@@ -432,7 +451,10 @@ export class NpcBrainRunner {
   }
   private fire(n: Npc, tgt: Character, dist: number) {
     const w = WEAPONS[n.weapon];
-    const origin = this.muzzle(n, tvO);
+    let origin = this.muzzle(n, tvO);
+    // Round 9 (owner: "cops are shooting through store walls"): an officer pressed against a wall holds the muzzle through it;
+    // the round starts from the shooter's shoulder then, so the wall stops it
+    { const sh = tvS.set(n.pos.x, n.pos.y + 1.35 * n.char.human.look.height, n.pos.z); if (!this.clearPath(sh, origin)) origin = tvO.copy(sh); }
     const aimAt = this.chest(tgt, tvA);
     // Accuracy: distance, target speed, own movement, time aiming; police/gang skill via n.accuracy
     const err = (0.045 + dist * 0.0016 + tgt.speed * 0.012 + n.char.speed * 0.01) * n.accuracy * (n.aimT > 2 ? 0.75 : 1.2) * (tgt.inVehicle ? 1.4 : 1);

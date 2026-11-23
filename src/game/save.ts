@@ -3,6 +3,7 @@ import type { WeaponId, WeaponState } from '../combat/weapons';
 import type { GameMode, OwnedCar } from './modes';
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { parseAppearance, type Appearance } from './grooming';
+import type { SaleLog } from './garage';
 
 export const SAVE_KEY = 'meridian-afterglow.save.v1';
 export interface SaveData {
@@ -18,6 +19,8 @@ export interface SaveData {
   tools?: SandboxTools;
   /** Barber / clothing purchases: only the fields that differ from the starting outfit. */
   appearance?: Appearance;
+  /** Round 9: garage sale cooldowns (seconds left, per garage) and recent sales (kind, seconds ago) */
+  garage?: SaleLog;
 }
 export interface SandboxTools { god: boolean; ammo: boolean; never: boolean; clock: boolean }
 export function serialize(d: SaveData): string { return JSON.stringify(d); }
@@ -38,10 +41,20 @@ export function parseSave(raw: string | null): SaveData | null {
       jumps: Array.isArray(d.jumps) ? d.jumps.filter(x => typeof x === 'number') : [],
       pos: { x: d.pos.x, z: d.pos.z, yaw: d.pos.yaw ?? 0 }, hour: clamp(d.hour ?? 17.5, 0, 24),
       stats: { kills: d.stats?.kills ?? 0, distance: d.stats?.distance ?? 0, crashes: d.stats?.crashes ?? 0 },
+      ...(parseSales(d.garage) ? { garage: parseSales(d.garage) } : {}),
       ...(parseAppearance(d.appearance) ? { appearance: parseAppearance(d.appearance) } : {}),
       ...(d.tools && typeof d.tools === 'object' ? { tools: { god: !!d.tools.god, ammo: !!d.tools.ammo, never: !!d.tools.never, clock: d.tools.clock !== false } } : {}),
     };
   } catch { return null; }
+}
+function parseSales(v: unknown): SaleLog | undefined {
+  const d = v as Partial<SaleLog> | undefined;
+  if (!d || !Array.isArray(d.cool) || !Array.isArray(d.sold)) return undefined;
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, x) : 0);
+  return {
+    cool: d.cool.slice(0, 8).map(num),
+    sold: d.sold.filter(x => x && typeof x.kind === 'string' && Object.hasOwn(VEHICLES, x.kind)).slice(0, 60).map(x => ({ kind: x.kind as VehicleKind, age: num(x.age) })),
+  };
 }
 function parseCars(v: unknown): OwnedCar[] {
   if (!Array.isArray(v)) return [];

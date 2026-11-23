@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three';
 import type { CityMap, Lane } from '../world/citymap';
-import { samplePath, signalState, yellowLeft, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane, CURB_HEIGHT } from '../world/citymap';
+import { samplePath, signalState, laneSigAxis, yellowLeft, pedestrianMayCross, districtAt, DISTRICT_INFO, nearestLane, CURB_HEIGHT } from '../world/citymap';
 import { CrowdPeople, type CrowdLook } from '../actors/crowdBody';
 import { randomLook, type FullLook } from '../actors/look';
 import type { VehicleManager } from './vehicles';
@@ -147,7 +147,11 @@ export class Crowd {
             const nl = nearestLane(this.city, x, z);
             if (nl) samplePath(nl.lane, nl.s, sp);
             const yaw = nl ? Math.atan2(sp.dx, sp.dz) : (road.axis === 'x' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI));
-            this.slots.push({ x, z, yaw, paint: r.int(0, CAR_PAINT.length - 1), kind: r.int(0, PARKED_MIX.length - 1), taken: false, real: null });
+            const paint = r.int(0, CAR_PAINT.length - 1), kind = r.int(0, PARKED_MIX.length - 1);
+            // Round 9: no parking in the last 28 m before a junction or 12 m after one (like real no-standing zones): parked cars
+            // there blocked the kerb lane right-turners queue in, the probe's main AI crash source
+            if (nl && !kerbSlotOk(nl.s, nl.lane.length)) continue;
+            this.slots.push({ x, z, yaw, paint, kind, taken: false, real: null });
           }
         }
       }
@@ -300,8 +304,8 @@ export class Crowd {
       }
       if (this.vehicles.list.some(o => Math.abs(o.position.x - sp.x) < 10 && Math.abs(o.position.z - sp.z) < 10)) continue;
       // never appear already doing 40 km/h towards a red line it cannot stop at (R6-T)
-      if (!lane.connector && !spawnSafeAtSignal(signalState(this.city.intersections[lane.intersection], lane.axis, this.time()), signalState(this.city.intersections[lane.intersection], lane.axis, this.time() + 5), lane.length - s - 5.4)) continue;
-      const sInter = this.city.intersections[lane.intersection], v0 = lane.connector ? lane.speed * 0.8 : Math.min(lane.speed * 0.8, signalCap(signalState(sInter, lane.axis, this.time()), lane.length - s - 5.4, lane.speed * 0.8));
+      if (!lane.connector && !spawnSafeAtSignal(signalState(this.city.intersections[lane.intersection], laneSigAxis(lane), this.time()), signalState(this.city.intersections[lane.intersection], laneSigAxis(lane), this.time() + 5), lane.length - s - 7.2)) continue;
+      const sInter = this.city.intersections[lane.intersection], v0 = lane.connector ? lane.speed * 0.8 : Math.min(lane.speed * 0.8, signalCap(signalState(sInter, laneSigAxis(lane), this.time()), lane.length - s - 7.2, lane.speed * 0.8));
       const kind: VehicleKind = bus ? 'bus' : this.pickKind(), paint = Math.floor(Math.random() * 64);
       if (bus && !hasTemplate('bus')) return false;
       this.cars.push({ lane, s, v: v0, paint, len: bus ? 11.6 : 4.5, x: sp.x, z: sp.z, yaw: Math.atan2(sp.dx, sp.dz), id: this.nextId++, ox: 0, oz: 0, lcCool: Math.random() * 8, bus, dwell: 0, stopS: -1, planLane: -1, kind, pc: kindPaint(kind, paint) });
@@ -362,8 +366,8 @@ export class Crowd {
       }
       if (!lane.connector) {
         const inter = this.city.intersections[lane.intersection];
-        const dStop = lane.length - c.s - 5.4;
-        if (inter.signalized) target = Math.min(target, signalCap(signalState(inter, lane.axis, t), dStop, c.v, yellowLeft(inter, lane.axis, t)));
+        const dStop = lane.length - c.s - 7.2;
+        if (inter.signalized) target = Math.min(target, signalCap(signalState(inter, laneSigAxis(lane), t), dStop, c.v, yellowLeft(inter, laneSigAxis(lane), t)));
         else if (dStop > -1) { // stop sign: halt, wait a beat, go once nobody else is in the junction (R6-T)
           if (c.ssLane !== lane.id) { c.ssLane = lane.id; c.ssWait = 0; }
           if (dStop < 1.8 && c.v < 0.4) c.ssWait = (c.ssWait ?? 0) + dt;
@@ -552,3 +556,5 @@ export function spawnHidden(dist: number, inView: boolean): boolean { return inV
 
 /** Round 8: streets with kerbside parking (two lanes each way; a one-lane street has no room). Pure (tests). */
 export function kerbParking(lanes: number): boolean { return lanes >= 2; }
+/** Round 9: kerbside parking is allowed at lane position `s` of a lane `len` m long only away from both junctions. Pure. */
+export function kerbSlotOk(s: number, len: number): boolean { return s >= 12 && len - s >= 28; }

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import type { Assets } from '../world/assets';
-import { Vehicle } from '../vehicles/vehicle';
+import { Vehicle, barStrobe } from '../vehicles/vehicle';
 import type { VehicleKind } from '../vehicles/specs';
 import { WATER_LEVEL } from '../world/citymap';
 import type { Particles, SkidMarks } from '../render/particles';
@@ -103,6 +103,54 @@ export class VehicleManager {
       void time;
     }
   }
+  /**
+   * Round 9 (owner: "police lights should shine in the dark just like headlights do and be brighter"): every strobing light
+   * bar near the camera throws flashing red / blue pools on the road around the car (cheap additive decals, all presets), and
+   * the nearest one also lights walls and cars with a real red + blue point light pair (Medium and up; count fixed per preset).
+   */
+  private barPools: { m: THREE.Mesh; side: 0 | 1 }[] = [];
+  private barLights: THREE.PointLight[] = [];
+  private barTex: THREE.Texture | null = null;
+  setBarLightCount(n: number) {
+    while (this.barLights.length < n * 2) { const l = new THREE.PointLight(this.barLights.length % 2 ? 0x2a5cff : 0xff2a1a, 0, 26, 1.6); l.castShadow = false; this.scene.add(l); this.barLights.push(l); }
+    while (this.barLights.length > n * 2) { const l = this.barLights.pop()!; this.scene.remove(l); l.dispose(); }
+  }
+  private ensureBarPools() {
+    if (this.barPools.length || typeof document === 'undefined') return;
+    const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!;
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    this.barTex = new THREE.CanvasTexture(c);
+    const geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    for (let i = 0; i < 12; i++) {
+      const side = (i % 2) as 0 | 1;
+      const mat = new THREE.MeshBasicMaterial({ map: this.barTex, color: side ? 0x2050ff : 0xff2010, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: true });
+      const m = new THREE.Mesh(geo, mat); m.renderOrder = 2; m.frustumCulled = false; m.visible = false; this.scene.add(m); this.barPools.push({ m, side });
+    }
+  }
+  private updateBarLights(night: number, time: number, listener: THREE.Vector3) {
+    this.ensureBarPools();
+    const lit: Vehicle[] = [];
+    for (const v of this.list) if (v.barOn && v.group.visible && v.position.distanceToSquared(listener) < 140 * 140) lit.push(v);
+    lit.sort((a, b) => a.position.distanceToSquared(listener) - b.position.distanceToSquared(listener));
+    const st = barStrobe(time), k = 0.25 + 0.75 * Math.min(1, night * 1.5);
+    for (let i = 0; i < this.barPools.length; i++) {
+      const pl = this.barPools[i], v = lit[i >> 1];
+      if (!v) { pl.m.visible = false; continue; }
+      const f = v.phys.forward(), sx = -f.z, sz = f.x, o = pl.side ? -1.6 : 1.6;
+      pl.m.position.set(v.position.x + sx * o, v.position.y - v.phys.layout.half[1] + 0.06, v.position.z + sz * o);
+      pl.m.scale.setScalar(9);
+      (pl.m.material as THREE.MeshBasicMaterial).opacity = st[pl.side] * 0.55 * k;
+      pl.m.visible = st[pl.side] > 0;
+    }
+    for (let i = 0; i < this.barLights.length; i++) {
+      const l = this.barLights[i], v = lit[i >> 1], side = i % 2;
+      if (!v) { l.intensity = 0; continue; }
+      const f = v.phys.forward(), sx = -f.z, sz = f.x, o = side ? -0.5 : 0.5;
+      l.position.set(v.position.x + sx * o, v.position.y + v.phys.layout.half[1] + 0.4, v.position.z + sz * o);
+      l.intensity = st[side] * 260 * k;
+    }
+  }
   /** Max cars that cast shadows at once (nearest first); set from the graphics preset. */
   shadowBudget = 10;
   /** Round 7: real headlight spots (no shadows) for the player's car and the nearest lit cars; the count is fixed per
@@ -144,6 +192,7 @@ export class VehicleManager {
   }
   update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
     this.updateHeadlights(night, listener, playerVehicle, dt);
+    this.updateBarLights(night, time, listener);
     this.updateSkidAudio(playerVehicle);
     this.updatePlayerSiren(playerVehicle);
     for (const v of [...this.list]) {

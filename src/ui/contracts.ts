@@ -64,6 +64,9 @@ export interface GameUI {
   openShop(title: string, items: ShopItem[], money: number, onBuy: (id: string) => void, onClose: () => void): void;
   refreshShop(items: ShopItem[], money: number): void;
   closeShop(): void;
+  openGarage(view: import('./garageMenu').GarageView, handlers: import('./garageMenu').GarageHandlers): void;
+  updateGarage(view: import('./garageMenu').GarageView): void;
+  closeGarage(): void;
   openGroom(cfg: import('./groom').GroomConfig, state: import('./groom').GroomState): void;
   updateGroom(state: import('./groom').GroomState): void;
   closeGroom(): void;

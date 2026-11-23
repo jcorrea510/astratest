@@ -88,10 +88,14 @@ export function turnSide(d0x: number, d0z: number, d1x: number, d1z: number): nu
 export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: number, ospeed: number, afx: number, afz: number): boolean {
   if (ospeed < 1.5) return false;
   if ((ofx * afx + ofz * afz) > -0.7) return false; // not opposing our approach
-  const d = Math.hypot(ox, oz); if (d > 40) return false;
+  const d = Math.hypot(ox, oz); if (d > 60) return false;
   if ((-ox * ofx - oz * ofz) < 0) return false; // already past the junction
   const lat = Math.abs(ox * afz - oz * afx); if (lat > 7) return false;
-  return d / ospeed < 4.5;
+  return d / ospeed < LEFT_GAP; // Round 9: a left turn from a standstill takes ~5 s to clear the oncoming lanes
+}
+/** Seconds of gap a left-turner needs before oncoming traffic arrives (was 4.5: they cut across too often). */
+export const LEFT_GAP = 5.5;
+export function oncomingRange(): number { return 60;
 }
 /** A car must not appear inside the dilemma zone of a signal: near a stop line (<70 m) the light has to stay green for the next 5 s. */
 export function spawnSafeAtSignal(now: 'green' | 'yellow' | 'red', in5s: 'green' | 'yellow' | 'red', dStop: number): boolean {
@@ -115,3 +119,8 @@ export function aiPedal(err: number, speed: number, targetSpeed: number): number
   const e = -err;
   return -Math.min(1, Math.max(0, e - 0.3) * 0.13);
 }
+
+/** Round 9: the painted stop bar's back edge, metres before the junction edge (zebra 0.7-3.7 m, bar 4.15-4.6 m). */
+export const STOP_BAR = 4.6;
+/** Metres from the junction edge (lane end) to a stopped car's centre: nose 0.3 m behind the stop bar (it used to stand on the zebra). */
+export function stopBack(halfLen: number): number { return STOP_BAR + 0.3 + Math.max(1.8, halfLen); }
