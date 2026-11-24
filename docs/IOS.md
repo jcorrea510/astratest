@@ -3,6 +3,8 @@
 The iPad app is a thin Xcode wrapper (`ios/`) around the same web game as the website and Mac app. It is iPad-only, iOS 16+, landscape.
 
 ## A. Build it yourself in Xcode (fastest, on the Mac)
+0. One-time setup: install Xcode (free, Mac App Store) and Node.js 22 (nodejs.org), then get the code:
+   `git clone https://github.com/jcorrea510/astratest.git && cd astratest` (or GitHub Desktop > Clone).
 1. In the repo folder run `npm install && npm run ios:web`. This builds the game into `ios/MeridianAfterglow/game`.
 2. Open `ios/MeridianAfterglow.xcodeproj` in Xcode.
 3. Xcode > Settings > Accounts: sign in with your Apple ID.
