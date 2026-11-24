@@ -2,6 +2,10 @@
 
 Resume: read CLAUDE.md, docs/BRIEF9.md + docs/ROUND9.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 11 (owner notes 24 Nov night) — see docs/ROUND11.md
+- Perf/memory/zero-crash/iOS done by lead + agents; menus agent R11-M last. Probes: .perfprobe/.rcpu/.rprof/.memprobe/.redprobe.
+- Can't measure the M1 GPU here: owner's FPS readout now shows CPU ms to tell which side limits.
+
 ## Round 10 (owner notes 24 Nov): left turns on red, goals panel
 - [x] Left turners ran reds: the pedal lags ~2.4 m/s behind a stop curve, so cars rolled over the bar and the "across and
   rolling" rule let them in; amber "go" ignored the slow-down for the turn. Fix: lag-compensated stop (lineStop), stop on

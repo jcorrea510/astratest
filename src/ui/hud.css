@@ -233,4 +233,4 @@
 .ma-root .ma-wheel-detail { font-weight: 700; font-size: 32px; fill: var(--apricot); }
 .ma-root .ma-wheel-hint { fill: rgba(255, 255, 255, 0.5); }
 /* Round 11: a mission card owns the top-centre while it shows; the controls tip steps aside (they overlapped on small screens) */
-.ma-root.is-card .ma-hint { opacity: 0; transition: opacity 0.2s; }
+.ma-root.is-card .ma-hint { visibility: hidden; } /* (opacity loses to the hint's fill-mode animation) */

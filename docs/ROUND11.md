@@ -1,8 +1,12 @@
-# Round 11 plan (BRIEF11) — overnight; 3 a.m. check-ins scheduled (08:00 + 11:00 UTC)
+# Round 11 plan (BRIEF11) — overnight; 3 a.m. check-ins fired (08:00 + 11:00 UTC)
 
-- [ ] P  Performance (lead): Medium/High smooth on an M1 Air. SwiftShader frame time = GPU-cost proxy (.perfprobe.mjs).
-- [ ] T  Zero AI traffic crashes (lead): .redprobe.mjs over many junctions -> 0; zero page errors in a long soak.
-- [ ] H  HUD redesign (agent R11-H, worktree): src/ui/hud.ts + new src/ui/hud.css. Real-game look; fix blank mission card.
-- [ ] M  Menus redesign (agent R11-M, worktree): pause/title/settings/shop/garage/groom/sandbox/controls/map chrome; fix clipped logo over pause tabs.
-- [ ] X  Xcode iPad app (agent R11-X, worktree): ios/ WKWebView app (app://game/), unsigned IPA via macOS CI, docs/IOS.md.
-- [ ] Z  Gate, publish gh-pages, summary for the owner.
+- [x] P  Performance (lead). CPU: people culled off screen, hidden subtrees skip matrix updates, grid nearestLane.
+      GPU: light pool (14 always-on point lights -> 2/4/8), tone map + grade one pass, Medium shadows every other frame,
+      no bloom in daylight, adaptive resolution below native under 45 fps. Memory: static vertex arrays freed after
+      upload (heap 990 -> 270 MB). FPS readout shows CPU ms (tell CPU- from GPU-bound on the Mac).
+- [x] T  Zero AI traffic crashes (lead): accelerating-gap rule, first-at-line cars may go, opposing left turner holds the
+      box. .redprobe.mjs 6 junctions x 3-5 min: 0 junction crashes. Soak: 0 runtime issues, no heap growth.
+- [x] H  HUD redesign (R11-H, merged): src/ui/hud.css glass language; mission card, death card, stars, speedo, toasts.
+- [ ] M  Menus redesign (R11-M, resumed after a usage limit): src/ui/menus.css, store detail pane.
+- [x] X  Xcode iPad app (R11-X, merged): ios/, ios.yml CI builds an unsigned .ipa (passes on macos-latest), docs/IOS.md.
+- [ ] Z  Gate, publish gh-pages + main (main push publishes the ios-latest release), summary for the owner.

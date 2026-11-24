@@ -2,7 +2,7 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/game-polish-balance-pu1cvc.
-Current brief: docs/BRIEF9.md, plan docs/ROUND9.md (earlier: BRIEF8..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current brief: docs/BRIEF11.md, plan docs/ROUND11.md (earlier: BRIEF9..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Owner (21 Nov): bugs the owner reports are fixed by the lead personally (no subagents for those); measure with a headless probe first.
@@ -27,7 +27,8 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
 - core/: input (rebindable actions), physics (Rapier wrapper + collision groups, overlapsCapsule), rng, settings.
 - world/: citymap (pure layout: road grid, lanes, routeField, districts, ped graph), citybuild (meshes + colliders),
   buildings/builders/facadeShader/props (procedural architecture), expansion (hills/highway/etc), terrain, interiors (walk-in stores), assets loader.
-- render/: renderer (post, grade, shadows), sky (time of day), materials (procedural textures), particles.
+- render/: renderer (post: one tone-map+grade pass, shadows), lightPool (all local point lights share 2/4/8 real ones: use
+  addPooledLight, never scene.add a PointLight), gpuOnly (static vertex arrays freed after upload), sky, materials, particles.
 - actors/: human (UBC realistic bodies, retargeted UAL anims), humanAssets/humanMaterial/look (appearance), actions
   (`human.playAction(name,{layer,fade,rate,loop,hold,onEvent,onDone})`: punch_*, open_door, enter_car, exit_car, pull_out, pulled_out,
   thrown_out, smash_window, hotwire, handcuffed, cuffing, kneel, hands_up, cower, knockdown, get_up...), character (capsule, health,
@@ -44,6 +45,7 @@ package-lock.json. Read only the part of a big file you need (grep first, then R
 - ui/: ui.ts (screens/menus), attract (menu flyover), hud, minimap/mapdraw/fullmap, wheel, shop, settingsPanel, sandbox panel, contracts.
 - audio/: core/sfx/gunSamples (recorded CC0 gunshots, public/assets/audio/guns; gunsynth = fallback)/loops/music/ambience.
 - world/streetscape: street dressing baked into trim chunks. Shaders: Game.warmShaders compiles everything at load (keep it so).
+- ios/: Xcode iPad app (WKWebView, app://game/, `npm run ios:web`), ios.yml builds an unsigned .ipa; docs/IOS.md.
 - desktop/: Electron Mac app wrapper (app:// origin); built + released by .github/workflows/desktop.yml (release desktop-latest).
 - core/units.ts = US units, core/fullscreen.ts. (Highway mode was removed in Round 8.)
 - tests: unit next to sources (*.test.ts); e2e in tests/e2e/*.spec.ts (helpers.ts: boot, step, quietStreets, watch/clean).

@@ -219,7 +219,7 @@ export function trimMaterial(): THREE.MeshStandardMaterial {
   m.onBeforeCompile = sh => {
     sh.uniforms.uNight = nightUniform;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 trim; flat varying vec4 vTrim; varying vec2 vTUv; varying vec3 vTW;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvTrim = trim; vTUv = uv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvTrim = vec4(trim.xy / 255.0, trim.z, trim.w / 10.0); vTUv = uv; // Round 11: packed bytes (builders.ts packTrim)')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvTW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
       uniform float uNight; flat varying vec4 vTrim; varying vec2 vTUv; varying vec3 vTW;

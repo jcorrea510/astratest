@@ -62,12 +62,13 @@ test('hud: a showing mission card hides the controls tip (small window)', async 
   await boot(page);
   const r = await page.evaluate(async () => {
     const u = (window as any).__meridian.ui;
-    u.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu.', 30);
+    u.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools (spawn cars, set the clock, wanted level, teleport) and saving.', 30);
     u.missionCard('Port Meridian', 'Golden hour. The city is yours.', 'start');
     await new Promise(res => setTimeout(res, 900));
     const hint = document.querySelector<HTMLElement>('.ma-hint')!, card = document.querySelector<HTMLElement>('.ma-card-title')!.getBoundingClientRect();
     const hr = hint.getBoundingClientRect(), overlap = hr.bottom > card.top && hr.top < card.bottom && hr.right > card.left && hr.left < card.right;
-    return { overlap, hintOpacity: Number(getComputedStyle(hint).opacity) };
+    const cs = getComputedStyle(hint);
+    return { overlap, shown: Number(cs.opacity) > 0.1 && cs.visibility !== 'hidden' && cs.display !== 'none' };
   });
-  expect(r.overlap && r.hintOpacity > 0.1).toBe(false);
+  expect(r.overlap && r.shown).toBe(false);
 });

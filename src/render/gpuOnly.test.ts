@@ -15,3 +15,11 @@ it('static meshes drop their CPU vertex arrays once uploaded; counts and bounds 
   expect(pos.array).toBeInstanceOf(Float32Array);
   inst.instanceMatrix.onUploadCallback(); expect(inst.instanceMatrix.array.length).toBe(16 * 4); // instance data is updated later: kept
 });
+import { packTrim } from '../world/builders';
+it('Round 11: trim params pack into bytes and decode back (roughness/metal /255, pattern as is, glow /10)', () => {
+  expect(packTrim(0.85, 0) / 255).toBeCloseTo(0.85, 2);
+  expect(packTrim(0.7, 1) / 255).toBeCloseTo(0.7, 2);
+  expect(packTrim(3, 2)).toBe(3);
+  expect(packTrim(21, 3) / 10).toBeCloseTo(21, 5);
+  expect(packTrim(99, 3)).toBe(255);
+});

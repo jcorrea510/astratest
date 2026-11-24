@@ -122,6 +122,8 @@ export class FacadeBuilder {
 
 /** [roughness, metalness, pattern, glow] */
 export type TrimParams = [number, number, number, number];
+/** Round 11: one trim param as a byte: roughness / metalness x255, pattern id as is, glow x10 (decoded in trimMaterial). Pure (tests). */
+export function packTrim(v: number, k: number): number { return Math.round(THREE.MathUtils.clamp(k === 2 ? v : k === 3 ? v * 10 : v * 255, 0, 255)); }
 export const T_PAINT: TrimParams = [0.6, 0, 0, 0];
 export const T_STONE: TrimParams = [0.85, 0, 2, 0];
 export const T_METAL: TrimParams = [0.45, 0.7, 0, 0];
@@ -194,10 +196,19 @@ export class TrimBuilder {
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
+    // Round 11 (memory + vertex bandwidth): the street dressing is ~10 M vertices. Normals and colours are packed into
+    // normalized bytes and the trim params into raw bytes (decoded in trimMaterial), all 4-byte aligned for Metal:
+    // 60 -> 32 bytes per vertex (~565 -> ~300 MB of the city's vertex data)
+    const n = this.pos.length / 3, nor = new Int8Array(n * 4), col = new Uint8Array(n * 4), tr = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < 3; k++) { nor[i * 4 + k] = Math.round(THREE.MathUtils.clamp(this.nor[i * 3 + k], -1, 1) * 127); col[i * 4 + k] = Math.round(THREE.MathUtils.clamp(this.col[i * 3 + k], 0, 1) * 255); }
+      col[i * 4 + 3] = 255;
+      const t = this.tr; tr[i * 4] = packTrim(t[i * 4], 0); tr[i * 4 + 1] = packTrim(t[i * 4 + 1], 1); tr[i * 4 + 2] = packTrim(t[i * 4 + 2], 2); tr[i * 4 + 3] = packTrim(t[i * 4 + 3], 3);
+    }
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 4, true));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    g.setAttribute('trim', new THREE.Float32BufferAttribute(this.tr, 4));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4, true));
+    g.setAttribute('trim', new THREE.BufferAttribute(tr, 4, false));
     g.computeBoundingSphere(); g.computeBoundingBox();
     this.release();
     return g;
