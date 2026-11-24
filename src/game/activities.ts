@@ -17,6 +17,29 @@ import { Robberies } from './robbery';
 import { GunStore } from './gunStore';
 import { Salon } from './salon';
 
+/** R11-M: 0..1 bars for the store detail pane (guns by their numbers, cars by their tune). */
+function shopStats(id: string): ShopItem['stats'] {
+  const [kind, key] = id.split(':');
+  const c = (v: number) => Math.max(0, Math.min(1, v));
+  if (kind === 'w' || kind === 'a') {
+    const w = WEAPONS[key as WeaponId];
+    if (!w || w.melee || w.cat === 'throw') return w?.melee ? [{ label: 'Damage', value: c(w.damage / 80) }, { label: 'Speed', value: c(0.5 / w.interval) }] : undefined;
+    return [
+      { label: 'Damage', value: c((w.damage * Math.min(w.pellets, 4)) / 120) }, { label: 'Fire rate', value: c(0.14 / w.interval) },
+      { label: 'Range', value: c(w.range / 260) }, { label: 'Magazine', value: c(w.clip / 60) },
+    ];
+  }
+  if (kind === 'car') {
+    const s = VEHICLES[key as VehicleKind];
+    if (!s) return undefined;
+    return [
+      { label: 'Top speed', value: c(s.topSpeed / 70) }, { label: 'Power', value: c(s.engine / s.mass / 14) },
+      { label: 'Grip', value: c(s.grip) }, { label: 'Toughness', value: c(s.health / 1800) },
+    ];
+  }
+  return undefined;
+}
+
 export class Activities {
   found = new Set<number>();
   jumpsDone = new Set<number>();
@@ -124,7 +147,11 @@ export class Activities {
       { id: 'medkit', label: 'First-aid kit', description: `For later. Use it from the wheel (carrying ${g.pcombat.inv.medkits}).`, price: 140, disabled: g.money < 140 || g.pcombat.inv.medkits >= 5 },
     ];
   }
-  private shopItems(): ShopItem[] { return this.shopOpen === 'snack' ? this.snackItems() : this.shopOpen === 'dealer' ? this.dealerItems() : this.armsItems(); }
+  private shopItems(): ShopItem[] {
+    const items = this.shopOpen === 'snack' ? this.snackItems() : this.shopOpen === 'dealer' ? this.dealerItems() : this.armsItems();
+    for (const it of items) it.stats = shopStats(it.id); // R11-M: bars for the store detail pane
+    return items;
+  }
   // ---------------------------------------------------------------- dealership, garage, net worth, milestones
   dealerItems(): ShopItem[] {
     const g = this.game, full = this.ownedCars.length >= GARAGE_SLOTS.length;

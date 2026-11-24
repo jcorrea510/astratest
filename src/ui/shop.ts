@@ -4,11 +4,16 @@ import { formatMoney } from './geometry';
 import { h } from './dom';
 import { CHECK_SVG, LOCK_SVG, guessIcon, weaponSvg } from './icons';
 
+const CAR_SVG = '<svg class="ma-icon ma-icon-lg" viewBox="0 0 120 48" aria-hidden="true"><path fill="currentColor" d="M5 35c0-5 2-8 7-9l16-3 12-12c2-2 5-3 8-3h25c4 0 7 1 10 4l10 11 14 3c5 1 8 4 8 8v4H5z"/><path fill="rgba(8,10,12,0.55)" d="M43 22h19l-1-9H50zM67 22h22l-8-9h-14z"/><g fill="#0b0d10" stroke="currentColor" stroke-width="2.5"><circle cx="31" cy="37" r="8.5"/><circle cx="90" cy="37" r="8.5"/></g><g fill="currentColor"><circle cx="31" cy="37" r="3"/><circle cx="90" cy="37" r="3"/></g></svg>';
+
 export class Shop {
   readonly el: HTMLDivElement;
   private title: HTMLDivElement;
   private moneyEl: HTMLDivElement;
   private list: HTMLDivElement;
+  private detail: HTMLDivElement;
+  private buyBtn: HTMLButtonElement;
+  private selectedId = '';
   private items: ShopItem[] = [];
   private money = 0;
   private onBuy: (id: string) => void = () => {};
@@ -28,8 +33,19 @@ export class Shop {
     wallet.appendChild(this.moneyEl);
     head.appendChild(wallet);
     panel.appendChild(head);
+    const split = h('div', 'ma-shop-split');
     this.list = h('div', 'ma-panel-body ma-shop-list');
-    panel.appendChild(this.list);
+    this.detail = h('div', 'ma-shop-detail');
+    this.buyBtn = h('button', 'ma-btn ma-btn-primary ma-shop-buy');
+    this.buyBtn.type = 'button';
+    this.buyBtn.addEventListener('click', () => {
+      const row = this.list.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(this.selectedId)}"]`);
+      if (row) this.buy(this.selectedId, row);
+    });
+    split.append(this.list, this.detail);
+    panel.appendChild(split);
+    this.list.addEventListener('focusin', e => { const row = (e.target as Element).closest<HTMLElement>('[data-item-id]'); if (row) this.select(row.dataset.itemId!); });
+    this.list.addEventListener('pointerover', e => { const row = (e.target as Element).closest<HTMLElement>('[data-item-id]'); if (row && row.dataset.itemId !== this.selectedId) this.select(row.dataset.itemId!); });
     const foot = h('div', 'ma-panel-foot');
     const hints = h('div', 'ma-foot-hints');
     for (const [k, t] of [['↑↓', 'Browse'], ['Enter', 'Buy'], ['Esc', 'Leave store']]) {
@@ -76,7 +92,7 @@ export class Shop {
       const b = h('button', 'ma-shop-item');
       b.type = 'button'; b.dataset.nav = ''; b.dataset.itemId = it.id;
       const afford = money >= it.price;
-      const state = it.owned ? 'owned' : it.disabled ? 'disabled' : afford ? 'buy' : 'poor';
+      const state = it.owned ? 'owned' : !afford ? 'poor' : it.disabled ? 'disabled' : 'buy';
       b.classList.add(`is-${state}`);
       const icon = h('span', 'ma-shop-icon');
       const ic = guessIcon(`${it.id} ${it.label}`);
@@ -106,6 +122,45 @@ export class Shop {
     }
     const target = (focusedId && this.list.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(focusedId)}"]`)) || (first ? this.list.querySelector<HTMLElement>('.is-buy') ?? this.list.querySelector<HTMLElement>('[data-nav]') : null);
     target?.focus({ preventScroll: true });
+    const sel = (target as HTMLElement | null)?.dataset?.itemId ?? (this.items.some(i => i.id === this.selectedId) ? this.selectedId : this.items[0]?.id ?? '');
+    this.select(sel, true);
+  }
+
+  /** Marks a row as the one shown in the detail pane and fills the pane. */
+  private select(id: string, force = false) {
+    if (!force && id === this.selectedId) return;
+    this.selectedId = id;
+    const it = this.items.find(i => i.id === id);
+    this.detail.textContent = '';
+    if (!it) return;
+    for (const r of this.list.children) (r as HTMLElement).classList.toggle('is-selected', (r as HTMLElement).dataset.itemId === id);
+    const money = this.money;
+    const ic = guessIcon(`${it.id} ${it.label}`);
+    const pv = h('div', 'ma-shop-preview');
+    pv.innerHTML = ic ? weaponSvg(ic, 'ma-icon ma-icon-lg') : it.id.startsWith('car:') ? CAR_SVG : '';
+    this.detail.appendChild(pv);
+    this.detail.appendChild(h('div', 'ma-shop-dname', it.label));
+    this.detail.appendChild(h('div', 'ma-shop-ddesc', it.description));
+    if (it.stats?.length) {
+      const st = h('div', 'ma-shop-stats');
+      for (const s of it.stats) {
+        const row = h('div', 'ma-shop-stat');
+        row.appendChild(h('span', 'ma-shop-stat-l', s.label));
+        const bar = h('span', 'ma-shop-stat-bar'); const fill = h('span', 'ma-shop-stat-fill');
+        fill.style.width = `${Math.round(Math.max(0.04, Math.min(1, s.value)) * 100)}%`; bar.appendChild(fill); row.appendChild(bar);
+        st.appendChild(row);
+      }
+      this.detail.appendChild(st);
+    }
+    if (it.info) return;
+    const state = it.owned ? 'owned' : money < it.price ? 'poor' : it.disabled ? 'disabled' : 'buy';
+    const foot = h('div', 'ma-shop-dfoot');
+    foot.appendChild(h('div', 'ma-shop-dprice', state === 'owned' ? 'Owned' : formatMoney(it.price)));
+    const b = this.buyBtn;
+    b.textContent = state === 'owned' ? 'Owned' : state === 'poor' ? `Need ${formatMoney(it.price - money)} more` : state === 'disabled' ? 'Unavailable' : 'Buy';
+    b.classList.toggle('is-off', state !== 'buy'); b.setAttribute('aria-disabled', String(state !== 'buy'));
+    foot.appendChild(b);
+    this.detail.appendChild(foot);
   }
 
   private buy(id: string, b: HTMLElement) {
