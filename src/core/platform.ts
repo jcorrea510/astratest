@@ -24,6 +24,7 @@ export function defaultQualityFor(nav: NavLike = navigator): QualityName | null 
 /** Launched from the iOS home screen / an installed PWA: there is no browser chrome, so the app is already "fullscreen". */
 export function isStandalone(): boolean {
   try {
+    if ((globalThis as { __nativeApp?: unknown }).__nativeApp) return true; // native wrapper (the iOS app injects window.__nativeApp = 'ios')
     const n = navigator as Navigator & { standalone?: boolean };
     return n.standalone === true || ['standalone', 'fullscreen'].some(m => window.matchMedia(`(display-mode: ${m})`).matches);
   } catch { return false; }

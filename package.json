@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "ios:web": "node scripts/ios-web.mjs",
     "local": "node scripts/local.mjs",
     "test:soak": "SOAK=1 playwright test --grep @soak"
   },
