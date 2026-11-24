@@ -90,7 +90,10 @@ export class Wheel {
         g.appendChild(icon);
       }
       if (n > 1) g.appendChild(svg('path', { d: arcPath(a - half, a + half, R_OUT - 4, gap) }, 'ma-wheel-accent'));
-      const det = svg('text', { x: c.x, y: c.y + 32, 'text-anchor': 'middle' }, 'ma-wheel-slot-detail');
+      const lab = svg('text', { x: c.x, y: c.y + 30, 'text-anchor': 'middle' }, 'ma-wheel-slot-label');
+      lab.textContent = s.label;
+      g.appendChild(lab);
+      const det = svg('text', { x: c.x, y: c.y + 46, 'text-anchor': 'middle' }, 'ma-wheel-slot-detail');
       det.textContent = s.enabled ? s.detail : '—';
       g.appendChild(det);
       g.addEventListener('pointerenter', () => this.highlight(i));
