@@ -10,3 +10,7 @@ test-results/
 .cityshots.mjs
 dist-local/
 tests/e2e/tmp/
+ios/MeridianAfterglow/game/*
+!ios/MeridianAfterglow/game/README.md
+build/
+xcuserdata/
