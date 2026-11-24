@@ -378,6 +378,8 @@ export class Combat {
         this.particles.impact(ph.point.x, ph.point.y, ph.point.z, ph.normal.x, ph.normal.y, ph.normal.z, ph.surface === 'vehicle' ? 'metal' : 'wood', strength0);
         if (ph.vehicle) { ph.vehicle.damage(w.damage * 0.2, ph.point, d, shooter); ph.vehicle.flashT = 0.05; this.carDecal(ph.vehicle, origin, d, ph.point); this.onVehicleHit?.(ph.vehicle, shooter); }
       }
+      // Round 11: a round through a car's windows is a shot at that car (and its crew): police crews ignored it before
+      for (const gv of tr.glass) if (!tr.pen.some(ph => ph.vehicle === gv) && !(tr.kind === 'vehicle' && tr.vehicle === gv)) this.onVehicleHit?.(gv, shooter);
       const end = tr.point.clone();
       const info: HitInfo = { point: end, target: null, kind: tr.kind, headshot: false, killed: false, throughGlass: tr.glass.length > 0 };
       const strength = w.pellets > 1 ? 0.55 : 1;

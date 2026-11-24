@@ -27,8 +27,9 @@ test.describe('police R5', () => {
     await page.evaluate(() => { const g = (window as any).__game; g.police.violation('red_light', g.player.pos); });
     await step(page, 1);
     expect(await heat(page)).toBe(1);
-    const r = await page.evaluate(() => { const g = (window as any).__game, c = (window as any).__r5; return { unit: g.police.units.includes(c), siren: !!c.v.siren, mode: c.mode }; });
-    expect(r).toEqual({ unit: true, siren: true, mode: 'pursuit' });
+    // the crew goes after the player: lights-and-siren pursuit, or (player on foot, 25 m away: Round 9) out of the car on foot
+    const r = await page.evaluate(() => { const g = (window as any).__game, c = (window as any).__r5; return { unit: g.police.units.includes(c), siren: !!c.v.siren, mode: c.mode, onFoot: !c.driver.char.inVehicle && c.driver.brain === 'chase' && c.driver.alive }; });
+    expect((r.unit && r.siren && r.mode === 'pursuit') || r.onFoot, JSON.stringify(r)).toBe(true);
     clean(p);
   });
 

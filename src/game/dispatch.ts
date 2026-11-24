@@ -261,7 +261,17 @@ export class Dispatch {
     const err = wrap(Math.atan2(dx, dz) - b.yaw);
     b.input.yaw = THREE.MathUtils.clamp(err * 1.6, -1, 1);
     b.input.pitch = d > 28 && Math.abs(err) < 0.9 ? THREE.MathUtils.clamp((d - 28) / 50, 0.1, 1) : (d < 14 ? -0.25 : 0);
-    b.input.lift = THREE.MathUtils.clamp((pp.y + (vsHeli ? 10 : 42) - pos.y) * 0.25, -1, 1);
+    // Round 11: clear the rooftops and hills around and ahead (at a flat 42 m it hit a 77 m tower every 11 s and respawned)
+    const fx = d > 1 ? dx / d : 0, fz = d > 1 ? dz / d : 0;
+    // ...and the ground: the hills rise 40 m above the street (it flew into a hillside at 47 m every 11 s, then respawned)
+    const ph = (this.pop as unknown as { env: { physics: { ray: (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, t: number, g?: number) => { toi: number } | null } } }).env.physics;
+    const ground = (x: number, z: number) => { const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1); return hit ? 400 - hit.toi : 0; };
+    // a fan of downward rays: here and 40 / 90 / 150 m ahead, on the line and 15 m either side (rooftops and hillsides)
+    let roofs = 0;
+    for (const a of [0, 40, 90, 150]) for (const l of [-15, 0, 15]) roofs = Math.max(roofs, ground(pos.x + fx * a + fz * l, pos.z + fz * a - fx * l));
+    const want = Math.max(pp.y + (vsHeli ? 10 : 42), roofs + 18, d > 110 ? 125 : 0); // cruise above every tower while far out
+    b.input.lift = THREE.MathUtils.clamp((want - pos.y) * 0.25, -1, 1);
+    if (pos.y < want - 10) b.input.pitch = Math.min(b.input.pitch, 0.15); // climb before pushing on
     // searchlight
     const night = h.night();
     if (this.light && this.beam) {

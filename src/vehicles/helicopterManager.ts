@@ -173,7 +173,7 @@ export class HeliManager {
         }
       }
       // tidy wrecks and choppers left far away
-      if (h !== playerHeli && !h.driver && !h.aiOwned && h.position.distanceTo(focus) > 380 && !this.pads.some(s => s.heli === h)) this.remove(h);
+      if (h !== playerHeli && !h.driver && !h.aiOwned && !h.persistent && h.position.distanceTo(focus) > 380 && !this.pads.some(s => s.heli === h)) this.remove(h);
     }
     // parked choppers come back to their pads once you are away
     for (const s of this.pads) {
