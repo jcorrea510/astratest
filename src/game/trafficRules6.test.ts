@@ -46,7 +46,7 @@ describe('left turns', () => {
   });
   it('waits for a fast oncoming car, ignores slow, departed or off-axis ones', () => {
     expect(oncomingConflict(0, 25, 0, -1, 12, 0, 1)).toBe(true);
-    expect(oncomingConflict(0, 25, 0, -1, 3, 0, 1)).toBe(false); // would take 8 s
+    expect(oncomingConflict(0, 80, 0, -1, 3, 0, 1)).toBe(false); // ~7 s out even accelerating (Round 11: a slow car 25 m out is no longer "8 s away")
     expect(oncomingConflict(0, -10, 0, -1, 12, 0, 1)).toBe(false); // already past
     expect(oncomingConflict(15, 25, 0, -1, 12, 0, 1)).toBe(false); // other street
     expect(oncomingConflict(0, 25, 0, 1, 12, 0, 1)).toBe(false); // same direction

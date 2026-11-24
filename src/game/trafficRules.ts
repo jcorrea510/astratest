@@ -101,13 +101,25 @@ export function turnSide(d0x: number, d0z: number, d1x: number, d1z: number): nu
   return c < -0.5 ? 1 : c > 0.5 ? -1 : 0;
 }
 /** Is an oncoming car (position rel. to junction centre, heading, speed) close enough that a left-turner must wait? */
-export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: number, ospeed: number, afx: number, afz: number): boolean {
-  if (ospeed < 1.5) return false;
+/**
+ * Round 11 (zero crashes): seconds until a car `d` m out reaches the junction if it keeps accelerating (3 m/s², up to
+ * 14 m/s). Judging a gap by the current speed alone let left turners go in front of a car creeping off its line at
+ * 2 m/s (12 s away at that speed) that was on them 2.6 s later. Pure (tests).
+ */
+export function arrivalTime(d: number, v: number, a = 3, vmax = 14): number {
+  v = Math.max(0, v);
+  if (v >= vmax) return d / v;
+  const t1 = (vmax - v) / a, d1 = v * t1 + 0.5 * a * t1 * t1;
+  return d <= d1 ? (-v + Math.sqrt(v * v + 2 * a * d)) / a : t1 + (d - d1) / vmax;
+}
+/** `mayGo`: the car stands first at its own line on green and may pull away any moment (judged from a standstill). */
+export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: number, ospeed: number, afx: number, afz: number, mayGo = false): boolean {
+  if (ospeed < 1.5 && !mayGo) return false;
   if ((ofx * afx + ofz * afz) > -0.7) return false; // not opposing our approach
   const d = Math.hypot(ox, oz); if (d > 90) return false; // Round 10: 60 m missed a car at 15 m/s 4 s out (Broadway)
   if ((-ox * ofx - oz * ofz) < 0) return false; // already past the junction
   const lat = Math.abs(ox * afz - oz * afx); if (lat > 9.5) return false; // Broadway's far lanes sit ~8 m off its centre
-  return d / ospeed < LEFT_GAP; // Round 9: a left turn from a standstill takes ~5 s to clear the oncoming lanes
+  return arrivalTime(d, ospeed) < LEFT_GAP; // Round 9: a left turn from a standstill takes ~5 s to clear the oncoming lanes
 }
 /** Seconds of gap a left-turner needs before oncoming traffic arrives (was 4.5: they cut across too often). */
 export const LEFT_GAP = 5.5;

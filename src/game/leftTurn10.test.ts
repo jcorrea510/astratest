@@ -25,3 +25,11 @@ it('left-turn gap check sees an oncoming car 4 s out on a fast road (it ignored 
   expect(oncomingConflict(8.5, 40, 0, -1, 12, 0, 1)).toBe(true); // Broadway's far lane
   expect(oncomingConflict(15, 40, 0, -1, 12, 0, 1)).toBe(false); // a parallel street
 });
+import { arrivalTime } from './trafficRules';
+it('Round 11: a car creeping off its line counts as arriving soon (it accelerates), not 12 s away', () => {
+  expect(arrivalTime(29, 2.3)).toBeLessThan(4);
+  expect(oncomingConflict(0, 29, 0, -1, 2.3, 0, 1)).toBe(true);
+  expect(oncomingConflict(0, 25, 0, -1, 0, 0, 1)).toBe(false); // standing, not first at its line: ignored
+  expect(oncomingConflict(0, 25, 0, -1, 0, 0, 1, true)).toBe(true); // first at its line on green: may pull away
+  expect(arrivalTime(70, 16)).toBeCloseTo(70 / 16, 5);
+});

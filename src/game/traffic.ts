@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -209,7 +209,12 @@ export class Traffic {
     for (const o of this.vehicles.list) {
       if (o === self) continue;
       const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1, ox = o.position.x - inter.x, oz = o.position.z - inter.z;
-      if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, Math.abs(o.speed), f.x, f.z) && (patient || Math.hypot(ox, oz) / Math.max(1.5, Math.abs(o.speed)) < 3.5)) return true;
+      // Round 11 (zero crashes): an oncoming car standing first at its own line on our green is about to pull away, not
+      // parked: judge it as if already rolling (left turners went, it set off and hit them mid-turn)
+      const osp = Math.abs(o.speed);
+      let mayGo = false;
+      if (osp < 1.5) { const oc = this.carOf(o); mayGo = !!oc && !oc.lane.connector && oc.lane.intersection === inter.id && this.distToStop(oc) < 6 && !(oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1); }
+      if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, osp, f.x, f.z, mayGo) && (patient || arrivalTime(Math.hypot(ox, oz), osp) < 3.5)) return true;
       if (!patient) { if (Math.abs(ox) < inter.halfX && Math.abs(oz) < inter.halfZ && Math.abs(o.speed) > 1) return true; continue; }
       // opposing left turner waiting at its line: the lower id goes first (their paths can cross at uneven junctions)
       if (o.id < self.id && of.x * f.x + of.z * f.z < -0.7) {
@@ -217,11 +222,17 @@ export class Traffic {
         if (oc && !oc.lane.connector && oc.lane.intersection === inter.id && oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1 && this.distToStop(oc) < 10) return true;
       }
     }
+    // Round 11: an opposing left turner already part-way through its turn has the box: wait until it is out of our path
+    for (const oc of this.cars) {
+      if (oc.v === self || !oc.lane.connector || oc.lane.intersection !== inter.id || this.turnOf(oc.lane.id) !== 1 || oc.s > oc.lane.length * 0.8) continue;
+      const p0 = oc.lane.points[0], p1 = oc.lane.points[1], l = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1;
+      if (((p1.x - p0.x) * f.x + (p1.z - p0.z) * f.z) / l < -0.7) return true;
+    }
     // Round 10: the far crowd's drawn cars count too (an oncoming one 60-90 m out is not a real car yet)
     for (const o of this.farObs) {
       if (o.yaw === undefined || !o.v) continue;
       const ox = o.x - inter.x, oz = o.z - inter.z;
-      if (oncomingConflict(ox, oz, Math.sin(o.yaw), Math.cos(o.yaw), o.v, f.x, f.z) && (patient || Math.hypot(ox, oz) / Math.max(1.5, o.v) < 3.5)) return true;
+      if (oncomingConflict(ox, oz, Math.sin(o.yaw), Math.cos(o.yaw), o.v, f.x, f.z) && (patient || arrivalTime(Math.hypot(ox, oz), o.v) < 3.5)) return true;
     }
     return false;
   }
