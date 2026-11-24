@@ -1,0 +1,234 @@
+/*
+ * Round 11 HUD skin (loaded after ui.css, wins on equal specificity; every rule is scoped under .ma-root anyway).
+ * Language: dark translucent glass (rgba(12,14,18,.62) + small blur), hairline borders, 6px radius, apricot accent,
+ * money green, police red/blue, display font for headings/numbers. Blur only sits on small panels. No permanent
+ * animations: flashing stars run only while police search (and stop with prefers-reduced-motion).
+ */
+.ma-root {
+  --glass: rgba(12, 14, 18, 0.62);
+  --glass-solid: rgba(12, 14, 18, 0.86);
+  --hair: rgba(255, 255, 255, 0.08);
+  --heat-red: #ff4d5e;
+  --heat-blue: #4d8dff;
+  --txt-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --r: calc(6 * var(--u));
+}
+.ma-root .ma-weapon, .ma-root .ma-money, .ma-root .ma-heat, .ma-root .ma-radar, .ma-root .ma-speedo, .ma-root .ma-prompt,
+.ma-root .ma-infobar, .ma-root .ma-toast, .ma-root .ma-hint, .ma-root .ma-vehpop, .ma-root .ma-loc, .ma-root .ma-radio {
+  background: var(--glass); border: 1px solid var(--hair); border-radius: var(--r);
+  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
+  box-shadow: 0 calc(4 * var(--u)) calc(14 * var(--u)) rgba(0, 0, 0, 0.28);
+}
+
+/* ---------------------------------------------------------------- top right: money, weapon, stars */
+.ma-root .ma-hud-tr { top: calc(20 * var(--u)); right: var(--edge-x); gap: calc(8 * var(--u)); align-items: flex-end; }
+.ma-root .ma-money { display: flex; align-items: center; min-width: calc(150 * var(--u)); justify-content: flex-end; padding: calc(5 * var(--u)) calc(14 * var(--u)) calc(4 * var(--u)); }
+.ma-root .ma-money-value { font-size: calc(36 * var(--u)); font-weight: 800; letter-spacing: 0.01em; color: var(--money); text-shadow: var(--txt-shadow); }
+.ma-root .ma-money-delta { right: 0; top: calc(100% + 4 * var(--u)); font-size: calc(22 * var(--u)); text-shadow: var(--txt-shadow); padding: 0 calc(6 * var(--u)); }
+.ma-root .ma-weapon {
+  margin: 0; flex-direction: column-reverse; align-items: stretch; width: calc(190 * var(--u)); padding: calc(7 * var(--u)) calc(12 * var(--u)) calc(8 * var(--u));
+}
+.ma-root .ma-weapon-row { justify-content: space-between; flex-direction: row-reverse; gap: calc(10 * var(--u)); }
+.ma-root .ma-weapon-icon { width: calc(76 * var(--u)); height: calc(34 * var(--u)); display: flex; align-items: center; justify-content: center; color: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.ma-root .ma-weapon-icon svg, .ma-root .ma-weapon-icon img { max-width: 100%; max-height: 100%; width: auto; height: 100%; }
+.ma-root .ma-ammo { text-shadow: var(--txt-shadow); }
+.ma-root .ma-ammo-clip { font-size: calc(34 * var(--u)); color: #fff; }
+.ma-root .ma-ammo-sep, .ma-root .ma-ammo-reserve { font-size: calc(20 * var(--u)); color: rgba(255, 255, 255, 0.55); font-weight: 700; }
+.ma-root .ma-ammo-sep { margin: 0 calc(1 * var(--u)); }
+.ma-root .ma-ammo.is-hidden { display: none; }
+.ma-root .ma-ammo.is-empty .ma-ammo-clip { color: var(--heat-red); }
+.ma-root .ma-ammo.is-reloading .ma-ammo-clip { animation: none; color: var(--apricot); }
+.ma-root .ma-weapon-name {
+  margin: 0 0 calc(3 * var(--u)); opacity: 1; transform: none; font-size: calc(13 * var(--u)); letter-spacing: 0.14em; color: var(--apricot);
+  text-shadow: var(--txt-shadow); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ma-root .ma-heat {
+  margin: 0; gap: calc(3 * var(--u)); padding: calc(5 * var(--u)) calc(9 * var(--u)); opacity: 0; transform: translateY(calc(-6 * var(--u)));
+  transition: opacity 0.2s, transform 0.2s; visibility: hidden;
+}
+.ma-root .ma-heat.is-visible { opacity: 1; transform: none; visibility: visible; }
+.ma-root .ma-star { width: calc(27 * var(--u)); height: calc(27 * var(--u)); color: rgba(255, 255, 255, 0.16); }
+.ma-root .ma-star-fill { fill: currentColor; stroke: rgba(0, 0, 0, 0.55); stroke-width: 1.2; stroke-linejoin: round; paint-order: stroke; }
+.ma-root .ma-star.is-on { color: #ffe27a; }
+.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(40, 20, 0, 0.9); stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
+.ma-root .ma-star.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
+.ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-siren 0.8s steps(1) infinite; }
+.ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
+@keyframes ma-star-siren { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
+.ma-root .ma-heat.is-flash { border-color: rgba(255, 77, 94, 0.5); }
+
+/* ---------------------------------------------------------------- top left: gear, fps */
+.ma-root .ma-gear { left: var(--edge-x); top: calc(16 * var(--u)); width: calc(30 * var(--u)); height: calc(30 * var(--u)); font-size: calc(17 * var(--u)); background: var(--glass); border: 1px solid var(--hair); opacity: 0.8; }
+.ma-root .ma-gear:hover, .ma-root .ma-gear:focus-visible { opacity: 1; background: var(--glass-solid); border-color: var(--apricot); }
+.ma-root .ma-fps { left: calc(var(--edge-x) + 40 * var(--u)); top: calc(20 * var(--u)); }
+
+/* ---------------------------------------------------------------- toasts + controls hint (separate spots, never overlapping) */
+.ma-root .ma-notice-tl { display: contents; }
+.ma-root.has-menu .ma-toasts, .ma-root.has-menu .ma-hint, .ma-root.is-wheel .ma-toasts, .ma-root.is-wheel .ma-hint, .ma-root.is-dead .ma-toasts, .ma-root.is-dead .ma-hint { opacity: 0; }
+.ma-root .ma-toasts {
+  position: absolute; left: var(--edge-x); top: calc(56 * var(--u)); width: calc(290 * var(--u)); gap: calc(6 * var(--u));
+  align-items: stretch; transition: opacity 0.2s;
+}
+.ma-root .ma-toast {
+  position: relative; width: 100%; padding: calc(7 * var(--u)) calc(12 * var(--u)) calc(7 * var(--u)) calc(16 * var(--u)); gap: calc(10 * var(--u));
+  font-size: calc(14.5 * var(--u)); font-weight: 600; line-height: 1.25; color: #fff; overflow: hidden; --accent: #fff;
+  animation: ma-toast-in 0.22s cubic-bezier(.2, .8, .2, 1) both;
+}
+.ma-root .ma-toast::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: calc(4 * var(--u)); background: var(--accent); }
+.ma-root .ma-toast-info { --accent: rgba(255, 255, 255, 0.7); }
+.ma-root .ma-toast-money { --accent: var(--money); }
+.ma-root .ma-toast-heat { --accent: var(--heat-red); }
+.ma-root .ma-toast-mission { --accent: var(--apricot); }
+.ma-root .ma-toast-warning { --accent: #ffb020; color: #fff; }
+.ma-root .ma-toast-icon { flex: none; width: calc(20 * var(--u)); height: calc(20 * var(--u)); color: var(--accent); display: flex; }
+.ma-root .ma-toast-icon svg { width: 100%; height: 100%; }
+.ma-root .ma-toast-text { flex: 1; min-width: 0; text-shadow: var(--txt-shadow); }
+.ma-root .ma-toast-count { color: var(--accent); font-size: calc(17 * var(--u)); }
+.ma-root .ma-toast.is-leaving { animation: ma-toast-out2 0.24s ease-in both; }
+@keyframes ma-toast-in { from { opacity: 0; transform: translateX(calc(-22 * var(--u))); } to { opacity: 1; transform: none; } }
+@keyframes ma-toast-out2 { to { opacity: 0; transform: translateX(calc(-16 * var(--u))); } }
+.ma-root .ma-hint {
+  position: absolute; left: 50%; top: calc(66 * var(--u)); transform: translateX(-50%); width: min(calc(540 * var(--u)), 56vw);
+  padding: calc(10 * var(--u)) calc(16 * var(--u)) calc(13 * var(--u)); font-size: calc(15 * var(--u)); line-height: 1.8; font-weight: 500; color: rgba(255, 255, 255, 0.92);
+  text-align: left; transition: opacity 0.2s; text-shadow: var(--txt-shadow);
+}
+.ma-root .ma-hint::before {
+  content: 'Tip'; display: inline-block; margin-right: calc(10 * var(--u)); padding: 0 calc(7 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); vertical-align: calc(1 * var(--u));
+  border-radius: calc(3 * var(--u)); background: var(--apricot); color: #1a1208; text-shadow: none; font-family: var(--display); font-weight: 800; font-size: calc(12 * var(--u)); letter-spacing: 0.14em; text-transform: uppercase;
+}
+.ma-root .ma-hint.is-visible { display: block; animation: ma-hint-in 0.22s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes ma-hint-in { from { opacity: 0; transform: translate(-50%, calc(-8 * var(--u))); } to { opacity: 1; transform: translateX(-50%); } }
+.ma-root .ma-hint .ma-key { height: calc(20 * var(--u)); min-width: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); margin: 0 calc(1 * var(--u)); font-size: calc(12 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.92); color: #14161a; text-shadow: none; box-shadow: 0 calc(1.5 * var(--u)) 0 rgba(255, 255, 255, 0.3); top: 0; }
+.ma-root .ma-hint-timer { height: calc(2 * var(--u)); background: var(--apricot); opacity: 0.85; }
+
+/* ---------------------------------------------------------------- top centre: radio */
+.ma-root .ma-radio { top: calc(20 * var(--u)); padding: calc(5 * var(--u)) calc(16 * var(--u)); font-size: calc(20 * var(--u)); font-weight: 800; color: #fff; text-shadow: var(--txt-shadow); }
+.ma-root .ma-radio-icon { box-shadow: none; background: var(--apricot); width: calc(8 * var(--u)); height: calc(8 * var(--u)); }
+
+/* ---------------------------------------------------------------- bottom left: radar frame, clock, vitals */
+.ma-root .ma-hud-bl { left: var(--edge-x); bottom: calc(34 * var(--u)); }
+.ma-root .ma-radar { width: calc(240 * var(--u)); padding: calc(5 * var(--u)); border-radius: calc(10 * var(--u)); background: var(--glass-solid); animation: none; }
+.ma-root .ma-radar.is-wanted, .ma-root .ma-radar.is-searching { animation: none; box-shadow: 0 calc(4 * var(--u)) calc(14 * var(--u)) rgba(0, 0, 0, 0.28); }
+.ma-root .ma-radar.is-low { border-color: rgba(255, 77, 94, 0.75); box-shadow: 0 0 0 calc(1 * var(--u)) rgba(255, 77, 94, 0.45), 0 0 calc(16 * var(--u)) rgba(255, 77, 94, 0.3); }
+.ma-root .ma-minimap { height: calc(150 * var(--u)); border-radius: calc(6 * var(--u)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.ma-root .ma-radar-clock {
+  right: calc(8 * var(--u)); top: calc(-27 * var(--u)); height: calc(23 * var(--u)); padding: 0 calc(10 * var(--u)); border-radius: calc(6 * var(--u)); background: var(--glass); border: 1px solid var(--hair);
+  font-size: calc(16 * var(--u)); letter-spacing: 0.04em; color: #fff; text-shadow: var(--txt-shadow);
+  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
+}
+.ma-root .ma-vitals { margin-top: calc(6 * var(--u)); gap: calc(5 * var(--u)); padding: 0 calc(1 * var(--u)); }
+.ma-root .ma-vbar { height: calc(7 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.1); }
+.ma-root .ma-vbar-fill { border-radius: calc(4 * var(--u)); }
+.ma-root .ma-vbar-notches { display: none; }
+.ma-root .ma-vbar-health .ma-vbar-fill { background: linear-gradient(90deg, #3fcf86, #7bf0b0); }
+.ma-root .ma-vbar-armor .ma-vbar-fill { background: linear-gradient(90deg, #4a9cff, #86c8ff); }
+.ma-root .ma-vitals.is-low .ma-vbar-health .ma-vbar-fill { background: var(--heat-red); animation: none; }
+.ma-root .ma-vitals.no-armor .ma-vbar-armor { opacity: 0.4; }
+.ma-root .ma-stamina { height: calc(3 * var(--u)); margin: calc(5 * var(--u)) calc(1 * var(--u)) 0; border-radius: calc(2 * var(--u)); }
+.ma-root .ma-stamina-fill { border-radius: calc(2 * var(--u)); }
+.ma-root .ma-mode-badge {
+  left: var(--edge-x); bottom: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u)); font-size: calc(11 * var(--u)); letter-spacing: 0.2em; font-weight: 700; color: rgba(255, 255, 255, 0.72);
+  background: rgba(12, 14, 18, 0.5); border: 1px solid var(--hair); border-radius: var(--r);
+}
+.ma-root .ma-mode-badge::before { content: ''; display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); margin-right: calc(7 * var(--u)); border-radius: 50%; background: var(--apricot); vertical-align: calc(1 * var(--u)); }
+
+/* ---------------------------------------------------------------- bottom right: speedometer, popups, info bars */
+.ma-root .ma-hud-br { gap: calc(8 * var(--u)); bottom: calc(34 * var(--u)); }
+.ma-root .ma-speedo { width: calc(210 * var(--u)); padding: calc(8 * var(--u)) calc(14 * var(--u)) calc(10 * var(--u)); align-items: stretch; background: var(--glass-solid); }
+.ma-root .ma-speed { justify-content: flex-end; align-items: baseline; gap: calc(8 * var(--u)); text-shadow: var(--txt-shadow); }
+.ma-root .ma-speed-value { font-size: calc(58 * var(--u)); line-height: 0.95; color: #fff; font-weight: 800; letter-spacing: 0.01em; }
+.ma-root .ma-speed-unit { font-size: calc(16 * var(--u)); letter-spacing: 0.16em; color: var(--apricot); font-weight: 700; }
+.ma-root .ma-speed-bar {
+  position: relative; height: calc(6 * var(--u)); margin-top: calc(7 * var(--u)); border-radius: calc(3 * var(--u)); background: rgba(255, 255, 255, 0.12); box-shadow: none; overflow: hidden;
+}
+.ma-root .ma-speed-bar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 1.5 * var(--u)), rgba(12, 14, 18, 0.85) calc(20% - 1.5 * var(--u)) 20%); }
+.ma-root .ma-speed-bar-fill { border-radius: calc(3 * var(--u)); background: linear-gradient(90deg, var(--apricot), #ff8a5c); }
+.ma-root .ma-body { margin-top: calc(9 * var(--u)); gap: calc(8 * var(--u)); }
+.ma-root .ma-body-icon { width: calc(15 * var(--u)); height: calc(15 * var(--u)); color: rgba(255, 255, 255, 0.85); filter: none; }
+.ma-root .ma-body-track { height: calc(5 * var(--u)); border-radius: calc(3 * var(--u)); background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.ma-root .ma-body-fill { background: #fff; border-radius: calc(3 * var(--u)); }
+.ma-root .ma-speedo.is-damaged .ma-body-fill { background: var(--heat-red); }
+.ma-root .ma-speedo.is-damaged .ma-body-icon { color: var(--heat-red); animation: none; }
+.ma-root .ma-vehpop, .ma-root .ma-loc { padding: calc(6 * var(--u)) calc(14 * var(--u)) calc(7 * var(--u)); border-right: calc(3 * var(--u)) solid var(--apricot); }
+.ma-root .ma-vehpop-make { font-size: calc(13 * var(--u)); letter-spacing: 0.22em; text-shadow: var(--txt-shadow); }
+.ma-root .ma-vehpop-model { font-size: calc(32 * var(--u)); text-shadow: var(--txt-shadow); }
+.ma-root .ma-loc-district { font-size: calc(26 * var(--u)); text-shadow: var(--txt-shadow); }
+.ma-root .ma-loc-street { font-size: calc(14 * var(--u)); letter-spacing: 0.12em; text-shadow: var(--txt-shadow); }
+.ma-root .ma-infobars { gap: calc(6 * var(--u)); }
+.ma-root .ma-infobar { min-width: calc(250 * var(--u)); height: calc(36 * var(--u)); padding: 0 calc(14 * var(--u)); gap: calc(12 * var(--u)); }
+.ma-root .ma-infobar-label { font-size: calc(14 * var(--u)); letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.7); }
+.ma-root .ma-infobar-value { font-size: calc(24 * var(--u)); color: #fff; }
+.ma-root .ma-timer.is-urgent .ma-infobar-value { color: var(--heat-red); animation: none; }
+.ma-root .ma-robbery { min-width: calc(330 * var(--u)); }
+.ma-root .ma-robbery-track { height: calc(7 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.14); }
+.ma-root .ma-robbery-fill { background: linear-gradient(90deg, #5fd391, var(--money)); border-radius: calc(4 * var(--u)); }
+.ma-root .ma-robbery-cash { color: var(--money); }
+
+/* ---------------------------------------------------------------- prompt, objective, subtitles */
+.ma-root .ma-prompt { bottom: calc(150 * var(--u)); padding: calc(6 * var(--u)) calc(16 * var(--u)) calc(6 * var(--u)) calc(8 * var(--u)); background: var(--glass-solid); }
+.ma-root .ma-prompt .ma-key { background: rgba(255, 255, 255, 0.94); color: #14161a; text-shadow: none; box-shadow: 0 calc(2 * var(--u)) 0 rgba(255, 255, 255, 0.28); border-radius: calc(5 * var(--u)); }
+.ma-root .ma-prompt-text { font-size: calc(20 * var(--u)); color: #fff; text-shadow: var(--txt-shadow); }
+.ma-root .ma-objective-text {
+  display: inline-block; padding: calc(6 * var(--u)) calc(16 * var(--u)) calc(7 * var(--u)); border-radius: var(--r); border: 1px solid var(--hair); border-left: calc(3 * var(--u)) solid var(--apricot);
+  background: var(--glass); font-size: calc(21 * var(--u)); font-weight: 700; color: #fff; text-shadow: var(--txt-shadow);
+}
+.ma-root .ma-subtitle { padding: calc(6 * var(--u)) calc(16 * var(--u)) calc(7 * var(--u)); border-radius: var(--r); background: rgba(12, 14, 18, 0.55); font-size: calc(19 * var(--u)); color: #fff; text-shadow: var(--txt-shadow); }
+.ma-root .ma-subtitle-speaker { color: var(--apricot); font-family: var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.ma-root.is-dead .ma-bottom-stack { opacity: 0; }
+
+/* ---------------------------------------------------------------- mission card */
+.ma-root .ma-card { top: 31%; --card-accent: var(--apricot); }
+.ma-root .ma-card.is-start { --card-accent: var(--apricot); top: 31%; }
+.ma-root .ma-card.is-passed { --card-accent: #7be3a2; }
+.ma-root .ma-card.is-failed { --card-accent: var(--heat-red); }
+.ma-root .ma-card.is-visible { animation: ma-card-in 0.28s cubic-bezier(.2, .8, .2, 1) both; }
+.ma-root .ma-card.is-leaving { animation: ma-card-out2 0.4s ease-in both; }
+@keyframes ma-card-in { from { opacity: 0; transform: translateY(calc(14 * var(--u))) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes ma-card-out2 { to { opacity: 0; transform: translateY(calc(-10 * var(--u))); } }
+.ma-root .ma-card-band {
+  min-width: calc(460 * var(--u)); max-width: min(calc(900 * var(--u)), 92vw); padding: calc(18 * var(--u)) calc(52 * var(--u)) calc(20 * var(--u)); border-radius: calc(8 * var(--u));
+  background: linear-gradient(180deg, rgba(12, 14, 18, 0.8), rgba(12, 14, 18, 0.62)); border: 1px solid var(--hair);
+  border-top: calc(3 * var(--u)) solid var(--card-accent); box-shadow: 0 calc(10 * var(--u)) calc(40 * var(--u)) rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
+}
+.ma-root .ma-card-band::before, .ma-root .ma-card-band::after { display: none; }
+.ma-root .ma-card-title {
+  animation: none; font-size: calc(68 * var(--u)); letter-spacing: 0.03em; padding: 0; color: var(--card-accent); white-space: normal;
+  text-shadow: 0 calc(2 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.7), 0 0 calc(24 * var(--u)) rgba(0, 0, 0, 0.5);
+}
+.ma-root .ma-card.is-start .ma-card-title { font-size: calc(58 * var(--u)); }
+.ma-root .ma-card-name { animation: none; margin-top: calc(8 * var(--u)); font-size: calc(24 * var(--u)); letter-spacing: 0.1em; color: #fff; text-shadow: var(--txt-shadow); }
+.ma-root .ma-card-reward { animation: none; margin-top: calc(4 * var(--u)); font-size: calc(38 * var(--u)); color: var(--money); text-shadow: var(--txt-shadow); }
+.ma-root .ma-card-sub { animation: none; margin-top: calc(10 * var(--u)); max-width: calc(620 * var(--u)); font-size: calc(18 * var(--u)); color: rgba(255, 255, 255, 0.88); text-shadow: var(--txt-shadow); line-height: 1.35; }
+
+/* ---------------------------------------------------------------- DOWN / BUSTED title card */
+.ma-root .ma-death-band { margin-top: 0; padding: calc(26 * var(--u)) 0 calc(28 * var(--u)); }
+.ma-root .ma-death-band::before { background: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.72) 16%, rgba(0, 0, 0, 0.72) 84%, rgba(0, 0, 0, 0) 100%); }
+.ma-root .ma-death-word { -webkit-text-stroke: 0; paint-order: normal; font-size: calc(132 * var(--u)); letter-spacing: 0.06em; font-weight: 800; }
+.ma-root .ma-death.is-down .ma-death-word { color: #ff4d5e; text-shadow: 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.85), 0 0 calc(44 * var(--u)) rgba(255, 77, 94, 0.4); }
+.ma-root .ma-death.is-busted .ma-death-word { color: #eef4ff; text-shadow: 0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.85), 0 0 calc(44 * var(--u)) rgba(77, 141, 255, 0.55); }
+.ma-root .ma-death-detail {
+  margin-top: calc(14 * var(--u)); padding: calc(5 * var(--u)) calc(18 * var(--u)); border-radius: var(--r); background: var(--glass); border: 1px solid var(--hair);
+  font-size: calc(21 * var(--u)); letter-spacing: 0.14em; color: #fff; text-shadow: var(--txt-shadow);
+}
+.ma-root .ma-death.is-down .ma-death-band::after { background: linear-gradient(90deg, rgba(255, 77, 94, 0), #ff4d5e 30%, #ff4d5e 70%, rgba(255, 77, 94, 0)); }
+.ma-root .ma-death.is-busted .ma-death-band::after { background: linear-gradient(90deg, rgba(77, 141, 255, 0), #4d8dff 30%, #4d8dff 70%, rgba(77, 141, 255, 0)); }
+.ma-root .ma-death-fee { color: #ff8a94; }
+.ma-root .ma-death.is-busted .ma-death-fee { color: #9cc2ff; }
+
+/* ---------------------------------------------------------------- weapon wheel */
+.ma-root .ma-wheel { background: radial-gradient(circle at center, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.45) 62%, rgba(0, 0, 0, 0.6) 100%); }
+.ma-root .ma-wheel-sector { fill: rgba(12, 14, 18, 0.62); stroke: rgba(255, 255, 255, 0.08); }
+.ma-root .ma-wheel-ring { stroke: rgba(255, 255, 255, 0.16); }
+.ma-root .ma-wheel-slot.is-active .ma-wheel-sector { fill: rgba(255, 195, 126, 0.2); stroke: rgba(255, 195, 126, 0.85); }
+.ma-root .ma-wheel-slot.is-active .ma-wheel-accent { stroke: var(--apricot); }
+.ma-root .ma-wheel-hub { fill: rgba(12, 14, 18, 0.7); stroke: rgba(255, 255, 255, 0.12); }
+.ma-root .ma-wheel-needle { fill: var(--apricot); }
+.ma-root .ma-wheel-slot-label { font-family: var(--display); font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; fill: rgba(255, 255, 255, 0.72); }
+.ma-root .ma-wheel-slot.is-active .ma-wheel-slot-label { fill: var(--apricot); }
+.ma-root .ma-wheel-slot.is-disabled .ma-wheel-slot-label { fill: rgba(255, 255, 255, 0.25); }
+.ma-root .ma-wheel-slot-detail { font-size: 13px; font-weight: 600; fill: rgba(255, 255, 255, 0.55); }
+.ma-root .ma-wheel-name { font-weight: 800; font-size: 20px; letter-spacing: 0.14em; fill: #fff; }
+.ma-root .ma-wheel-detail { font-weight: 700; font-size: 32px; fill: var(--apricot); }
+.ma-root .ma-wheel-hint { fill: rgba(255, 255, 255, 0.5); }

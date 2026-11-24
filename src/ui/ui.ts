@@ -15,6 +15,7 @@ import '@fontsource/barlow/latin-500.css';
 import '@fontsource/barlow/latin-600.css';
 import '@fontsource/barlow/latin-700.css';
 import './ui.css';
+import './hud.css';
 import { DEFAULT_SETTINGS, keyLabel, type Action, type Settings } from '../core/settings';
 import type { CityMap } from '../world/citymap';
 import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot, SandboxAction, DeathOpts } from './contracts';

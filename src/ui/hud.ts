@@ -9,6 +9,15 @@ import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './d
 import { Minimap } from './minimap';
 import type { CityPainter } from './mapdraw';
 
+/** Small glyph per toast kind (original, drawn here). */
+const TOAST_ICONS: Record<'info' | 'money' | 'heat' | 'mission' | 'warning', string> = {
+  info: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="currentColor" d="M9 8.6h2v5.6H9zM9 5.6h2v1.8H9z"/></svg>',
+  money: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12.4 7.3c-.5-.8-1.4-1.1-2.4-1.1-1.4 0-2.3.7-2.3 1.7 0 2.3 4.8 1 4.8 3.4 0 1-1 1.8-2.5 1.8-1.1 0-2-.4-2.6-1.2M10 4.6v1.6M10 13.8v1.6"/></svg>',
+  heat: '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 1.8c.6 3 4.4 4.8 4.4 9a4.4 4.4 0 0 1-8.8 0c0-1.7.7-2.8 1.5-3.6.2 1 .6 1.6 1.2 1.9C8 6.4 8.8 4 10 1.8z"/></svg>',
+  mission: '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 1.8l2.4 5 5.4.7-4 3.7 1 5.4L10 14l-4.8 2.6 1-5.4-4-3.7 5.4-.7z"/></svg>',
+  warning: '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 2.2L18.6 17H1.4zM9 7.6v4.6h2V7.6zM9 13.4v1.8h2v-1.8z" fill-rule="evenodd"/></svg>',
+};
+
 /** Briefly shows an element (adds .is-visible), restarting the timer on every call. */
 class Popup {
   private timer = 0;
@@ -366,6 +375,7 @@ export class Hud {
     if (this.changed('hp', Math.round(hp * 500))) {
       this.healthFill.style.transform = `scaleX(${hp.toFixed(3)})`;
       setClass(this.vitalsEl, 'is-low', hp < 0.25);
+      setClass(this.radarEl, 'is-low', hp < 0.25 && hp > 0);
     }
     const ar = Math.max(0, Math.min(1, s.armor / 100));
     if (this.changed('ar', Math.round(ar * 500))) {
@@ -477,6 +487,8 @@ export class Notices {
     }
     const t = h('div', `ma-toast ma-toast-${kind}`);
     t.dataset.text = text; t.dataset.kind = kind;
+    const ic = h('span', 'ma-toast-icon'); ic.innerHTML = TOAST_ICONS[kind];
+    t.appendChild(ic);
     t.appendChild(h('span', 'ma-toast-text', text));
     t.appendChild(h('span', 'ma-toast-count'));
     this.toasts.appendChild(t);
