@@ -52,6 +52,8 @@ export class ViolationMonitor {
 
 /** Comfortable braking (m/s²) AI drivers plan stops with, and the hardest they will brake for a late amber. */
 export const COMFORT_DECEL = 3.4, MAX_DECEL = 5.5, PANIC_DECEL = 8;
+/** Round 10: metres from the stop point to where the nose enters the junction box (the bar and zebra, see stopBack). */
+export const BOX_EDGE = 4.9;
 /** Fastest speed (m/s) from which a car can still halt `d` metres ahead at `decel`. */
 export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Math.sqrt(2 * decel * Math.max(0, d)); }
 /**
@@ -61,14 +63,28 @@ export function stopSpeed(d: number, decel = COMFORT_DECEL): number { return Mat
  */
 export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, speed: number, yellowLeft = Infinity): number {
   // across the line and rolling (or well inside the box): keep going; a car that merely overshot and stands still stays put
-  if (state === 'green' || dStop < -6 || (dStop < -1 && speed > 2.5)) return Infinity;
+  if (state === 'green' || dStop < -6) return Infinity;
+  // Round 10 (owner: cars run reds, mostly turning left): rolling past the bar is no licence to enter on red. While the
+  // nose is still short of the box (BOX_EDGE) and a hard stop gets it there, stop on the crosswalk; only a car that
+  // physically cannot stop before the box carries on through.
+  if (dStop < -1 && speed > 2.5) {
+    if (state === 'red' && dStop > -BOX_EDGE && Math.max(0, speed) ** 2 / (2 * MAX_DECEL) < dStop + BOX_EDGE - 0.3) return 0;
+    return Infinity;
+  }
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
     // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
     if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;
-    return stopSpeed(dStop - 0.4, PANIC_DECEL);
+    return Math.max(0, stopSpeed(dStop - 0.4, PANIC_DECEL) - PEDAL_LAG);
   }
-  return stopSpeed(dStop - 0.4);
+  return Math.max(0, stopSpeed(dStop - 0.4) - PEDAL_LAG);
 }
+/**
+ * Round 10: the AI pedal brakes in proportion to the overspeed, so a car tracking a braking curve runs about this much
+ * (m/s) above it: the stop curve is lowered by it so the car halts at the bar instead of rolling over it at walking pace.
+ */
+export const PEDAL_LAG = 2.4;
+/** Speed cap that halts an AI car at a line `dStop` m ahead (0.4 m short of it), allowing for the pedal's lag. */
+export function lineStop(dStop: number): number { return Math.max(0, stopSpeed(dStop - 0.4) - PEDAL_LAG); }
 /**
  * Stop-sign rule: halt at the line, wait `waited` s (counted by the caller while standing), then go once `clear`
  * (nobody in the junction). After 6 s the driver goes regardless so nobody deadlocks.
@@ -88,14 +104,14 @@ export function turnSide(d0x: number, d0z: number, d1x: number, d1z: number): nu
 export function oncomingConflict(ox: number, oz: number, ofx: number, ofz: number, ospeed: number, afx: number, afz: number): boolean {
   if (ospeed < 1.5) return false;
   if ((ofx * afx + ofz * afz) > -0.7) return false; // not opposing our approach
-  const d = Math.hypot(ox, oz); if (d > 60) return false;
+  const d = Math.hypot(ox, oz); if (d > 90) return false; // Round 10: 60 m missed a car at 15 m/s 4 s out (Broadway)
   if ((-ox * ofx - oz * ofz) < 0) return false; // already past the junction
-  const lat = Math.abs(ox * afz - oz * afx); if (lat > 7) return false;
+  const lat = Math.abs(ox * afz - oz * afx); if (lat > 9.5) return false; // Broadway's far lanes sit ~8 m off its centre
   return d / ospeed < LEFT_GAP; // Round 9: a left turn from a standstill takes ~5 s to clear the oncoming lanes
 }
 /** Seconds of gap a left-turner needs before oncoming traffic arrives (was 4.5: they cut across too often). */
 export const LEFT_GAP = 5.5;
-export function oncomingRange(): number { return 60;
+export function oncomingRange(): number { return 90;
 }
 /** A car must not appear inside the dilemma zone of a signal: near a stop line (<70 m) the light has to stay green for the next 5 s. */
 export function spawnSafeAtSignal(now: 'green' | 'yellow' | 'red', in5s: 'green' | 'yellow' | 'red', dStop: number): boolean {

@@ -11,18 +11,18 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
   test.setTimeout(400_000);
   const r = await page.evaluate(() => {
     const g = (window as any).__game;
-    const CY = [13, 3, 1.5, 13, 3, 1.5], PER = CY.reduce((a, b) => a + b, 0);
-    const sig = (I: any, axis: string, time: number) => { if (!I.signalized) return 'green'; let t = (((time + I.offset) % PER) + PER) % PER; let ph = 0; while (t >= CY[ph]) { t -= CY[ph]; ph++; } const ns = ph < 3; const mine = axis === 'z' ? ns : !ns; const p = ph % 3; if (!mine || p === 2) return 'red'; return p === 0 ? 'green' : 'yellow'; };
+    // Round 10: the game's own signal function (a copy of the cycle here went stale when Round 9 added the Broadway phase)
+    const M = (window as any).__meridian, sig = (I: any, lane: any, time: number): string => I.signalized ? M.signal(I.id, lane.id, time) : 'green';
     const approaches = new Map<number, number>(); for (const l of g.city.lanes) if (!l.connector) approaches.set(l.intersection, (approaches.get(l.intersection) ?? 0) + 1);
     const prev = new Map<any, any>(); const reds: any[] = [], rolled: any[] = [];
     const chk = (key: any, lane: any, speed: number, kind: string) => {
       const p = prev.get(key);
       if (p && p.lane !== lane && lane.connector && !p.lane.connector && speed > 2) {
         const I = g.city.intersections[p.lane.intersection], t = g.time;
-        if (sig(I, p.lane.axis, t) === 'red' && sig(I, p.lane.axis, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id, h: [...p.h], pl: p.lane.id, pll: p.lane.length, nl: lane.id, ps: p.s, ns: key.s, st: sig(I, p.lane.axis, t), st2: sig(I, p.lane.axis, t - 1), st3: sig(I, p.lane.axis, t - 3), sig: I.signalized });
+        if (sig(I, p.lane, t) === 'red' && sig(I, p.lane, t - 1) === 'red') reds.push({ kind, t, v: speed, inter: I.id, h: [...p.h], pl: p.lane.id, pll: p.lane.length, nl: lane.id, ps: p.s, ns: key.s, st: sig(I, p.lane, t), st2: sig(I, p.lane, t - 1), st3: sig(I, p.lane, t - 3), sig: I.signalized });
         if (!I.signalized && (approaches.get(I.id) ?? 0) >= 3 && speed > 5) rolled.push({ kind, t, v: speed, inter: I.id });
       }
-      const h = p ? p.h : []; { h.push([+(lane.length - (key.s ?? 0) - 5.4).toFixed(1), +speed.toFixed(1), sig(g.city.intersections[lane.intersection], lane.axis, g.time)[0] + (lane.connector ? 'C' : ''), lane.id + '@' + Math.round(lane.length), key.ox !== undefined ? +(key.ox).toFixed(1) : 0]); if (h.length > 150) h.shift(); }
+      const h = p ? p.h : []; { h.push([+(lane.length - (key.s ?? 0) - 5.4).toFixed(1), +speed.toFixed(1), sig(g.city.intersections[lane.intersection], lane, g.time)[0] + (lane.connector ? 'C' : ''), lane.id + '@' + Math.round(lane.length), key.ox !== undefined ? +(key.ox).toFixed(1) : 0]); if (h.length > 150) h.shift(); }
       prev.set(key, { lane, h, s: key.s });
     };
     const lastPos = new Map<any, any>(); const jumps: any[] = []; const idle: Record<number, number> = {}, idleWorst: any[] = [];
@@ -35,7 +35,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
         if (c.persistent) continue;
         chk(c, c.lane, Math.abs(c.v.speed), 'real');
         const id = c.v.id;
-        if (c.mode === 'cruise' && Math.abs(c.v.speed) < 0.5 && !c.legitWait) { idle[id] = (idle[id] ?? 0) + 1 / 30; if (idle[id] > 8 && !idleWorst.some(w => w.id === id)) idleWorst.push({ id, lane: c.lane.id, t: idle[id], s: c.s, len: c.lane.length, sig: c.lane.connector ? '-' : sig(g.city.intersections[c.lane.intersection], c.lane.axis, g.time), ss: c.ssWait, jam: c.jamT, blk: c.blockedBy?.id, stopT: c.stopT, inter: g.city.intersections[c.lane.intersection].signalized }); } else idle[id] = 0;
+        if (c.mode === 'cruise' && Math.abs(c.v.speed) < 0.5 && !c.legitWait) { idle[id] = (idle[id] ?? 0) + 1 / 30; if (idle[id] > 8 && !idleWorst.some(w => w.id === id)) idleWorst.push({ id, lane: c.lane.id, t: idle[id], s: c.s, len: c.lane.length, sig: c.lane.connector ? '-' : sig(g.city.intersections[c.lane.intersection], c.lane, g.time), ss: c.ssWait, jam: c.jamT, blk: c.blockedBy?.id, stopT: c.stopT, inter: g.city.intersections[c.lane.intersection].signalized }); } else idle[id] = 0;
       }
       for (const c of g.crowd.cars) { chk(c, c.lane, c.v, 'far'); const q = lastPos.get(c); if (q && Math.hypot(c.x - q.x, c.z - q.z) > 3) jumps.push({ id: c.id, d: Math.hypot(c.x - q.x, c.z - q.z), from: q.lane, to: c.lane.id, conn: c.lane.connector, s: c.s, v: c.v, ql: q.s }); lastPos.set(c, { x: c.x, z: c.z, lane: c.lane.id, s: c.s }); }
       if (i % 30 === 0) {
@@ -43,7 +43,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
           const id = c.id;
           if (c.v > 0.3) { farIdle[id] = 0; continue; }
           const L = c.lane, I = g.city.intersections[L.intersection], dS = L.length - c.s - 5.4;
-          const atLine = !L.connector && dS < 12 && (sig(I, L.axis, g.time) !== 'green' || !I.signalized);
+          const atLine = !L.connector && dS < 12 && (sig(I, L, g.time) !== 'green' || !I.signalized);
           const ahead = (o: any, rs: number, ln: any) => (ln === L ? rs > c.s && rs - c.s < 45 : L.next.includes(ln.id) && rs < 45 - (L.length - c.s));
           const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane));
           if (atLine || queued || c.dwell > 0) farIdle[id] = 0; else { farIdle[id] = (farIdle[id] ?? 0) + 1; if (farIdle[id] > 10 && !farWorst.some(w => w.id === id)) farWorst.push({ id, lane: L.id, dS }); }

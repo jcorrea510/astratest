@@ -169,12 +169,16 @@ test('player traffic violations are reported (speeding, wrong way, collision)', 
 
 test('city buses: loop routes, stop at the kerb with door open and kneeling, drivable', async () => {
   test.setTimeout(400_000);
+  await quietStreets(page); // Round 10: start clean (a bus abandoned by the soak test above sat on the spawn point)
   const r = await page.evaluate(`(() => {
     const g = window.__game; const B = g.buses; const out = { routes: B.routes.length };
+    for (const v of [...g.vehicles.list]) if (v.kind === 'bus' && !v.persistent) g.vehicles.remove(v);
+    for (const run of B.runs) run.car = null;
     g.trafficCap = 0; g.pedCap = 0;
     for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
     const st = B.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 90, 0.4, st.z + st.dx * 6 + st.dz * 90, 0);
+    g.cam.snapBehind(Math.atan2(-st.dx, -st.dz)); // buses appear out of view: look away from the stop (earlier tests left the camera facing it)
     let spawned = false, opened = false, kneeled = false, left = false, atKerb = 99, stops0 = B.stats.stops, car = null;
     for (let i = 0; i < 400 * 30 && !left; i++) {
       g.frame(1 / 30, false);

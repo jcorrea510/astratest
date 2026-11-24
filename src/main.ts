@@ -5,7 +5,7 @@ import { loadAssets, type Assets } from './world/assets';
 import { initPhysics } from './core/physics';
 import { loadSettings, SETTINGS_KEY, saveSettings, safeStorage, type Settings } from './core/settings';
 import { Game, PLAYER_LOOK } from './game/game';
-import { generateCity, surfaceAt } from './world/citymap';
+import { generateCity, surfaceAt, signalState, laneSigAxis } from './world/citymap';
 import { UI } from './ui/ui';
 import { renderWeaponIcons } from './ui/icons';
 import { Audio } from './audio/audio';
@@ -399,6 +399,8 @@ function exposeApi() {
     pause, resume, openWheel, closeWheel, wheelSlots, quit: quitToTitle,
     /** the GPS route the minimap would draw for the current waypoint (null when none) */
     gps: () => minimapState().route ?? null,
+    /** Round 10: the real signal state for a lane's approach (tests used a stale copy of the cycle) */
+    signal: (interId: number, laneId: number, time: number) => game ? signalState(game.city.intersections[interId], laneSigAxis(game.city.lanes[laneId]), time) : 'green',
   };
 }
 

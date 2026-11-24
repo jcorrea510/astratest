@@ -160,7 +160,9 @@ export class BusService {
           if (!car.v.destroyed) { const di = car.v.doorIndex('right', 0); if (di >= 0) car.v.setDoor(di, 0); car.v.kneel = 0; }
           run.car = null; continue;
         }
-        if (run.waiting) { run.dwell -= dt; if (run.dwell <= 0) this.depart(run, car); }
+        // Round 10: the door opens once the bus has slowed at the stop (it arrived rolling, and a door opened above 7 m/s is
+        // slammed shut by the car: it never reopened, so riders boarded through a closed door)
+        if (run.waiting) { if (Math.abs(car.v.speed) < 1.5) { const di = car.v.doorIndex('right', 0); if (di >= 0 && car.v.doors[di].open < 1) car.v.setDoor(di, 1); } run.dwell -= dt; if (run.dwell <= 0) this.depart(run, car); }
         continue;
       }
       if (this.spawnT > 0) continue;
