@@ -118,6 +118,8 @@ const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
+/** Round 11: culling sphere for a person's skinned meshes (body space, metres; bind-pose sphere r 1.08 m at hip height). */
+export const PERSON_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);
 /** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
 const HAIR_LOD_DIST = 20;
 /**
@@ -194,7 +196,10 @@ export class Human {
     }
     this.material = personMaterial(base, A.map, A.normalMap);
     this.mesh.material = this.material;
-    this.mesh.castShadow = true; this.mesh.receiveShadow = true; this.mesh.frustumCulled = false;
+    this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+    // Round 11 perf: people are culled off screen again (every one was drawn and skinned in both the main and the shadow
+    // pass, behind the camera too). A generous fixed sphere in body space covers any pose, a ragdoll included.
+    this.mesh.boundingSphere = PERSON_SPHERE.clone(); this.mesh.frustumCulled = true;
     this.buildExtras();
     applyLookUniforms(this.material, base, this.look);
     this.scale = this.look.height * (1.78 / base.height);
@@ -223,8 +228,8 @@ export class Human {
       const kind = g.userData.kind as string, hair = kind === 'hair' || kind === 'hairFar';
       const ex = new THREE.SkinnedMesh(g, hair || kind === 'scan' ? hairMaterialFor(this.material) : this.material);
       ex.bind(this.mesh.skeleton, this.mesh.bindMatrix);
-      ex.boundingSphere = g.boundingSphere!.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
-      ex.receiveShadow = true; ex.frustumCulled = false;
+      ex.boundingSphere = PERSON_SPHERE.clone(); ex.boundingBox = g.boundingBox!.clone(); // CPU vertices are freed after upload
+      ex.receiveShadow = true; ex.frustumCulled = true; // Round 11: culled with the body
       // hair shells never cast shadows (many alpha-tested layers); callers toggle castShadow on all extras, so pin it
       if (hair) Object.defineProperty(ex, 'castShadow', { get: () => false, set: () => { /* pinned */ } });
       else ex.castShadow = true;
