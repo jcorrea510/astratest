@@ -3,7 +3,7 @@
 Resume: read CLAUDE.md, docs/BRIEF9.md + docs/ROUND9.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
 ## Round 11 (owner notes 24 Nov night) — see docs/ROUND11.md
-- Perf/memory/zero-crash/iOS done by lead + agents; menus agent R11-M last. Probes: .perfprobe/.rcpu/.rprof/.memprobe/.redprobe.
+- All done and published (4218ff6). Flaky under load only: traffic7 taxi job (passes alone). Probes: .perfprobe/.rcpu/.rprof/.memprobe/.redprobe.
 - Can't measure the M1 GPU here: owner's FPS readout now shows CPU ms to tell which side limits.
 
 ## Round 10 (owner notes 24 Nov): left turns on red, goals panel

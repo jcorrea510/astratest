@@ -9,4 +9,6 @@
 - [x] H  HUD redesign (R11-H, merged): src/ui/hud.css glass language; mission card, death card, stars, speedo, toasts.
 - [x] M  Menus redesign (R11-M, merged): src/ui/menus.css; pause header (no clipped logo), store list + detail pane with stats.
 - [x] X  Xcode iPad app (R11-X, merged): ios/, ios.yml CI builds an unsigned .ipa (passes on macos-latest), docs/IOS.md.
-- [ ] Z  Gate, publish gh-pages + main (main push publishes the ios-latest release), summary for the owner.
+- [x] Also: police helicopter (deleted on arrival, then flew into towers/hills) fixed; rounds through cop-car windows count;
+      stale e2e updated (pier, gun counter, witness delay, sandbox bill, phone gate, R9 police rules).
+- [x] Z  Gate (tsc, eslint, vitest 506, ~70 e2e incl. soak/police/traffic/menus/hud), published gh-pages + main (4218ff6).
