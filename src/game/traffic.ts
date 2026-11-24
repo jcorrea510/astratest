@@ -323,8 +323,10 @@ export class Traffic {
             if (o === v || Math.abs(o.speed) > 0.6 || o.driver || o.position.y > 3) continue;
             const dx = o.position.x - pos.x, dz = o.position.z - pos.z, ahead = dx * f.x + dz * f.z;
             if (ahead < -2 || ahead > 26 || (o !== playerVehicle && this.carOf(o))) continue;
-            const lat = dx * f.z - dz * f.x;
-            if (lat > -0.4 || lat < -3.4) continue;
+            // Round 11 (zero crashes): measured from the lane line, not from where the shift has already put us (that
+            // feedback settled at about half the clearance needed: wide cars still scraped parked vans)
+            const lat = dx * f.z - dz * f.x + (car.shift ?? 0);
+            if (lat > -0.4 || lat < -3.6) continue;
             want = Math.max(want, curbShift(lat, ohw0, o.phys.layout.half[0]));
           }
           if (want <= 0 && (car.yieldT > 0 || car.crashT > 0)) want = car.lane.lane === car.lane.lanes - 1 ? -1.3 : -0.8;
@@ -637,6 +639,9 @@ export class Traffic {
       const ox = o.position.x - px, oz = o.position.z - pz;
       const along = ox * dx + oz * dz, lat = Math.abs(ox * dz - oz * dx);
       if (lat < 2.6 && along > -10 && along < 17) return false;
+      // Round 11 (zero crashes): a car standing at the kerb (parked, abandoned, knocked crooked) sits partly in the kerb
+      // lane: lane changes kept the moving-car margin and clipped it, then everyone hit the now-angled car
+      if (!o.driver && Math.abs(o.speed) < 0.6 && lat < 3.5 && along > -6 && along < 22) return false;
     }
     return true;
   }

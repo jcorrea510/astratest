@@ -197,7 +197,7 @@ test('phones get a clean desktop-only screen', async ({ browser }) => {
   const page = await ctx.newPage();
   const p = watch(page);
   await page.goto('./');
-  await expect(page.getByText(/computer/i).first()).toBeVisible();
+  await expect(page.getByText(/keyboard and mouse/i).first()).toBeVisible(); // the gate's wording since Round 8
   await page.screenshot({ path: 'test-results/shots/mobile.png' });
   clean(p);
   await ctx.close();

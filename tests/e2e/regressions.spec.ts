@@ -88,7 +88,7 @@ test('dying while getting into a car does not seat the body', async ({ page }) =
 test('saving on the pier deck loads back onto the deck', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-50, 1.3, 470, 0); for (let i = 0; i < 20; i++) g.frame(1 / 30, false); (window as any).__meridian.save(); });
+  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-50, 1.3, 1010, 0); /* the pier moved north with the map (snack stand z 965, end z 1055) */ for (let i = 0; i < 20; i++) g.frame(1 / 30, false); (window as any).__meridian.save(); });
   await page.goto('./?autostart=1&continue=1');
   await page.waitForFunction(() => !!(window as any).__meridian, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
@@ -101,7 +101,7 @@ test('saving on the pier deck loads back onto the deck', async ({ page }) => {
 test('pausing closes the shop; the wheel never spends a medkit on a downed player', async ({ page }) => {
   const p = watch(page);
   await boot(page);
-  await page.evaluate(() => { const g = (window as any).__game; g.player.place(-300, 0.25, 10.2, 0); g.input.tap('KeyE'); g.frame(1 / 30, false); });
+  await page.evaluate(() => { const g = (window as any).__game; const k = (window as any).__meridian.activities.guns.kiosk; const c = k.frame.customer; /* the counter, wherever the store now stands (it moved in Round 9) */ g.player.place(c.x, c.y + 0.2, c.z, 0); g.input.tap('KeyE'); g.frame(1 / 30, false); });
   expect(await state<boolean>(page, 'window.__meridian.activities.shopIsOpen')).toBe(true);
   await page.evaluate(() => { (window as any).__meridian.pause(); (window as any).__meridian.resume(); });
   expect(await state<boolean>(page, 'window.__meridian.activities.shopIsOpen')).toBe(false);

@@ -33,3 +33,10 @@ it('Round 11: a car creeping off its line counts as arriving soon (it accelerate
   expect(oncomingConflict(0, 25, 0, -1, 0, 0, 1, true)).toBe(true); // first at its line on green: may pull away
   expect(arrivalTime(70, 16)).toBeCloseTo(70 / 16, 5);
 });
+import { curbShift } from './trafficRules';
+it('Round 11: the kerb shift is judged from the lane line (a 0.55 m shift already taken does not count as clearance)', () => {
+  // SUV (half 0.97) passing a parked van (half 1.0) whose centre is 1.25 m right of the lane line: needs ~1.3 m
+  const fromLane = curbShift(-1.25, 0.97, 1.0), alreadyShifted = curbShift(-1.25 - 0.55, 0.97, 1.0);
+  expect(fromLane).toBeGreaterThan(1.2);
+  expect(alreadyShifted).toBeLessThan(fromLane); // the old feedback: measured from the shifted car it settled half way
+});
