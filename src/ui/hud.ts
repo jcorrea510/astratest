@@ -440,7 +440,7 @@ export class Hud {
     // FPS
     const showF = showFps && s.fps !== null;
     setClass(this.fpsEl, 'is-visible', showF);
-    if (showF) this.fps.set(`${Math.round(s.fps ?? 0)} FPS  ·  ${BUILD}`);
+    if (showF) this.fps.set(`${Math.round(s.fps ?? 0)} FPS  ·  CPU ${s.cpuMs !== undefined ? Math.round(s.cpuMs) : '-'} ms  ·  ${BUILD}`);
   }
 }
 

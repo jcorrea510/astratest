@@ -85,7 +85,7 @@ export class Game {
   private acc = 0;
   private last = 0;
   private running = false;
-  fps = 60;
+  fps = 60; /** Round 11: smoothed CPU ms per frame (sim + draw submission) */ cpuMs = 8;
   frameMs = 16;
   onFrame: ((dt: number) => void) | null = null;
   particles!: Particles;
@@ -350,7 +350,7 @@ export class Game {
       const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
-      this.frame(raw);
+      const c0 = performance.now(); this.frame(raw); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
     };
     requestAnimationFrame(loop);
   }
@@ -918,7 +918,7 @@ export class Game {
       clock: fmtClock12(this.hour),
       ...this.pcombat.hud(), ...((pv && !this.pcombat.driveAim) || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
       interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
-      fps: this.settings.showFps ? Math.round(this.fps) : null,
+      fps: this.settings.showFps ? Math.round(this.fps) : null, cpuMs: this.cpuMs,
     };
   }
   interactPrompt(): string | null {

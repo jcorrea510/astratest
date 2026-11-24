@@ -259,6 +259,8 @@ export class Renderer {
     shadowFrame(s.lightDir, fx, fz, texel, this.lightDir, this.shadowTarget);
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(this.lightDir, 180);
+    // Round 11 perf: in daylight the threshold leaves next to nothing to bloom: skip the pass (bright lights need the dark)
+    this.bloom.enabled = this.quality.bloom && s.night > 0.12;
     this.bloom.strength = THREE.MathUtils.lerp(0.12, 0.26, s.night);
     this.bloom.threshold = THREE.MathUtils.lerp(0.95, 0.88, s.night);
     this.grade.uniforms.uNight.value = s.night;
@@ -266,9 +268,12 @@ export class Renderer {
   }
   lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
+  private frameNo = 0;
   render() {
     this.adapt(performance.now());
-    this.renderer.shadowMap.autoUpdate = true;
+    // Round 11 perf: on Medium the sun's shadow map (half a million triangles) is redrawn every other frame
+    this.renderer.shadowMap.autoUpdate = false;
+    if (this.quality.shadowMap > 0 && this.frameNo++ % Math.max(1, this.quality.shadowEvery) === 0) this.renderer.shadowMap.needsUpdate = true;
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.composer.render();
@@ -304,7 +309,9 @@ export function adaptStep(s: DynState, dt: number, now: number, adaptive: boolea
   s.ema += (Math.min(dt, 50) - s.ema) * 0.06;
   if (!adaptive) return false;
   if (now - s.lastResize < 6000) { s.slowT = 0; s.fastT = 0; return false; }
-  const floor = s.floor ? s.ema < 38 : s.ema < 26;
+  // Round 11: the native-resolution floor only holds while the game runs near 45+ fps (it held down to 26 fps, so a Mac
+  // stuck at 30 fps on Medium never got the lower resolution that would have made it smooth)
+  const floor = s.floor ? s.ema < 24 : s.ema < 18;
   if (floor !== s.floor) { s.floor = floor; if (s.scale < 1) { s.lastResize = now; return true; } }
   if (s.ema > 20) { s.slowT += dt; s.fastT = 0; } else if (s.ema < 13.5) { s.fastT += dt; s.slowT = 0; } else { s.slowT = 0; s.fastT = 0; }
   if (s.slowT > 2500 && s.scale > DYN_MIN) { s.scale = Math.max(DYN_MIN, +(s.scale - 0.1).toFixed(2)); s.slowT = 0; s.lastResize = now; return true; }

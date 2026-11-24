@@ -21,6 +21,8 @@ export interface HudState {
   missionTimer: number | null; // seconds remaining
   stamina: number; // 0..1
   fps: number | null;
+  /** Round 11: CPU milliseconds per frame (simulation + draw submission), shown with the FPS so a slow frame can be told CPU- from GPU-bound */
+  cpuMs?: number;
 }
 export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
 export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank'; label?: string; pulse?: boolean }
