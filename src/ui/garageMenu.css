@@ -13,12 +13,10 @@
 .ma-garage-sec { display: flex; align-items: baseline; justify-content: space-between; gap: calc(10 * var(--u)); margin-top: calc(10 * var(--u)); }
 .ma-garage-pick { font-family: var(--display); font-weight: 800; font-size: calc(17 * var(--u)); text-transform: uppercase; color: var(--apricot); }
 .ma-root .ma-garage-row { display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); min-height: calc(46 * var(--u)); padding: calc(6 * var(--u)) calc(14 * var(--u)); border-radius: calc(3 * var(--u)); background: var(--panel-2); }
-.ma-root .ma-garage-row:hover, .ma-root .ma-garage-row:focus { background: var(--cream); color: var(--ink); outline: none; }
 .ma-root .ma-garage-row.is-off { opacity: 0.55; }
 .ma-root .ma-garage-row.is-denied { animation: ma-shake 0.25s linear; }
 .ma-garage-name { font-family: var(--display); font-weight: 800; font-size: calc(22 * var(--u)); text-transform: uppercase; }
 .ma-garage-price { font-family: var(--display); font-weight: 800; font-size: calc(24 * var(--u)); color: var(--money); font-variant-numeric: tabular-nums; }
-.ma-root .ma-garage-row:hover .ma-garage-price, .ma-root .ma-garage-row:focus .ma-garage-price { color: #0f6b3b; }
 .ma-garage-note { min-height: calc(18 * var(--u)); padding: 0 calc(4 * var(--u)); font-size: calc(13 * var(--u)); color: var(--muted); }
 .ma-garage-note.is-bad { color: #ff9a8a; }
 .ma-garage-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: calc(8 * var(--u)); padding: calc(4 * var(--u)) 0 calc(6 * var(--u)); }

@@ -15,6 +15,7 @@ import '@fontsource/barlow/latin-500.css';
 import '@fontsource/barlow/latin-600.css';
 import '@fontsource/barlow/latin-700.css';
 import './ui.css';
+import './menus.css';
 import { DEFAULT_SETTINGS, keyLabel, type Action, type Settings } from '../core/settings';
 import type { CityMap } from '../world/citymap';
 import type { GameUI, HudState, MinimapState, ShopItem, UICallbacks, WheelSlot, SandboxAction, DeathOpts } from './contracts';
@@ -117,6 +118,8 @@ export class UI implements GameUI {
   private pauseInline: PauseTab = 'quit';
   private pauseClock!: HTMLDivElement;
   private pauseMoney!: HTMLDivElement;
+  private pauseQ!: HTMLElement;
+  private pauseE!: HTMLElement;
   private pausePlace!: HTMLDivElement;
   private saveItem!: HTMLButtonElement;
   private loading = buildLoading();
@@ -472,16 +475,13 @@ export class UI implements GameUI {
     el.appendChild(h('div', 'ma-version', BUILD));
     const head = h('div', 'ma-pause-head');
     const brand = h('div', 'ma-pause-brand');
-    brand.appendChild(logo('ma-logo-pause'));
+    brand.setAttribute('role', 'img'); brand.setAttribute('aria-label', 'Meridian Afterglow');
+    brand.append(h('span', 'ma-pause-brand-a', 'Meridian'), h('span', 'ma-pause-brand-b', 'Afterglow'));
     head.appendChild(brand);
-    const meta = h('div', 'ma-pause-meta');
-    this.pausePlace = h('div', 'ma-pause-place');
-    this.pauseClock = h('div', 'ma-pause-clock');
-    this.pauseMoney = h('div', 'ma-pause-money');
-    meta.append(this.pausePlace, this.pauseClock, this.pauseMoney);
-    head.appendChild(meta);
-    el.appendChild(head);
-
+    const nav = h('div', 'ma-pause-nav');
+    this.pauseQ = h('kbd', 'ma-key ma-pause-cap', 'Q'); this.pauseQ.dataset.pad = 'LB';
+    const capE = h('kbd', 'ma-key ma-pause-cap', 'E'); capE.dataset.pad = 'RB';
+    this.pauseE = capE;
     const tabs = h('div', 'ma-pause-tabs');
     tabs.dataset.navRow = '';
     tabs.setAttribute('role', 'tablist');
@@ -494,7 +494,15 @@ export class UI implements GameUI {
       tabs.appendChild(b);
       this.pauseTabs.set(t.id, b);
     }
-    el.appendChild(tabs);
+    nav.append(this.pauseQ, tabs, capE);
+    head.appendChild(nav);
+    const meta = h('div', 'ma-pause-meta');
+    this.pausePlace = h('div', 'ma-pause-place');
+    this.pauseClock = h('div', 'ma-pause-clock');
+    this.pauseMoney = h('div', 'ma-pause-money');
+    meta.append(this.pausePlace, this.pauseClock, this.pauseMoney);
+    head.appendChild(meta);
+    el.appendChild(head);
 
     const body = h('div', 'ma-pause-body');
     const pane = h('div', 'ma-pane ma-pane-quit');
@@ -555,6 +563,8 @@ export class UI implements GameUI {
     for (const [id, b] of this.pauseTabs) { setClass(b, 'is-selected', id === tab); b.setAttribute('aria-selected', String(id === tab)); }
     const docked = !!DOCKED[tab];
     setClass(this.pauseEl, 'is-docked', docked);
+    const onMap = tab === 'map'; // Q / E rotate the map, so the tab keys there are PgUp / PgDn
+    if (this.pauseQ.textContent !== (onMap ? 'PgUp' : 'Q')) { this.pauseQ.textContent = onMap ? 'PgUp' : 'Q'; this.pauseE.textContent = onMap ? 'PgDn' : 'E'; }
     if (!docked) {
       for (const [id, p] of this.pausePanes) setClass(p, 'is-active', id === tab);
     }
