@@ -5,6 +5,7 @@
  */
 import { worldGlass } from './glass';
 import * as THREE from 'three';
+import { gpuOnlyAfterUpload } from '../render/gpuOnly';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
 import { trimMaterial, nightUniform } from '../render/materials';
@@ -245,6 +246,7 @@ export function buildStoreShell(scene: THREE.Scene, physics: Physics, def: Store
     const v = extras.vault; if (v) { v.door.rotation.y = 0; v.openA = 0; v.cash.visible = true; v.rig.visible = false; for (const cc of v.colliders) cc.setEnabled(true); }
   };
   const burst = () => { for (const f of fly) { f.m.visible = true; f.t = 0; f.m.position.set(regX + (Math.random() - 0.5) * 0.2, 1.3, counterZ - 0.3); f.v.set((Math.random() - 0.5) * 1.6, 2.2 + Math.random() * 1.6, 0.4 + Math.random() * 1.4); f.w.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); } };
+  gpuOnlyAfterUpload(root); // Round 11 (memory)
   return {
     root, shutter, doors, alarm, toWorld: toW, toLocal, counterZ,
     register: { lx: regX, lz: counterZ - 0.05 }, cases: extras.cases, vault: extras.vault, tellers: extras.tellers, smashCase, setVault, resetExtras,

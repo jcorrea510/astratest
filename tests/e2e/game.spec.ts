@@ -89,6 +89,8 @@ test('shoot, punch, inventory wheel, heat gain and loss', async ({ page }) => {
   await page.evaluate(() => { const g = (window as any).__game; const n = g.pop.spawn('civilian', g.player.pos.x + Math.sin(g.player.yaw) * 1.2, g.player.pos.z + Math.cos(g.player.yaw) * 1.2); n.persistent = true; n.brain = 'idle'; (window as any).__victim = n; g.cam.yaw = g.player.yaw + Math.PI; });
   await tap(page, 'Mouse0'); await step(page, 0.6);
   expect(await state<number>(page, 'window.__victim.char.health')).toBeLessThan(100);
+  // heat rises once a witness has called it in (3-6 s for a civilian, police.ts CALL_DELAY); the test checked after 0.6 s
+  await step(page, 7);
   expect(await state<number>(page, 'window.__game.police.heat')).toBeGreaterThanOrEqual(1);
   // weapons via the wheel (hold Tab, flick the mouse, release)
   await page.evaluate(() => { const g = (window as any).__game; g.pcombat.give('pistol', 48); g.pcombat.give('shotgun', 12); });
@@ -112,6 +114,7 @@ test('shoot, punch, inventory wheel, heat gain and loss', async ({ page }) => {
   expect(await state<number>(page, 'window.__game.pcombat.inv.state.clip')).toBe(15); // Kestrel P9 magazine
   // escalate and then lose the heat by getting far away and out of sight
   await page.evaluate(() => { const g = (window as any).__game; g.police.report('kill', g.player.pos); });
+  await step(page, 7); // called in by a witness
   expect(await state<number>(page, 'window.__game.police.heat')).toBeGreaterThanOrEqual(2);
   await step(page, 12);
   await step(page, 0.1, { render: true });
@@ -133,7 +136,7 @@ test('WASTED: slow motion, grey, card, hospital bill, respawn at the clinic; ARR
   await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
   await expect(page.locator('.ma-death.is-card')).toBeVisible();
   expect(await state<number>(page, 'window.__game.renderer.grade.uniforms.uSat.value')).toBeLessThan(0.3);
-  expect(await state<number>(page, 'window.__game.money')).toBe(900);
+  expect(await state<number>(page, 'window.__game.money')).toBe(1000); // sandbox: patched up, no charge (modes.ts medicalBill; the regular-mode bill is unit tested)
   await page.screenshot({ path: 'test-results/shots/wasted.png' });
   await step(page, 5);
   expect(await state<boolean>(page, 'window.__game.player.alive')).toBe(true);

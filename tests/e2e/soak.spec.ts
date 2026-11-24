@@ -71,7 +71,8 @@ test('soak: 20 minutes of chaos stays healthy @soak', async ({ page }) => {
   console.log(`heap start ${start.heap.toFixed(1)} MB -> end ${end.heap.toFixed(1)} MB (growth ${(end.heap - start.heap).toFixed(1)} MB)`);
   // Round 7: measured baselines: 704 MB before Round 7 (the 450 MB limit was stale), 738 MB after (emergency-car models and body
   // LODs built at load instead of mid-play). Growth is caches filling (one model per car kind / hair style), flattening out.
-  expect(start.heap, 'baseline heap (MB)').toBeLessThan(800);
+  // Round 11: static world vertex arrays leave the heap after upload (render/gpuOnly.ts): ~990 MB -> ~270 MB at start
+  expect(start.heap, 'baseline heap (MB)').toBeLessThan(450);
   expect(end.heap - start.heap, 'heap growth over the soak (MB)').toBeLessThan(80);
   clean(p);
 });

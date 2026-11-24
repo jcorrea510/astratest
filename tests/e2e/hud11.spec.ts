@@ -54,3 +54,20 @@ test('hud: mission card + death title are visible with text; toasts do not overl
     }
   }
 });
+
+/** Round 11: at 960x540 the controls tip and the opening "Port Meridian" card overlapped; the tip steps aside for a card. */
+test('hud: a showing mission card hides the controls tip (small window)', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.setViewportSize({ width: 960, height: 540 });
+  await boot(page);
+  const r = await page.evaluate(async () => {
+    const u = (window as any).__meridian.ui;
+    u.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu.', 30);
+    u.missionCard('Port Meridian', 'Golden hour. The city is yours.', 'start');
+    await new Promise(res => setTimeout(res, 900));
+    const hint = document.querySelector<HTMLElement>('.ma-hint')!, card = document.querySelector<HTMLElement>('.ma-card-title')!.getBoundingClientRect();
+    const hr = hint.getBoundingClientRect(), overlap = hr.bottom > card.top && hr.top < card.bottom && hr.right > card.left && hr.left < card.right;
+    return { overlap, hintOpacity: Number(getComputedStyle(hint).opacity) };
+  });
+  expect(r.overlap && r.hintOpacity > 0.1).toBe(false);
+});

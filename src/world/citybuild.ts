@@ -1,6 +1,7 @@
 /** Builds Port Meridian's meshes and static colliders from the pure city layout. */
 import { worldGlass } from './glass';
 import * as THREE from 'three';
+import { gpuOnlyAfterUpload } from '../render/gpuOnly';
 import { Rng } from '../core/rng';
 import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
 import { buildIsland } from './islandbuild';
@@ -786,6 +787,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
   void T_PAINT; void T_NIGHTGLOW;
   root.add(worldGlass.finishOverlay());
+  gpuOnlyAfterUpload(root); // Round 11 (memory): the city's vertex arrays leave the JS heap once on the GPU
   return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, ferris, water, helipads, breakables };
 }
 

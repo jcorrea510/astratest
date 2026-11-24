@@ -466,6 +466,13 @@ export class Game {
     const hidden: THREE.Object3D[] = [];
     this.renderer.scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
     try { this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera); } catch { /* warm-up only */ }
+    // Round 11 (memory): one cheap draw of everything into a 1x1 target uploads every vertex buffer now, so the static
+    // world's CPU copies are released at load (render/gpuOnly.ts) instead of whenever each piece first comes into view
+    const S = this.renderer.scene, R = this.renderer.renderer, culled: THREE.Object3D[] = [];
+    S.traverse(o => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
+    const rt = new THREE.WebGLRenderTarget(1, 1), ov = S.overrideMaterial, basic = new THREE.MeshBasicMaterial();
+    try { S.overrideMaterial = basic; R.setRenderTarget(rt); R.render(S, this.renderer.camera); } catch { /* warm-up only */ }
+    finally { S.overrideMaterial = ov; R.setRenderTarget(null); rt.dispose(); basic.dispose(); for (const o of culled) o.frustumCulled = true; }
     for (const o of hidden) o.visible = false;
   }
   /** Enter the nearest vehicle (walk to the door; carjacking if occupied) or get out of the current one. */
