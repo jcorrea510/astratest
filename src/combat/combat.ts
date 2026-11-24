@@ -9,6 +9,7 @@
 import { FireField } from './fire';
 import { bulletDrop, flightTime, isShallow, muzzleVelocity, penetration, reflect, roundPower } from './ballistics';
 import * as THREE from 'three';
+import { addPooledLight } from '../render/lightPool';
 import { RAPIER, type Physics, type ColliderTag, groups, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import type { Character } from '../actors/character';
 import type { Vehicle } from '../vehicles/vehicle';
@@ -167,7 +168,7 @@ export class Combat {
   private v1 = new THREE.Vector3(); private v2 = new THREE.Vector3(); private v3 = new THREE.Vector3(); private v4 = new THREE.Vector3(); private v5 = new THREE.Vector3();
   constructor(private physics: Physics, private particles: Particles, private audio: GameAudio, private scene: THREE.Scene) {
     this.tracers = new Tracers(scene);
-    this.flash = new THREE.PointLight(0xffb36b, 0, 12, 2); scene.add(this.flash);
+    this.flash = addPooledLight(scene, new THREE.PointLight(0xffb36b, 0, 12, 2), 3);
     this.fire = new FireField(scene);
     this.fire.smoke = (x, y, z, d, a) => this.particles.smoke(x, y, z, d, a);
     this.fire.ember = (x, y, z) => this.particles.sparks(x, y, z, 1, 2.5);

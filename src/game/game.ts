@@ -1,5 +1,6 @@
 /** Game orchestrator: owns the world, systems and the main loop. */
 import * as THREE from 'three';
+import { addPooledLight } from '../render/lightPool';
 import { Renderer } from '../render/renderer';
 import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import { Input } from '../core/input';
@@ -814,7 +815,7 @@ export class Game {
     this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere();
     this.lampPools.renderOrder = 1;
     this.renderer.scene.add(this.lampBulbs, this.lampPools);
-    for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffc98a, 0, 22, 1.6); this.renderer.scene.add(l); this.lampLights.push(l); }
+    for (let i = 0; i < 8; i++) this.lampLights.push(addPooledLight(this.renderer.scene, new THREE.PointLight(0xffc98a, 0, 22, 1.6), 1)); // Round 11: virtual, the light pool shows the nearest
   }
   /**
    * Round 7: height for a lamp's light pool: the lowest ground among five rays under the head (+3 cm), so the pool lies
@@ -844,7 +845,7 @@ export class Game {
     (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 1.6, 0.35 + on * 1.3, 0.3 + on * 0.8);
     (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.3;
     this.lampTimer -= dt;
-    const n = this.renderer.quality.pointLights;
+    const n = 8; // Round 11: every nearby lamp asks for light; the light pool decides how many are real
     if (this.lampTimer <= 0) {
       this.lampTimer = 0.4;
       const cp = this.renderer.camera.position;

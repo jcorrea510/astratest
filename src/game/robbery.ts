@@ -3,6 +3,7 @@
  * keep them covered while they empty the till, then grab the cash bag before the police arrive.
  */
 import * as THREE from 'three';
+import { addPooledLight } from '../render/lightPool';
 import type { Game } from './game';
 import type { GameUI, MinimapBlip } from '../ui/contracts';
 import type { Npc } from '../actors/npc';
@@ -35,7 +36,7 @@ export class Robberies {
   private boostT = 0;
   private light = new THREE.PointLight(0xfff2dc, 0, 14, 1.4);
   constructor(private game: Game, private ui: GameUI, groundY: (x: number, z: number) => number) {
-    game.renderer.scene.add(this.light);
+    addPooledLight(game.renderer.scene, this.light, 2.5);
     this.extras = new StoreExtras(game, ui, this as unknown as Host);
     for (const def of STORES) {
       void groundY; // stores sit on the pavement (a raycast would hit the floors above)

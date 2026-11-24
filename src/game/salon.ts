@@ -3,6 +3,7 @@
  * (the camera orbits them). Regular mode pays per change, Sandbox is free. The bought look is kept (saved as `appearance`).
  */
 import * as THREE from 'three';
+import { addPooledLight } from '../render/lightPool';
 import type { Game } from './game';
 import type { GameUI } from '../ui/contracts';
 import type { Kiosk } from './robbery';
@@ -29,7 +30,7 @@ export class Salon {
    * recompiles every shader in three.js: a freeze), and is only turned up while a session is open. */
   private keyLight: THREE.PointLight;
   constructor(private game: Game, private ui: GameUI, private kiosks: () => Kiosk[]) {
-    this.keyLight = new THREE.PointLight('#fff2e0', 0, 7, 1.6); game.renderer.scene.add(this.keyLight);
+    this.keyLight = addPooledLight(game.renderer.scene, new THREE.PointLight('#fff2e0', 0, 7, 1.6), 4);
   }
   get isOpen() { return !!this.session; }
   /** The look the player owns (an unpaid preview does not count). */

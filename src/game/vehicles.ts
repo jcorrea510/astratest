@@ -1,5 +1,6 @@
 /** Owns every vehicle: spawning, crash handling, fire/explosions, skid marks and engine audio. */
 import * as THREE from 'three';
+import { addPooledLight, type LightPool } from '../render/lightPool';
 import type { Physics } from '../core/physics';
 import type { Assets } from '../world/assets';
 import { Vehicle, barStrobe } from '../vehicles/vehicle';
@@ -112,8 +113,8 @@ export class VehicleManager {
   private barLights: THREE.PointLight[] = [];
   private barTex: THREE.Texture | null = null;
   setBarLightCount(n: number) {
-    while (this.barLights.length < n * 2) { const l = new THREE.PointLight(this.barLights.length % 2 ? 0x2a5cff : 0xff2a1a, 0, 26, 1.6); l.castShadow = false; this.scene.add(l); this.barLights.push(l); }
-    while (this.barLights.length > n * 2) { const l = this.barLights.pop()!; this.scene.remove(l); l.dispose(); }
+    while (this.barLights.length < n * 2) { const l = new THREE.PointLight(this.barLights.length % 2 ? 0x2a5cff : 0xff2a1a, 0, 26, 1.6); l.castShadow = false; addPooledLight(this.scene, l, 2.5); this.barLights.push(l); }
+    while (this.barLights.length > n * 2) { const l = this.barLights.pop()!; (this.scene.userData.lightPool as LightPool | undefined)?.remove(l); this.scene.remove(l); l.dispose(); }
   }
   private ensureBarPools() {
     if (this.barPools.length || typeof document === 'undefined') return;

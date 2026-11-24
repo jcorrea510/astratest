@@ -594,7 +594,56 @@ export function districtAt(city: CityMap, x: number, z: number): District {
   for (let j = 0; j < STREETS.length - 1; j++) if (z > STREETS[j]) bj = j;
   return districtFor(bi, bj);
 }
+/** Round 11 perf: lane segments bucketed in a 40 m grid (nearestLane was a full scan of every lane, ~5% of a frame). */
+const LANE_CELL = 40;
+interface LaneGrid { cells: Map<number, number[]>; minX: number; minZ: number; segs: { li: number; si: number }[] }
+const laneGrids = new WeakMap<CityMap, LaneGrid>();
+const cellKey = (i: number, j: number) => i * 4096 + j;
+function laneGrid(city: CityMap): LaneGrid {
+  let g = laneGrids.get(city);
+  if (g) return g;
+  let minX = Infinity, minZ = Infinity;
+  for (const l of city.lanes) for (const p of l.points) { minX = Math.min(minX, p.x); minZ = Math.min(minZ, p.z); }
+  g = { cells: new Map(), minX: minX - 1, minZ: minZ - 1, segs: [] };
+  city.lanes.forEach((l, li) => {
+    for (let i = 1; i < l.points.length; i++) {
+      const a = l.points[i - 1], b = l.points[i], k = g!.segs.push({ li, si: i }) - 1;
+      const i0 = Math.floor((Math.min(a.x, b.x) - g!.minX) / LANE_CELL), i1 = Math.floor((Math.max(a.x, b.x) - g!.minX) / LANE_CELL);
+      const j0 = Math.floor((Math.min(a.z, b.z) - g!.minZ) / LANE_CELL), j1 = Math.floor((Math.max(a.z, b.z) - g!.minZ) / LANE_CELL);
+      for (let ci = i0; ci <= i1; ci++) for (let cj = j0; cj <= j1; cj++) { const key = cellKey(ci, cj); let c = g!.cells.get(key); if (!c) g!.cells.set(key, c = []); c.push(k); }
+    }
+  });
+  laneGrids.set(city, g);
+  return g;
+}
+/** Nearest point on any lane (roadOnly: skip junction connectors). Same answer (ties included) as a scan of every lane. */
 export function nearestLane(city: CityMap, x: number, z: number, roadOnly = true): { lane: Lane; s: number; dist: number } | null {
+  const g = laneGrid(city);
+  let best = null as { lane: Lane; s: number; dist: number } | null, bLi = 0, bSi = 0;
+  const ci = Math.floor((x - g.minX) / LANE_CELL), cj = Math.floor((z - g.minZ) / LANE_CELL);
+  const seen = new Set<number>();
+  for (let r = 0; r < 64; r++) {
+    for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) {
+      if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+      const cell = g.cells.get(cellKey(ci + di, cj + dj)); if (!cell) continue;
+      for (const k of cell) {
+        if (seen.has(k)) continue; seen.add(k);
+        const { li, si } = g.segs[k], lane = city.lanes[li];
+        if (roadOnly && lane.connector) continue;
+        const a = lane.points[si - 1], b = lane.points[si];
+        const vx = b.x - a.x, vz = b.z - a.z; const l2 = vx * vx + vz * vz || 1;
+        let t = ((x - a.x) * vx + (z - a.z) * vz) / l2; t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(x - (a.x + vx * t), z - (a.z + vz * t));
+        if (!best || d < best.dist || (d === best.dist && (li < bLi || (li === bLi && si < bSi)))) { best = { lane, s: lane.cum[si - 1] + Math.sqrt(l2) * t, dist: d }; bLi = li; bSi = si; }
+      }
+    }
+    // everything within r cells of the query cell has been seen: an answer closer than that ring's inner edge is final
+    if (best && best.dist <= r * LANE_CELL) return best;
+  }
+  return best ?? nearestLaneScan(city, x, z, roadOnly);
+}
+/** The reference full scan (kept for tests and as a fallback far outside the map). */
+export function nearestLaneScan(city: CityMap, x: number, z: number, roadOnly = true): { lane: Lane; s: number; dist: number } | null {
   let best: { lane: Lane; s: number; dist: number } | null = null;
   for (const lane of city.lanes) {
     if (roadOnly && lane.connector) continue;

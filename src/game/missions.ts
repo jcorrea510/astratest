@@ -25,6 +25,12 @@ const CONTACT_LOOKS: Record<string, Look> = {
 const GANG_LOOK = (i: number): Look => ({ skin: ['#c68c63', '#8a5a3b', '#f1c9a5', '#a8714c'][i % 4], top: ['#1f6f6a', '#2a2a2e', '#1f6f6a'][i % 3], bottom: '#1d1f24', shoes: '#e9e4d8', hair: '#1f1a17', hat: '#1f6f6a', detail: '#d9b44a', sleeves: i % 2 ? 'long' : 'short', legs: 'pants', hairStyle: (['buzz', 'short', 'bald', 'curly'] as const)[i % 4], hatStyle: i % 3 === 0 ? 'beanie' : 'none', height: 0.98 + (i % 3) * 0.03, build: 1.02 });
 
 /** Ring markers for objectives (shared look). */
+/**
+ * Round 11: how much of a marker's light column shows for a camera `d` metres (horizontally) from its centre. It used to
+ * be half-lit with the camera 4-5 m away (the player standing in it), so the near wall of the column covered the whole
+ * screen and washed the picture green (the safehouse marker at spawn). Now gone within 3 m of the wall. Pure (tests).
+ */
+export function markerFade(d: number, radius: number): number { return THREE.MathUtils.smoothstep(d, radius + 3.5, radius + 10); }
 export class Marker {
   static all = new Set<Marker>();
   group = new THREE.Group();
@@ -62,9 +68,11 @@ export class Marker {
     scene.add(this.group);
     Marker.all.add(this);
   }
+  /** Round 11: fades / animates every marker (the missions system that used to do this is switched off). */
+  static updateAll(t: number, camPos: THREE.Vector3) { for (const mk of Marker.all) mk.update(t, camPos); }
   update(t: number, camPos?: THREE.Vector3) {
     this.colMat.uniforms.uTime.value = t;
-    if (camPos) { const d = Math.hypot(camPos.x - this.pos.x, camPos.z - this.pos.z); this.colMat.uniforms.uFade.value = THREE.MathUtils.smoothstep(d, this.radius + 0.5, this.radius + 6); }
+    if (camPos) { const d = Math.hypot(camPos.x - this.pos.x, camPos.z - this.pos.z); this.colMat.uniforms.uFade.value = markerFade(d, this.radius); }
   }
   inside(p: THREE.Vector3, yTol = 3) { return Math.hypot(p.x - this.pos.x, p.z - this.pos.z) < this.radius && Math.abs(p.y - this.pos.y) < yTol; }
   dispose() { this.group.removeFromParent(); Marker.all.delete(this); this.group.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Sprite).isSprite) { m.geometry?.dispose(); const mat = m.material as THREE.MeshBasicMaterial; mat.map?.dispose(); mat.dispose(); } }); }

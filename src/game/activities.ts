@@ -277,6 +277,7 @@ export class Activities {
   }
   update(dt: number) {
     const g = this.game, p = g.player.pos, t = g.time;
+    Marker.updateAll(t, g.renderer.camera.position); // Round 11: the safehouse marker at spawn washed the screen green (never faded)
     for (const c of this.cards) if (c) { c.rotation.y += dt * 1.5; c.position.y += Math.sin(t * 2) * 0.002; }
     if (!g.paused) this.robberies.update(dt, this.missionActive());
     this.guns.update(); // hang the guns once the store interior is built

@@ -5,6 +5,7 @@
  * a soft scorch decal stays under the patch and fades after it goes out.
  */
 import * as THREE from 'three';
+import { addPooledLight } from '../render/lightPool';
 
 export interface FirePatch {
   x: number; y: number; z: number;
@@ -91,7 +92,7 @@ export class FireField {
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 6;
     scene.add(this.mesh);
-    this.light = new THREE.PointLight(0xff8a3a, 0, 18, 1.6); scene.add(this.light);
+    this.light = addPooledLight(scene, new THREE.PointLight(0xff8a3a, 0, 18, 1.6), 2);
   }
   get active() { return this.patches.length; }
   /** Starts a fire patch on the ground at `at`. */

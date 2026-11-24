@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { QUALITY, type QualityName, type QualityPreset } from '../core/settings';
 import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
+import { LightPool } from './lightPool';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
@@ -37,6 +37,41 @@ const GradeShader = {
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
     }`,
 };
+
+/**
+ * Round 11 perf (GPU): tone mapping (ACES), sRGB encoding and the colour grade in ONE full-screen pass. They were two passes
+ * (OutputPass, then the grade ShaderPass): a whole extra read + write of the HDR frame every frame.
+ */
+const OUTPUT_GRADE_FRAG = `
+  precision highp float;
+  uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit; uniform vec3 uFlashColor; varying vec2 vUv;
+  #include <tonemapping_pars_fragment>
+  #include <colorspace_pars_fragment>
+  ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb = ACESFilmicToneMapping(c.rgb);
+      c = sRGBTransferOETF(c);`)}`;
+export class OutputGradePass extends Pass {
+  uniforms: Record<string, THREE.IUniform>;
+  private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
+  constructor() {
+    super();
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 } }]);
+    this.material = new THREE.RawShaderMaterial({
+      name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', ACES_FILMIC_TONE_MAPPING: '' },
+      vertexShader: `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; attribute vec3 position; attribute vec2 uv; varying vec2 vUv;
+        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: OUTPUT_GRADE_FRAG,
+    });
+    this.quad = new FullScreenQuad(this.material);
+  }
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
+    this.uniforms.tDiffuse.value = readBuffer.texture;
+    this.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
+  }
+  dispose() { this.material.dispose(); this.quad.dispose(); }
+}
 
 /** Grade parameters per look; exposed so tests can assert the default is neutral. */
 export const LOOK = {
@@ -82,7 +117,7 @@ export class Renderer {
   skyState: SkyState = sampleSky(18);
   composer!: EffectComposer;
   bloom!: UnrealBloomPass;
-  grade!: ShaderPass;
+  grade!: OutputGradePass;
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
   /** 'natural' = neutral photographic grade (default); 'stylised' = teal/apricot split-tone. */
@@ -119,6 +154,8 @@ export class Renderer {
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
+    skipHiddenMatrices(this.scene);
+    this.lightPool = new LightPool(this.scene); this.scene.userData.lightPool = this.lightPool;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.envSky.mesh.scale.setScalar(50);
     this.envSky.uniforms.uStars.value = 0; // stars in reflections read as noise on glass
@@ -136,6 +173,7 @@ export class Renderer {
   setQuality(name: QualityName) {
     this.qualityName = name; const q = this.quality = QUALITY[name];
     this.applyPixelRatio();
+    this.lightPool?.setCount(q.lightPool);
     this.renderer.shadowMap.enabled = q.shadowMap > 0;
     this.sun.castShadow = q.shadowMap > 0;
     if (q.shadowMap > 0) {
@@ -179,8 +217,7 @@ export class Renderer {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
-    this.grade = new ShaderPass(GradeShader);
+    this.grade = new OutputGradePass();
     this.composer.addPass(this.grade);
   }
   resize() {
@@ -227,14 +264,31 @@ export class Renderer {
     this.grade.uniforms.uNight.value = s.night;
     this.grade.uniforms.uTime.value = time % 100;
   }
+  lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
   render() {
     this.adapt(performance.now());
     this.renderer.shadowMap.autoUpdate = true;
+    this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }
+}
+
+/**
+ * Round 11 perf (CPU): three.js recomposes the matrix of every object in the scene each frame, hidden or not. About half of
+ * the ~10k objects are hidden top-level subtrees (store interiors out of range, pooled people, parked props), so the scene
+ * skips hidden top-level children; they are brought up to date the frame they are shown again (before they are drawn).
+ * Objects that must keep a live world matrix while hidden set userData.matrixWhenHidden = true.
+ */
+export function skipHiddenMatrices(scene: THREE.Object3D) {
+  scene.updateMatrixWorld = function (this: THREE.Object3D, force?: boolean) {
+    if (this.matrixAutoUpdate) this.updateMatrix();
+    if (this.matrixWorldNeedsUpdate || force) { this.matrixWorld.copy(this.matrix); this.matrixWorldNeedsUpdate = false; force = true; }
+    const ch = this.children;
+    for (let i = 0; i < ch.length; i++) { const c = ch[i]; if (c.visible || c.userData.matrixWhenHidden) c.updateMatrixWorld(force); else c.matrixWorldNeedsUpdate = true; }
+  };
 }
 
 /** Adaptive-resolution state (Round 8): smoothed frame time, scale, native-floor flag, timers. */
