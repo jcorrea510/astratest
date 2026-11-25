@@ -12,6 +12,7 @@ import { decodeGunSamples, fetchGunSampleBytes, gunSampleCount, gunSamplesPlayed
 import { EngineVoiceImpl, SirenVoice, SkidVoice } from './loops';
 import { STATIONS } from './composer';
 import { isFiniteVec } from './spatial';
+import { type Channel, type ChannelVolumes, type UiSoundName, channelsFromSettings, defaultChannels, isUiSound } from './mixer';
 import type { Acoustics, AudioExtras, ExtraSfx } from './sfx';
 import type { StepSurface } from './sfx2';
 
@@ -33,6 +34,8 @@ export class Audio implements GameAudio, AudioExtras {
   private amb: AmbienceArg = { night: 0, water: 0, traffic: 0.5, park: 0 };
   private radioActive = false; private station = 0; private slow = 0; private paused = false; private mood: Mood = 'none';
   private acoustics: Acoustics | null = null;
+  private channels: ChannelVolumes = defaultChannels();
+  private hidden = false; private suspendTimer: ReturnType<typeof setTimeout> | null = null; private visBound = false;
 
   /** Compressed gunshot recordings, fetched at game load (decoded once the context exists, never during play). */
   private gunBytes: Promise<Record<string, ArrayBuffer>> | null = null;
@@ -67,6 +70,8 @@ export class Audio implements GameAudio, AudioExtras {
       const core = new AudioCore(ctx);
       this.core = core;
       core.setVolumes(...this.vols);
+      for (const ch of Object.keys(this.channels) as Channel[]) core.setChannelVolume(ch, this.channels[ch]);
+      this.bindVisibility();
       core.setListener(this.lis.pos, this.lis.fwd);
       core.ambience.set(this.amb, 0.3);
       core.setSlowMo(this.slow); core.setPaused(this.paused);
@@ -110,6 +115,40 @@ export class Audio implements GameAudio, AudioExtras {
     if (this.ctx.state !== 'running') return;
     const ahead = Math.min(1.2, Math.max(0.12, Math.max(gap, this.tickGap) * 1.6 + 0.04));
     try { core.tick(ahead); } catch { /* never let audio break the game loop */ }
+  }
+
+  /** Per-channel volume (0..1): music, sfx, ambience, voice, ui. Settings owner calls this on change. */
+  setChannelVolume(ch: Channel, v: number): void {
+    if (!(ch in this.channels)) return;
+    this.channels[ch] = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1; this.core?.setChannelVolume(ch, this.channels[ch]);
+  }
+  /** Read musicVolume / sfxVolume / ambienceVolume / voiceVolume / uiVolume from a settings object (missing = 1). */
+  applyChannelSettings(settings: unknown): void { const c = channelsFromSettings(settings); for (const ch of Object.keys(c) as Channel[]) this.setChannelVolume(ch, c[ch]); }
+
+  /** Subtle synthesized UI sound: 'hover' | 'select' | 'back' | 'purchase' | 'error' | 'notification'. Safe before resume() (dropped). */
+  ui(name: UiSoundName): void {
+    const core = this.core; if (!core || this.ctx?.state !== 'running' || !isUiSound(name)) return;
+    try { core.playUi(name); } catch { /* ignore */ }
+  }
+
+  /** Hidden tab: fade out then suspend the context (saves CPU / battery); visible again: resume and fade in. */
+  private bindVisibility(): void {
+    if (this.visBound || typeof document === 'undefined') return; this.visBound = true;
+    document.addEventListener('visibilitychange', () => this.onVisibility(document.hidden));
+  }
+  private onVisibility(hidden: boolean): void {
+    const ctx = this.ctx, core = this.core; if (!ctx || !core) return;
+    this.hidden = hidden;
+    if (this.suspendTimer) { clearTimeout(this.suspendTimer); this.suspendTimer = null; }
+    try {
+      if (hidden) {
+        core.setHidden(true);
+        this.suspendTimer = setTimeout(() => { this.suspendTimer = null; if (this.hidden && ctx.state === 'running') ctx.suspend().catch(() => undefined); }, 260);
+      } else {
+        const go = () => { if (!this.hidden) core.setHidden(false); };
+        if (ctx.state === 'suspended') ctx.resume().then(go, go); else go();
+      }
+    } catch { /* ignore */ }
   }
 
   setVolumes(master: number, music: number, sfx: number): void { this.vols = [master, music, sfx]; this.core?.setVolumes(master, music, sfx); }
