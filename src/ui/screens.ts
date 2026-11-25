@@ -162,26 +162,20 @@ export function buildLoading(): { el: HTMLDivElement; fill: HTMLDivElement; pct:
   return { el, fill, pct, label, tip, tipBox, stills };
 }
 
-export function buildMobileGate(): HTMLDivElement {
+export function buildMobileGate(onContinue?: () => void): HTMLDivElement {
   const el = h('div', 'ma-layer ma-mobile');
   el.innerHTML = titleArtSvg('maM');
   el.appendChild(h('div', 'ma-mobile-shade'));
   const box = h('div', 'ma-mobile-box');
   box.appendChild(logo('ma-logo-mobile'));
-  box.appendChild(h('div', 'ma-mobile-head', 'Port Meridian is waiting on a bigger screen.'));
-  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow needs a keyboard and mouse, or a game controller. Open this page on a laptop or desktop, or on an iPad with a Bluetooth keyboard and mouse or a paired controller.'));
-  const url = h('div', 'ma-mobile-url', location.href.split('#')[0]);
-  box.appendChild(url);
-  const copy = h('button', 'ma-btn ma-btn-primary', 'Copy link');
-  copy.type = 'button';
-  copy.addEventListener('click', () => {
-    const done = () => { copy.textContent = 'Link copied'; };
-    try {
-      const p = navigator.clipboard?.writeText(location.href.split('#')[0]);
-      if (p) p.then(done, () => { copy.textContent = 'Copy unavailable'; }); else copy.textContent = 'Copy unavailable';
-    } catch { copy.textContent = 'Copy unavailable'; }
-  });
-  box.appendChild(copy);
+  box.appendChild(h('div', 'ma-mobile-head', 'Best on a computer or iPad'));
+  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow is built for a keyboard and mouse, or a game controller, and there are no touch controls yet. Continue anyway, or open this page on a laptop, desktop or iPad.'));
+  const row = h('div', 'ma-mobile-actions');
+  const go = h('button', 'ma-btn ma-btn-primary ma-mobile-continue', 'Continue anyway');
+  go.type = 'button';
+  go.addEventListener('click', () => { onContinue?.(); });
+  row.appendChild(go);
+  box.appendChild(row);
   el.appendChild(box);
   return el;
 }
@@ -216,7 +210,7 @@ export function buildCredits(): { el: HTMLDivElement; scroller: HTMLDivElement; 
     scroller.appendChild(g);
   };
   sec('Meridian Afterglow', [['Design, code, art, audio', 'The Meridian Afterglow team'], ['City, story and brands', 'Original, fictional'], ['Built with', 'three.js, Rapier, Vite, TypeScript']]);
-  sec('Open assets (CC0)', [['City props', 'Kay Lousberg, KayKit City Builder Bits'], ['People and animation', 'Quaternius, Universal Base Characters and Animation Library'], ['Engine and tyre audio', 'Kenney, Starter Kit Racing']]);
+  sec('Open assets (CC0)', [['City props', 'Kay Lousberg, KayKit City Builder Bits'], ['People and animation', 'Quaternius, Universal Base Characters and Animation Library'], ['Engine and tire audio', 'Kenney, Starter Kit Racing']]);
   sec('Type', [['Barlow and Barlow Condensed', 'Jeremy Tribby, SIL Open Font License']]);
   sec('Thanks', [['Playtesting', 'Everyone who drove into the sea on purpose']]);
   panel.appendChild(scroller);
