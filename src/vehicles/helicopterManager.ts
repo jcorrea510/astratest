@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import { groups, G_STATIC, G_PROP } from '../core/physics';
 import * as places from '../game/places';
+import { farParkedHeli } from '../game/farLod';
 import type { Particles } from '../render/particles';
 import type { EngineVoice, GameAudio } from '../ui/contracts';
 import { Helicopter } from './helicopter';
@@ -131,7 +132,13 @@ export class HeliManager {
     return null;
   }
 
-  fixedUpdate(dt: number) { for (const h of this.list) h.fixedUpdate(dt); }
+  fixedUpdate(dt: number, focus?: THREE.Vector3) {
+    for (const h of this.list) {
+      // Round 12 perf: a chopper parked on a far pad has no flight code to run; its body sleeps until the player comes near
+      if (focus) { const dx = h.position.x - focus.x, dz = h.position.z - focus.z; if (farParkedHeli(dx * dx + dz * dz, h)) { if (!h.phys.body.isSleeping()) h.phys.body.sleep(); continue; } }
+      h.fixedUpdate(dt);
+    }
+  }
   postStep() {
     for (const h of this.list) {
       const r = h.postStep();

@@ -286,13 +286,29 @@ export class Vehicle {
   }
   /** Pane whose glass is within `tol` metres of a world point (e.g. a bullet hit), or null. Broken panes are skipped. */
   glassAt(worldPoint: THREE.Vector3, tol = 0.12, includeBroken = false): number | null {
-    let best: number | null = null, bd = tol;
+    this.glassPrepare();
+    return this.glassAtPrepared(worldPoint, tol, includeBroken);
+  }
+  private paneInv: THREE.Matrix4[] = [];
+  /**
+   * Caches every pane's inverse bone matrix for a burst of glassAtPrepared() queries (the aim trace marches 50+ points along
+   * a ray: it used to refresh the whole car's matrices and invert a matrix per pane at every point). Call again next frame.
+   */
+  glassPrepare(): void {
     this.group.updateMatrixWorld();
-    for (const p of this.tpl.panes) {
+    const ps = this.tpl.panes;
+    for (let i = 0; i < ps.length; i++) (this.paneInv[i] ??= new THREE.Matrix4()).copy(this.boneMatrix(ps[i].bone, _m)).invert();
+  }
+  /** glassAt() against the matrices cached by the last glassPrepare(). Same result, no allocation, and a cheap box reject per pane. */
+  glassAtPrepared(worldPoint: THREE.Vector3, tol = 0.12, includeBroken = false): number | null {
+    let best: number | null = null, bd = tol;
+    const ps = this.tpl.panes;
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i];
       if (!includeBroken && this.isGlassBroken(p.id)) continue;
-      // into the rest pose of the pane's bone
-      const inv = this.boneMatrix(p.bone, _m).invert();
-      const lp = _v.copy(worldPoint).applyMatrix4(inv);
+      const lp = _v.copy(worldPoint).applyMatrix4(this.paneInv[i]);
+      const bb = paneBounds(p);
+      if (lp.x < bb[0] - bd || lp.x > bb[3] + bd || lp.y < bb[1] - bd || lp.y > bb[4] + bd || lp.z < bb[2] - bd || lp.z > bb[5] + bd) continue; // farther than bd from every triangle
       const d = distToTris(lp, p.tris);
       if (d < bd) { bd = d; best = p.id; }
     }
@@ -340,7 +356,8 @@ export class Vehicle {
   static renderAlpha = 1;
   /** Places the mesh at the physics pose, blended from the previous fixed step so motion is smooth at any frame rate. */
   syncTransform() {
-    const ph = this.phys, p = ph.body.translation(), q = ph.body.rotation(), a = Math.max(0, Math.min(1, Vehicle.renderAlpha));
+    const ph = this.phys, a = Math.max(0, Math.min(1, Vehicle.renderAlpha));
+    ph.refreshPose(); const p = ph.cPos, q = ph.cQuat;
     if (a >= 1 || ph.body.isSleeping()) { this.group.position.set(p.x, p.y, p.z); this.group.quaternion.set(q.x, q.y, q.z, q.w); return; }
     const o = ph.prevPos, r = ph.prevQuat;
     this.group.position.set(o.x + (p.x - o.x) * a, o.y + (p.y - o.y) * a, o.z + (p.z - o.z) * a);
@@ -562,17 +579,27 @@ export class Vehicle {
   }
 }
 
-/** Distance from p to the nearest triangle in a flat position list. */
+const _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _tc = new THREE.Vector3(), _tq = new THREE.Vector3(), _tri = new THREE.Triangle();
+/** Distance from p to the nearest triangle in a flat position list (no allocation). */
 function distToTris(p: THREE.Vector3, tris: Float32Array): number {
   let best = Infinity;
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), q = new THREE.Vector3();
-  const tri = new THREE.Triangle();
   for (let i = 0; i < tris.length; i += 9) {
-    a.fromArray(tris, i); b.fromArray(tris, i + 3); c.fromArray(tris, i + 6);
-    tri.set(a, b, c); tri.closestPointToPoint(p, q);
-    const d = q.distanceTo(p); if (d < best) best = d;
+    _ta.fromArray(tris, i); _tb.fromArray(tris, i + 3); _tc.fromArray(tris, i + 6);
+    _tri.set(_ta, _tb, _tc); _tri.closestPointToPoint(p, _tq);
+    const d = _tq.distanceTo(p); if (d < best) best = d;
   }
   return best;
+}
+const _paneBb = new WeakMap<Float32Array, number[]>();
+/** [minX, minY, minZ, maxX, maxY, maxZ] of a pane's triangles (cached per template). */
+function paneBounds(p: { tris: Float32Array }): number[] {
+  let b = _paneBb.get(p.tris);
+  if (!b) {
+    b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < p.tris.length; i += 3) for (let k = 0; k < 3; k++) { const v = p.tris[i + k]; if (v < b[k]) b[k] = v; if (v > b[k + 3]) b[k + 3] = v; }
+    _paneBb.set(p.tris, b);
+  }
+  return b;
 }
 void _q;
 
