@@ -4,6 +4,7 @@ import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 import { WEST, WEST_PLAZAS } from '../world/westside';
 import { Buildings3D } from './map3d';
+import { BLIP_BASE_COLORS, blipStyle, pageA11y } from './blipStyle';
 
 const BASE = '#0e1317';
 const BLOCK_BASE = '#1b2128';
@@ -208,10 +209,7 @@ function drawGlyph(ctx: CanvasRenderingContext2D, name: string, x: number, y: nu
   ctx.restore();
 }
 
-export const BLIP_COLORS: Record<MinimapBlip['kind'], string> = {
-  mission: '#ffc37e', target: '#ff6f5e', checkpoint: '#ffe08a', waypoint: '#ffb066', safehouse: '#e9edf2', shop: '#8fd0a8',
-  arms: '#ee9a72', bank: '#e8c15a', barber: '#e3a9c8', clothing: '#b4a8ec', garage: '#8fbbdc', vehicle: '#dfe3e8', collectible: '#f3d9ad', enemy: '#ff5a4e', police: '#6fb6ff',
-};
+export const BLIP_COLORS: Record<MinimapBlip['kind'], string> = BLIP_BASE_COLORS;
 const INK = 'rgba(7,9,13,0.92)';
 
 /** POI badge: a dark disc with a hairline ring and a thin coloured glyph (reads as a map symbol, not a sticker). */
@@ -222,9 +220,20 @@ function badge(ctx: CanvasRenderingContext2D, name: string, x: number, y: number
   drawGlyph(ctx, name, x, y, r * gs, col, gw, gh);
 }
 
+/** Colour-blind friendly marks: a triangle (police) or square (gang), solid or hollow, with a dark outline. */
+function shapeMark(ctx: CanvasRenderingContext2D, shape: 'triangle' | 'square', x: number, y: number, r: number, col: string, hollow: boolean) {
+  ctx.beginPath();
+  if (shape === 'triangle') { ctx.moveTo(x, y - r * 1.1); ctx.lineTo(x + r * 1.0, y + r * 0.8); ctx.lineTo(x - r * 1.0, y + r * 0.8); ctx.closePath(); }
+  else ctx.rect(x - r, y - r, r * 2, r * 2);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.5, r * 0.55); ctx.strokeStyle = INK; ctx.stroke();
+  if (hollow) { ctx.lineWidth = Math.max(1, r * 0.3); ctx.strokeStyle = col; ctx.stroke(); }
+  else { ctx.fillStyle = col; ctx.fill(); }
+}
+
 /** Draws a blip glyph centred at (x, y) in pixel space. r is the base radius in pixels, t is time in seconds. */
 export function drawBlip(ctx: CanvasRenderingContext2D, kind: MinimapBlip['kind'], x: number, y: number, r: number, t: number, pulse = false, edge = false) {
-  const col = BLIP_COLORS[kind];
+  const pa = pageA11y(), st = blipStyle(kind, pa.mode, pa.reduceMotion, t), col = st.color;
   if (pulse && !edge) {
     const k = (t * 1.1) % 1;
     ctx.beginPath(); ctx.arc(x, y, r * (1.1 + k * 1.6), 0, Math.PI * 2);
@@ -270,13 +279,13 @@ export function drawBlip(ctx: CanvasRenderingContext2D, kind: MinimapBlip['kind'
       drawGlyph(ctx, 'diamond', x, y, r * 1.05, col);
       break;
     case 'enemy':
-      disc(ctx, x, y, r * 0.6, col, INK);
+      if (st.shape === 'square') shapeMark(ctx, 'square', x, y, r * 0.72, col, false);
+      else disc(ctx, x, y, r * 0.6, col, INK);
       break;
-    case 'police': {
-      const on = Math.floor(t * 4) % 2 === 0;
-      disc(ctx, x, y, r * 0.64, on ? col : '#ff5a4e', INK);
+    case 'police':
+      if (st.shape === 'triangle') shapeMark(ctx, 'triangle', x, y, r * 0.85, col, st.hollowFlash && st.flashing);
+      else disc(ctx, x, y, r * 0.64, col, INK);
       break;
-    }
   }
 }
 

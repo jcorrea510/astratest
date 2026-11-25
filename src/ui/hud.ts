@@ -8,6 +8,8 @@ import { formatMoney, formatTimer, MoneyText } from './geometry';
 import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
 import type { CityPainter } from './mapdraw';
+import { SaveIndicator } from './saveIndicator';
+import { pageA11y } from './blipStyle';
 
 /** Small glyph per toast kind (original, drawn here). */
 const TOAST_ICONS: Record<'info' | 'money' | 'heat' | 'mission' | 'warning', string> = {
@@ -29,6 +31,9 @@ class Popup {
   }
   hide() { window.clearTimeout(this.timer); this.el.classList.remove('is-visible'); }
 }
+
+/** One indicator at a time: a rebuilt HUD drops the old subscription. */
+let activeSave: SaveIndicator | null = null;
 
 export class Hud {
   readonly el: HTMLDivElement;
@@ -265,6 +270,9 @@ export class Hud {
     this.fpsEl = h('div', 'ma-fps');
     this.fps = new TextSlot(this.fpsEl);
     this.el.appendChild(this.fpsEl);
+    activeSave?.dispose();
+    activeSave = new SaveIndicator(() => pageA11y().reduceMotion);
+    this.el.appendChild(activeSave.el);
   }
 
   private changed(key: string, v: number | string | boolean | null): boolean {
@@ -314,6 +322,8 @@ export class Hud {
         setClass(this.flares[i], 'is-on', on);
       }
       this.heatShown = filled;
+      this.heatEl.setAttribute('aria-label', `Heat ${filled} of 5`);
+      this.heatEl.dataset.n = String(filled);
     }
     setClass(this.heatEl, 'is-visible', filled > 0);
     const flash = s.heatFlash && filled > 0;

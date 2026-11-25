@@ -16,3 +16,18 @@ describe('chase camera yaw follow', () => {
     expect(tCam - tCar).toBeGreaterThan(0.05); // still smooth, not glued
   });
 });
+
+import * as THREE from 'three';
+import { boomLength, playerHiddenAt, isTeleport, MIN_BOOM, HIDE_DIST } from './camera';
+describe('camera boom (polish)', () => {
+  it('never shortens below the minimum with a wall right behind, nor exceeds the wanted distance', () => {
+    expect(boomLength(0.1, 4.2)).toBe(MIN_BOOM); expect(boomLength(2, 4.2)).toBeCloseTo(1.92, 5); expect(boomLength(null, 4.2)).toBe(4.2); expect(boomLength(10, 4.2)).toBe(4.2);
+  });
+  it('hides the body inside the threshold, with hysteresis', () => {
+    expect(playerHiddenAt(HIDE_DIST - 0.05, false)).toBe(true); expect(playerHiddenAt(HIDE_DIST + 0.05, false)).toBe(false);
+    expect(playerHiddenAt(HIDE_DIST + 0.05, true)).toBe(true); expect(playerHiddenAt(HIDE_DIST + 0.3, true)).toBe(false);
+  });
+  it('a big one-frame focus jump is a teleport (snap); walking is not', () => {
+    expect(isTeleport(new THREE.Vector3(0, 0, 0), new THREE.Vector3(30, 0, 5))).toBe(true); expect(isTeleport(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.4, 0, 0.1))).toBe(false);
+  });
+});

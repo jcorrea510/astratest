@@ -4,6 +4,7 @@ import { worldToMinimap, TRUE_NORTH } from './geometry';
 /** Blip kinds that stay on the rim when off the minimap (Round 7: no more ring of shop icons). */
 export const RIM_KINDS: ReadonlySet<string> = new Set(['waypoint', 'mission', 'target', 'checkpoint', 'enemy', 'police']);
 import { CityPainter, drawBlip, drawPlayerArrow } from './mapdraw';
+import { pageA11y } from './blipStyle';
 import { h } from './dom';
 
 /** Metres from the player to the top/bottom rim at zoom 1 (the radar is wider than it is tall). */
@@ -84,10 +85,13 @@ export class Minimap {
     if (bk) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low'; ctx.drawImage(bk.canvas, bk.x0, bk.z0, bk.canvas.width / bk.k, bk.canvas.height / bk.k); }
     if (s.heatRadius) {
       const hr = s.heatRadius;
-      const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+      const pa = pageA11y();
+      const pulse = pa.reduceMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 5);
       ctx.beginPath(); ctx.arc(hr.x, hr.z, hr.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 80, 70, ${0.14 + pulse * 0.1})`; ctx.fill();
-      ctx.lineWidth = 2 / scale; ctx.strokeStyle = `rgba(110, 175, 255, ${0.5 + pulse * 0.4})`; ctx.stroke();
+      ctx.lineWidth = 2 / scale; ctx.strokeStyle = `rgba(110, 175, 255, ${0.5 + pulse * 0.4})`;
+      if (pa.mode !== 'off') ctx.setLineDash([6 / scale, 4 / scale]); // pattern, not just colour
+      ctx.stroke(); ctx.setLineDash([]);
     }
     if (s.route && s.route.length > 1) {
       ctx.beginPath();
