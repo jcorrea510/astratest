@@ -25,8 +25,8 @@ export const ACTION_LABELS: Record<Action, string> = {
 };
 export const DEFAULT_BINDINGS: Record<Action, string[]> = {
   forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
-  sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC', 'AltLeft'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
-  reload: ['KeyR'], wheel: ['Tab', 'KeyQ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
+  sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
+  reload: ['KeyR'], wheel: ['Tab', 'KeyZ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
   pause: ['KeyP', 'Escape'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'],
   orders: ['KeyG'], sirenWail: ['KeyJ'], sirenYelp: ['KeyK'], sirenPhaser: ['KeyL'], lightBar: ['KeyU'],
 };
@@ -41,10 +41,28 @@ export interface Settings {
   driving: 'arcade' | 'realistic';
   /** blood spatter, pools and wound marks (Teen: moderate); off = clean hits */
   blood: boolean;
+  /** Round 12 (all optional for readers: use `s.x ?? default`). Ranges are enforced by loadSettings. */
+  /** gamepad stick look speed multiplier 0.3-3 */ padSensitivity: number;
+  /** gamepad stick deadzone 0-0.3 */ padDeadzone: number;
+  padInvertY: boolean;
+  /** controller rumble on/off */ vibration: boolean;
+  /** look-speed multiplier while aiming down sights 0.3-1.5 */ adsSensitivity: number;
+  /** radial speed blur when driving fast */ speedBlur: boolean;
+  /** fewer camera effects (shake, FOV kick, bob, speed blur); defaults from prefers-reduced-motion */ reduceMotion: boolean;
+  colorblind: ColorblindMode;
+  /** UI scale 0.8-1.4, applied as --ma-ui-scale on :root */ uiScale: number;
+  /** render-resolution multiplier on top of the preset pixel ratio, 0.5-1 */ resolutionScale: number;
+  /** frame-rate cap: 0 = off */ fpsCap: 0 | 30 | 60;
+  /** extra audio buses 0-1 */ ambience: number; voice: number; uiVolume: number;
 }
+export type ColorblindMode = 'off' | 'deuteranopia' | 'protanopia' | 'tritanopia';
+export const COLORBLIND_MODES: ColorblindMode[] = ['off', 'deuteranopia', 'protanopia', 'tritanopia'];
 /** A Mac with a trackpad (not an iPad, which reports as Mac but has touch). */
 export function isMacLike(): boolean { try { return typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1); } catch { return false; } }
-export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike() };
+export function prefersReducedMotion(): boolean { try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } }
+export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike(),
+  padSensitivity: 1, padDeadzone: 0.12, padInvertY: false, vibration: true, adsSensitivity: 0.8, speedBlur: true, reduceMotion: prefersReducedMotion(), colorblind: 'off',
+  uiScale: 1, resolutionScale: 1, fpsCap: 0, ambience: 0.8, voice: 0.9, uiVolume: 0.8 };
 export const SETTINGS_KEY = 'meridian-afterglow.settings.v1';
 
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
@@ -61,13 +79,29 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     if (merged.look !== 'natural' && merged.look !== 'stylised') merged.look = 'natural';
     if (typeof merged.blood !== 'boolean') merged.blood = true;
     if (typeof merged.aimToggle !== 'boolean') merged.aimToggle = isMacLike();
+    merged.padSensitivity = clampNum(merged.padSensitivity, 0.3, 3, 1); merged.padDeadzone = clampNum(merged.padDeadzone, 0, 0.3, 0.12);
+    merged.adsSensitivity = clampNum(merged.adsSensitivity, 0.3, 1.5, 0.8); merged.uiScale = clampNum(merged.uiScale, 0.8, 1.4, 1); merged.resolutionScale = clampNum(merged.resolutionScale, 0.5, 1, 1);
+    merged.ambience = clampNum(merged.ambience, 0, 1, 0.8); merged.voice = clampNum(merged.voice, 0, 1, 0.9); merged.uiVolume = clampNum(merged.uiVolume, 0, 1, 0.8);
+    if (typeof merged.padInvertY !== 'boolean') merged.padInvertY = false;
+    if (typeof merged.vibration !== 'boolean') merged.vibration = true;
+    if (typeof merged.speedBlur !== 'boolean') merged.speedBlur = true;
+    if (typeof merged.reduceMotion !== 'boolean') merged.reduceMotion = prefersReducedMotion();
+    if (!COLORBLIND_MODES.includes(merged.colorblind)) merged.colorblind = 'off';
+    if (merged.fpsCap !== 0 && merged.fpsCap !== 30 && merged.fpsCap !== 60) merged.fpsCap = 0;
     if (merged.driving !== 'arcade' && merged.driving !== 'realistic') merged.driving = 'arcade';
     delete (merged as unknown as Record<string, unknown>).pedDensity; delete (merged as unknown as Record<string, unknown>).trafficDensity; delete (merged as unknown as Record<string, unknown>).pedestrians; delete (merged as unknown as Record<string, unknown>).traffic;
     // density now follows the graphics preset only (old saves may carry per-slider values; they are simply ignored)
     if (!merged.bindings.pause.includes('KeyP') && !Object.entries(merged.bindings).some(([k, v]) => k !== 'pause' && v.includes('KeyP'))) merged.bindings.pause = [...merged.bindings.pause, 'KeyP']; // Esc also leaves fullscreen: P is always a way in
     for (const k of Object.keys(DEFAULT_BINDINGS) as Action[]) if (!Array.isArray(merged.bindings[k])) merged.bindings[k] = [...DEFAULT_BINDINGS[k]];
+    migrateBindings(merged.bindings, parsed.bindings);
     return merged;
   } catch { return base; }
+}
+/** Round 12: the old defaults clashed (Alt opens the browser menu; Q was the wheel and the pause-tab key). Bindings still equal to those defaults move to the new ones; custom choices are kept. */
+export function migrateBindings(b: Record<Action, string[]>, saved?: Partial<Record<Action, string[]>>) {
+  const same = (a: string[] | undefined, c: string[]) => !!a && a.length === c.length && c.every((k, i) => a[i] === k);
+  if (same(saved?.crouch, ['KeyC', 'AltLeft'])) b.crouch = [...DEFAULT_BINDINGS.crouch];
+  if (same(saved?.wheel, ['Tab', 'KeyQ'])) b.wheel = [...DEFAULT_BINDINGS.wheel];
 }
 export function saveSettings(s: Settings, storage: Pick<Storage, 'setItem'> | null = safeStorage()) {
   try { storage?.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* storage may be unavailable (private mode); settings stay in memory */ }
