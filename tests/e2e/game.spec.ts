@@ -28,7 +28,7 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   await page.keyboard.press('Escape');
   await expect(page.getByText('Open assets (CC0)')).toBeHidden();
   await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByRole('button', { name: 'Sandbox' }).click({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Free Roam' }).click({ timeout: 120_000 });
   await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
   await step(page, 1, { render: true });

@@ -75,7 +75,7 @@ test.describe('game modes', () => {
     expect(r.items).toContain('car:coupe');
     expect(r.worth).toBe(2000 + 30_400);
     const saved = await page.evaluate(() => { const m = (window as W).__meridian; m.save(); return m.read(); });
-    expect(saved).toMatchObject({ version: 2, mode: 'regular', cars: [{ kind: 'coupe' }] });
+    expect(saved).toMatchObject({ version: 3, mode: 'regular', cars: [{ kind: 'coupe' }] });
     // a car that vanished (despawned / destroyed) comes back in the garage row
     await page.evaluate(() => { const m = (window as W).__meridian, g = m.game; for (const v of [...g.vehicles.list]) if (v.kind === 'coupe') g.vehicles.remove(v); m.activities.parkOwned(); });
     expect(await page.evaluate(() => (window as W).__game.vehicles.list.filter((v: W) => v.kind === 'coupe').length)).toBe(1);
@@ -97,12 +97,12 @@ test('title: New game then pick a mode starts that mode', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^Play$/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'New game' }).click();
   await expect(page.getByRole('button', { name: 'Regular' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Sandbox' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Free Roam' })).toBeVisible();
   await page.getByRole('button', { name: 'Regular' }).click();
   await page.waitForFunction(() => !!(window as W).__meridian?.activities, null, { timeout: 400_000 });
   expect(await page.evaluate(() => (window as W).__game.mode)).toBe('regular');
-  const hud = await page.locator('.ma-mode-badge').textContent();
-  expect(hud).toBe('Regular');
+  // Round 12: no permanent mode badge on the HUD (it read as debug UI); the mode is shown in the pause menu instead
+  await expect(page.locator('.ma-mode-badge')).toHaveCount(0);
 });
 
 test('title: Continue describes the saved game (mode, cash, last played)', async ({ page }) => {

@@ -311,11 +311,11 @@ test('sandbox tools are a pause-menu tab; sliders can be dragged; quitting a deb
   const p = watch(page);
   await boot(page);
   await page.evaluate(() => (window as any).__meridian.pause());
-  await page.locator('.ma-ptab', { hasText: 'Sandbox' }).click();
-  await expect(page.getByLabel('Wanted level')).toBeVisible();
+  await page.locator('.ma-ptab', { hasText: 'Tools' }).click();
+  await expect(page.getByLabel('Heat level')).toBeVisible();
   // a drag is a stream of input events on the same element: the panel must not rebuild (and drop) the slider mid-drag
   const drag = await page.evaluate(() => {
-    const el = document.querySelector('[aria-label="Wanted level"]') as HTMLInputElement; let attached = true;
+    const el = document.querySelector('[aria-label="Heat level"]') as HTMLInputElement; let attached = true;
     for (const v of [1, 2, 3, 4, 5]) { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); attached = attached && el.isConnected; }
     return attached;
   });

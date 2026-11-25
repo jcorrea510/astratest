@@ -8,7 +8,7 @@ const gameKey = async (p: Page, k: string) => { await p.keyboard.press(k); await
 test.describe('menus: Esc backs out one level', () => {
   test.beforeEach(async ({ page }) => { await boot(page); await step(page, 1, { render: true }); });
 
-  for (const tab of ['Sandbox', 'Settings', 'Controls']) {
+  for (const tab of ['Tools', 'Settings', 'Controls']) {
     test(`Esc in pause > ${tab} returns to the pause menu, then resumes`, async ({ page }) => {
       const p = watch(page);
       await gameKey(page, 'Escape');
@@ -38,7 +38,7 @@ test.describe('menus: Esc backs out one level', () => {
 
   test('every sub-panel has a visible Back button that works', async ({ page }) => {
     await gameKey(page, 'Escape');
-    for (const tab of ['Map', 'Sandbox', 'Settings', 'Controls']) {
+    for (const tab of ['Map', 'Tools', 'Settings', 'Controls']) {
       await page.locator('.ma-ptab', { hasText: tab }).click();
       const back = page.locator('.ma-layer.is-open [data-back]');
       await page.screenshot({ path: `/tmp/claude-0/s/back-${tab}.png` });
@@ -122,7 +122,7 @@ test('title menu describes the Sandbox mode choice', async ({ page }) => {
   await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByRole('button', { name: 'Sandbox' }).focus();
-  await expect(page.locator('.ma-title-desc')).toContainText('Sandbox');
+  await page.getByRole('button', { name: 'Free Roam' }).focus();
+  await expect(page.locator('.ma-title-desc')).toContainText('Free Roam');
   await page.screenshot({ path: '/tmp/claude-0/s/title.png' });
 });
