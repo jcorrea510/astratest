@@ -26,7 +26,7 @@ describe('Round 12 settings model', () => {
     expect(s.padSensitivity).toBe(1); expect(s.padDeadzone).toBeCloseTo(0.12); expect(s.vibration).toBe(true);
     expect(s.speedBlur).toBe(true); expect(s.colorblind).toBe('off'); expect(s.uiScale).toBe(1);
     expect(s.resolutionScale).toBe(1); expect(s.fpsCap).toBe(0); expect(s.adsSensitivity).toBeGreaterThan(0);
-    expect(s.ambience).toBeGreaterThan(0); expect(s.voice).toBeGreaterThan(0); expect(s.uiVolume).toBeGreaterThan(0);
+    expect(s.ambienceVolume).toBeGreaterThan(0); expect(s.voiceVolume).toBeGreaterThan(0); expect(s.uiVolume).toBeGreaterThan(0);
   });
   it('clamps and validates the new fields', () => {
     const s = loadSettings(store({ uiScale: 9, resolutionScale: 0.1, padDeadzone: 5, padSensitivity: -1, fpsCap: 45, colorblind: 'nope', vibration: 'yes' }));

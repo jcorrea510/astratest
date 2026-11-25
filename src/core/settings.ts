@@ -53,7 +53,7 @@ export interface Settings {
   /** UI scale 0.8-1.4, applied as --ma-ui-scale on :root */ uiScale: number;
   /** render-resolution multiplier on top of the preset pixel ratio, 0.5-1 */ resolutionScale: number;
   /** frame-rate cap: 0 = off */ fpsCap: 0 | 30 | 60;
-  /** extra audio buses 0-1 */ ambience: number; voice: number; uiVolume: number;
+  /** extra audio buses 0-1 */ ambienceVolume: number; voiceVolume: number; uiVolume: number;
 }
 export type ColorblindMode = 'off' | 'deuteranopia' | 'protanopia' | 'tritanopia';
 export const COLORBLIND_MODES: ColorblindMode[] = ['off', 'deuteranopia', 'protanopia', 'tritanopia'];
@@ -62,7 +62,7 @@ export function isMacLike(): boolean { try { return typeof navigator !== 'undefi
 export function prefersReducedMotion(): boolean { try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } }
 export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike(),
   padSensitivity: 1, padDeadzone: 0.12, padInvertY: false, vibration: true, adsSensitivity: 0.8, speedBlur: true, reduceMotion: prefersReducedMotion(), colorblind: 'off',
-  uiScale: 1, resolutionScale: 1, fpsCap: 0, ambience: 0.8, voice: 0.9, uiVolume: 0.8 };
+  uiScale: 1, resolutionScale: 1, fpsCap: 0, ambienceVolume: 0.8, voiceVolume: 0.9, uiVolume: 0.8 };
 export const SETTINGS_KEY = 'meridian-afterglow.settings.v1';
 
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
@@ -81,7 +81,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     if (typeof merged.aimToggle !== 'boolean') merged.aimToggle = isMacLike();
     merged.padSensitivity = clampNum(merged.padSensitivity, 0.3, 3, 1); merged.padDeadzone = clampNum(merged.padDeadzone, 0, 0.3, 0.12);
     merged.adsSensitivity = clampNum(merged.adsSensitivity, 0.3, 1.5, 0.8); merged.uiScale = clampNum(merged.uiScale, 0.8, 1.4, 1); merged.resolutionScale = clampNum(merged.resolutionScale, 0.5, 1, 1);
-    merged.ambience = clampNum(merged.ambience, 0, 1, 0.8); merged.voice = clampNum(merged.voice, 0, 1, 0.9); merged.uiVolume = clampNum(merged.uiVolume, 0, 1, 0.8);
+    merged.ambienceVolume = clampNum(merged.ambienceVolume, 0, 1, 0.8); merged.voiceVolume = clampNum(merged.voiceVolume, 0, 1, 0.9); merged.uiVolume = clampNum(merged.uiVolume, 0, 1, 0.8);
     if (typeof merged.padInvertY !== 'boolean') merged.padInvertY = false;
     if (typeof merged.vibration !== 'boolean') merged.vibration = true;
     if (typeof merged.speedBlur !== 'boolean') merged.speedBlur = true;

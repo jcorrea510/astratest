@@ -4,6 +4,7 @@
  */
 import '@fontsource/big-shoulders-display/latin-700';
 import { VERSION_LABEL } from '../build';
+import { uiSound } from '../audio/uiSounds';
 import '@fontsource/big-shoulders-display/latin-800';
 import '@fontsource/big-shoulders-display/latin-900';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -244,7 +245,12 @@ export class UI implements GameUI {
     this.pauseEl.after(this.fullmap.el);
   }
 
-  private sound(k: 'click' | 'hover' | 'back') { try { this.callbacks.onUiSound(k); } catch { /* audio is optional */ } }
+  private lastHover = 0;
+  /** Menu sounds go through the shared UI audio bus (src/audio/uiSounds.ts); hover is subtle and rate-limited. */
+  private sound(k: 'click' | 'hover' | 'back') {
+    if (k === 'hover') { const t = performance.now(); if (t - this.lastHover < 70) return; this.lastHover = t; }
+    uiSound(k === 'click' ? 'select' : k);
+  }
 
   /** Display-side settings the whole page reads: --ma-ui-scale (multiplies --u in ui.css) and data-colorblind / data-reduce-motion on <html>. */
   private applyPageSettings(s: Settings) {

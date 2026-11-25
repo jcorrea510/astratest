@@ -129,7 +129,7 @@ export class SettingsPanel {
     if (this.tab === 'display') this.update(s => { s.fov = d.fov; s.cameraShake = d.cameraShake; s.showFps = d.showFps; s.look = d.look; s.quality = d.quality; s.blood = d.blood; s.resolutionScale = d.resolutionScale; s.fpsCap = d.fpsCap; }, this.deps.get().quality !== d.quality);
     else if (this.tab === 'access') this.update(s => { s.uiScale = d.uiScale; s.reduceMotion = d.reduceMotion; s.speedBlur = d.speedBlur; s.colorblind = d.colorblind; });
     else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.vibration = d.vibration; });
-    else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; s.ambience = d.ambience; s.voice = d.voice; s.uiVolume = d.uiVolume; });
+    else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; s.ambienceVolume = d.ambienceVolume; s.voiceVolume = d.voiceVolume; s.uiVolume = d.uiVolume; });
     else this.update(s => { s.bindings = defaultBindings(); });
     this.render();
   }
@@ -193,8 +193,8 @@ export class SettingsPanel {
       this.body.appendChild(this.slider('Master Volume', 'Everything you hear.', 0, 1, 0.05, s.master, pct, v => this.update(x => { x.master = v; })));
       this.body.appendChild(this.slider('Music & Radio', 'Station music and score.', 0, 1, 0.05, s.music, pct, v => this.update(x => { x.music = v; })));
       this.body.appendChild(this.slider('Effects', 'Engines, weapons, impacts and everything the world makes.', 0, 1, 0.05, s.sfx, pct, v => this.update(x => { x.sfx = v; })));
-      this.body.appendChild(this.slider('Ambience', 'City, weather and crowd atmosphere.', 0, 1, 0.05, s.ambience, pct, v => this.update(x => { x.ambience = v; })));
-      this.body.appendChild(this.slider('Voices', 'Pedestrians, police and radio chatter.', 0, 1, 0.05, s.voice, pct, v => this.update(x => { x.voice = v; })));
+      this.body.appendChild(this.slider('Ambience', 'City, weather and crowd atmosphere.', 0, 1, 0.05, s.ambienceVolume, pct, v => this.update(x => { x.ambienceVolume = v; })));
+      this.body.appendChild(this.slider('Voices', 'Pedestrians, police and radio chatter.', 0, 1, 0.05, s.voiceVolume, pct, v => this.update(x => { x.voiceVolume = v; })));
       this.body.appendChild(this.slider('Interface Sounds', 'Menu clicks and notification chimes.', 0, 1, 0.05, s.uiVolume, pct, v => this.update(x => { x.uiVolume = v; })));
     } else {
       this.renderKeys(s);
