@@ -372,7 +372,7 @@ function frame(raw: number) {
   const hud = g.hudState(null, null);
   hud.interactPrompt = promptFor(a.prompt() ?? hud.interactPrompt, g.settings.bindings);
   ui.updateHud(hud);
-  ui.updateMinimap(minimapState());
+  if (ui.minimapWanted()) ui.updateMinimap(minimapState());
 }
 let gps: GpsRouter | null = null;
 function minimapState() {

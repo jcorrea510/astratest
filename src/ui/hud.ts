@@ -4,7 +4,7 @@ import { BUILD } from '../build';
 import { MPS_TO_MPH } from '../core/units';
 import type { HudState, WeaponIcon } from './contracts';
 import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
-import { formatMoney, formatTimer } from './geometry';
+import { formatMoney, formatTimer, MoneyText } from './geometry';
 import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
 import type { CityPainter } from './mapdraw';
@@ -42,6 +42,8 @@ export class Hud {
   private moneyTarget: number | null = null;
   private moneyT0 = 0;
   private moneyText = '';
+  private moneyFmt = new MoneyText();
+  private deltaRaf = 0;
   private heatEl: HTMLDivElement;
   private flares: HTMLSpanElement[] = [];
   private heatShown = -1;
@@ -290,16 +292,17 @@ export class Hud {
       this.moneyFrom = this.moneyShown; this.moneyTarget = s.money; this.moneyT0 = now;
       this.moneyDelta.textContent = (delta > 0 ? '+' : '−') + formatMoney(Math.abs(delta));
       setClass(this.moneyDelta, 'is-neg', delta < 0);
+      // restart the CSS animation on the next frame instead of forcing a layout (offsetWidth) here
       this.moneyDelta.classList.remove('is-show');
-      void this.moneyDelta.offsetWidth;
-      this.moneyDelta.classList.add('is-show');
+      cancelAnimationFrame(this.deltaRaf);
+      this.deltaRaf = requestAnimationFrame(() => this.moneyDelta.classList.add('is-show'));
     }
     if (this.moneyShown !== this.moneyTarget) {
       const k = this.reduced ? 1 : Math.min(1, (now - this.moneyT0) / 750);
       const e = 1 - (1 - k) ** 3;
       this.moneyShown = k >= 1 ? this.moneyTarget : this.moneyFrom + (this.moneyTarget - this.moneyFrom) * e;
     }
-    const mt = formatMoney(this.moneyShown);
+    const mt = this.moneyFmt.format(this.moneyShown);
     if (mt !== this.moneyText) { this.moneyText = mt; this.money.set(mt); }
 
     // Heat

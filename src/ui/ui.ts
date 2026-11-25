@@ -24,6 +24,7 @@ import { button, h, renderKeyText, setClass } from './dom';
 import { Hud, Notices } from './hud';
 import { CityPainter } from './mapdraw';
 import { FullMap } from './fullmap';
+import { minimapDue } from './minimap';
 import { Wheel } from './wheel';
 import { Shop } from './shop';
 import { GroomPanel, type GroomConfig, type GroomState } from './groom';
@@ -139,6 +140,7 @@ export class UI implements GameUI {
   private hudVisible = true;
   private lastHud: HudState | null = null;
   private lastMinimap: MinimapState | null = null;
+  private lastMinimapAt = -1e9;
   private session: Session = freshSession();
   private capturing = false;
   private swallowClickUntil = 0;
@@ -697,6 +699,16 @@ export class UI implements GameUI {
     S.lastMoney = s.money;
     const heat = Math.max(0, Math.min(5, Math.ceil(s.heat - 0.05)));
     if (heat > S.maxHeat) S.maxHeat = heat;
+  }
+  /** True when the radar or full map wants a fresh state this frame (lets main.ts skip building it). */
+  minimapWanted(): boolean {
+    if (this.fullmap?.isOpen()) return true;
+    if (this.hudVisible && !this.isMenuOpen()) return !!this.hud?.minimap.due();
+    // menus open: keep lastMinimap (used when the map tab opens) fresh, but only a few times a second
+    const now = performance.now();
+    if (!minimapDue(now, this.lastMinimapAt, 250)) return false;
+    this.lastMinimapAt = now;
+    return true;
   }
   updateMinimap(s: MinimapState): void {
     this.lastMinimap = s;
