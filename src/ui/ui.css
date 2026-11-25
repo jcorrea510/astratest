@@ -4,7 +4,7 @@
  * Scale: every size is a multiple of --u, which is 1px at 1280x720 and grows with the viewport (2px at 2560x1440).
  */
 .ma-root {
-  --u: max(0.72px, min(calc(100vh / 720), calc(100vw / 1280)));
+  --u: calc(max(0.72px, min(calc(100vh / 720), calc(100vw / 1280))) * var(--ma-ui-scale, 1)); /* --ma-ui-scale is set on <html> from Settings > Accessibility > Interface Scale */
   --apricot: #ffc37e;
   --apricot-2: #ffd9a8;
   --hot: #ff9b6a;
@@ -980,7 +980,7 @@
 .ma-title-mode-text { font-family: var(--display); font-weight: 500; font-size: calc(15 * var(--u)); letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255, 255, 255, 0.78); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
 
 /* R6-M: game mode badge (subtle, bottom-left of the HUD) */
-.ma-mode-badge { position: absolute; left: calc(14 * var(--u)); bottom: calc(10 * var(--u)); font-family: var(--display); font-weight: 600; font-size: calc(11 * var(--u)); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); pointer-events: none; }
+
 
 /* R6-M: read-only shop panel (Goals) and icon-less lists (dealership goals) */
 .ma-shop.is-readonly .ma-hint-buy { display: none; }

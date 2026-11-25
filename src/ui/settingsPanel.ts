@@ -2,10 +2,11 @@
 import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, type Action, type QualityName, type Settings } from '../core/settings';
 import { ACTION_GROUPS, conflictSlots, defaultBindings, findConflicts, withBinding } from './bindings';
 import { backButton, button, h } from './dom';
+import { BUILD } from '../build';
 
-export type SettingsTab = 'display' | 'input' | 'audio' | 'keys';
+export type SettingsTab = 'display' | 'access' | 'input' | 'audio' | 'keys';
 const TABS: { id: SettingsTab; label: string }[] = [
-  { id: 'display', label: 'Display' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'keys', label: 'Key bindings' },
+  { id: 'display', label: 'Graphics' }, { id: 'access', label: 'Accessibility' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'keys', label: 'Key Bindings' },
 ];
 export const QUALITY_INFO: Record<QualityName, { name: string; desc: string }> = {
   low: { name: 'Low', desc: 'Lean and fast: no shadows or bloom, shorter view distance and quieter streets.' },
@@ -28,6 +29,8 @@ export class SettingsPanel {
   private tabButtons = new Map<SettingsTab, HTMLButtonElement>();
   private tab: SettingsTab = 'display';
   private resetBtn: HTMLButtonElement;
+  private resetAllBtn: HTMLButtonElement;
+  private resetAllTimer = 0;
   private captureToken = 0;
   private captureTimer = 0;
   private note: HTMLDivElement | null = null;
@@ -65,12 +68,15 @@ export class SettingsPanel {
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       hints.appendChild(s);
     }
-    foot.appendChild(hints);
+    const left = h('div', 'ma-foot-left');
+    left.append(hints, h('div', 'ma-about', `About: Meridian Afterglow ${BUILD}`));
+    foot.appendChild(left);
     const fr = h('div', 'ma-foot-actions');
     fr.dataset.navRow = '';
-    this.resetBtn = button('ma-btn ma-btn-ghost', 'Reset this page', { onClick: () => this.resetPage() });
+    this.resetBtn = button('ma-btn ma-btn-ghost', 'Reset This Page', { onClick: () => this.resetPage() });
     const back = button('ma-btn ma-btn-primary', 'Done', { onClick: () => { this.deps.sound('back'); this.deps.onBack(); } });
-    fr.append(this.resetBtn, back);
+    this.resetAllBtn = button('ma-btn ma-btn-ghost', 'Reset All Settings', { onClick: () => this.resetAll() });
+    fr.append(this.resetBtn, this.resetAllBtn, back);
     foot.appendChild(fr);
     panel.appendChild(foot);
     this.el.appendChild(panel);
@@ -106,7 +112,7 @@ export class SettingsPanel {
     this.cancelCapture();
     this.tab = tab;
     for (const [id, b] of this.tabButtons) { b.classList.toggle('is-selected', id === tab); b.setAttribute('aria-selected', String(id === tab)); }
-    this.resetBtn.textContent = tab === 'keys' ? 'Reset keys to defaults' : 'Reset this page';
+    this.resetBtn.textContent = tab === 'keys' ? 'Reset Keys to Defaults' : 'Reset This Page';
     this.render();
   }
 
@@ -118,42 +124,78 @@ export class SettingsPanel {
 
   private resetPage() {
     this.deps.sound('click');
+    this.disarmResetAll();
     const d = DEFAULT_SETTINGS;
-    if (this.tab === 'display') this.update(s => { s.fov = d.fov; s.cameraShake = d.cameraShake; s.showFps = d.showFps; s.look = d.look; s.quality = d.quality; s.blood = d.blood; }, this.deps.get().quality !== d.quality);
-    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.invertY = d.invertY; s.driving = d.driving; });
-    else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; });
+    if (this.tab === 'display') this.update(s => { s.fov = d.fov; s.cameraShake = d.cameraShake; s.showFps = d.showFps; s.look = d.look; s.quality = d.quality; s.blood = d.blood; s.resolutionScale = d.resolutionScale; s.fpsCap = d.fpsCap; }, this.deps.get().quality !== d.quality);
+    else if (this.tab === 'access') this.update(s => { s.uiScale = d.uiScale; s.reduceMotion = d.reduceMotion; s.speedBlur = d.speedBlur; s.colorblind = d.colorblind; });
+    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.vibration = d.vibration; });
+    else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; s.ambience = d.ambience; s.voice = d.voice; s.uiVolume = d.uiVolume; });
     else this.update(s => { s.bindings = defaultBindings(); });
     this.render();
+  }
+
+  /** Two-step: the first press arms the button ("Confirm Reset?"), the second (within 4 s) resets every setting, key bindings included. */
+  private resetAll() {
+    this.deps.sound('click');
+    if (this.resetAllBtn.dataset.armed !== '1') {
+      this.resetAllBtn.dataset.armed = '1'; this.resetAllBtn.textContent = 'Confirm Reset?'; this.resetAllBtn.classList.add('ma-btn-danger');
+      window.clearTimeout(this.resetAllTimer); this.resetAllTimer = window.setTimeout(() => this.disarmResetAll(), 4000);
+      return;
+    }
+    this.disarmResetAll();
+    const prevQuality = this.deps.get().quality;
+    const fresh = structuredClone(DEFAULT_SETTINGS);
+    this.deps.set(fresh, prevQuality !== fresh.quality);
+    this.render();
+  }
+  private disarmResetAll() {
+    window.clearTimeout(this.resetAllTimer);
+    delete this.resetAllBtn.dataset.armed; this.resetAllBtn.textContent = 'Reset All Settings'; this.resetAllBtn.classList.remove('ma-btn-danger');
   }
 
   private render() {
     const focusedIdx = Array.from(this.body.querySelectorAll('[data-nav]')).indexOf(document.activeElement as Element);
     this.body.textContent = '';
     const s = this.deps.get();
+    const pct = (v: number) => `${Math.round(v * 100)}%`, mult = (v: number) => `${v.toFixed(2)}×`;
     if (this.tab === 'display') {
       this.body.appendChild(this.qualityRow(s.quality));
-      this.body.appendChild(this.slider('Field of view', 'How much of the street you see.', 50, 80, 1, s.fov, v => `${v}°`, v => this.update(x => { x.fov = v; })));
-      this.body.appendChild(this.slider('Camera shake', 'Impacts, explosions and engine rumble.', 0, 1, 0.05, s.cameraShake, v => `${Math.round(v * 100)}%`, v => this.update(x => { x.cameraShake = v; })));
-      this.body.appendChild(this.toggle('Stylised colour grade', 'Teal and apricot split-tone instead of the neutral photographic look.', s.look === 'stylised', v => this.update(x => { x.look = v ? 'stylised' : 'natural'; })));
-      this.body.appendChild(this.toggle('Blood & gore', 'Spatter, pools, bleeding wounds, and heavy rounds that take a head off. Off: clean hits.', s.blood, v => this.update(x => { x.blood = v; })));
+      this.body.appendChild(this.slider('Render Resolution', 'Renders the 3D view below native size for a smoother frame rate on slower machines. The interface stays sharp.', 0.5, 1, 0.05, s.resolutionScale, pct, v => this.update(x => { x.resolutionScale = v; })));
+      this.body.appendChild(this.segRow('Frame Rate Limit', 'Caps the frame rate to save battery and heat. Off follows your display.', [['0', 'Off'], ['30', '30'], ['60', '60']], String(s.fpsCap), v => this.update(x => { x.fpsCap = Number(v) as 0 | 30 | 60; })));
+      this.body.appendChild(this.slider('Field of View', 'How much of the street you see.', 50, 80, 1, s.fov, v => `${v}°`, v => this.update(x => { x.fov = v; })));
+      this.body.appendChild(this.slider('Camera Shake', 'Impacts, explosions and engine rumble.', 0, 1, 0.05, s.cameraShake, pct, v => this.update(x => { x.cameraShake = v; })));
+      this.body.appendChild(this.toggle('Stylized Color Grade', 'Teal and apricot split-tone instead of the neutral photographic look.', s.look === 'stylised', v => this.update(x => { x.look = v ? 'stylised' : 'natural'; })));
+      this.body.appendChild(this.toggle('Blood & Gore', 'Spatter, pools, bleeding wounds, and heavy rounds that take a head off. Off: clean hits.', s.blood, v => this.update(x => { x.blood = v; })));
       this.body.appendChild(this.toggle('Show FPS', 'Frame-rate counter in the corner.', s.showFps, v => this.update(x => { x.showFps = v; })));
+    } else if (this.tab === 'access') {
+      this.body.appendChild(this.slider('Interface Scale', 'Resizes the HUD, menus and prompts.', 0.8, 1.4, 0.05, s.uiScale, pct, v => this.update(x => { x.uiScale = v; })));
+      this.body.appendChild(this.segRow('Color-Blind Mode', 'Swaps red and blue alerts, such as the heat indicator and minimap blips, for colors that stay distinct.', [['off', 'Off'], ['deuteranopia', 'Deuteranopia'], ['protanopia', 'Protanopia'], ['tritanopia', 'Tritanopia']], s.colorblind, v => this.update(x => { x.colorblind = v as Settings['colorblind']; })));
+      this.body.appendChild(this.toggle('Reduce Motion', 'Tones down camera shake, field-of-view kick, head bob and speed blur.', s.reduceMotion, v => this.update(x => { x.reduceMotion = v; })));
+      this.body.appendChild(this.toggle('Speed Blur', 'Radial blur at high speed. Reduce Motion turns it off regardless.', s.speedBlur, v => this.update(x => { x.speedBlur = v; })));
     } else if (this.tab === 'input') {
-      this.body.appendChild(this.slider('Look sensitivity', 'Mouse and right-stick camera speed.', 0.2, 3, 0.05, s.sensitivity, v => `${v.toFixed(2)}×`, v => this.update(x => { x.sensitivity = v; })));
-      this.body.appendChild(this.toggle('Realistic driving', 'Off: arcade assists. On: real-world grip (about 0.9 g for sedans) and more weight transfer.', s.driving === 'realistic', v => this.update(x => { x.driving = v ? 'realistic' : 'arcade'; })));
-      this.body.appendChild(this.toggle('Invert vertical look', 'Push forward to look down.', s.invertY, v => this.update(x => { x.invertY = v; })));
-      this.body.appendChild(this.toggle('Click to aim', 'Mouse: click aim once to raise the gun, again to lower it (best on a trackpad). Off: hold to aim.', s.aimToggle, v => this.update(x => { x.aimToggle = v; })));
+      this.body.appendChild(this.slider('Look Sensitivity', 'Mouse and right-stick camera speed.', 0.2, 3, 0.05, s.sensitivity, mult, v => this.update(x => { x.sensitivity = v; })));
+      this.body.appendChild(this.slider('Aim Sensitivity', 'Look speed while aiming down the sights, relative to Look Sensitivity.', 0.3, 1.5, 0.05, s.adsSensitivity, mult, v => this.update(x => { x.adsSensitivity = v; })));
+      this.body.appendChild(this.toggle('Invert Vertical Look', 'Push forward to look down.', s.invertY, v => this.update(x => { x.invertY = v; })));
+      this.body.appendChild(this.toggle('Click to Aim', 'Mouse: click aim once to raise the gun, again to lower it (best on a trackpad). Off: hold to aim.', s.aimToggle, v => this.update(x => { x.aimToggle = v; })));
+      this.body.appendChild(this.toggle('Realistic Driving', 'Off: arcade assists. On: real-world grip (about 0.9 g for sedans) and more weight transfer.', s.driving === 'realistic', v => this.update(x => { x.driving = v ? 'realistic' : 'arcade'; })));
+      this.body.appendChild(this.slider('Controller Look Speed', 'Right-stick camera speed on a gamepad.', 0.3, 3, 0.05, s.padSensitivity, mult, v => this.update(x => { x.padSensitivity = v; })));
+      this.body.appendChild(this.slider('Stick Deadzone', 'Ignores small stick movements. Raise it if the camera drifts.', 0, 0.3, 0.01, s.padDeadzone, pct, v => this.update(x => { x.padDeadzone = v; })));
+      this.body.appendChild(this.toggle('Invert Controller Look', 'Push the right stick up to look down.', s.padInvertY, v => this.update(x => { x.padInvertY = v; })));
+      this.body.appendChild(this.toggle('Vibration', 'Controller rumble for gunfire, crashes and damage.', s.vibration, v => this.update(x => { x.vibration = v; })));
       const link = h('div', 'ma-row');
       const lt = h('div', 'ma-row-text');
-      lt.appendChild(h('div', 'ma-row-label', 'Keyboard & mouse bindings'));
+      lt.appendChild(h('div', 'ma-row-label', 'Keyboard & Mouse Bindings'));
       lt.appendChild(h('div', 'ma-row-desc', 'Rebind every action, primary and secondary.'));
       link.appendChild(lt);
-      link.appendChild(button('ma-btn ma-btn-ghost', 'Edit bindings', { onClick: () => this.cycleTabTo('keys') }));
+      link.appendChild(button('ma-btn ma-btn-ghost', 'Edit Bindings', { onClick: () => this.cycleTabTo('keys') }));
       this.body.appendChild(link);
     } else if (this.tab === 'audio') {
-      const pct = (v: number) => `${Math.round(v * 100)}%`;
-      this.body.appendChild(this.slider('Master volume', 'Everything you hear.', 0, 1, 0.05, s.master, pct, v => this.update(x => { x.master = v; })));
-      this.body.appendChild(this.slider('Music & radio', 'Station music and score.', 0, 1, 0.05, s.music, pct, v => this.update(x => { x.music = v; })));
-      this.body.appendChild(this.slider('Effects', 'Engines, weapons, city ambience and menus.', 0, 1, 0.05, s.sfx, pct, v => this.update(x => { x.sfx = v; })));
+      this.body.appendChild(this.slider('Master Volume', 'Everything you hear.', 0, 1, 0.05, s.master, pct, v => this.update(x => { x.master = v; })));
+      this.body.appendChild(this.slider('Music & Radio', 'Station music and score.', 0, 1, 0.05, s.music, pct, v => this.update(x => { x.music = v; })));
+      this.body.appendChild(this.slider('Effects', 'Engines, weapons, impacts and everything the world makes.', 0, 1, 0.05, s.sfx, pct, v => this.update(x => { x.sfx = v; })));
+      this.body.appendChild(this.slider('Ambience', 'City, weather and crowd atmosphere.', 0, 1, 0.05, s.ambience, pct, v => this.update(x => { x.ambience = v; })));
+      this.body.appendChild(this.slider('Voices', 'Pedestrians, police and radio chatter.', 0, 1, 0.05, s.voice, pct, v => this.update(x => { x.voice = v; })));
+      this.body.appendChild(this.slider('Interface Sounds', 'Menu clicks and notification chimes.', 0, 1, 0.05, s.uiVolume, pct, v => this.update(x => { x.uiVolume = v; })));
     } else {
       this.renderKeys(s);
     }
@@ -176,7 +218,7 @@ export class SettingsPanel {
   }
 
   private qualityRow(q: QualityName) {
-    const row = this.rowShell('Graphics quality', QUALITY_INFO[q].desc);
+    const row = this.rowShell('Graphics Quality', QUALITY_INFO[q].desc);
     row.classList.add('ma-row-quality');
     const seg = h('div', 'ma-seg');
     seg.dataset.navRow = '';
@@ -193,6 +235,21 @@ export class SettingsPanel {
       if (id === q) b.classList.add('is-selected');
       b.addEventListener('focus', () => { const d = row.querySelector('.ma-row-desc'); if (d) d.textContent = QUALITY_INFO[id].desc; this.syncDesc(); });
       b.addEventListener('blur', () => { const d = row.querySelector('.ma-row-desc'); if (d) d.textContent = QUALITY_INFO[this.deps.get().quality].desc; });
+      seg.appendChild(b);
+    }
+    row.appendChild(seg);
+    return row;
+  }
+
+  /** Segmented choice row (values are strings). */
+  private segRow(label: string, desc: string, opts: [string, string][], value: string, onPick: (v: string) => void) {
+    const row = this.rowShell(label, desc);
+    const seg = h('div', 'ma-seg');
+    seg.dataset.navRow = '';
+    for (const [id, name] of opts) {
+      const b = button('ma-seg-opt', name, { onClick: () => { if (b.classList.contains('is-selected')) return; this.deps.sound('click'); onPick(id); this.render(); } });
+      b.setAttribute('aria-pressed', String(id === value));
+      if (id === value) b.classList.add('is-selected');
       seg.appendChild(b);
     }
     row.appendChild(seg);

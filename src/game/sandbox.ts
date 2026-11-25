@@ -1,4 +1,4 @@
-/** The game is a sandbox: free roam with a tools panel in the pause menu (spawn cars, set the clock, wanted level, teleport...). */
+/** The game is a sandbox: free roam with a tools panel in the pause menu (spawn cars, set the clock, heat level, travel...). */
 import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, SandboxAction } from '../ui/contracts';
@@ -60,24 +60,24 @@ export class Sandbox {
   actions(): SandboxAction[] {
     const g = this.game;
     return [
-      { id: 'god', group: 'Player', label: 'Invincible', kind: 'toggle', value: this.god },
+      { id: 'god', group: 'Player', label: 'Invincibility', kind: 'toggle', value: this.god },
       { id: 'ammo', group: 'Player', label: 'Infinite ammo', kind: 'toggle', value: this.infiniteAmmo },
       { id: 'heal', group: 'Player', label: 'Full health and armor', kind: 'button' },
       { id: 'cash', group: 'Player', label: 'Add $10,000', detail: `$${g.money.toLocaleString('en-US')}`, kind: 'button' },
       { id: 'arsenal', group: 'Player', label: 'Give every weapon', kind: 'button' },
-      { id: 'heat', group: 'Police', label: 'Wanted level', kind: 'slider', value: g.police.heat, min: 0, max: 5, step: 1 },
-      { id: 'unit', group: 'Police', label: 'Unit type', kind: 'select', value: this.unit, options: UNITS },
-      { id: 'spawnUnit', group: 'Police', label: 'Spawn police unit', kind: 'button' },
-      { id: 'heli', group: 'Police', label: 'Spawn helicopter', kind: 'button' },
-      { id: 'armyheli', group: 'Police', label: 'Spawn army gunship', kind: 'button' },
-      { id: 'never', group: 'Police', label: 'Police ignore you', detail: 'Cops, soldiers, base guards and gunships leave you alone', kind: 'toggle', value: this.neverWanted },
+      { id: 'heat', group: 'Heat', label: 'Heat level', kind: 'slider', value: g.police.heat, min: 0, max: 5, step: 1 },
+      { id: 'unit', group: 'Heat', label: 'Unit type', kind: 'select', value: this.unit, options: UNITS },
+      { id: 'spawnUnit', group: 'Heat', label: 'Call in police unit', kind: 'button' },
+      { id: 'heli', group: 'Heat', label: 'Call in helicopter', kind: 'button' },
+      { id: 'armyheli', group: 'Heat', label: 'Call in army gunship', kind: 'button' },
+      { id: 'never', group: 'Heat', label: 'Laying low', detail: 'Police, soldiers, base guards and gunships ignore you', kind: 'toggle', value: this.neverWanted },
       { id: 'hour', group: 'World', label: 'Time of day', kind: 'slider', value: Math.round(g.hour * 4) / 4, min: 0, max: 23.75, step: 0.25 },
       { id: 'clock', group: 'World', label: 'Clock running', kind: 'toggle', value: this.clockRunning },
       { id: 'kind', group: 'Vehicles', label: 'Model', kind: 'select', value: this.kind, options: KINDS },
-      { id: 'spawn', group: 'Vehicles', label: 'Spawn in front of me', kind: 'button' },
+      { id: 'spawn', group: 'Vehicles', label: 'Spawn ahead of me', kind: 'button' },
       { id: 'repair', group: 'Vehicles', label: 'Repair my vehicle', kind: 'button' },
-      { id: 'spot', group: 'Teleport', label: 'Destination', kind: 'select', value: this.spot, options: SPOTS.map(s => ({ value: s.value, label: s.label })) },
-      { id: 'go', group: 'Teleport', label: 'Teleport', kind: 'button' },
+      { id: 'spot', group: 'Travel', label: 'Destination', kind: 'select', value: this.spot, options: SPOTS.map(s => ({ value: s.value, label: s.label })) },
+      { id: 'go', group: 'Travel', label: 'Travel there', kind: 'button' },
     ];
   }
   openPanel(onClose: () => void) {
