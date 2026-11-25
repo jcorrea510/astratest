@@ -5,11 +5,12 @@ export interface QualityPreset {
   drawDistance: number; pedestrians: number; traffic: number; pointLights: number; /** Round 11: real point lights shared by all local lights (src/render/lightPool.ts) */ lightPool: number; /** real headlight spots (Round 7) */ headlights: number; particles: number;
   /** cheap instanced far crowds (src/game/crowd.ts): distant cars, pedestrians, curbside parked cars */
   farCars: number; farPeds: number; parked: number;
+  /** Round 12: screen-space ambient occlusion samples (0 = off) */ ao: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowEvery: 1, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, lightPool: 2, headlights: 1, particles: 300, farCars: 220, farPeds: 140, parked: 110 },
-  medium: { pixelRatio: 1, shadowEvery: 2, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, lightPool: 4, headlights: 2, particles: 700, farCars: 420, farPeds: 340, parked: 250 },
-  high: { pixelRatio: 1.25, shadowEvery: 1, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, lightPool: 8, headlights: 4, particles: 1200, farCars: 560, farPeds: 520, parked: 380 },
+  low: { pixelRatio: 0.75, shadowEvery: 1, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, lightPool: 2, headlights: 1, particles: 300, farCars: 220, farPeds: 140, parked: 110, ao: 0 },
+  medium: { pixelRatio: 1, shadowEvery: 2, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, lightPool: 4, headlights: 2, particles: 700, farCars: 420, farPeds: 340, parked: 250, ao: 8 },
+  high: { pixelRatio: 1.25, shadowEvery: 1, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, lightPool: 8, headlights: 4, particles: 1200, farCars: 560, farPeds: 520, parked: 380, ao: 12 },
 };
 
 export type Action =

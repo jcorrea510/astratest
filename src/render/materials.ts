@@ -53,6 +53,15 @@ function surface(size: number, bumpScale: number, paint: (col: Float32Array, h: 
     h[i] -= a * 0.6;
   }
   g.putImageData(img, 0, 0);
+  // Round 12: one 3x3 box blur of the height field before deriving normals. Per-texel white-noise heights made per-texel
+  // random normals, which sparkled like glitter under headlights at grazing angles (the night streets looked like snow).
+  const hb = new Float32Array(n);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let acc = 0;
+    for (let dy = -1; dy <= 1; dy++) { const row = ((y + dy + size) % size) * size; for (let dx = -1; dx <= 1; dx++) acc += h[row + ((x + dx + size) % size)]; }
+    hb[y * size + x] = acc / 9;
+  }
+  h.set(hb);
   const nc = canvas(size, size), nimg = nc.g.createImageData(size, size), nd = nimg.data;
   const rc = canvas(size, size), rimg = rc.g.createImageData(size, size), rd = rimg.data;
   const H = (x: number, y: number) => h[((y + size) % size) * size + ((x + size) % size)];

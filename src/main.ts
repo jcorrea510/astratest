@@ -26,6 +26,7 @@ import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut, rememberFullscreen } from './core/fullscreen';
 import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
+import { LOOK } from './render/renderer';
 
 installFullscreenShortcut();
 
@@ -287,7 +288,7 @@ function installAudioUnlock() {
 }
 function setGrade(g: Game, k: number) {
   const u = g.renderer.grade?.uniforms; if (!u) return;
-  u.uSat.value = DEFAULT_SAT * (1 - k * 0.92);
+  u.uSat.value = (LOOK[g.renderer.look]?.sat ?? DEFAULT_SAT) * (1 - k * 0.92);
   u.uSlow.value = k;
 }
 function pause() {

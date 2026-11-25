@@ -5,7 +5,8 @@ import { DEFAULT_SETTINGS, loadSettings } from '../core/settings';
 describe('colour grade', () => {
   it('defaults to a neutral photographic look', () => {
     expect(DEFAULT_SETTINGS.look).toBe('natural');
-    expect(LOOK.natural.sat).toBeLessThan(1);
+    // Round 12: AgX tone mapping rolls saturation off, so the natural grade adds a little back (ACES needed < 1)
+    expect(LOOK.natural.sat).toBeLessThanOrEqual(1.15);
     expect(LOOK.natural.split).toBeLessThan(0.35);
     expect(LOOK.natural.vignette).toBeLessThan(0.2);
     expect(LOOK.natural.nightExposure).toBeLessThan(1);

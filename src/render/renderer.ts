@@ -8,6 +8,7 @@ import { QUALITY, type QualityName, type QualityPreset } from '../core/settings'
 import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
 import { LightPool } from './lightPool';
+import { AOPass, FXAA_GLSL, WHITE_TEX } from './post';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
@@ -25,7 +26,7 @@ const GradeShader = {
       col *= mix(vec3(1.0), mix(shadowTint, highTint, smoothstep(0.15, 0.75, l)), uSplit);
       // gentle S-curve and saturation
       col = mix(vec3(l), col, uSat);
-      col = col * (1.0 + 0.08 * (col - 0.5));
+      col = mix(col, col * col * (3.0 - 2.0 * col), 0.32); // filmic S-curve on the display-referred image (AgX is flat by design)
       // slow-motion desaturation for the inventory wheel
       col = mix(col, vec3(dot(col, vec3(0.299,0.587,0.114))) * vec3(0.9,1.0,1.05), uSlow * 0.55);
       vec2 d = vUv - 0.5;
@@ -44,20 +45,28 @@ const GradeShader = {
  */
 const OUTPUT_GRADE_FRAG = `
   precision highp float;
-  uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit; uniform vec3 uFlashColor; varying vec2 vUv;
+  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
+  ${FXAA_GLSL}
   ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
-      c.rgb = ACESFilmicToneMapping(c.rgb);
+      if (uFxaa > 0.5) c.rgb = fxaa(vUv, c.rgb);
+      // Round 12: ambient occlusion (half-res, blurred) darkens creases and contact areas before tone mapping
+      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
+      if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
+      c.rgb = TONE_MAP(c.rgb);
       c = sRGBTransferOETF(c);`)}`;
+/** Round 12: the tone curve (three's GLSL function name). AgX rolls highlights off like film: headlights and lamps keep their colour instead of clipping to flat white. */
+export const TONE_MAP_FN = 'AgXToneMapping';
 export class OutputGradePass extends Pass {
   uniforms: Record<string, THREE.IUniform>;
   private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
   constructor() {
     super();
-    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 } }]);
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
+    this.uniforms.tAO = { value: WHITE_TEX };
     this.material = new THREE.RawShaderMaterial({
-      name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', ACES_FILMIC_TONE_MAPPING: '' },
+      name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', TONE_MAP: TONE_MAP_FN },
       vertexShader: `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; attribute vec3 position; attribute vec2 uv; varying vec2 vUv;
         void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: OUTPUT_GRADE_FRAG,
@@ -66,6 +75,7 @@ export class OutputGradePass extends Pass {
   }
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
     this.uniforms.tDiffuse.value = readBuffer.texture;
+    (this.uniforms.uRes.value as THREE.Vector2).set(1 / Math.max(1, readBuffer.width), 1 / Math.max(1, readBuffer.height));
     this.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
@@ -75,7 +85,7 @@ export class OutputGradePass extends Pass {
 
 /** Grade parameters per look; exposed so tests can assert the default is neutral. */
 export const LOOK = {
-  natural: { sat: 0.95, split: 0.2, vignette: 0.14, nightExposure: 0.84, shadowDesat: 0.35 },
+  natural: { sat: 1.1, split: 0.2, vignette: 0.16, nightExposure: 0.84, shadowDesat: 0.35 },
   stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
@@ -117,6 +127,7 @@ export class Renderer {
   skyState: SkyState = sampleSky(18);
   composer!: EffectComposer;
   bloom!: UnrealBloomPass;
+  ao: AOPass | null = null;
   grade!: OutputGradePass;
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
@@ -211,13 +222,21 @@ export class Renderer {
   private buildComposer() {
     this.composer?.dispose();
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: safeMsaa(this.quality.msaa) });
+    const w = Math.max(1, size.x), h = Math.max(1, size.y);
+    const ao = this.quality.ao > 0;
+    // Round 12: the frame keeps its depth as a texture so the AO pass can read it
+    const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: safeMsaa(this.quality.msaa), depthTexture: ao ? new THREE.DepthTexture(w, h, THREE.FloatType) : undefined });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.ao?.dispose(); this.ao = null;
+    if (ao) { this.ao = new AOPass(this.camera, { samples: this.quality.ao }); this.composer.addPass(this.ao); }
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
     this.grade = new OutputGradePass();
+    this.grade.uniforms.uFxaa.value = safeMsaa(this.quality.msaa) > 0 ? 0 : 1; // FXAA wherever MSAA is off
+    this.grade.uniforms.uAO.value = this.ao ? 1 : 0;
+    this.grade.uniforms.tAO.value = this.ao ? this.ao.texture : WHITE_TEX;
     this.composer.addPass(this.grade);
   }
   resize() {

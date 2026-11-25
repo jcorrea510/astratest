@@ -135,7 +135,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   physics.addStaticBox(SEA_EDGE_X, 6, (SEA_EDGE_Z - 62) / 2, 1, 14, (SEA_EDGE_Z + 62) / 2);
 
   const asphaltS = asphaltSurface();
-  const asphaltMat = surfaceMat(asphaltS, 1, {}, 0.2, 'asphalt');
+  const asphaltMat = surfaceMat(asphaltS, 1, { normalScale: new THREE.Vector2(0.32, 0.32) }, 0.2, 'asphalt'); // Round 12: grazing headlights over-read strong bumps as snow
   const road = new GeoBuilder();
   for (let j = 0; j < ISLAND_LEFT.length; j++) slab(road, AVENUES[ISLAND_LEFT[j]] - halfWidth(2), j === 0 ? minZ : STREETS[j] - halfWidth(lanesForStreet(j)), maxX, j === ISLAND_LEFT.length - 1 ? maxZ : STREETS[j + 1] + halfWidth(lanesForStreet(j + 1)), 0, 0, C('#ffffff'), C('#ffffff'), 12);
   const roadMesh = new THREE.Mesh(road.build(), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
@@ -165,7 +165,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   water.position.y = WATER_LEVEL; water.receiveShadow = true; root.add(water);
 
   // ---------- Sidewalks / block slabs / lot interiors ----------
-  const paveMat = surfaceMat(pavementSurface(), 1, { vertexColors: true }, 0.14, 'pave');
+  const paveMat = surfaceMat(pavementSurface(), 1, { vertexColors: true, normalScale: new THREE.Vector2(0.5, 0.5) }, 0.14, 'pave');
   const walks = new GeoBuilder();
   const inner = new GeoBuilder();
   const grassInner = new GeoBuilder();
