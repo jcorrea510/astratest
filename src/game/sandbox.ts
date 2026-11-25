@@ -17,7 +17,7 @@ const SPOTS: { value: string; label: string; x: number; z: number; y?: number }[
   { value: 'midtown', label: 'Midtown plaza', x: -200, z: 150 },
   { value: 'heights', label: 'Meridian Heights', x: 95, z: -150 },
   { value: 'park', label: 'Juniper Park', x: 100, z: -350 },
-  { value: 'pier', label: 'Pier 9 (Ferris wheel)', x: -50, z: 520, y: 1.3 },
+  { value: 'pier', label: 'Pier 9 (Ferris wheel)', x: -50, z: 945, y: 1.3 },
   { value: 'beach', label: 'Strand beach', x: 150, z: 425 },
   { value: 'docks', label: 'Cannery docks', x: 470, z: 150 },
   { value: 'hillside', label: 'Hillside lookout', x: 380, z: -150 },

@@ -172,8 +172,10 @@ test('getting out next to the pier railing keeps you on the pier', async ({ page
   await boot(page);
   const spots = await page.evaluate(() => {
     const g = (window as any).__game; const out: number[][] = [];
-    for (const [x, z] of [[-43.4, 470], [-43.4, 500], [-56.6, 520]]) {
+    // the pier deck starts at z 925 (maxZ + 7; the map grew south in Round 9); the first spot is the start of the deck
+    for (const [x, z] of [[-43.4, 930], [-43.4, 960], [-56.6, 980]]) {
       if (g.playerVehicle) g.exitVehicle(true);
+      g.player.place(x, 1.3, z, 0); for (let i = 0; i < 6; i++) g.frame(1 / 30, false); // let the static collider stream reach the pier
       const v = g.vehicles.spawn('sedan', x, z, 0, 0, 1.6); v.persistent = true; g.seatPlayer(v);
       for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
       g.input.tap('KeyF'); for (let i = 0; i < 150; i++) g.frame(1 / 30, false);
