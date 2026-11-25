@@ -12,15 +12,15 @@ const params = new URLSearchParams(location.search);
 let isTop = false;
 try { isTop = window.top === window; } catch { isTop = false; }
 if (isTop && !navigator.webdriver && !params.has('noshell') && !isStandalone()) {
-  document.documentElement.style.cssText = 'height:100%;background:#000';
-  document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#000';
+  document.documentElement.style.cssText = 'height:100%;background:#061416';
+  document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#061416';
   const f = document.createElement('iframe');
   f.id = 'game-frame';
   f.title = 'Meridian Afterglow';
   f.src = location.pathname + location.search + location.hash;
   f.allow = 'fullscreen; pointer-lock; gamepad; autoplay; clipboard-write';
   f.setAttribute('allowfullscreen', '');
-  f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#000';
+  f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#061416';
   document.getElementById('app')?.replaceWith(f);
   const focus = () => { try { f.contentWindow?.focus(); } catch { /* ignore */ } };
   f.addEventListener('load', focus);
@@ -29,6 +29,6 @@ if (isTop && !navigator.webdriver && !params.has('noshell') && !isStandalone()) 
   window.addEventListener('keydown', focus, true);
 } else {
   try { window.focus(); } catch { /* ignore */ }
-  void import('./main');
+  import('./main').catch(e => { console.error(e); void import('./ui/bootError').then(m => m.showBootError('load-failed', { error: e })); });
 }
 export {};

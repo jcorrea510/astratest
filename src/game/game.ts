@@ -54,6 +54,7 @@ import { Orders } from './orders';
 import { signalLampColors } from '../render/signalColors';
 import { TaxiRide } from './taxiRide';
 import { TaxiJob } from './taxiJob';
+import { LoopGuard } from './loopGuard';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -342,8 +343,13 @@ export class Game {
     if (by === this.player) this.police.report('vehicleWreck', at);
     this.events.onExplosion(at);
   }
+  /** Frame-loop guard: one thrown error is logged and the loop carries on; repeated every frame it stops and calls onCrash. */
+  readonly guard: LoopGuard = new LoopGuard({ onFatal: e => { this.running = false; this.onCrash?.(e); } });
+  onCrash: ((e: unknown) => void) | null = null;
+  get isRunning(): boolean { return this.running; }
   start() {
     if (this.running) return;
+    this.guard.reset();
     this.running = true; this.last = performance.now();
     const loop = (now: number) => {
       if (!this.running) return;
@@ -351,7 +357,7 @@ export class Game {
       const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
-      const c0 = performance.now(); this.frame(raw); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
+      const c0 = performance.now(); this.guard.run(() => this.frame(raw)); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
     };
     requestAnimationFrame(loop);
   }

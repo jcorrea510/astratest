@@ -471,8 +471,8 @@ export class UI implements GameUI {
     ];
   }
 
-  showMobileGate(): void {
-    if (!this.mobileEl) { this.mobileEl = buildMobileGate(); this.root.appendChild(this.mobileEl); }
+  showMobileGate(onContinue?: () => void): void {
+    if (!this.mobileEl) { this.mobileEl = buildMobileGate(() => { this.hideMobileGate(); onContinue?.(); }); this.root.appendChild(this.mobileEl); }
     this.closeAllLayers();
     this.hideLoading();
     // Portrait phones: crop the skyline art around the sun and the pier wheel.
@@ -480,6 +480,11 @@ export class UI implements GameUI {
     if (art && window.innerHeight > window.innerWidth) art.setAttribute('viewBox', '820 120 700 780');
     this.mobileEl.classList.add('is-open');
     this.root.classList.add('is-mobile-gate');
+  }
+
+  hideMobileGate(): void {
+    this.mobileEl?.classList.remove('is-open');
+    this.root.classList.remove('is-mobile-gate');
   }
 
   // ---------------------------------------------------------------- pause

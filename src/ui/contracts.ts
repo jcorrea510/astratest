@@ -41,7 +41,7 @@ export interface GameUI {
   showTitle(hasSave: boolean, saveSummary?: string): void; // saveSummary: e.g. "Regular, $1,200, 5 min ago" for the Continue button
   showLoading(fraction: number, label: string): void; // fraction 0..1, safe to call many times
   hideLoading(): void;
-  showMobileGate(): void;
+  showMobileGate(onContinue?: () => void): void;
   setPaused(paused: boolean): void; // shows/hides pause menu (Resume, Map, Settings, Controls, Save & Quit to title)
   isMenuOpen(): boolean; // true when pause/settings/shop/map/title is visible (game should not take input)
   // HUD
