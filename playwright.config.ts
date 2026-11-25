@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { existsSync } from 'node:fs';
 const PORT = Number(process.env.PW_PORT ?? 4173);
-const local = existsSync('/opt/pw-browsers/chromium') && !process.env.CI ? '/opt/pw-browsers/chromium' : undefined;
+const local = process.env.PW_CHROMIUM ?? (existsSync('/opt/pw-browsers/chromium') && !process.env.CI ? '/opt/pw-browsers/chromium' : undefined);
 export default defineConfig({
   testDir: './tests/e2e',
   grepInvert: process.env.SOAK ? undefined : /@soak/,

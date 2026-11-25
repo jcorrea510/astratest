@@ -32,7 +32,7 @@ export class Buildings3D {
 
   constructor(city: CityMap) {
     const blockById = new Map(city.blocks.map(b => [b.id, b]));
-    const base = rgb('#b8b0a0');
+    const base = rgb('#7c828b');
     for (const l of city.lots) {
       const b = blockById.get(l.blockId);
       const dist = b ? b.district : l.district;
@@ -40,9 +40,9 @@ export class Buildings3D {
       const h = Math.max(5, l.height || 8);
       const hk = Math.min(1, h / 90);
       const v = 0.9 + ((l.seed % 997) / 997) * 0.22; // per-building brightness variation
-      const warm = (l.seed >> 7) % 3 === 0 ? [214, 168, 132] as [number, number, number] : base;
-      const roof = mix(mix(warm, tint, 0.5), [238, 232, 218], 0.1 + hk * 0.3).map(x => x * v) as [number, number, number];
-      const wall = mix(mix([150, 122, 104], tint, 0.42), [66, 78, 96], 0.18 + hk * 0.15).map(x => x * v) as [number, number, number];
+      const warm = (l.seed >> 7) % 3 === 0 ? [150, 134, 122] as [number, number, number] : base;
+      const roof = mix(mix(warm, tint, 0.18), [214, 218, 224], 0.06 + hk * 0.26).map(x => x * v) as [number, number, number];
+      const wall = mix(mix([98, 100, 106], tint, 0.14), [52, 60, 74], 0.2 + hk * 0.15).map(x => x * v) as [number, number, number];
       const p = new Float32Array(8);
       let hw: number, hd: number, c = 1, s = 0;
       if (l.blockId < 0) { c = Math.cos(l.rot); s = Math.sin(l.rot); hw = l.w * 0.46; hd = l.d * 0.46; }
