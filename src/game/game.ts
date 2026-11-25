@@ -44,6 +44,7 @@ import { HeliManager } from '../vehicles/helicopterManager';
 import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
 import { ArmyGuards, guardsHostile } from './armyGuards';
+import { farIdleVehicle } from './farLod';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -396,12 +397,19 @@ export class Game {
     else this.playerCtl.fixedUpdate(dt, { canAim: this.pcombat.armed, blocked: this.carEntry.active || blocked });
     if (this.player.knockT > 0) this.player.knockT -= dt;
     this.traffic.fixedUpdate(dt, this.player, pv);
+    const pp = this.player.pos;
+    this.physics.streamStatics(pp.x, pp.z); // only static props near the player stay in the physics world (Round 12 perf)
     for (const v of this.vehicles.list) {
-      if (!v.driver && v !== pv) { v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true; }
+      if (!v.driver && v !== pv) {
+        v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true;
+        // Round 12 perf: an abandoned / base vehicle far from the player and at rest sleeps (it was running tyre rays every step)
+        const b = v.phys.body;
+        if (!b.isSleeping()) { const lv = b.linvel(), dx = v.position.x - pp.x, dz = v.position.z - pp.z; if (farIdleVehicle(dx * dx + dz * dz, lv.x * lv.x + lv.y * lv.y + lv.z * lv.z)) b.sleep(); }
+      }
       v.phys.fixedUpdate(dt, v.input);
     }
     this.pop.fixedUpdate(dt, this.player.pos);
-    this.helis.fixedUpdate(dt);
+    this.helis.fixedUpdate(dt, this.player.pos);
     this.physics.step(dt);
     this.ragdolls.update(dt);
     this.vehicles.postStep(this.time);
