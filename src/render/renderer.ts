@@ -45,12 +45,19 @@ const GradeShader = {
  */
 const OUTPUT_GRADE_FRAG = `
   precision highp float;
-  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
+  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
   ${FXAA_GLSL}
   ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
       if (uFxaa > 0.5) c.rgb = fxaa(vUv, c.rgb);
+      // Round 12: speed blur at high speed, radial from just above the centre (5 taps, skipped when still)
+      if (uSpeed > 0.01) {
+        vec2 rd = (vUv - vec2(0.5, 0.55)) * uSpeed * 0.035 * smoothstep(0.12, 0.6, length(vUv - vec2(0.5, 0.55)));
+        vec3 acc = c.rgb;
+        for (int i = 1; i <= 4; i++) acc += texture2D(tDiffuse, vUv - rd * float(i)).rgb;
+        c.rgb = acc / 5.0;
+      }
       // Round 12: ambient occlusion (half-res, blurred) darkens creases and contact areas before tone mapping
       c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
       if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
@@ -63,7 +70,7 @@ export class OutputGradePass extends Pass {
   private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
   constructor() {
     super();
-    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
     this.uniforms.tAO = { value: WHITE_TEX };
     this.material = new THREE.RawShaderMaterial({
       name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', TONE_MAP: TONE_MAP_FN },
@@ -158,12 +165,13 @@ export class Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // Round 12: r182 dropped PCFSoft (it fell back to hard 1-texel PCF: stair-stepped, dithered edges)
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.15, 1600);
     this.scene.fog = new THREE.Fog(0x88aabb, 120, 420);
     this.hemi = new THREE.HemisphereLight(0xa7d3ee, 0x7a6656, 0.9);
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
+    this.sun.shadow.radius = 2.6; // Vogel-disk PCF footprint in texels: a soft ~12 cm penumbra on Medium instead of pixel stairs
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
     skipHiddenMatrices(this.scene);
     this.lightPool = new LightPool(this.scene); this.scene.userData.lightPool = this.lightPool;
@@ -295,6 +303,7 @@ export class Renderer {
     if (this.quality.shadowMap > 0 && this.frameNo++ % Math.max(1, this.quality.shadowEvery) === 0) this.renderer.shadowMap.needsUpdate = true;
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
+    this.grade.uniforms.uSpeed.value = (this.camera.userData.speedFx as number | undefined) ?? 0;
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }

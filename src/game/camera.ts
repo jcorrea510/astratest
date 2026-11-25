@@ -88,6 +88,8 @@ export class CameraRig {
     this.dist = damp(this.dist, targetDist, 8, dt);
     this.shoulder = damp(this.shoulder, shoulderT, 10, dt);
     this.fovExtra = damp(this.fovExtra, fovT, 6, dt);
+    // Round 12: speed feel for the renderer's radial blur (0 below ~65 km/h, full near 160 km/h)
+    this.camera.userData.speedFx = damp((this.camera.userData.speedFx as number) ?? 0, mode === 'vehicle' ? clamp((Math.abs(opts.speed ?? 0) - 18) / 26, 0, 1) : 0, 4, dt);
     const ph = f.stepPhase * Math.PI * 2;
     const bobY = this.bobAmp * (0.022 + 0.018 * this.sprintBlend) * Math.cos(ph * 2);
     this.pivot.set(focus.x, focus.y + height, focus.z);
