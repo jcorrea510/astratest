@@ -28,7 +28,7 @@ describe('dispatch origins', () => {
   });
 });
 
-import { HELI_MIN_DIST, REINFORCE_MIN } from './dispatch';
+import { HELI_MIN_DIST, REINFORCE_MIN, reinforceHidden } from './dispatch';
 import { HeatState } from './police';
 describe('police helicopter arrival', () => {
   it('enters far from the player, never inside the camera view, heading in from the precinct side', () => {
@@ -41,6 +41,12 @@ describe('police helicopter arrival', () => {
       const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
       expect(f.containsPoint(sp)).toBe(false);
     }
+  });
+  it('a convoy gate 1 km away may sit inside the camera frustum (beyond the draw distance): it is still hidden, so the army really starts at Fort Calder', () => {
+    expect(reinforceHidden(1100, 1100, true)).toBe(true);
+    expect(reinforceHidden(300, 300, true)).toBe(false); // on screen at street range
+    expect(reinforceHidden(300, 300, false)).toBe(true);
+    expect(reinforceHidden(60, 60, false)).toBe(false); // too near
   });
   it('reinforcements keep a minimum distance bigger than the street view', () => { expect(REINFORCE_MIN).toBeGreaterThanOrEqual(120); });
 });

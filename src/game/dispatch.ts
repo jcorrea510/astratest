@@ -68,6 +68,12 @@ export const TASE_T = 1.6; // Round 8: quicker (the whole arrest took up to ~9 s
 /** A police helicopter appears at least this far from the player (and at most this far; a further pad is reached by flying). */
 /** Reinforcement cars spawn at least this many metres from the player and the camera, outside the view. */
 export const REINFORCE_MIN = 120;
+/** Beyond this the world is not drawn at all (max draw distance 420 m + fog), so being inside the camera frustum no longer means being seen. */
+export const UNSEEN_DIST = 600;
+/** A reinforcement spawn point is fine when far enough from the player and camera and not on screen (a point past UNSEEN_DIST is never on screen). Pure. */
+export function reinforceHidden(distTarget: number, distCam: number, inFrustum: boolean): boolean {
+  return distTarget >= REINFORCE_MIN && distCam >= REINFORCE_MIN && (!inFrustum || Math.min(distTarget, distCam) >= UNSEEN_DIST);
+}
 export const HELI_MIN_DIST = 380, HELI_MAX_DIST = 700;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -130,8 +136,7 @@ export class Dispatch {
     /** reinforcements never appear where the player can see them or near him: behind the view and at least REINFORCE_MIN away */
     const hidden = (x: number, z: number) => {
       const pt = new THREE.Vector3(x, 1, z);
-      return Math.hypot(x - target.x, z - target.z) >= REINFORCE_MIN && Math.hypot(x - cam.x, z - cam.z) >= REINFORCE_MIN
-        && !frustum.containsPoint(pt) && !frustum.containsPoint(pt.setY(6));
+      return reinforceHidden(Math.hypot(x - target.x, z - target.z), Math.hypot(x - cam.x, z - cam.z), frustum.containsPoint(pt) || frustum.containsPoint(pt.setY(6)));
     };
     for (let tries = 0; tries < 80; tries++) {
       let lane: CityMap['lanes'][number], s: number;

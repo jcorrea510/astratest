@@ -49,7 +49,8 @@ test.describe('police realism', () => {
   test('army convoy leaves Fort Calder', async ({ page }) => {
     const p = watch(page);
     const r = await page.evaluate(() => {
-      const g = (window as any).__game; g.police.setHeat(5, g.player.pos);
+      const g = (window as any).__game; g.pcombat.give('pistol', 30); g.pcombat.inv.select('pistol'); // armed: no arrest scene
+      g.police.setHeat(5, g.player.pos);
       for (let i = 0; i < 40 * 8; i++) g.frame(1 / 30, false);
       const d = g.police.dispatch; const a = g.police.units.find((u: any) => d.kindOf(u) === 'army');
       const t = g.police.units.find((u: any) => d.kindOf(u) === 'tank');
