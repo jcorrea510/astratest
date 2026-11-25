@@ -167,7 +167,7 @@
 .ma-pause-backdrop { height: calc(2 * var(--u)); background: linear-gradient(90deg, var(--apricot), rgba(255, 195, 126, 0) 55%); opacity: 0.9; }
 .ma-pause-head {
   left: 0; right: 0; top: 0; height: calc(72 * var(--u)); padding: calc(4 * var(--u)) calc(76 * var(--u)) 0 var(--ma-pause-x);
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(28 * var(--u));
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(20 * var(--u));
   border-bottom: 1px solid var(--hair); background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0));
 }
 .ma-pause-brand { display: flex; flex-direction: column; gap: 0; line-height: 1; }
@@ -177,18 +177,18 @@
 .ma-layer .ma-pause-cap { opacity: 0.85; min-width: calc(40 * var(--u)); margin: 0 calc(4 * var(--u)); }
 .ma-pause-tabs { position: static; display: flex; gap: calc(2 * var(--u)); height: auto; }
 .ma-root .ma-ptab {
-  flex: none; height: calc(42 * var(--u)); padding: 0 calc(22 * var(--u)); border-radius: var(--r-s); background: none;
+  flex: none; height: calc(42 * var(--u)); padding: 0 calc(14 * var(--u)); border-radius: var(--r-s); background: none;
   font-weight: 700; font-size: calc(18 * var(--u)); letter-spacing: 0.1em; color: var(--dim); text-shadow: var(--tshadow); transition: color 0.15s, background 0.15s;
 }
 .ma-root .ma-ptab::before { display: none; }
-.ma-root .ma-ptab::after { content: ''; position: absolute; left: calc(18 * var(--u)); right: calc(18 * var(--u)); bottom: calc(3 * var(--u)); height: calc(3 * var(--u)); border-radius: 2px; background: var(--apricot); transform: scaleX(0); transition: transform 0.2s var(--ease); }
+.ma-root .ma-ptab::after { content: ''; position: absolute; left: calc(12 * var(--u)); right: calc(12 * var(--u)); bottom: calc(3 * var(--u)); height: calc(3 * var(--u)); border-radius: 2px; background: var(--apricot); transform: scaleX(0); transition: transform 0.2s var(--ease); }
 .ma-root .ma-ptab:hover, .ma-root .ma-ptab:focus { color: #fff; background: var(--glass-hi); }
 .ma-root .ma-ptab.is-selected { color: #fff; background: none; }
 .ma-root .ma-ptab.is-selected:focus { background: var(--glass-hi); }
 .ma-root .ma-ptab.is-selected::after { transform: scaleX(1); }
-.ma-pause-meta { display: flex; align-items: baseline; justify-content: flex-end; gap: calc(16 * var(--u)); text-shadow: var(--tshadow); min-width: 0; white-space: nowrap; }
-.ma-pause-place { font-size: calc(18 * var(--u)); font-weight: 700; letter-spacing: 0.12em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
-.ma-pause-clock { font-size: calc(18 * var(--u)); font-weight: 700; letter-spacing: 0.08em; color: var(--dim); }
+.ma-pause-meta { display: flex; align-items: baseline; justify-content: flex-end; gap: calc(12 * var(--u)); text-shadow: var(--tshadow); min-width: 0; white-space: nowrap; }
+.ma-pause-place { font-size: calc(15 * var(--u)); font-weight: 700; letter-spacing: 0.12em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.ma-pause-clock { font-size: calc(15 * var(--u)); font-weight: 700; letter-spacing: 0.08em; color: var(--dim); }
 .ma-pause-money { font-size: calc(32 * var(--u)); font-weight: 800; color: var(--money); text-shadow: var(--tshadow); }
 .ma-pause-body { left: var(--ma-pause-x); right: var(--ma-pause-x); top: var(--dock-top); bottom: calc(70 * var(--u)); }
 .ma-pause-foot {

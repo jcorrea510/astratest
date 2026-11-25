@@ -234,3 +234,82 @@
 .ma-root .ma-wheel-hint { fill: rgba(255, 255, 255, 0.5); }
 /* Round 11: a mission card owns the top-centre while it shows; the controls tip steps aside (they overlapped on small screens) */
 .ma-root.is-card .ma-hint { visibility: hidden; } /* (opacity loses to the hint's fill-mode animation) */
+
+/* ================================================================ Round 12: premium open-world HUD pass
+ * Minimal chrome: the radar is a bare circle with a hairline ring, money / weapon / stars are type with soft shadows
+ * instead of boxes. Everything animates opacity/transform/box-shadow only; no new blur layers. */
+.ma-root {
+  --ink-shadow: 0 1px 1px rgba(0, 0, 0, 0.7), 0 0 calc(10 * var(--u)) rgba(0, 0, 0, 0.55);
+  --ring: rgba(255, 255, 255, 0.16);
+}
+.ma-root .ma-money, .ma-root .ma-weapon, .ma-root .ma-heat {
+  background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0;
+}
+/* top right */
+.ma-root .ma-hud-tr { top: calc(22 * var(--u)); gap: calc(2 * var(--u)); }
+.ma-root .ma-money { min-width: 0; padding: 0; }
+.ma-root .ma-money-value {
+  font-size: calc(40 * var(--u)); font-weight: 700; letter-spacing: 0.02em; color: #f4f7f5; font-variant-numeric: tabular-nums;
+  text-shadow: var(--ink-shadow);
+}
+.ma-root .ma-money-value::before { content: ''; }
+.ma-root .ma-money-delta { top: calc(8 * var(--u)); right: calc(100% + 14 * var(--u)); font-size: calc(20 * var(--u)); white-space: nowrap; text-shadow: var(--ink-shadow); }
+.ma-root .ma-weapon { position: relative; width: auto; min-width: calc(150 * var(--u)); padding: calc(5 * var(--u)) 0 0; align-items: flex-end; }
+.ma-root .ma-weapon::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(1 * var(--u));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.35)); pointer-events: none;
+}
+.ma-root .ma-weapon-row { gap: calc(14 * var(--u)); align-items: center; }
+.ma-root .ma-weapon-icon { width: calc(84 * var(--u)); height: calc(38 * var(--u)); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 calc(6 * var(--u)) rgba(0, 0, 0, 0.5)); }
+.ma-root .ma-ammo { display: flex; align-items: baseline; text-shadow: var(--ink-shadow); }
+.ma-root .ma-ammo-clip { font-size: calc(34 * var(--u)); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ma-root .ma-ammo-sep, .ma-root .ma-ammo-reserve { font-size: calc(19 * var(--u)); color: rgba(255, 255, 255, 0.5); }
+.ma-root .ma-weapon-name { margin: calc(1 * var(--u)) 0 0; text-align: right; font-size: calc(12 * var(--u)); letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.66); font-weight: 600; text-shadow: var(--ink-shadow); }
+.ma-root .ma-heat { padding: calc(4 * var(--u)) 0 0; gap: calc(2 * var(--u)); }
+.ma-root .ma-star { width: calc(26 * var(--u)); height: calc(26 * var(--u)); color: rgba(255, 255, 255, 0.2); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55)); }
+.ma-root .ma-star-fill { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; paint-order: normal; }
+.ma-root .ma-star.is-on { color: #ffd45e; filter: drop-shadow(0 0 calc(5 * var(--u)) rgba(255, 190, 60, 0.55)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)); }
+.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(60, 30, 0, 0.75); stroke-width: 1.1; filter: none; }
+.ma-root .ma-heat.is-flash { border-color: transparent; }
+
+/* bottom left: circular radar */
+.ma-root .ma-hud-bl { bottom: calc(36 * var(--u)); }
+.ma-root .ma-radar { width: calc(204 * var(--u)); padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ma-root .ma-radar.is-wanted, .ma-root .ma-radar.is-searching, .ma-root .ma-radar.is-low { box-shadow: none; animation: none; border: 0; }
+.ma-root .ma-minimap {
+  width: calc(204 * var(--u)); height: calc(204 * var(--u)); border-radius: 50%; overflow: hidden; background: #0a1016;
+  box-shadow: 0 0 0 calc(2 * var(--u)) var(--ring), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 calc(8 * var(--u)) calc(22 * var(--u)) rgba(0, 0, 0, 0.5);
+}
+.ma-root .ma-minimap::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 calc(16 * var(--u)) rgba(0, 0, 0, 0.55); pointer-events: none; }
+.ma-root .ma-radar.is-wanted .ma-minimap { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.85), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 calc(8 * var(--u)) calc(22 * var(--u)) rgba(0, 0, 0, 0.5); }
+.ma-root .ma-radar.is-searching .ma-minimap { animation: ma-ring-siren 0.9s steps(1) infinite; }
+.ma-root .ma-radar.is-low .ma-minimap { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.85), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(18 * var(--u)) rgba(255, 77, 94, 0.35); }
+@keyframes ma-ring-siren {
+  0% { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.95), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(16 * var(--u)) rgba(255, 77, 94, 0.4); }
+  50% { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(77, 141, 255, 0.95), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(16 * var(--u)) rgba(77, 141, 255, 0.4); }
+}
+.ma-root .ma-radar-meta { display: flex; align-items: baseline; justify-content: space-between; gap: calc(8 * var(--u)); margin: calc(10 * var(--u)) calc(6 * var(--u)) 0; text-shadow: var(--ink-shadow); }
+.ma-root .ma-radar-zone { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--display); font-weight: 700; font-size: calc(13 * var(--u)); letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 255, 255, 0.78); }
+.ma-root .ma-radar-clock {
+  position: static; height: auto; padding: 0; border: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border-radius: 0;
+  font-size: calc(14 * var(--u)); letter-spacing: 0.08em; color: var(--apricot); font-weight: 700; flex: none;
+}
+.ma-root .ma-vitals { margin: calc(6 * var(--u)) calc(6 * var(--u)) 0; grid-template-columns: 1fr 0.55fr; gap: calc(5 * var(--u)); }
+.ma-root .ma-vbar { height: calc(4 * var(--u)); border-radius: calc(2 * var(--u)); background: rgba(255, 255, 255, 0.14); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-vbar-fill { border-radius: calc(2 * var(--u)); }
+.ma-root .ma-stamina { margin: calc(4 * var(--u)) calc(6 * var(--u)) 0; }
+.ma-root .ma-mode-badge { bottom: calc(12 * var(--u)); background: none; border: 0; padding: 0; color: rgba(255, 255, 255, 0.5); text-shadow: var(--ink-shadow); }
+
+/* bottom right: type over the scene, same language as the top right */
+.ma-root .ma-speedo, .ma-root .ma-vehpop, .ma-root .ma-loc {
+  background: none; border-top: 0; border-bottom: 0; border-left: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0;
+}
+.ma-root .ma-speedo { width: calc(196 * var(--u)); padding: 0; }
+.ma-root .ma-speed-value { font-size: calc(64 * var(--u)); text-shadow: var(--ink-shadow); font-variant-numeric: tabular-nums; }
+.ma-root .ma-speed-unit { color: rgba(255, 255, 255, 0.62); text-shadow: var(--ink-shadow); }
+.ma-root .ma-speed-bar { height: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.16); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-body-track { height: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.16); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-body-icon { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
+.ma-root .ma-vehpop, .ma-root .ma-loc { padding: 0 calc(12 * var(--u)) 0 0; border-right: calc(2 * var(--u)) solid var(--apricot); }
+.ma-root .ma-vehpop-model, .ma-root .ma-loc-district { text-shadow: var(--ink-shadow); }
+.ma-root .ma-vehpop-make, .ma-root .ma-loc-street { text-shadow: var(--ink-shadow); }

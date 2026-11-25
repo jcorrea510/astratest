@@ -74,6 +74,7 @@ export class Hud {
   private street: TextSlot;
   private locLast = { district: '', street: '', vehicle: '' as string | null, at: 0 };
   private clock: TextSlot;
+  private zone: TextSlot;
   private radarEl: HTMLDivElement;
   private healthFill: HTMLDivElement;
   private armorFill: HTMLDivElement;
@@ -150,9 +151,13 @@ export class Hud {
     this.radarEl = h('div', 'ma-radar');
     const ck = h('div', 'ma-radar-clock');
     this.clock = new TextSlot(ck);
-    this.radarEl.appendChild(ck);
+    const zn = h('div', 'ma-radar-zone');
+    this.zone = new TextSlot(zn);
     this.minimap = new Minimap(painter);
     this.radarEl.appendChild(this.minimap.el);
+    const meta = h('div', 'ma-radar-meta');
+    meta.append(zn, ck);
+    this.radarEl.appendChild(meta);
     this.vitalsEl = h('div', 'ma-vitals');
     const mkBar = (cls: string) => {
       const track = h('div', `ma-vbar ${cls}`);
@@ -352,6 +357,7 @@ export class Hud {
 
     // Location popup: district changes, entering a vehicle, or a new street (rate-limited)
     this.clock.set(s.clock);
+    this.zone.set(s.district);
     const L = this.locLast;
     const inVeh = s.vehicleSpeedKmh !== null;
     const vname = inVeh ? (s.vehicleName ?? '') : null;
