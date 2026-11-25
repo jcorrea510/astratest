@@ -124,6 +124,14 @@ export function viewportSize(): { w: number; h: number; full: boolean } {
   }
   return { w, h, full: standalone };
 }
+/** Composer target options. Round 12: Low (no AO) must leave depthTexture out entirely: r182's RenderTarget setter
+ *  dereferences an explicit `undefined` and the game never finished loading on Low. */
+export function composerTargetOptions(w: number, h: number, samples: number, ao: boolean): THREE.RenderTargetOptions {
+  const o: THREE.RenderTargetOptions = { type: THREE.HalfFloatType, samples };
+  if (ao) o.depthTexture = new THREE.DepthTexture(w, h, THREE.FloatType);
+  return o;
+}
+
 export class Renderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -233,7 +241,7 @@ export class Renderer {
     const w = Math.max(1, size.x), h = Math.max(1, size.y);
     const ao = this.quality.ao > 0;
     // Round 12: the frame keeps its depth as a texture so the AO pass can read it
-    const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: safeMsaa(this.quality.msaa), depthTexture: ao ? new THREE.DepthTexture(w, h, THREE.FloatType) : undefined });
+    const rt = new THREE.WebGLRenderTarget(w, h, composerTargetOptions(w, h, safeMsaa(this.quality.msaa), ao));
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.ao?.dispose(); this.ao = null;

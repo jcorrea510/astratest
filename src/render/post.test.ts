@@ -26,3 +26,15 @@ describe('Round 12 night look', () => {
     }
   });
 });
+
+import * as THREE from 'three';
+import { composerTargetOptions } from './renderer';
+describe('composer target', () => {
+  it('builds on every quality preset (Low has no AO and used to crash the load with depthTexture: undefined)', () => {
+    for (const q of Object.values(QUALITY)) {
+      const o = composerTargetOptions(64, 64, 0, q.ao > 0);
+      expect(() => new THREE.RenderTarget(64, 64, o)).not.toThrow();
+      expect('depthTexture' in o).toBe(q.ao > 0);
+    }
+  });
+});
