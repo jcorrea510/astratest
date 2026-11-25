@@ -94,11 +94,11 @@
 }
 .ma-root .ma-hint::before {
   content: 'Tip'; display: inline-block; margin-right: calc(10 * var(--u)); padding: 0 calc(7 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); vertical-align: calc(1 * var(--u));
-  border-radius: calc(3 * var(--u)); background: var(--apricot); color: #1a1208; text-shadow: none; font-family: var(--display); font-weight: 800; font-size: calc(12 * var(--u)); letter-spacing: 0.14em; text-transform: uppercase;
+  border-radius: calc(3 * var(--u)); background: var(--apricot); color: #1a1208; text-shadow: none; font-family: var(--display); font-weight: 800; font-size: max(12px, calc(12 * var(--u))); letter-spacing: 0.14em; text-transform: uppercase;
 }
 .ma-root .ma-hint.is-visible { display: block; animation: ma-hint-in 0.22s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes ma-hint-in { from { opacity: 0; transform: translate(-50%, calc(-8 * var(--u))); } to { opacity: 1; transform: translateX(-50%); } }
-.ma-root .ma-hint .ma-key { height: calc(20 * var(--u)); min-width: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); margin: 0 calc(1 * var(--u)); font-size: calc(12 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.92); color: #14161a; text-shadow: none; box-shadow: 0 calc(1.5 * var(--u)) 0 rgba(255, 255, 255, 0.3); top: 0; }
+.ma-root .ma-hint .ma-key { height: calc(20 * var(--u)); min-width: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); margin: 0 calc(1 * var(--u)); font-size: max(12px, calc(12 * var(--u))); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.92); color: #14161a; text-shadow: none; box-shadow: 0 calc(1.5 * var(--u)) 0 rgba(255, 255, 255, 0.3); top: 0; }
 .ma-root .ma-hint-timer { height: calc(2 * var(--u)); background: var(--apricot); opacity: 0.85; }
 
 /* ---------------------------------------------------------------- top centre: radio */
@@ -127,7 +127,7 @@
 .ma-root .ma-stamina { height: calc(3 * var(--u)); margin: calc(5 * var(--u)) calc(1 * var(--u)) 0; border-radius: calc(2 * var(--u)); }
 .ma-root .ma-stamina-fill { border-radius: calc(2 * var(--u)); }
 .ma-root .ma-mode-badge {
-  left: var(--edge-x); bottom: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u)); font-size: calc(11 * var(--u)); letter-spacing: 0.2em; font-weight: 700; color: rgba(255, 255, 255, 0.72);
+  left: var(--edge-x); bottom: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u)); font-size: max(12px, calc(11 * var(--u))); letter-spacing: 0.2em; font-weight: 700; color: rgba(255, 255, 255, 0.72);
   background: rgba(12, 14, 18, 0.5); border: 1px solid var(--hair); border-radius: var(--r);
 }
 .ma-root .ma-mode-badge::before { content: ''; display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); margin-right: calc(7 * var(--u)); border-radius: 50%; background: var(--apricot); vertical-align: calc(1 * var(--u)); }
@@ -264,7 +264,7 @@
 .ma-root .ma-ammo { display: flex; align-items: baseline; text-shadow: var(--ink-shadow); }
 .ma-root .ma-ammo-clip { font-size: calc(34 * var(--u)); font-weight: 700; font-variant-numeric: tabular-nums; }
 .ma-root .ma-ammo-sep, .ma-root .ma-ammo-reserve { font-size: calc(19 * var(--u)); color: rgba(255, 255, 255, 0.5); }
-.ma-root .ma-weapon-name { margin: calc(1 * var(--u)) 0 0; text-align: right; font-size: calc(12 * var(--u)); letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.66); font-weight: 600; text-shadow: var(--ink-shadow); }
+.ma-root .ma-weapon-name { margin: calc(1 * var(--u)) 0 0; text-align: right; font-size: max(12px, calc(12 * var(--u))); letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.66); font-weight: 600; text-shadow: var(--ink-shadow); }
 .ma-root .ma-heat { padding: calc(4 * var(--u)) 0 0; gap: calc(2 * var(--u)); }
 .ma-root .ma-star { width: calc(26 * var(--u)); height: calc(26 * var(--u)); color: rgba(255, 255, 255, 0.2); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55)); }
 .ma-root .ma-star-fill { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; paint-order: normal; }
@@ -313,3 +313,28 @@
 .ma-root .ma-vehpop, .ma-root .ma-loc { padding: 0 calc(12 * var(--u)) 0 0; border-right: calc(2 * var(--u)) solid var(--apricot); }
 .ma-root .ma-vehpop-model, .ma-root .ma-loc-district { text-shadow: var(--ink-shadow); }
 .ma-root .ma-vehpop-make, .ma-root .ma-loc-street { text-shadow: var(--ink-shadow); }
+
+/* ---------------------------------------------------------------- heat: steady / colour-blind variants, save indicator */
+:root[data-colorblind='deuteranopia'] .ma-root, :root[data-colorblind='protanopia'] .ma-root { --heat-red: #ffb000; --heat-blue: #4aa8ff; }
+:root[data-colorblind='tritanopia'] .ma-root { --heat-red: #ff4d6a; --heat-blue: #5ff0ff; }
+/* colour-blind modes: the siren alternates solid and outlined stars (pattern), and the count is written out */
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-pattern 0.8s steps(1) infinite; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
+@keyframes ma-star-pattern { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(odd) .ma-star-fill { stroke-dasharray: 3 2; stroke-width: 2.4; stroke: #fff; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-visible::after { content: attr(data-n) '/5'; margin-left: calc(4 * var(--u)); align-self: center; font-size: max(12px, calc(13 * var(--u))); font-weight: 800; color: #fff; letter-spacing: 0.04em; text-shadow: var(--txt-shadow); }
+/* Reduce Motion: no flashing at all, a steady siren colour */
+:root[data-reduce-motion='true'] .ma-root .ma-heat.is-flash .ma-star.is-on { animation: none !important; color: var(--heat-red); }
+.ma-root .ma-save {
+  position: absolute; right: var(--edge-x); bottom: calc(8 * var(--u)); display: flex; align-items: center; gap: calc(7 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u));
+  font-size: max(12px, calc(12 * var(--u))); font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.85); background: rgba(12, 14, 18, 0.55);
+  border: 1px solid var(--hair); border-radius: var(--r); opacity: 0; transform: translateY(calc(4 * var(--u))); transition: opacity 0.25s, transform 0.25s; pointer-events: none;
+}
+.ma-root .ma-save.is-visible { opacity: 1; transform: none; }
+.ma-root .ma-save-icon { width: calc(10 * var(--u)); height: calc(10 * var(--u)); min-width: 8px; min-height: 8px; border-radius: 50%; border: 2px solid var(--apricot); border-top-color: transparent; }
+.ma-root .ma-save[data-phase='saving'] .ma-save-icon { animation: ma-save-spin 0.7s linear infinite; }
+.ma-root .ma-save[data-phase='saved'] .ma-save-icon { border-color: var(--money); background: var(--money); }
+.ma-root .ma-save[data-phase='failed'] .ma-save-icon { border-color: var(--heat-red); background: var(--heat-red); }
+@keyframes ma-save-spin { to { transform: rotate(360deg); } }
+:root[data-reduce-motion='true'] .ma-root .ma-save { transition: none; transform: none; }
+:root[data-reduce-motion='true'] .ma-root .ma-save[data-phase='saving'] .ma-save-icon { animation: none; }

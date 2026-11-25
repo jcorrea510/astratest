@@ -70,6 +70,21 @@ export function deadzone(v: number, dz = 0.12): number {
   return a < dz ? 0 : Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
 }
 
+/** Radial deadzone with rescale: the stick vector is dead inside `dz`, then ramps 0..1 along the same direction (no axis snapping on diagonals). */
+export function radialDeadzone(x: number, y: number, dz = 0.12, out: { x: number; y: number } = { x: 0, y: 0 }): { x: number; y: number } {
+  const m = Math.hypot(x, y);
+  if (!(m > dz) || m === 0) { out.x = 0; out.y = 0; return out; }
+  const k = Math.min(1, (m - dz) / (1 - dz)) / m;
+  out.x = x * k; out.y = y * k; return out;
+}
+/** Look-stick shaping: radial deadzone, then an acceleration curve so small pushes aim finely. */
+export function lookStick(x: number, y: number, dz: number, out: { x: number; y: number } = { x: 0, y: 0 }): { x: number; y: number } {
+  radialDeadzone(x, y, dz, out);
+  const m = Math.hypot(out.x, out.y);
+  if (m > 0) { const k = m ** 1.6 / m; out.x *= k; out.y *= k; }
+  return out;
+}
+
 type PadSource = () => ArrayLike<Gamepad | null> | null | undefined;
 /** Reads the first connected pad. Safari on iPad exposes the same Gamepad API once a controller is paired. */
 export function readPad(getPads: PadSource = () => navigator.getGamepads?.()): PadState {

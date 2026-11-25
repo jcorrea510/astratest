@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { runtime, speedBlurAmount, frameDue } from '../core/runtime';
 import { QUALITY, type QualityName, type QualityPreset } from '../core/settings';
 import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
@@ -219,7 +220,7 @@ export class Renderer {
   private applyPixelRatio() { this.renderer.setPixelRatio(this.effectivePixelRatio()); }
   /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames are fine. */
   effectivePixelRatio() {
-    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio), r = cap * this.dyn.scale;
+    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio) * runtime.resolutionScale, r = cap * this.dyn.scale;
     return this.dyn.floor ? Math.max(r, Math.min(1, cap)) : r;
   }
   /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
@@ -304,14 +305,22 @@ export class Renderer {
   lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
   private frameNo = 0;
+  private lastDrawn = 0; private appliedRes = 1;
+  /** Frame-rate cap from Settings (0 = off): true when it is time to draw the next frame. */
+  frameDue(now = performance.now()): boolean { return frameDue(now, this.lastDrawn, runtime.fpsCap); }
   render() {
-    this.adapt(performance.now());
+    const t0 = performance.now();
+    if (!this.frameDue(t0)) return;
+    this.lastDrawn = t0;
+    if (this.appliedRes !== runtime.resolutionScale) { this.appliedRes = runtime.resolutionScale; this.applyPixelRatio(); this.resize(); }
+    if (runtime.fpsCap > 0) this.lastRender = t0; // a capped frame time is not load: the adaptive resolution stays put
+    else this.adapt(t0);
     // Round 11 perf: on Medium the sun's shadow map (half a million triangles) is redrawn every other frame
     this.renderer.shadowMap.autoUpdate = false;
     if (this.quality.shadowMap > 0 && this.frameNo++ % Math.max(1, this.quality.shadowEvery) === 0) this.renderer.shadowMap.needsUpdate = true;
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
-    this.grade.uniforms.uSpeed.value = (this.camera.userData.speedFx as number | undefined) ?? 0;
+    this.grade.uniforms.uSpeed.value = speedBlurAmount((this.camera.userData.speedFx as number | undefined) ?? 0);
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }
