@@ -8,6 +8,9 @@
  */
 export interface StreamEntry<T> { c: T; cell: number; /** what the rest of the game asked for (setEnabled calls) */ user: boolean; /** inside the streamed radius */ near: boolean }
 
+/** Must exceed the longest weapon range (sniper 400 m): a bullet or aim ray must never pass through a disabled building or window. */
+export const STREAM_ENABLE_R = 430;
+
 export class StaticStream<T extends object> {
   private cells = new Map<number, StreamEntry<T>[]>();
   private active = new Set<number>(); // cells whose colliders are switched on
@@ -17,7 +20,7 @@ export class StaticStream<T extends object> {
   constructor(
     private apply: (c: T, on: boolean) => void,
     private alive: (c: T) => boolean = () => true,
-    readonly cellSize = 64, readonly enableR = 330, readonly disableR = 380, readonly minMove = 12,
+    readonly cellSize = 64, readonly enableR = STREAM_ENABLE_R, readonly disableR = STREAM_ENABLE_R + 50, readonly minMove = 12,
   ) {}
   private key(ix: number, iz: number) { return (ix + 512) * 1024 + (iz + 512); }
   add(c: T, x: number, z: number) {

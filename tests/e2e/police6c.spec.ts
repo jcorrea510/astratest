@@ -38,7 +38,7 @@ test.describe('police R6-C', () => {
         const g = (window as any).__game, pl = g.player;
         for (const n of [...g.pop.npcs]) if (n.role === 'police') g.pop.remove(n);
         const cop = g.pop.spawn('police', pl.pos.x, pl.pos.z + 9, pl.pos.y); cop.persistent = true; cop.brain = brain;
-        g.police.setHeat(3, pl.pos); (window as any).__cop = cop;
+        g.pcombat.give('pistol', 30); g.pcombat.inv.select('pistol'); g.police.setHeat(3, pl.pos); (window as any).__cop = cop; // armed: an unarmed suspect is tased and cuffed instead (Round 9 arrest scene), which is a different test
       }, brain);
       await godStep(page, 2);
       const b = await page.evaluate(() => (window as any).__cop.brain);
@@ -73,6 +73,7 @@ test.describe('police R6-C', () => {
     test.setTimeout(300_000);
     const r = await page.evaluate(() => {
       const g = (window as any).__game, D = g.police.dispatch;
+      g.pcombat.give('pistol', 30); g.pcombat.inv.select('pistol'); // armed: an unarmed suspect is arrested (tased, cuffed) and the air unit is called off
       g.police.setHeat(4, g.player.pos);
       let first = -1;
       for (let i = 0; i < 30 * 40; i++) { g.player.health = g.player.maxHealth; g.frame(1 / 30, false);  if (D.heli && first < 0) { first = Math.hypot(D.heli.position.x - g.player.pos.x, D.heli.position.z - g.player.pos.z); } }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { StaticStream } from './staticStream';
+import { StaticStream, STREAM_ENABLE_R } from './staticStream';
+import { WEAPONS } from '../combat/weapons';
 
 interface Fake { id: number; on: boolean; gone?: boolean }
 const make = () => {
@@ -25,10 +26,10 @@ describe('StaticStream (static collider streaming)', () => {
   it('hysteresis: a collider just past the enable radius is not toggled on a small move', () => {
     const { s } = make();
     const a = col(1);
-    s.add(a, 340, 0);
-    s.update(0, 0, true); // 340 m: cell rect min distance decides (cell 5 spans 320..384 -> 320 <= 330): enabled
+    s.add(a, 440, 0);
+    s.update(0, 0, true); // 440 m: cell rect min distance decides (cell 6 spans 384..448 -> 384 <= 430): enabled
     expect(a.on).toBe(true);
-    s.update(-60, 0); // rect distance 380 = disableR: still on
+    s.update(-60, 0); // rect distance 444 <= disableR 480: still on
     expect(a.on).toBe(true);
     s.update(-100, 0);
     expect(a.on).toBe(false);
@@ -62,5 +63,12 @@ describe('StaticStream (static collider streaming)', () => {
     a.gone = true; a.on = false;
     expect(() => s.update(0, 0)).not.toThrow();
     expect(a.on).toBe(false);
+  });
+});
+
+describe('stream radius vs weapons', () => {
+  it('stays beyond the longest weapon range so shots never pass through streamed-out walls and glass', () => {
+    const longest = Math.max(...Object.values(WEAPONS).map(w => w.range ?? 0));
+    expect(STREAM_ENABLE_R).toBeGreaterThan(longest + 20);
   });
 });

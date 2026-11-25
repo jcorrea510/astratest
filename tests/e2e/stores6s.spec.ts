@@ -142,7 +142,7 @@ test('bank heist: hold up the tellers, drill the vault, open the door, grab the 
     const vp = k.frame.toWorld(v.lx, 0.3, v.lz); g.player.place(vp.x, vp.y, vp.z, 0);
     for (let f = 0; f < 5; f++) g.frame(1 / 30, false);
     const prompt = R.prompt(); g.input.press('KeyE');
-    for (let f = 0; f < 30 * 30; f++) { g.frame(1 / 30, false); if (f % 15 === 0) { keepCalm(); g.player.place(vp.x, vp.y, vp.z, 0); } if (k.ex.stage >= 3 && k.ex.vaultOpen >= 1) break; }
+    for (let f = 0; f < 30 * 90; f++) { g.frame(1 / 30, false); if (f % 15 === 0) { keepCalm(); g.player.place(vp.x, vp.y, vp.z, 0); g.input.tap('KeyE'); /* Round 9: a tap sets the drill and restarts it after a jam */ } if (k.ex.stage >= 3 && k.ex.vaultOpen >= 1) break; }
     g.input.release('KeyE');
     const stageDrilled = k.ex.stage, doorOpen = v.door.rotation.y;
     // step 3: the vault cash
@@ -155,7 +155,7 @@ test('bank heist: hold up the tellers, drill the vault, open the door, grab the 
   }, { SETUP });
   expect(r.afterTellers, 'tellers done').toBeGreaterThanOrEqual(1);
   expect(r.heat, 'bank hold-up brings a heavy response').toBeGreaterThanOrEqual(3);
-  expect(r.prompt).toContain('Drill');
+  expect(r.prompt).toMatch(/drill/i);
   expect(r.stageDrilled, 'vault opened by the drill').toBeGreaterThanOrEqual(3);
   expect(r.doorOpen).toBeGreaterThan(1.5);
   expect(r.prompt2).toContain('vault cash');

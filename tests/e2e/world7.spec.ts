@@ -30,10 +30,11 @@ test('headlights: real spot lights follow the lit cars at night (count by preset
     const g = (window as any).__game; g.hour = 23; g.clockRunning = false;
     const car = g.vehicles.spawn('sedan', g.player.pos.x + 5, g.player.pos.z, 0, -1, 0.4); car.persistent = true; g.seatPlayer(car);
     for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
-    const spots = g.renderer.scene.children.filter((o: any) => o.isSpotLight), lit = spots.filter((l: any) => l.intensity > 0);
+    const isHead = (o: any) => o.isSpotLight && o.angle > 0.3; // the police-heli searchlight (angle 0.075) is always in the scene since Round 8
+    const spots = g.renderer.scene.children.filter(isHead), lit = spots.filter((l: any) => l.intensity > 0);
     const near = lit.some((l: any) => l.position.distanceTo(car.position) < 4);
     g.renderer.setQuality('low'); for (let i = 0; i < 20; i++) g.frame(1 / 30, false);
-    const lowSpots = g.renderer.scene.children.filter((o: any) => o.isSpotLight).length;
+    const lowSpots = g.renderer.scene.children.filter(isHead).length;
     const a = g.visuals.signalLamps.instanceColor.array as Float32Array; let white = 0;
     for (let i = 0; i < a.length; i += 3) if (a[i] > 0.9 && a[i + 1] > 0.9 && a[i + 2] > 0.9) white++;
     g.renderer.setQuality('medium');

@@ -53,7 +53,7 @@ export class Physics {
     streamOf.set(c, this.stream); this.stream.add(c, x, z);
     return c;
   }
-  /** Call every frame with the player position: only static props within ~330 m stay in the physics world. */
+  /** Call every frame with the player position: only static props within ~430 m stay in the physics world. */
   streamStatics(x: number, z: number, force = false) { return this.stream.update(x, z, force); }
   tag(c: RAPIER.Collider, t: ColliderTag) { this.tags.set(c.handle, t); return c; }
   tagOf(c: RAPIER.Collider | null | undefined) { return c ? this.tags.get(c.handle) : undefined; }
