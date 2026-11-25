@@ -161,7 +161,7 @@ test('blood: spatter and pools appear, stay capped, and the Blood toggle turns t
     const before = g.blood.splatCount; g.blood.splat(0, 0, 0, 0, 1, 0, 0.3); g.blood.pool(1, 0, 1);
     return { ...a, offAdds: g.blood.splatCount - before, enabled: g.blood.enabled };
   });
-  expect(caps.splats).toBe(120); expect(caps.pools).toBe(18); expect(caps.offAdds).toBe(0); expect(caps.enabled).toBe(false);
+  expect(caps.splats).toBe(320); expect(caps.pools).toBe(28); // BLOOD_SPLAT_MAX / BLOOD_POOL_MAX (raised in Round 9) expect(caps.offAdds).toBe(0); expect(caps.enabled).toBe(false);
   await page.evaluate(() => { (window as any).__game.settings.blood = true; });
 });
 

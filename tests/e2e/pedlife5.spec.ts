@@ -127,7 +127,7 @@ test('a pedestrian routed from the west sidewalk crosses Harbor Way and reaches 
     const path = []; for (let c = goal.id; c !== -1; c = prev.get(c)) path.unshift(c);
     const cross = path.some((id, i) => i && N[id].edges.some(e => e.to === path[i - 1] && e.crossing));
     g.player.place(start.x + 6, 0.4, start.z + 8, 0);
-    const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6;
+    const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6; n.persistent = true; // the far-crowd hand-over (crowd.demotePed) would otherwise swap a walker out beyond ~110 m
     let reached = false, frames = 0; const trace = [];
     for (let i = 0; i < 300 * 30 && !reached; i++) {
       g.frame(1 / 30, false); frames++;
