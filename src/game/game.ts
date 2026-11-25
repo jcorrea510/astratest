@@ -32,7 +32,7 @@ import { Traffic } from './traffic';
 import { Crowd } from './crowd';
 import { BusService } from './buses';
 import { BENCHES } from '../world/benches';
-import { Police, type Crime } from './police';
+import { Police, policeSeesArmed, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
 import { downPenalty, type GameMode } from './modes';
@@ -741,7 +741,7 @@ export class Game {
     this.taxi.update(dt); this.taxiJob.update(dt);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.pop.warmStep(2);
-    this.police.playerArmed = this.player.alive && this.pcombat.armed;
+    this.police.playerArmed = policeSeesArmed(this.player.alive, this.pcombat.armed, !!ph);
     this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);

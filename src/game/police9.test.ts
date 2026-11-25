@@ -1,5 +1,5 @@
-import { it, expect } from 'vitest';
-import { copsMayShoot, heatLoseTime, HeatState } from './police';
+import { describe, it, expect } from 'vitest';
+import { copsMayShoot, policeSeesArmed, heatLoseTime, HeatState } from './police';
 import * as THREE from 'three';
 
 it('Round 9: cops never shoot an unarmed suspect below 5 stars', () => {
@@ -15,4 +15,12 @@ it('Round 9: a robbery is two stars and takes ~26 s out of sight to shake', () =
   const far = new THREE.Vector3(500, 0, 500);
   let t = 0; while (h.heat > 0 && t < 120) { h.tick(0.1, false, far); t += 0.1; }
   expect(t).toBeGreaterThan(24);
+});
+
+describe('police treat a stolen helicopter as armed', () => {
+  it('a pilot is shot at from 3 stars even with fists selected; a dead player never counts', () => {
+    expect(copsMayShoot(3, false, policeSeesArmed(true, false, true))).toBe(true);
+    expect(copsMayShoot(3, false, policeSeesArmed(true, false, false))).toBe(false);
+    expect(policeSeesArmed(false, true, true)).toBe(false);
+  });
 });
