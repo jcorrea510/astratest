@@ -25,6 +25,8 @@ test('city: street + aerial views, draw calls, shop glass breaks', async ({ page
     const THREE = m.renderer.camera.position.constructor;
     const p = wg.panes.find((q: any) => q.inst >= 0);
     const o = new THREE(p.x + Math.sin(p.yaw) * 6, p.y, p.z + Math.cos(p.yaw) * 6), d = new THREE(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
+    // the pane is far from the player (static colliders beyond the stream radius are switched off): walk up to it like a player would
+    m.player.place(p.x + Math.sin(p.yaw) * 10, 0.05, p.z + Math.cos(p.yaw) * 10, 0); for (let i = 0; i < 10; i++) m.frame(1 / 30, false);
     const before = wg.isGlassBroken(p.id);
     for (let i = 0; i < 3; i++) m.combat.trace(o, d, 20, null, {}); // cracks, then shatters on the third hit
     const t4 = m.combat.trace(o, d, 20, null, {}); // through the shattered pane: stops at the shallow interior backdrop, not at the glass line
