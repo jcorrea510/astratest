@@ -33,13 +33,15 @@ test('every store type reacts within a second when a gun is aimed inside', async
       const clerkUp = k.clerk?.char.human.actionName === 'hands_up';
       const tellerUp = k.ex.tellers.every((t: any) => t.char.human.actionName === 'hands_up');
       g.input.release('Mouse2');
+      // Round 9: a drawn gun with the player facing the clerk counts as a hold-up, so "lowering the gun" means putting it away
+      g.pcombat.inv.select('fists');
       return { kind, shoppers: sh.length, up, clerkUp, tellerUp, robbing: R.robbing };
     }, { kind, SETUP });
     expect(r.shoppers, `${kind} has shoppers`).toBeGreaterThan(0);
     expect(r.up, `${kind}: every shopper has hands up`).toBe(r.shoppers);
     expect(r.clerkUp, `${kind}: clerk hands up`).toBe(true);
     expect(r.tellerUp, `${kind}: tellers hands up`).toBe(true);
-    // lowering the gun calms the store down again
+    // putting the gun away calms the store down again
     const calm = await page.evaluate(() => {
       const g = (window as any).__game, R = (window as any).__meridian.activities.robberies, k = R.inside();
       for (let f = 0; f < 30 * 6; f++) g.frame(1 / 30, false);
