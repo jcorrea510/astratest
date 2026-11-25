@@ -3,19 +3,19 @@ import * as THREE from 'three';
 
 export interface SkyKey { h: number; top: string; horizon: string; sun: string; sunI: number; hemiSky: string; hemiGround: string; hemiI: number; fog: string; exposure: number; night: number; cloud: string }
 // Warm apricot daylight, teal shadows, magenta-amber golden hour, deep teal nights.
-// Round 12: less sky fill and more sun by day (contrast: shadows read as shadows, with AO for the contact detail); darker nights.
+// Round 12: less sky fill and more sun by day (contrast: shadows read as shadows, with AO for the contact detail); darker nights (moon 0.38, sky fill 0.5: street lamps and headlights make the light pools).
 const KEYS: SkyKey[] = [
-  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.6, hemiSky: '#5a86b4', hemiGround: '#2a3040', hemiI: 0.74, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
-  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.6, hemiSky: '#5a86b4', hemiGround: '#2a3040', hemiI: 0.74, fog: '#15334a', exposure: 1.3, night: 1, cloud: '#22344c' },
+  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#15334a', exposure: 1.3, night: 1, cloud: '#22344c' },
   { h: 5.8, top: '#2a3f6b', horizon: '#e98f6b', sun: '#ffb184', sunI: 0.9, hemiSky: '#7d8fb5', hemiGround: '#4a3a3a', hemiI: 0.56, fog: '#c78a7c', exposure: 1.0, night: 0.55, cloud: '#e7a08a' },
   { h: 7.2, top: '#4f86b8', horizon: '#ffcf9e', sun: '#ffd2a1', sunI: 2.64, hemiSky: '#9cc4e0', hemiGround: '#6d5646', hemiI: 0.61, fog: '#e5c6aa', exposure: 1.0, night: 0, cloud: '#fff0dd' },
   { h: 11, top: '#3f86c9', horizon: '#bfe1ec', sun: '#fff1dc', sunI: 3.45, hemiSky: '#a7d3ee', hemiGround: '#7a6656', hemiI: 0.68, fog: '#bfdbe2', exposure: 0.95, night: 0, cloud: '#ffffff' },
   { h: 15.5, top: '#3d7fc0', horizon: '#c9e2e6', sun: '#ffe7c4', sunI: 3.33, hemiSky: '#a4cde6', hemiGround: '#7e6452', hemiI: 0.66, fog: '#c7dadb', exposure: 0.95, night: 0, cloud: '#fffaf0' },
   { h: 18.2, top: '#4a6fa8', horizon: '#ffb47a', sun: '#ffb070', sunI: 2.99, hemiSky: '#8fb3d4', hemiGround: '#7a5040', hemiI: 0.61, fog: '#f0b48e', exposure: 1.0, night: 0, cloud: '#ffd2a8' },
   { h: 19.4, top: '#3a4f8a', horizon: '#ff8a5c', sun: '#ff8550', sunI: 1.72, hemiSky: '#8a89b8', hemiGround: '#5a3a3c', hemiI: 0.54, fog: '#d9826c', exposure: 1.05, night: 0.3, cloud: '#ff9f7a' },
-  { h: 20.4, top: '#141f45', horizon: '#7d4a6e', sun: '#c6a0d8', sunI: 0.45, hemiSky: '#4f5f95', hemiGround: '#2a2230', hemiI: 0.62, fog: '#4b3d5c', exposure: 1.15, night: 0.85, cloud: '#5e4a6e' },
-  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.6, hemiSky: '#5a86b4', hemiGround: '#2a3040', hemiI: 0.74, fog: '#12293c', exposure: 1.3, night: 1, cloud: '#1c2e44' },
-  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.6, hemiSky: '#5a86b4', hemiGround: '#2a3040', hemiI: 0.74, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 20.4, top: '#141f45', horizon: '#7d4a6e', sun: '#c6a0d8', sunI: 0.38, hemiSky: '#4f5f95', hemiGround: '#2a2230', hemiI: 0.52, fog: '#4b3d5c', exposure: 1.15, night: 0.85, cloud: '#5e4a6e' },
+  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#12293c', exposure: 1.3, night: 1, cloud: '#1c2e44' },
+  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
 ];
 
 const ca = new THREE.Color(), cb = new THREE.Color();

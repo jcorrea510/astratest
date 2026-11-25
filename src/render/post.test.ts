@@ -14,3 +14,15 @@ describe('Round 12 post effects', () => {
     expect(AO_DEFAULT.fadeFar).toBeLessThan(QUALITY.medium.drawDistance);
   });
 });
+
+import { sampleSky } from './sky';
+describe('Round 12 night look', () => {
+  it('keeps night moon and sky fill low so lamps and headlights make the light pools (night read as grey haze)', () => {
+    for (const h of [0, 2, 22.5]) {
+      const s = sampleSky(h);
+      expect(s.night).toBe(1);
+      expect(s.hemiI).toBeLessThanOrEqual(0.55);
+      expect(s.sunI).toBeLessThanOrEqual(0.45);
+    }
+  });
+});
