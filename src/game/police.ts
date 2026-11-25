@@ -501,6 +501,9 @@ export { wantedUnits };
  * Round 9 (owner: "cops shoot you even if you're unarmed"): officers use their guns only against a suspect with a firearm
  * out, at 3+ stars (or 2 once violent); an unarmed suspect is chased, tased and cuffed. At 5 stars (army) anything goes. Pure.
  */
+/** Whether the police treat the player as armed: a gun out, or flying a helicopter (an aircraft cannot be tased and cuffed, it is shot down). Pure. */
+export function policeSeesArmed(alive: boolean, gunOut: boolean, inHeli: boolean): boolean { return alive && (gunOut || inHeli); }
+
 export function copsMayShoot(heat: number, violent: boolean, playerArmed: boolean): boolean {
   if (heat >= 5) return true;
   return playerArmed && (heat >= 3 || (heat === 2 && violent));
