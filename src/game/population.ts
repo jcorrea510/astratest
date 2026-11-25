@@ -280,7 +280,7 @@ export class Population {
       // 30 Hz (20 Hz past 50 m) with the accumulated dt: 1-1.5 cm steps at walking pace, invisible at that range
       if (n.role === 'civilian' && fd > 28 && (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'cower') && !n.char.ragdoll) {
         n.accDt += dt;
-        if ((this.tick + n.id) % (fd > 50 ? 3 : 2) !== 0) continue;
+        if ((this.tick + n.id) % (fd > 90 ? 6 : fd > 50 ? 3 : 2) !== 0) continue; // Round 12 perf: 10 Hz past 90 m
         const step = Math.min(n.accDt, 0.1); n.accDt = 0;
         this.runner.update(n, step);
         continue;

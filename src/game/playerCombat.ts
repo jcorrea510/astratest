@@ -221,7 +221,7 @@ export class PlayerCombat {
     if (onFoot) h.setUpperMode(onFootUpperMode(this.armed, this.aiming, def.twoHanded));
     this.updateSpread(dt, def);
     this.updateRecoil(dt, def);
-    this.updateAim(onFoot);
+    if (needsAimTrace(!!c.inVehicle, this.driveAim, c.alive)) this.updateAim(onFoot); else this.aimTarget = null; // seated without drive-by aim: nothing reads the aim ray
     // Fire
     if (!blocked && (onFoot || this.driveAim)) {
       if (def.cat === 'throw') this.updateThrow(dt, def);
@@ -534,6 +534,9 @@ function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, 
 }
 
 /** Pure (tests): see PlayerCombat.threatening. */
+/** The per-frame dry aim trace is only needed on foot or while aiming from a car window; skipping it saves the vehicle glass ray tests. */
+export function needsAimTrace(inVehicle: boolean, driveAim: boolean, alive: boolean): boolean { return !alive || !inVehicle || driveAim; }
+
 export function isThreatening(aimHeld: boolean, driveAim: boolean, sinceShot: number): boolean { return aimHeld || driveAim || sinceShot < 1.5; }
 
 /** Round 8: how far (m, car-local x, + = left) the driver leans for a drive-by: well into the near window, or across the seat. Pure. */

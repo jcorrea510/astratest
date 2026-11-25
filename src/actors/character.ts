@@ -121,7 +121,12 @@ export class Character {
     this.swimming = false;
     this.sweep(dt);
   }
+  /** consecutive sweeps that went nowhere (standing still on the ground) */
+  private restSweeps = 0; private restSkip = 0;
   private sweep(dt: number) {
+    // Round 12 perf: someone standing still on the ground (the player waiting, queueing / talking pedestrians) re-checks the
+    // ground only every 4th step; any movement, jump or knock puts them back on the every-step path at once
+    if (this.restSweeps >= 3 && this.grounded && this.vel.x * this.vel.x + this.vel.z * this.vel.z < 1e-6 && this.vel.y <= 0 && (++this.restSkip & 3) !== 0) return;
     const vyBefore = this.vel.y;
     const delta = { x: this.vel.x * dt, y: this.vel.y * dt, z: this.vel.z * dt };
     // Step up curbs and low steps before the round capsule bottom starts riding up the edge (which stalls a run):
@@ -184,6 +189,7 @@ export class Character {
     if (!this.grounded && this.vel.y > 0 && m.y < delta.y - 0.001) this.vel.y = 0; // bonk
     // Visual smoothing of instant height changes while walking (steps up and down).
     if (wasGrounded && this.grounded && Math.abs(m.y) > 0.04 && Math.abs(m.y) < 0.6) this.stepOffset = Math.max(-0.5, Math.min(0.5, this.stepOffset - m.y));
+    this.restSweeps = this.grounded && m.x * m.x + m.z * m.z < 1e-8 && Math.abs(m.y) < 1e-3 ? this.restSweeps + 1 : 0;
     this.pos.x += m.x; this.pos.y += m.y; this.pos.z += m.z;
     // horizontal velocity follows actual movement so blocked characters do not run on the spot
     if (dt > 0) { const ax = m.x / dt, az = m.z / dt; if (Math.hypot(ax, az) < Math.hypot(this.vel.x, this.vel.z) - 0.5) { this.vel.x = damp(this.vel.x, ax, 20, dt); this.vel.z = damp(this.vel.z, az, 20, dt); } }
@@ -221,14 +227,14 @@ export class Character {
   }
   /** Teleports the body (no collision). */
   place(x: number, y: number, z: number, yaw?: number) {
-    this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0;
+    this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0; this.restSweeps = 0;
     this.body.setTranslation({ x, y: y + CENTER, z }, true); this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
     if (yaw !== undefined) this.yaw = yaw;
     this.human.root.position.copy(this.pos); this.human.root.rotation.y = this.yaw;
   }
   /** Moves the body to a point without collision or resetting velocity (scripted motion such as a ledge climb). */
   setPosition(x: number, y: number, z: number) {
-    this.pos.set(x, y, z);
+    this.pos.set(x, y, z); this.restSweeps = 0;
     this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
   }
   /**

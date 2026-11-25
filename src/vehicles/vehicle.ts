@@ -356,7 +356,8 @@ export class Vehicle {
   static renderAlpha = 1;
   /** Places the mesh at the physics pose, blended from the previous fixed step so motion is smooth at any frame rate. */
   syncTransform() {
-    const ph = this.phys, p = ph.body.translation(), q = ph.body.rotation(), a = Math.max(0, Math.min(1, Vehicle.renderAlpha));
+    const ph = this.phys, a = Math.max(0, Math.min(1, Vehicle.renderAlpha));
+    ph.refreshPose(); const p = ph.cPos, q = ph.cQuat;
     if (a >= 1 || ph.body.isSleeping()) { this.group.position.set(p.x, p.y, p.z); this.group.quaternion.set(q.x, q.y, q.z, q.w); return; }
     const o = ph.prevPos, r = ph.prevQuat;
     this.group.position.set(o.x + (p.x - o.x) * a, o.y + (p.y - o.y) * a, o.z + (p.z - o.z) * a);

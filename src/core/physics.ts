@@ -15,8 +15,19 @@ export interface ColliderTag { kind: 'static' | 'vehicle' | 'character' | 'prop'
 /** collider -> the stream that may have switched it off (so game code calling setEnabled keeps its meaning) */
 const streamOf = new WeakMap<RAPIER.Collider, StaticStream<RAPIER.Collider>>();
 let origSetEnabled: ((on: boolean) => void) | null = null;
+/**
+ * Bumped whenever any body pose can have changed (every world step, setTranslation, setRotation). Per-body pose caches
+ * (VehiclePhysics.pose) compare against it: reading translation()/rotation() allocates a wasm object each time and the
+ * traffic AI alone made ~700 such calls a frame (Round 12 perf).
+ */
+export const poseEpoch = { n: 0 };
 function patchSetEnabled() {
   if (origSetEnabled) return;
+  const bump = <T extends object>(proto: T, name: string) => {
+    const f = (proto as Record<string, (...a: unknown[]) => unknown>)[name];
+    (proto as Record<string, unknown>)[name] = function (this: unknown, ...a: unknown[]) { poseEpoch.n++; return f.apply(this, a); };
+  };
+  bump(RAPIER.World.prototype, 'step'); bump(RAPIER.RigidBody.prototype, 'setTranslation'); bump(RAPIER.RigidBody.prototype, 'setRotation');
   const proto = RAPIER.Collider.prototype as unknown as { setEnabled(on: boolean): void };
   const orig = origSetEnabled = proto.setEnabled;
   proto.setEnabled = function (this: RAPIER.Collider, on: boolean) { const st = streamOf.get(this); orig.call(this, st ? st.intercept(this, on) : on); };
