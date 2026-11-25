@@ -3,13 +3,9 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
-/** Round 8: a version the owner can read on screen ("v0.8.<commits> · <sha>"), so it is clear which build is running. */
-const build = (() => {
-  try {
-    const n = execSync('git rev-list --count HEAD').toString().trim(), sha = execSync('git rev-parse --short HEAD').toString().trim();
-    return `v0.8.${n} · ${sha}`;
-  } catch { return 'v0.8 dev'; }
-})();
+/** One version string: package.json's version, plus a short commit hash that only appears in Settings > About and the FPS counter. */
+const pkgVersion: string = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8')).version;
+const commit = (() => { try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; } })();
 
 /** Stamps the service worker with a per-build id so each deploy gets a fresh cache (and old ones are removed). */
 const stampServiceWorker = () => {
@@ -26,7 +22,7 @@ const stampServiceWorker = () => {
 export default defineConfig({
   base: process.env.MA_BASE ?? '/astratest/', // npm run local builds for the root path
   plugins: [stampServiceWorker()],
-  define: { __BUILD__: JSON.stringify(build) },
+  define: { __APP_VERSION__: JSON.stringify(pkgVersion), __COMMIT__: JSON.stringify(commit) },
   test: { include: ['src/**/*.test.ts'], environment: 'node' },
   build: {
     target: 'es2022',

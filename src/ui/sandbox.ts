@@ -1,4 +1,4 @@
-/** Sandbox tools: a generic side panel rendering SandboxAction controls grouped by `group`. */
+/** Free Roam tools: a generic side panel rendering SandboxAction controls grouped by `group`. */
 import type { SandboxAction } from './contracts';
 import { backButton, button, h } from './dom';
 
@@ -15,10 +15,10 @@ export class SandboxPanel {
   constructor(private sound: (k: 'click' | 'hover' | 'back') => void, private onBack: () => void) {
     this.el = h('div', 'ma-layer ma-sandbox');
     this.el.setAttribute('role', 'dialog');
-    this.el.setAttribute('aria-label', 'Sandbox tools');
+    this.el.setAttribute('aria-label', 'Free Roam tools');
     const panel = h('div', 'ma-sb-panel');
     const head = h('div', 'ma-sb-head');
-    head.appendChild(h('div', 'ma-sb-title', 'Sandbox tools'));
+    head.appendChild(h('div', 'ma-sb-title', 'Free Roam tools'));
     head.appendChild(backButton(() => this.onBack()));
     panel.appendChild(head);
     this.body = h('div', 'ma-sb-body');

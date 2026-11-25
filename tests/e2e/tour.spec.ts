@@ -267,7 +267,7 @@ test('tour: every feature in one session, clean console and sane world after eve
   await S('die: WASTED, respawn at the hospital', async () => {
     await page.evaluate(() => { const g = (window as any).__game; g.money = 1000; g.player.damage(500, null, g.time); g.playerDown('down'); });
     await step(page, 1.7, { render: true });
-    await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
+    await expect(page.locator('.ma-death-word')).toHaveText('Flatlined');
     await step(page, 7);
     expect(await page.evaluate(() => { const g = (window as any).__game; return g.player.alive && g.deathT === -1 && g.player.health === 100; })).toBe(true);
   });

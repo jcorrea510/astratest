@@ -3,7 +3,8 @@
  * Plain DOM + Canvas 2D + inline SVG. One full-screen root overlay (pointer-events: none except on panels).
  */
 import '@fontsource/big-shoulders-display/latin-700';
-import { BUILD } from '../build';
+import { VERSION_LABEL } from '../build';
+import { uiSound } from '../audio/uiSounds';
 import '@fontsource/big-shoulders-display/latin-800';
 import '@fontsource/big-shoulders-display/latin-900';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -43,17 +44,16 @@ type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' |
 interface Layer { id: LayerId; el: HTMLElement; back: () => void; action?: (a: NavAction) => boolean; openedAt: number; prevFocus: Element | null }
 type PauseTab = 'map' | 'sandbox' | 'settings' | 'controls' | 'quit';
 const PAUSE_TABS: { id: PauseTab; label: string }[] = [
-  { id: 'map', label: 'Map' }, { id: 'sandbox', label: 'Sandbox' },
+  { id: 'map', label: 'Map' }, { id: 'sandbox', label: 'Tools' },
   { id: 'settings', label: 'Settings' }, { id: 'controls', label: 'Controls' }, { id: 'quit', label: 'Quit' },
 ];
 /** Pause tabs that open their own layer docked under the pause header. */
 const DOCKED: Partial<Record<PauseTab, LayerId>> = { map: 'map', sandbox: 'sandbox', settings: 'settings', controls: 'controls' };
 const DOCKABLE = new Set<LayerId>(['map', 'sandbox', 'settings', 'controls']);
-export const GAME_VERSION = 'v0.3.0';
 const TITLE_ITEMS: Record<string, string> = {
-  newgame: 'Start over, then pick Regular or Sandbox.',
+  newgame: 'Start over, then pick Regular or Free Roam.',
   regular: 'Regular: start with fists and a little cash. Rob stores, buy guns and cars, and pay the hospital when you go down. No cheats.',
-  sandbox: 'Sandbox: a pistol, cash and a whole city. Spawn cars, set the wanted level or time, teleport. Nothing is ever lost.',
+  sandbox: 'Free Roam: a pistol, cash and a whole city. Spawn cars, set the heat level or the time, travel anywhere. Nothing is ever lost.',
   back: 'Back to the main menu.',
   continue: 'Pick up your saved game right where you left off.',
   settings: 'Graphics, audio, camera and controls.',
@@ -151,7 +151,6 @@ export class UI implements GameUI {
   private hasSave = false;
   private saveSummary = '';
   private gameMode: 'regular' | 'sandbox' = 'sandbox';
-  private modeBadge: HTMLDivElement | null = null;
 
   constructor() {
     this.root = h('div', 'ma-root');
@@ -232,6 +231,7 @@ export class UI implements GameUI {
   init(opts: { city: CityMap; settings: Settings; callbacks: UICallbacks }): void {
     this.city = opts.city;
     this.settings = structuredClone(opts.settings);
+    this.applyPageSettings(this.settings);
     this.callbacks = opts.callbacks;
     const painter = new CityPainter(opts.city);
     if (this.hud) { this.hud.el.remove(); this.hud.objectiveEl.remove(); }
@@ -247,10 +247,24 @@ export class UI implements GameUI {
     this.pauseEl.after(this.fullmap.el);
   }
 
-  private sound(k: 'click' | 'hover' | 'back') { try { this.callbacks.onUiSound(k); } catch { /* audio is optional */ } }
+  private lastHover = 0;
+  /** Menu sounds go through the shared UI audio bus (src/audio/uiSounds.ts); hover is subtle and rate-limited. */
+  private sound(k: 'click' | 'hover' | 'back') {
+    if (k === 'hover') { const t = performance.now(); if (t - this.lastHover < 70) return; this.lastHover = t; }
+    uiSound(k === 'click' ? 'select' : k);
+  }
+
+  /** Display-side settings the whole page reads: --ma-ui-scale (multiplies --u in ui.css) and data-colorblind / data-reduce-motion on <html>. */
+  private applyPageSettings(s: Settings) {
+    const de = document.documentElement;
+    de.style.setProperty('--ma-ui-scale', String(Math.min(1.4, Math.max(0.8, s.uiScale ?? 1))));
+    de.dataset.colorblind = s.colorblind ?? 'off';
+    de.dataset.reduceMotion = String(!!s.reduceMotion);
+  }
 
   private applySettings(s: Settings, qualityChanged: boolean) {
     this.settings = s;
+    this.applyPageSettings(s);
     this.callbacks.onSettingsChanged(structuredClone(s));
     if (qualityChanged) this.callbacks.onQualityChanged(s.quality);
   }
@@ -270,7 +284,6 @@ export class UI implements GameUI {
     const press = h('div', 'ma-title-press');
     press.appendChild(h('span', 'ma-title-press-text', 'Press any key'));
     content.appendChild(press);
-    el.appendChild(h('div', 'ma-version', BUILD));
     const shot = h('div', 'ma-title-shot');
     this.titleShotName = h('div', 'ma-title-shot-name');
     this.titleShotCap = h('div', 'ma-title-shot-cap');
@@ -278,7 +291,7 @@ export class UI implements GameUI {
     el.appendChild(shot);
     const foot = h('div', 'ma-title-foot');
     const legal = h('span', 'ma-legal');
-    legal.append(h('b', '', GAME_VERSION), document.createTextNode('  ·  An original game. Every place, person and brand in Port Meridian is fictional.'));
+    legal.append(h('b', '', VERSION_LABEL), document.createTextNode('  ·  An original game. Every place, person and brand in Port Meridian is fictional.'));
     foot.appendChild(legal);
     foot.appendChild(footHints([['↑↓', 'Select'], ['Enter', 'Confirm'], ['Esc', 'Back']]));
     el.appendChild(foot);
@@ -333,7 +346,7 @@ export class UI implements GameUI {
   private pickMode(start: (cont: boolean, mode?: 'regular' | 'sandbox') => void) {
     this.titleMenu.textContent = '';
     const regular = this.menuItem('Regular', () => start(false, 'regular'), false, 'regular');
-    const sandbox = this.menuItem('Sandbox', () => start(false, 'sandbox'), false, 'sandbox');
+    const sandbox = this.menuItem('Free Roam', () => start(false, 'sandbox'), false, 'sandbox');
     const back = this.menuItem('Back', () => { this.sound('click'); this.showTitle(this.hasSave, this.saveSummary); }, false, 'back');
     this.titleMenu.append(regular, sandbox, back);
     regular.focus({ preventScroll: true });
@@ -452,7 +465,7 @@ export class UI implements GameUI {
       `[${this.keyFor('crouch')}] dodge-rolls out of trouble on foot.`,
       'The Glow Garage on 5th St resprays your ride and cools off the police.',
       'Sunset postcards are hidden all over Port Meridian. Each one pays out.',
-      'The pause menu has the sandbox tools: spawn any car, set the clock or the wanted level, or teleport across the city.',
+      'The pause menu has the Free Roam tools: spawn any car, set the clock or the heat level, or travel across the city.',
       'Aim at a store clerk to start a hold-up. The till empties faster the closer you stand. The alarm brings the police.',
       `Hit [${this.keyFor('pause')}] and pick Save game, or rest at the Lantern Ave safehouse, to keep your cash, guns and spot in the city.`,
     ];
@@ -475,7 +488,6 @@ export class UI implements GameUI {
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Paused');
     el.appendChild(h('div', 'ma-pause-backdrop'));
-    el.appendChild(h('div', 'ma-version', BUILD));
     const head = h('div', 'ma-pause-head');
     const brand = h('div', 'ma-pause-brand');
     brand.setAttribute('role', 'img'); brand.setAttribute('aria-label', 'Meridian Afterglow');
@@ -532,9 +544,7 @@ export class UI implements GameUI {
   /** The game is sandbox-only; kept for the GameUI contract. */
   setMode(mode: 'story' | 'sandbox' | 'regular'): void {
     this.gameMode = mode === 'regular' ? 'regular' : 'sandbox';
-    const tab = this.pauseTabs.get('sandbox'); if (tab) tab.textContent = this.gameMode === 'regular' ? 'Goals' : 'Sandbox';
-    if (!this.modeBadge) { this.modeBadge = h('div', 'ma-mode-badge'); this.hudLayer.appendChild(this.modeBadge); }
-    this.modeBadge.textContent = this.gameMode === 'regular' ? 'Regular' : 'Sandbox';
+    const tab = this.pauseTabs.get('sandbox'); if (tab) tab.textContent = this.gameMode === 'regular' ? 'Goals' : 'Tools';
   }
 
   setPaused(paused: boolean): void {
@@ -629,7 +639,7 @@ export class UI implements GameUI {
     tile('Money spent', formatMoney(S.spent));
     tile('Distance driven', fmtDistance(S.distance));
     tile('Top speed', `${Math.round(S.topSpeed / 3.6 * MPS_TO_MPH)} mph`);
-    tile('Highest wanted level', S.maxHeat > 0 ? `${S.maxHeat} / 5` : 'Clean');
+    tile('Highest heat level', S.maxHeat > 0 ? `${S.maxHeat} / 5` : 'Clean');
     if (S.postcards) tile('Postcards found', S.postcards);
     pane.appendChild(grid);
   }
@@ -748,7 +758,7 @@ export class UI implements GameUI {
 
   showDeath(kind: 'down' | 'busted', detail: string, opts: DeathOpts = {}): void {
     const d = this.death;
-    d.word.textContent = kind === 'down' ? 'Wasted' : 'Arrested';
+    d.word.textContent = kind === 'down' ? 'Flatlined' : 'Arrested';
     d.detail.textContent = '';
     const m = /^(.*?)\s+([+−-]\$[\d,]+)\s*$/.exec(detail);
     if (m) { d.detail.appendChild(h('span', '', m[1])); d.detail.appendChild(h('span', 'ma-death-fee', m[2].replace('-', '−'))); }
@@ -764,7 +774,7 @@ export class UI implements GameUI {
       try { opts.arrestAnimationDone(() => { if (this.deathSeq === seq) seq.waiting = false; }); } catch { seq.waiting = false; }
     }
   }
-  /** Paces the WASTED / ARRESTED sequence (call every frame with real seconds). */
+  /** Paces the FLATLINED / ARRESTED sequence (call every frame with real seconds). */
   advanceDeath(dt: number): { grade: number; respawn: boolean } {
     const q = this.deathSeq;
     if (!q) return { grade: 0, respawn: false };
@@ -995,7 +1005,7 @@ export class UI implements GameUI {
     switch (act) {
       case 'back': {
         const under = this.layers[this.layers.length - 2];
-        // One level: Settings / Controls / Sandbox return to the pause menu; the map (the view pausing opens on) and the pause menu resume.
+        // One level: Settings / Controls / Tools return to the pause menu; the map (the view pausing opens on) and the pause menu resume.
         if (layer.id === 'map' && under?.id === 'pause') { under.back(); return; }
         layer.back(); return;
       }

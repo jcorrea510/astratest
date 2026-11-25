@@ -133,7 +133,7 @@ test('WASTED: slow motion, grey, card, hospital bill, respawn at the clinic; ARR
   await step(page, 0.5);
   expect(await state<number>(page, 'window.__game.targetTimeScale')).toBeLessThan(0.5);
   await step(page, 1.2, { render: true });
-  await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
+  await expect(page.locator('.ma-death-word')).toHaveText('Flatlined');
   await expect(page.locator('.ma-death.is-card')).toBeVisible();
   expect(await state<number>(page, 'window.__game.renderer.grade.uniforms.uSat.value')).toBeLessThan(0.3);
   expect(await state<number>(page, 'window.__game.money')).toBe(1000); // sandbox: patched up, no charge (modes.ts medicalBill; the regular-mode bill is unit tested)

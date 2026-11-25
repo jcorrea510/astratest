@@ -36,7 +36,7 @@ test('hud: mission card + death title are visible with text; toasts do not overl
     expect(ov.hintW).toBeGreaterThan(100);
     expect(ov.toastHint).toBe(false); expect(ov.hintMoney).toBe(false); expect(ov.toastMoney).toBe(false);
     // death title
-    for (const [kind, word] of [['down', 'Wasted'], ['busted', 'Arrested']] as const) {
+    for (const [kind, word] of [['down', 'Flatlined'], ['busted', 'Arrested']] as const) {
       await page.evaluate(([k]) => {
         const u = (window as any).__meridian.ui;
         u.showDeath(k, 'Medical bill -$250');
