@@ -156,3 +156,10 @@ export function aiPedal(err: number, speed: number, targetSpeed: number): number
 export const STOP_BAR = 4.6;
 /** Metres from the junction edge (lane end) to a stopped car's centre: nose 0.3 m behind the stop bar (it used to stand on the zebra). */
 export function stopBack(halfLen: number): number { return STOP_BAR + 0.3 + Math.max(1.8, halfLen); }
+
+/**
+ * Round 12 (traffic6): a civilian 'goto' car (bus, taxi) within 20 m of its target used to ignore the signals altogether, so a
+ * bus standing at a stop beside the junction crept to its target at ~2 m/s straight through the red. Signals are ignored near
+ * the target only when the stop line is not close (the car is dropping someone at a kerb mid-block). Pure (tests).
+ */
+export function skipSignalNearTarget(dStop: number): boolean { return !(dStop > -BOX_EDGE - 3 && dStop < 25); }

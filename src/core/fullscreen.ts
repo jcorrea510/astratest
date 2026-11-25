@@ -21,7 +21,18 @@ export function enterFullscreen(): void {
 export function exitFullscreen(): void {
   try { const d = fsDoc() as FsDoc; const r = d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.(); (r as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* ignore */ }
 }
-export function toggleFullscreen(): void { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); }
+/**
+ * While the browser switches into / out of fullscreen the page must answer its resize quickly. A frame of the 3D city can take
+ * seconds on a slow GPU (software GL, a busy Mac), which delayed `fullscreenchange` by 10 s or more; the renderer skips drawing
+ * until the change lands (at most FS_SETTLE_MS) so the switch is as quick as with no game behind it.
+ */
+const FS_SETTLE_MS = 1500;
+let fsSettleUntil = 0;
+export function fullscreenSettling(now = performance.now()): boolean { return now < fsSettleUntil; }
+export function toggleFullscreen(): void {
+  fsSettleUntil = performance.now() + FS_SETTLE_MS;
+  if (isFullscreen()) exitFullscreen(); else enterFullscreen();
+}
 
 /** A page reload (save and quit) drops fullscreen; remember it so the next key press or click puts it back. */
 export function rememberFullscreen(): void { try { if (isFullscreen()) sessionStorage.setItem(KEY, '1'); } catch { /* storage blocked */ } }
@@ -35,6 +46,8 @@ export function installFullscreenShortcut(): void {
     if (e.altKey && (e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); toggleFullscreen(); }
   }, true);
   // While fullscreen, ask the browser to let the page have Esc (the pause key) so pausing never drops fullscreen; hold Esc to leave.
+  const settled = () => { fsSettleUntil = 0; };
+  fsDoc().addEventListener('fullscreenchange', settled); fsDoc().addEventListener('fullscreenerror', settled);
   fsDoc().addEventListener('fullscreenchange', () => {
     try {
       const kb = (fsNav() as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void>; unlock?: () => void } }).keyboard;

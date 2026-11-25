@@ -45,6 +45,7 @@ import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
 import { ArmyGuards, guardsHostile } from './armyGuards';
 import { farIdleVehicle } from './farLod';
+import { fullscreenSettling } from '../core/fullscreen';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -373,7 +374,7 @@ export class Game {
     Vehicle.renderAlpha = this.paused ? 1 : Math.min(1, this.acc * 60);
     this.update(dt, raw);
     this.onFrame?.(raw);
-    if (render) this.renderer.render();
+    if (render && !fullscreenSettling()) this.renderer.render(); // (no draw while the browser switches fullscreen: see core/fullscreen)
     this.input.endFrame();
   }
   get inputBlocked() { return this.blockedInput || this.wheelOpen || this.menuOpen || this.deathT >= 0; }

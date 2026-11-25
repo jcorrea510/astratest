@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -359,7 +359,7 @@ export class Traffic {
         if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * (car.mode === 'pursuit' ? 6 : 2.6) * Math.max(0, car.lane.length - car.s - 3))); // Round 9: brake gently into a turn
       }
       // Signals
-      if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20)))) {
+      if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20 && skipSignalNearTarget(this.distToStop(car)))))) {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, laneSigAxis(car.lane), t);
         const dStop = this.distToStop(car);
