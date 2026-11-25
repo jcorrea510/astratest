@@ -68,7 +68,7 @@ describe('save migration', () => {
   const v1 = { version: 1, savedAt: 5, money: 900, health: 70, armor: 0, weapons: new Inventory().weapons, current: 'fists', medkits: 0, missions: [], collectibles: [], jumps: [], pos: { x: -300, z: -106, yaw: 1 }, hour: 18, stats: { kills: 0, distance: 0, crashes: 0 } };
   it('v1 saves load as Sandbox games with no cars', () => {
     const s = parseSave(JSON.stringify(v1))!;
-    expect(s.version).toBe(2); expect(s.mode).toBe('sandbox'); expect(s.cars).toEqual([]); expect(s.milestones).toEqual([]); expect(s.robberies).toBe(0); expect(s.money).toBe(900);
+    expect(s.version).toBe(3); expect(s.mode).toBe('sandbox'); expect(s.cars).toEqual([]); expect(s.milestones).toEqual([]); expect(s.robberies).toBe(0); expect(s.money).toBe(900);
   });
   it('v2 keeps mode, cars (valid kinds only, max 8) and milestones', () => {
     const cars = Array.from({ length: 10 }, () => ({ kind: 'coupe', paint: 1 }));
