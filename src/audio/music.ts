@@ -49,6 +49,9 @@ class Session {
   disconnect(): void { for (const g of this.gains) g.disconnect(); this.tone.disconnect(); }
 }
 
+/** Station / mood crossfade length (s): old stream fades out while the new one fades in. */
+export const XFADE = 1.5;
+
 interface Host { kit: Kit; later(at: number, fn: () => void): void }
 
 function scheduleSession(host: Host, s: Session, until: number, nextSong: ((s: Session) => void) | null, onNote: NoteHook | null): number {
@@ -90,7 +93,7 @@ export class Radio {
     const i = this.station; const st = this.stations[i]; const t0 = now + 0.06;
     const loc = locate(st, this.stationTime(i, t0));
     const sd = stepSeconds(loc.song.bpm); const step = loc.step + 1; const nextTime = t0 + (sd - loc.stepOffset);
-    const s = new Session(this.host.kit, this.out, this.fx, loc.song, step, nextTime, loc.index, 1, 0.35);
+    const s = new Session(this.host.kit, this.out, this.fx, loc.song, step, nextTime, loc.index, 1, XFADE);
     this.session = s; this.sessionStation = i;
     this.fx.delay.delayTime.setValueAtTime(sd * 3, now);
     for (const e of heldAt(loc.song, step)) playNote(this.host.kit, s.outs, loc.song.style, e, nextTime, sd);
@@ -99,7 +102,7 @@ export class Radio {
 
   stop(): void {
     const s = this.session; if (!s) return; this.session = null; this.sessionStation = -1;
-    this.host.later(s.end(0.12), () => s.disconnect());
+    this.host.later(s.end(XFADE), () => s.disconnect());
   }
 
   /** Short band-limited static between stations. */
