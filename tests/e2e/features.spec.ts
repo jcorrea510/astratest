@@ -11,11 +11,17 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
     // a store whose clerk keeps no gun under the counter
     const k = R.kiosks[0];
     g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol'); g.money = 0;
-    g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, 0);
-    for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
+    g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, k.def.yaw); // the clerk's heading: back to the counter
+    // Round 9: a drawn gun pointed at the clerk starts the hold-up at once, so settle in facing away to read the prompt
+    // (the clerk spawns once the player is in the store)
+    for (let i = 0; i < 45; i++) {
+      const q = k.clerk?.pos;
+      if (q) { const a = Math.atan2(q.x - g.player.pos.x, q.z - g.player.pos.z); g.cam.yaw = a; g.player.yaw = a + Math.PI; }
+      g.frame(1 / 30, false);
+    }
+    const c = k.clerk;
     k.brave = false;
     const prompt = (window as any).__meridian.activities.prompt();
-    const c = k.clerk;
     g.input.press('Mouse2');
     let started = false, maxProgress = 0;
     for (let i = 0; i < 30 * 9; i++) { g.cam.yaw = Math.atan2(-(c.pos.x - g.player.pos.x), -(c.pos.z - g.player.pos.z)); g.cam.pitch = -0.05; g.frame(1 / 30, false); if (R.robbing) { started = true; maxProgress = Math.max(maxProgress, k.progress); } }
@@ -41,7 +47,7 @@ test('holding up a store: aim at the clerk, the till empties, grab the cash, the
     g.input.press('Mouse2');
     for (let i = 0; i < 30; i++) { g.cam.yaw = Math.atan2(-(c.pos.x - g.player.pos.x), -(c.pos.z - g.player.pos.z)); g.frame(1 / 30, false); }
     const during = R.robbing;
-    g.cam.yaw += Math.PI; for (let i = 0; i < 30 * 4; i++) g.frame(1 / 30, false);
+    g.cam.yaw += Math.PI; for (let i = 0; i < 30 * 5; i++) g.frame(1 / 30, false); // Round 9: 4 s grace before the clerk is off the hook
     g.input.release('Mouse2');
     return { during, after: R.robbing, phase: k.phase, progress: k.progress };
   });
