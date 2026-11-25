@@ -116,7 +116,7 @@ export class Input {
     if (this.pad.connected) {
       const st = lookStick(this.pad.rx, this.pad.ry, this.padDz(), this._mv);
       const k = (this.settings.padSensitivity ?? 1) * (this.held('aim') ? (this.settings.adsSensitivity ?? 0.8) / 0.8 : 1);
-      x += st.x * 900 * dt * k; y += st.y * 600 * dt * k * (this.settings.padInvertY ? -1 : 1);
+      x += st.x * 900 * dt * k; y += st.y * 600 * dt * k * padYSign(this.settings);
     }
     if (!this.enabled) return { x: 0, y: 0 };
     return { x, y };
@@ -143,3 +143,6 @@ export class Input {
   tap(code: string) { this.pressed.add(code); }
   clearAll() { this.down.clear(); this.scripted.clear(); }
 }
+
+/** Pad-only Y invert. The global invertY already flips mouse and pad together (game.ts), so padInvertY only adds an invert when the global one is off; ticking both never cancels out. */
+export function padYSign(s: { invertY?: boolean; padInvertY?: boolean }): number { return s.padInvertY && !s.invertY ? -1 : 1; }
