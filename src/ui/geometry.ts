@@ -79,6 +79,19 @@ export function formatMoney(n: number): string {
   return `${sign}$${Math.abs(v).toLocaleString('en-US')}`;
 }
 
+/** formatMoney with a one-entry cache: the string is rebuilt (toLocaleString is slow) only when the rounded value changes. */
+export class MoneyText {
+  /** how many times the underlying formatter really ran (tests) */
+  builds = 0;
+  private key = NaN;
+  private str = '';
+  format(n: number): string {
+    const v = Math.round(n);
+    if (v !== this.key) { this.key = v; this.str = formatMoney(v); this.builds++; }
+    return this.str;
+  }
+}
+
 export function formatTimer(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
   const m = Math.floor(s / 60);

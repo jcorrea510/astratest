@@ -1,4 +1,4 @@
-/** Rotating circular radar drawn on a canvas, throttled to ~30 fps. */
+/** Rotating circular radar drawn on a canvas, redrawn at ~15 Hz (the static tone + vignette layer is cached). */
 import type { MinimapState } from './contracts';
 import { worldToMinimap, TRUE_NORTH } from './geometry';
 /** Blip kinds that stay on the rim when off the minimap (Round 7: no more ring of shop icons). */
@@ -13,6 +13,11 @@ const PLAYER_Y = 0.5;
 /** Vertical squash of the radar: a tilted, 3D-style look consistent with the full map. */
 const PITCH = 0.8;
 
+/** Radar redraw interval (ms). */
+export const MINIMAP_INTERVAL_MS = 66;
+/** True when a throttled redraw is due; pure so it can be unit-tested. */
+export function minimapDue(now: number, last: number, interval = MINIMAP_INTERVAL_MS): boolean { return now - last >= interval; }
+
 export class Minimap {
   readonly el: HTMLDivElement;
   private canvas: HTMLCanvasElement;
@@ -25,6 +30,8 @@ export class Minimap {
   private tmp = { x: 0, y: 0 };
   private t0 = performance.now();
   private sizeDirty = true;
+  /** tone + vignette pre-rendered once per size (was a gradient + two fillRects every draw) */
+  private overlay: HTMLCanvasElement | null = null;
 
   constructor(private painter: CityPainter) {
     this.el = h('div', 'ma-minimap');
@@ -36,10 +43,13 @@ export class Minimap {
     window.addEventListener('resize', () => { this.sizeDirty = true; });
   }
 
+  /** Whether update() would redraw now; callers skip building the state when false. */
+  due(): boolean { return minimapDue(performance.now(), this.lastDraw); }
+
   update(s: MinimapState) {
     this.state = s;
     const now = performance.now();
-    if (now - this.lastDraw < 32) return;
+    if (!minimapDue(now, this.lastDraw)) return;
     this.lastDraw = now;
     this.draw((now - this.t0) / 1000);
   }
@@ -52,6 +62,7 @@ export class Minimap {
     this.cssW = w; this.cssH = hh; this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
     this.canvas.height = Math.max(1, Math.round(hh * dpr));
+    this.overlay = null;
   }
 
   private draw(t: number) {
@@ -88,12 +99,24 @@ export class Minimap {
     }
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(4,7,11,0.22)'; ctx.fillRect(0, 0, W, H); // tone the bake down so glyphs pop
-    // Soft vignette toward the rim keeps blips and the north marker legible; a faint sheen up top
     const rad = Math.min(W, H) / 2;
-    const g = ctx.createRadialGradient(cx, cy, rad * 0.55, cx, cy, rad);
-    g.addColorStop(0, 'rgba(4,7,11,0)'); g.addColorStop(1, 'rgba(4,7,11,0.62)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (!this.overlay) {
+      // tone the bake down so glyphs pop + soft vignette toward the rim (blips and the north marker stay legible)
+      const o = document.createElement('canvas');
+      o.width = this.canvas.width; o.height = this.canvas.height;
+      const oc = o.getContext('2d');
+      if (oc) {
+        oc.setTransform(dpr, 0, 0, dpr, 0, 0);
+        oc.fillStyle = 'rgba(4,7,11,0.22)'; oc.fillRect(0, 0, W, H);
+        const g = oc.createRadialGradient(cx, cy, rad * 0.55, cx, cy, rad);
+        g.addColorStop(0, 'rgba(4,7,11,0)'); g.addColorStop(1, 'rgba(4,7,11,0.62)');
+        oc.fillStyle = g; oc.fillRect(0, 0, W, H);
+      }
+      this.overlay = o;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.overlay, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Blips (upright, clamped to the circular frame)
     const br = Math.max(4.5, H * 0.045);
