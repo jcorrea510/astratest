@@ -57,6 +57,6 @@ describe('streetscape plan', () => {
 describe('streetscape mix', () => {
   it('includes every piece kind at high', () => {
     const kinds = new Set(planStreetscape(city, 1, [], [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }]).pieces.map(p => p.kind));
-    for (const k of ['bikerack', 'bags', 'planter', 'plate', 'manhole', 'patch', 'crack', 'shed', 'kiosk']) expect(kinds.has(k as Piece['kind']), k).toBe(true);
+    for (const k of ['bikerack', 'bags', 'planter', 'plate', 'manhole', 'patch', 'crack', 'shed', 'kiosk', 'utilbox', 'drain', 'signpost']) expect(kinds.has(k as Piece['kind']), k).toBe(true);
   });
 });

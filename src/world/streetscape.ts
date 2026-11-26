@@ -8,9 +8,10 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { Physics } from '../core/physics';
 import { type CityMap, type Block, type Road, CURB_HEIGHT, STREETS, AVENUES } from './citymap';
+import { utilityBoxGeo } from './props';
 import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_IRON, T_ROUGH, T_FABRIC, T_PAINT } from './builders';
 
-export type PieceKind = 'bikerack' | 'bags' | 'planter' | 'kiosk' | 'shed' | 'guard' | 'plate' | 'manhole' | 'patch' | 'crack';
+export type PieceKind = 'bikerack' | 'bags' | 'planter' | 'kiosk' | 'shed' | 'guard' | 'plate' | 'manhole' | 'patch' | 'crack' | 'utilbox' | 'drain' | 'signpost';
 export interface Piece {
   kind: PieceKind; x: number; z: number; /** along-edge axis of the block edge it sits on */ ax: 'x' | 'z'; /** unit normal pointing to the road */ nx: number; nz: number;
   /** size along the edge (m) for sheds / patches */ len: number; seed: number; /** solid pieces get a small collider */ solid: boolean;
@@ -104,7 +105,17 @@ function planBlock(b: Block, city: CityMap, density: number, grid: Grid, out: Pi
         else if (roll < 0.45 * density) piece = mk('planter', s, 1.1, 1.6, true);
         else if (roll < 0.47 * density && len > 50) piece = mk('kiosk', s, 1.4, 1.8, true);
       } else if (roll < 0.15 * density) piece = mk('bags', s, 0.9, 1, false);
+      if (!piece && busy) {
+        const extra = r.next();
+        if (extra < 0.1 * density) piece = mk('utilbox', s, 1.2, 1.3, true);
+        else if (extra < 0.22 * density) piece = mk('signpost', s, 0.8, 0.5, false);
+      }
       if (piece) { out.push(piece); grid.add({ x: piece.x, z: piece.z }); }
+    }
+    // storm drain grates in the gutter line, roughly every 40 m
+    for (let k = 0; k < Math.floor(len / 40) * density; k++) {
+      const s = r.range(e.from + 12, e.to - 12); const p = P(s, 0.4);
+      out.push({ kind: 'drain', x: p.x, z: p.z, ax: e.ax, nx: e.nx, nz: e.nz, len: 0.8, seed: r.int(1, 99999), solid: false });
     }
     // utility plates + hatches in the sidewalk
     for (let k = 0; k < Math.floor(len / 30) * density; k++) {
@@ -198,6 +209,26 @@ export function emitStreetscape(plan: StreetscapePlan, trim: Chunked<TrimBuilder
         const w = p.len; const yaw = r.pick([0, Math.PI / 2]);
         if (r.chance(0.5)) tb.cyl(p.x, y0 + 0.002, p.z, w * 0.45, w * 0.45, 0.012, 12, col('#4a4743'), T_IRON);
         else tb.box(p.x, y0 + 0.008, p.z, w, 0.014, w * r.range(0.6, 1.1), yaw, col('#5a5753'), T_IRON);
+        break;
+      }
+      case 'utilbox': {
+        const g = utilityBoxGeo(p.seed); const m = new THREE.Matrix4().compose(new THREE.Vector3(p.x, y0, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(p.nx, p.nz)), new THREE.Vector3(1, 1, 1));
+        tb.geo(g, m, new THREE.Color(1, 1, 1), [0.5, 0.3, 2, 0]); g.dispose();
+        physics.addStaticBox(p.x, y0 + 0.6, p.z, p.ax === 'x' ? 0.65 : 0.4, 0.6, p.ax === 'x' ? 0.4 : 0.65);
+        break;
+      }
+      case 'drain': {
+        const [sx, sz2] = sz(0.7, 0.35), dk = col('#1d1d1e');
+        tb.box(p.x, y0 + 0.004, p.z, sx + 0.06, 0.012, sz2 + 0.06, 0, col('#4a4744'), T_IRON);
+        for (let i = -2; i <= 2; i++) { const [bx, bz] = sz(0.6, 0.03); tb.box(p.x - p.nx * 0 + (p.ax === 'x' ? 0 : i * 0.06), y0 + 0.011, p.z + (p.ax === 'x' ? i * 0.06 : 0), p.ax === 'x' ? 0.65 : bx, 0.004, p.ax === 'x' ? bz : 0.65, 0, dk, T_IRON); }
+        break;
+      }
+      case 'signpost': {
+        // parking / zone plate on a slim pole: original colour schemes only, no lettering
+        const [c0, c1] = r.pick([['#1f6b3a', '#e8e4d4'], ['#1f5fa8', '#e8e4d4'], ['#b3261e', '#e8e4d4'], ['#6b4a2a', '#e8e4d4'], ['#e2b007', '#1a1a1a']]);
+        tb.beam(p.x, y0, p.z, p.x, y0 + 2.6, p.z, 0.035, 0.03, col('#6a6f73'), T_METAL);
+        const yaw = Math.atan2(p.nx, p.nz) + r.range(-0.2, 0.2), cs = Math.cos(yaw), sn = Math.sin(yaw);
+        for (const [h, w, hh, c] of [[2.3, 0.5, 0.6, c0], [1.95, 0.4, 0.22, c1]] as [number, number, number, string][]) tb.box(p.x + sn * 0.04, y0 + h, p.z + cs * 0.04, w, hh, 0.02, yaw, col(c), T_PAINT);
         break;
       }
       case 'manhole': tb.cyl(p.x, 0.003, p.z, 0.42, 0.42, 0.016, 14, col('#3a3836'), T_IRON); tb.cyl(p.x, 0.012, p.z, 0.3, 0.3, 0.008, 12, col('#2b2a29'), T_IRON); break;

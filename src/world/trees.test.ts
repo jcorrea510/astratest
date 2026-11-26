@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 import { treeGeos, palmGeos, shrubGeos } from './props';
 
 const tris = (g: THREE.BufferGeometry) => g.attributes.position.count / 3;
-/** Round-12 per-seed totals (trunk + leaves) before the realism pass; the pass must stay within ~1.3x. */
+/** Round-12 per-seed totals (trunk + leaves) before the realism pass; R14 denser canopy: within 2x. */
 const OLD_TOTAL: Record<number, number> = { 100: 200, 101: 280, 102: 240, 103: 280 };
 
 describe('street trees (R13 W5)', () => {
@@ -11,7 +11,7 @@ describe('street trees (R13 W5)', () => {
     it(`tree ${s}: triangle budget, bounds, branch structure under the crown`, () => {
       const t = treeGeos(100 + s);
       const total = tris(t.trunk) + tris(t.leaves);
-      expect(total).toBeLessThanOrEqual(OLD_TOTAL[100 + s] * 1.3);
+      expect(total).toBeLessThanOrEqual(OLD_TOTAL[100 + s] * 2.0);
       const bb = t.leaves.boundingBox!;
       expect(bb.max.y).toBeLessThan(10); expect(bb.min.y).toBeGreaterThan(1.8); // trunk and limbs visible beneath the crown
       expect(bb.max.x - bb.min.x).toBeLessThan(10); expect(bb.max.z - bb.min.z).toBeLessThan(10);
