@@ -10,6 +10,7 @@ import type { Character } from '../actors/character';
 import { TRAFFIC_MIX, PARKED_MIX, type VehicleKind } from '../vehicles/specs';
 import type { GameAudio } from '../ui/contracts';
 import { Rng } from '../core/rng';
+import { SpatialGrid } from './spatialGrid';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
@@ -266,6 +267,9 @@ export class Traffic {
   private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - stopBack(car.v.phys.layout.half[2]); }
 
   private aimBuf = new THREE.Vector3();
+  // Round 14 (CS): per-step spatial hashes so each car only tests nearby vehicles / pedestrians instead of all of them
+  private vGrid = new SpatialGrid<Vehicle>(32); private nGrid = new SpatialGrid<Npc>(32);
+  private vNear: Vehicle[] = []; private nNear: Npc[] = [];
   fixedUpdate(dt: number, player: Character, playerVehicle: Vehicle | null) {
     const t = this.time();
     this.monitorPlayer(dt, t, playerVehicle);
@@ -273,6 +277,9 @@ export class Traffic {
     const sirens: Vehicle[] = [];
     if (playerVehicle?.sirenOn) sirens.push(playerVehicle);
     for (const c of this.cars) if (c.v.sirenOn && !c.persistent) sirens.push(c.v);
+    this.vGrid.clear(); this.nGrid.clear();
+    for (const o of this.vehicles.list) this.vGrid.insert(o, o.position.x, o.position.z);
+    for (const n of this.pop.npcs) if (n.alive && !n.char.inVehicle && !n.far) this.nGrid.insert(n, n.pos.x, n.pos.z);
     this.sirenSources.length = 0;
     for (const sv of sirens) { const sf = sv.phys.forward(); this.sirenSources.push({ x: sv.position.x, z: sv.position.z, fx: sf.x, fz: sf.z, speed: sv.speed }); }
     for (const car of [...this.cars]) {
@@ -333,7 +340,9 @@ export class Traffic {
         let want = 0;
         if (car.mode === 'cruise' && !car.lane.connector) {
           const ohw0 = v.phys.layout.half[0];
-          for (const o of this.vehicles.list) {
+          const cNear = this.vNear; cNear.length = 0; this.vGrid.query(pos.x, pos.z, 32, cNear);
+          for (let ci = 0; ci < cNear.length; ci++) {
+            const o = cNear[ci];
             if (o === v || Math.abs(o.speed) > 0.6 || o.driver || o.position.y > 3) continue;
             const dx = o.position.x - pos.x, dz = o.position.z - pos.z, ahead = dx * f.x + dz * f.z;
             if (ahead < -2 || ahead > 26 || (o !== playerVehicle && this.carOf(o))) continue;
@@ -446,7 +455,9 @@ export class Traffic {
         if (dx * f.x + dz * f.z < -4 || car.avoid.t > 14 || !this.vehicles.list.includes(o)) car.avoid = null;
       }
       const ghost = (car.ghostT ?? 0) > 0; if (ghost) car.ghostT = (car.ghostT ?? 0) - dt;
-      for (const o of this.vehicles.list) {
+      const vNear = this.vNear; vNear.length = 0; this.vGrid.query(pos.x, pos.z, Math.max(26, speed * 1.8) + 6, vNear);
+      for (let vi = 0; vi < vNear.length; vi++) {
+        const o = vNear[vi];
         if (o === v || o === car.avoid?.v) continue;
         if (ghost && o !== playerVehicle && this.carOf(o)) continue; // deadlock breaker: drive through (the bodies just nudge each other)
         // a stopped car nobody drives (kerbside parked, wrecked): judged by its real width and by where we are steering
@@ -457,7 +468,8 @@ export class Traffic {
       let farBlock = false;
       for (const o of this.farObs) { const was = blockDist; check(o.x, o.z, 2.1, 'car', null); if (blockDist < was) farBlock = true; }
       if (!player.inVehicle && player.alive) check(player.pos.x, player.pos.z, 1.9, 'person');
-      for (const n of this.pop.npcs) if (n.alive && !n.char.inVehicle && !n.far) check(n.pos.x, n.pos.z, 1.7, 'person');
+      const nNear = this.nNear; nNear.length = 0; this.nGrid.query(pos.x, pos.z, Math.max(26, speed * 1.8) + 6, nNear);
+      for (let ni = 0; ni < nNear.length; ni++) { const n = nNear[ni]; check(n.pos.x, n.pos.z, 1.7, 'person'); }
       if (blockDist < Infinity && !(car.mode === 'pursuit' && car.ram)) {
         const gap = blocker === 'car' ? 6.5 + Math.max(0, speed) * 0.4 : 5.5;
         targetSpeed = Math.min(targetSpeed, Math.max(0, (blockDist - gap) * 0.8));
