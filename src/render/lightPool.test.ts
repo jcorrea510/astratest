@@ -24,3 +24,9 @@ it('the scene only ever holds the pool lights, whatever the number of virtual on
   v[0].intensity = 0; pool.update(new THREE.Vector3(0, 0, 0));
   expect(pool.real.map(r => r.position.x).sort((a, b) => a - b)).toEqual([5, 10, 15]);
 });
+
+import { poolBudget } from './lightPool';
+it('Round 14: real light budget per preset is trimmed (fewer loop iterations in every lit shader)', () => {
+  expect([poolBudget(0), poolBudget(2), poolBudget(4), poolBudget(8)]).toEqual([0, 2, 3, 5]);
+  const scene = new THREE.Scene(), pool = new LightPool(scene); pool.setCount(4); expect(pool.count).toBe(3);
+});

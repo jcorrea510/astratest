@@ -37,3 +37,17 @@ describe('ground surfaces (Round 13 W2)', () => {
     }
   }, 60000);
 });
+
+it('Round 14: ground shader is sin-free, LOD-gated, and roads get oil patches', async () => {
+  const THREE = await import('three');
+  const { addMacroVariation } = await import('./materials');
+  const grab = (key: string, grain: number) => {
+    const m = addMacroVariation(new THREE.MeshStandardMaterial(), 0.2, 0.011, key, grain);
+    const sh = { uniforms: {}, vertexShader: '#include <common>\n#include <worldpos_vertex>', fragmentShader: '#include <common>\n#include <map_fragment>\n#include <roughnessmap_fragment>' };
+    m.onBeforeCompile!(sh as never, null as never); return sh.fragmentShader;
+  };
+  const road = grab('asphalt', 0.07), grass = grab('grass', 0);
+  expect(road).not.toContain('sin(');
+  expect(road).toContain('if (mvd < 70.0)'); expect(road).toContain('mOil');
+  expect(grass).not.toContain('mOil = smoothstep');
+});
