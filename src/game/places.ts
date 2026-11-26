@@ -79,6 +79,8 @@ export const POSTCARDS: Place[] = [
 export const RAMPS = [
   { x: 470, z: 210, yaw: Math.PI, len: 9, h: 2.2, w: 4.2, name: 'Quay launch', minDist: 18, minAir: 0.8 },
   // the promenade ramps face east along the beach: veer off eastbound Coastal Drive at speed, land on the sand with room to stop before the sea
-  { x: -90, z: 921.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
+  // Promenade hop sits east of the pier: Coastal Drive only starts at x -165 (river), and from its old spot (x -90) a sedan
+  // reached the lip at ~14 m/s and flew 0.47 s / 6 m, so it could never pay with an ordinary car.
+  { x: 0, z: 921.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
   { x: 200, z: 921.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Strand flyer', minDist: 11, minAir: 0.55 },
 ];

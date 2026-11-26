@@ -24,6 +24,21 @@ describe('static streaming against live Rapier (Round 12 "unreachable" crashes)'
   });
 });
 
+describe('streamed collider removed by the game (beach ramp "unreachable" crash)', () => {
+  it('never touches a removed collider whose slot Rapier reused for a new one', () => {
+    const p = new Physics();
+    const old = p.addStaticBox(0, 1, 0, 0.2, 1, 0.2); // a lamp post
+    p.streamStatics(0, 0, true);
+    p.world.removeCollider(old, true); // a car knocks it over
+    const fresh = p.world.createCollider(RAPIER.ColliderDesc.ball(0.3).setTranslation(5, 1, 5)); // reuses the slot
+    expect(p.world.getCollider(old.handle)).toBe(fresh); // Rapier's handle map ignores the generation
+    const total = p.stream.total;
+    expect(() => { p.streamStatics(5000, 0); p.streamStatics(0, 0); p.step(1 / 60); }).not.toThrow();
+    expect(fresh.isEnabled()).toBe(true); // the stream never switched the newcomer off in the dead one's name
+    expect(p.stream.total).toBe(total - 1); // the dead entry is forgotten
+  });
+});
+
 describe('Character on a freed body', () => {
   it('place / setPosition on a disposed character never touch the freed Rapier body', () => {
     const touched: string[] = [];
