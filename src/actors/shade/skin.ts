@@ -52,6 +52,7 @@ void RE_Direct_Person( const in IncidentLight directLight, const in vec3 geometr
 export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips, shading, pores) but take the tone from the wanted skin colour
   vec3 ratio = clamp(tx.rgb / vec3(0.397, 0.153, 0.072), vec3(0.05), vec3(3.0));
   float lr = dot(ratio, vec3(0.3, 0.5, 0.2));
+  lr = ri == 0 ? lr : clamp(lr, 0.45, 1.1); // neck, chest and hands keep the face tone (no pale texel patches)
   col = uC[0] * (0.25 + 0.85 * lr) * mix(vec3(1.0), ratio / max(lr, 0.05), 0.28); rough = 0.6; flatN = 0.0;
   // dark tones: re-saturate toward warm red (blood under skin) instead of going grey; creases darker and warmer
   float skDeep = 1.0 - smoothstep(0.12, 0.75, lr);
@@ -85,6 +86,16 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
   float skRidge = 1.0 - smoothstep(0.0, 0.07, abs(skW - 0.5));
   bumpH = -0.00011 * smoothstep(0.55, 0.85, skPn) * skPoreF - 0.00025 * skRidge * skFineF;
   col *= 1.0 - 0.05 * skRidge * skFineF;
+  // contact shade where skin meets the neckline: soft, hides the pale fringe next to the collar
+  if (ri == 1) {
+    float skNd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2)) - uNeck.z;
+    col *= 1.0 - 0.2 * smoothstep(-0.03, 0.0, skNd);
+  }
+  // fingernails: texels that are not skin-toned (dark grey/blue) become a natural pink nail, or polish where uNeck.w is set
+  float nlM = ri == 2 ? smoothstep(0.5, 0.85, tx.b / max(tx.r, 0.03)) : 0.0;
+  vec3 nlC = uNeck.w > 0.5 ? uC[10] : uC[0] * vec3(1.12, 0.92, 0.9);
+  col = mix(col, nlC, nlM);
+  rough = mix(rough, uNeck.w > 0.5 ? 0.2 : 0.4, nlM);
   if (ri == 0 && vHn.y > -1.5) {
     vec3 hc = uC[6];
     float h = hairlineF(vHn.x, vHn.z);

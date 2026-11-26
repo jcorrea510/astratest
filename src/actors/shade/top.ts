@@ -93,7 +93,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
   bool kBlouse = topId > 9.5;
   bool kTank = topId > 0.5 && topId < 1.5;
   bool kButtoned = kShirt || kPolo || kUni || kBlouse;
-  float fabK = kJersey ? 0.0 : kPolo ? 1.0 : (kShirt || kDress || kBlouse) ? 2.0 : kUni ? 3.0 : kSuit ? 4.0 : kFleece ? 5.0 : 6.0;
+  float fabK = kJersey ? 0.0 : kPolo ? 1.0 : (kShirt || kDress || kBlouse) ? 2.0 : (kUni || kJacket) ? 3.0 : kSuit ? 4.0 : kFleece ? 5.0 : 6.0;
   float cx = abs(vBind.x);
   float hgt = 0.0;
   float pInk = 0.0;
@@ -115,7 +115,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
     pInk = clamp(ink, 0.0, 1.0);
     col = mix(col, uC[2], pInk);
   } else if (pat > 3.5 && pat < 4.5 && ri == 2) col = uC[2];
-  else if (pat > 4.5 && pat < 5.5) col = mix(col, uC[2], 0.7 * tpDuty(vBind.x * 38.0 - 0.5, 0.1)); // pinstripe
+  else if (pat > 4.5 && pat < 5.5) col = mix(col, clamp(col * 1.9 + 0.025, 0.0, 0.6), 0.5 * tpDuty(vBind.x * 83.0 - 0.5, 0.06)); // pinstripe: 1.2 cm pitch, 0.7 mm line, low contrast tone-on-tone
   else if (pat > 5.5 && pat < 6.5) { // woodland camo: three noise blobs
     float n1 = vnoise(vBind * 9.0), n2 = vnoise(vBind * 14.0 + 7.3), n3 = vnoise(vBind * 21.0 + 2.1);
     col = mix(col, uC[2], smoothstep(0.52, 0.56, n1)); col = mix(col, uC[2] * 0.45, smoothstep(0.58, 0.62, n2)); col = mix(col, col * 1.35 + 0.03, smoothstep(0.62, 0.66, n3));
@@ -134,6 +134,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
   // fabric micro structure
   vec3 fb = tpFabric(fabK, tq, tfw);
   col *= fb.y; rough = fb.z; hgt = fb.x;
+  if (kJacket) rough = max(rough, 0.74); // matte shell fabric, never wet-look
 
   if (ri == 1) {
     float dHem = (vCloth - uTop.y) * 0.6;
@@ -254,7 +255,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
       // open bomber over a tee: zip tape and teeth along the opening, yoke seam, slanted slit pockets
       float eo = 0.045 + 0.03 * smoothstep(0.75, 0.98, vCloth);
       float opn = front * tpAA(cx - eo);
-      vec3 teeC = tpSat(uC[2], 0.92) * (0.93 + 0.1 * vnoise(vec3(tq.x * 240.0, tq.y * 34.0, 1.3)));
+      vec3 teeC = clamp(tpSat(uC[2], 0.88), 0.02, 0.6) * (0.93 + 0.1 * vnoise(vec3(tq.x * 240.0, tq.y * 34.0, 1.3)));
       col = mix(col, teeC, opn);
       rough = mix(rough, 0.9, opn);
       hgt *= 1.0 - opn;
@@ -266,7 +267,9 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
       col = mix(col, vec3(0.42, 0.4, 0.37) * (0.7 + 0.5 * zt), zTeeth);
       rough = mix(rough, 0.3, zTeeth);
       hgt += 0.0005 * zTeeth * zt - 0.0003 * zTape;
-      col *= 1.0 - 0.3 * tpLine(abs(cx - eo), 0.0012) * front;
+      col *= 1.0 - 0.42 * tpLine(abs(cx - eo), 0.0014) * front; // visible edge seam of the open front
+      col *= 1.0 - 0.3 * opn * (1.0 - smoothstep(0.0, 0.022, eo - cx)); // shadow of the shell on the top beneath
+      hgt += 0.0007 * front * (1.0 - opn) * (1.0 - smoothstep(0.0, 0.012, cx - eo)); // rolled edge lip
       float yd = (vCloth - 0.8) * 0.6;
       float yk = max(tpLine(abs(yd), 0.001), tpLine(abs(yd + 0.0045), 0.001)) * (1.0 - opn);
       col *= 1.0 - 0.28 * yk; hgt -= 0.0004 * yk;

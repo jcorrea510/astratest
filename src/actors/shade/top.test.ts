@@ -69,3 +69,24 @@ describe('top shader chunk', () => {
     for (const p of ['pat > 0.5', 'pat > 1.5', 'pat > 2.5', 'pat > 3.5', 'pat > 4.5', 'pat > 5.5', 'pat > 6.5']) expect(TOP_GLSL, p).toContain(p);
   });
 });
+
+describe('P7 defect fixes', () => {
+  it('pinstripe is fine and low contrast: ~1.2 cm pitch, thin line, no accent-colour stripe', () => {
+    const d = TOP_GLSL.split('\n').find(l => l.includes('// pinstripe'))!.match(/tpDuty\(vBind\.x \* (\d+\.\d+) - 0\.5, (\d\.\d+)\)/)!;
+    expect(d).not.toBeNull();
+    const pitch = 1 / parseFloat(d[1]);
+    expect(pitch).toBeGreaterThan(0.01); expect(pitch).toBeLessThan(0.015);
+    expect(pitch * parseFloat(d[2])).toBeLessThan(0.001);
+    expect(TOP_GLSL).not.toMatch(/pat < 5\.5\) col = mix\(col, uC\[2\]/);
+  });
+  it('jacket shell is matte and the inner top colour is capped', () => {
+    expect(TOP_GLSL).toContain('if (kJacket) rough = max(rough, 0.74)');
+    expect(TOP_GLSL).toContain('clamp(tpSat(uC[2], 0.88), 0.02, 0.6)');
+  });
+  it('skin-vs-cloth neck test has no noise term and the geometry ramp is wide and soft', () => {
+    const line = material.split('\n').find(l => l.includes('nd < uNeck.z + vdeep'))!;
+    expect(line).toBeTruthy();
+    expect(line).not.toMatch(/noise|hsh|grain/);
+    expect(material).toContain('smoothstep(uNeck.z, uNeck.z + 0.06, nd)');
+  });
+});

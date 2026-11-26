@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { randomLook, resolveLook, SKIN_TONES, PLAYER_DEFAULT_LOOK } from './look';
+import { randomLook, resolveLook, SKIN_TONES, PLAYER_DEFAULT_LOOK, nailPolish } from './look';
 import { ACTIONS, UAL_CLIPS, samplePose, sym } from './actions';
 
 describe('people looks', () => {
@@ -84,5 +84,26 @@ describe('actions', () => {
     expect(sym({ armL: [10, 20, 30] }).armR).toEqual([10, -20, -30]);
     const out = samplePose([[0, { head: [0, 0, 0] }], [1, { head: [20, 0, 0] }]], 0.5, new Map());
     expect(out.get('head')![0]).toBeCloseTo(10);
+  });
+});
+
+describe('people defect fixes (P7)', () => {
+  const L = Array.from({ length: 3000 }, (_, i) => randomLook(i));
+  it('most suits are solid, pinstripe is rare', () => {
+    const suits = L.filter(l => l.topStyle === 'suit');
+    expect(suits.length).toBeGreaterThan(100);
+    expect(suits.filter(l => l.pattern === 'pinstripe').length / suits.length).toBeLessThan(0.3);
+  });
+  it('nail polish only on some women, natural otherwise', () => {
+    const men = L.filter(l => l.sex === 'm'), women = L.filter(l => l.sex === 'f');
+    expect(men.every(l => nailPolish(l) === null)).toBe(true);
+    const share = women.filter(l => nailPolish(l) !== null).length / women.length;
+    expect(share).toBeGreaterThan(0.1); expect(share).toBeLessThan(0.4);
+  });
+  it('the top under an open jacket or hoodie is never near-white', () => {
+    for (const l of L.filter(x => x.topStyle === 'jacket' || x.topStyle === 'hoodie')) {
+      const n = parseInt(l.accent.slice(1), 16);
+      expect(Math.max(n >> 16, (n >> 8) & 255, n & 255)).toBeLessThan(0xd0);
+    }
   });
 });
