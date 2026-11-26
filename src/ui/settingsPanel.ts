@@ -96,7 +96,7 @@ export class SettingsPanel {
     const a = document.activeElement as HTMLElement | null;
     const row = a && this.body.contains(a) ? a.closest('.ma-row') : null;
     const d = row?.querySelector('.ma-row-desc')?.textContent ?? '';
-    const text = d || (this.tab === 'keys' ? 'Select a slot, then press a key or mouse button. Esc cancels, Backspace clears.' : '');
+    const text = d || (this.tab === 'keys' ? this.keysHint() : '');
     if (this.desc.textContent !== text) this.desc.textContent = text;
   }
 
@@ -296,6 +296,9 @@ export class SettingsPanel {
     return row;
   }
 
+  /** Touch screen (no keyboard to press keys on): the key list is shown for reference only. */
+  private touchUi(): boolean { return !!this.el.closest('.has-touch'); }
+  private keysHint(): string { return this.touchUi() ? 'Keyboard controls: connect a keyboard to change.' : 'Select a slot, then press a key or mouse button. Esc cancels, Backspace clears.'; }
   private renderKeys(s: Settings) {
     const conflicts = findConflicts(s.bindings);
     const slots = conflictSlots(s.bindings);
@@ -305,7 +308,9 @@ export class SettingsPanel {
       const parts: string[] = [];
       for (const [code, actions] of conflicts) parts.push(`${keyLabel(code)} → ${actions.map(a => ACTION_LABELS[a]).join(' + ')}`);
       info.textContent = `Key conflict: ${parts.join(' · ')}`;
-    } else info.textContent = 'Select a slot, then press a key or mouse button. Esc cancels, Backspace clears.';
+    } else info.textContent = this.keysHint();
+    const locked = this.touchUi();
+    if (locked) { info.classList.remove('is-conflict'); info.textContent = this.keysHint(); }
     this.body.appendChild(info);
     this.note = info;
     for (const g of ACTION_GROUPS) {
@@ -321,7 +326,7 @@ export class SettingsPanel {
           if (!code) b.classList.add('is-empty');
           if (code && slots.has(`${a}|${code}`)) { b.classList.add('is-conflict'); row.classList.add('is-conflict'); }
           b.setAttribute('aria-label', `${ACTION_LABELS[a]} ${slot === 0 ? 'primary' : 'secondary'}: ${code ? keyLabel(code) : 'unbound'}`);
-          b.addEventListener('click', () => this.beginCapture(a, slot, b));
+          if (locked) { b.disabled = true; b.removeAttribute('data-nav'); } else b.addEventListener('click', () => this.beginCapture(a, slot, b));
           row.appendChild(b);
         }
         sec.appendChild(row);

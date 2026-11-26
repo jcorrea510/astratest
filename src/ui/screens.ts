@@ -168,8 +168,8 @@ export function buildMobileGate(onContinue?: () => void): HTMLDivElement {
   el.appendChild(h('div', 'ma-mobile-shade'));
   const box = h('div', 'ma-mobile-box');
   box.appendChild(logo('ma-logo-mobile'));
-  box.appendChild(h('div', 'ma-mobile-head', 'Best on a computer or iPad'));
-  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow is built for a keyboard and mouse, or a game controller, and there are no touch controls yet. Continue anyway, or open this page on a laptop, desktop or iPad.'));
+  box.appendChild(h('div', 'ma-mobile-head', 'Turn your phone sideways'));
+  box.appendChild(h('p', 'ma-mobile-text', 'Meridian Afterglow has touch controls: a stick on the left, drag to look on the right and buttons under your thumb. It plays best in landscape on a bigger screen (an iPad, a laptop with a keyboard and mouse, or a game controller is better still). Continue to play here.'));
   const row = h('div', 'ma-mobile-actions');
   const go = h('button', 'ma-btn ma-btn-primary ma-mobile-continue', 'Continue anyway');
   go.type = 'button';
