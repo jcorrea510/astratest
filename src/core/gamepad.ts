@@ -59,6 +59,13 @@ export function padGlyph(a: Action, ctx: PadContext = currentCtx, f: PadFamily =
   const g = padGlyphCanon(a, ctx);
   return g === null ? null : localizeGlyph(g, f);
 }
+/** Every button of an action (several for e.g. Interact), in the connected pad's names. */
+export function padGlyphAll(a: Action, ctx: PadContext = currentCtx, f: PadFamily = family): string[] {
+  const list = layoutButtons(ctx)[a];
+  if (list?.length && a !== 'fire' && a !== 'aim') return list.map(i => buttonLabel(i, f));
+  const g = padGlyph(a, ctx, f);
+  return g ? [g] : [];
+}
 function padGlyphCanon(a: Action, ctx: PadContext): string | null {
   const lay = PAD_LAYOUTS[ctx], btns = layoutButtons(ctx);
   const name = (i: number | undefined) => i === undefined ? null : buttonLabel(i, 'generic');
