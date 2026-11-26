@@ -79,7 +79,7 @@ export class Soup {
   split(f: Fn3): [Soup, Soup] {
     const ins = new Soup(), out = new Soup(), d = this.d;
     const fv = [0, 0, 0];
-    const va: number[] = new Array(STRIDE), vb: number[] = new Array(STRIDE), vc: number[] = new Array(STRIDE);
+    const va: number[] = new Array(STRIDE), vb: number[] = new Array(STRIDE);
     const cross = (o1: number, f1: number, o2: number, f2: number, dst: number[]) => {
       let lo = 0, hi = 1, flo = f1, fhi = f2, t = f1 / (f1 - f2);
       for (let it = 0; it < 6; it++) {
@@ -93,24 +93,23 @@ export class Soup {
       const nl = Math.hypot(dst[3], dst[4], dst[5]) || 1; dst[3] /= nl; dst[4] /= nl; dst[5] /= nl;
       dst[12] = d[o1 + 12]; dst[13] = d[o1 + 13];
     };
-    const push = (s: Soup, ...vs: (number | number[])[]) => {
-      for (const v of vs) { if (typeof v === 'number') for (let j = 0; j < STRIDE; j++) s.d.push(d[v + j]); else for (let j = 0; j < STRIDE; j++) s.d.push(v[j]); }
-    };
+    // no rest-args / slice() per triangle: this runs for every cut of every car model at boot, and that garbage (not live data) is what pushed the renderer to ~3 GB
+    const pushO = (s: Soup, v: number) => { const sd = s.d; for (let j = 0; j < STRIDE; j++) sd.push(d[v + j]); };
+    const pushA = (s: Soup, v: number[]) => { const sd = s.d; for (let j = 0; j < STRIDE; j++) sd.push(v[j]); };
     for (let t = 0; t < d.length; t += STRIDE * 3) {
-      const o = [t, t + STRIDE, t + STRIDE * 2];
-      for (let k = 0; k < 3; k++) fv[k] = f(d[o[k]], d[o[k] + 1], d[o[k] + 2]);
+      const o0 = t, o1 = t + STRIDE, o2 = t + STRIDE * 2;
+      fv[0] = f(d[o0], d[o0 + 1], d[o0 + 2]); fv[1] = f(d[o1], d[o1 + 1], d[o1 + 2]); fv[2] = f(d[o2], d[o2 + 1], d[o2 + 2]);
       const s0 = fv[0] < 0, s1 = fv[1] < 0, s2 = fv[2] < 0;
-      if (s0 === s1 && s1 === s2) { push(s0 ? ins : out, o[0], o[1], o[2]); continue; }
+      if (s0 === s1 && s1 === s2) { const dst = s0 ? ins : out; pushO(dst, o0); pushO(dst, o1); pushO(dst, o2); continue; }
       // rotate so that vertex 0 is the lone one
       let r = 0; if (s0 === s1) r = 2; else if (s0 === s2) r = 1;
-      const i0 = o[r], i1 = o[(r + 1) % 3], i2 = o[(r + 2) % 3];
+      const i0 = r === 0 ? o0 : r === 1 ? o1 : o2, i1 = r === 0 ? o1 : r === 1 ? o2 : o0, i2 = r === 0 ? o2 : r === 1 ? o0 : o1;
       const f0 = fv[r], f1 = fv[(r + 1) % 3], f2 = fv[(r + 2) % 3];
       cross(i0, f0, i1, f1, va); cross(i0, f0, i2, f2, vb);
       const lone = f0 < 0 ? ins : out, pair = f0 < 0 ? out : ins;
-      push(lone, i0, va.slice(), vb.slice());
-      push(pair, va.slice(), i1, i2);
-      for (let j = 0; j < STRIDE; j++) vc[j] = vb[j];
-      push(pair, va.slice(), i2, vc.slice());
+      pushO(lone, i0); pushA(lone, va); pushA(lone, vb);
+      pushA(pair, va); pushO(pair, i1); pushO(pair, i2);
+      pushA(pair, va); pushO(pair, i2); pushA(pair, vb);
     }
     return [ins, out];
   }
@@ -154,34 +153,51 @@ export class Soup {
    * Vertex-clustering decimation: vertices that share a grid cell (and bone + surface kind) merge into one averaged vertex;
    * triangles that collapse are dropped. Used for the far LODs of the cars (the bones keep wheels and doors separate).
    */
-  decimate(cell: number): Soup {
-    const d = this.d, n = this.verts, key = new Array<string>(n);
-    const acc = new Map<string, { s: number[]; c: number }>();
+  decimate(cell: number): Soup { return this.decimateBuild(this.cluster(cell)); }
+  /** Assigns every vertex to a cluster (grid cell + bone + kind) with numeric keys (no per-vertex strings) and counts the surviving triangles. */
+  private cluster(cell: number) {
+    const d = this.d, n = this.verts, ids = new Int32Array(n), map = new Map<number, number>();
+    let count = 0;
     for (let i = 0; i < n; i++) {
-      const o = i * STRIDE, k = `${Math.floor(d[o] / cell)},${Math.floor(d[o + 1] / cell)},${Math.floor(d[o + 2] / cell)},${d[o + 12]},${d[o + 13]}`;
-      key[i] = k; let a = acc.get(k);
-      if (!a) { a = { s: d.slice(o, o + STRIDE), c: 1 }; acc.set(k, a); } else { a.c++; for (let j = 0; j < 6; j++) a.s[j] += d[o + j]; }
+      const o = i * STRIDE;
+      // 11 bits per axis (cells stay within +-1000 for car-sized models at cell >= 0.01), 6 bits kind, 7 bits bone: < 2^53, no bit ops needed
+      const k = (((((Math.floor(d[o] / cell) + 1024) * 2048 + Math.floor(d[o + 1] / cell) + 1024) * 2048 + Math.floor(d[o + 2] / cell) + 1024) * 64 + d[o + 12]) * 128) + d[o + 13];
+      let c = map.get(k);
+      if (c === undefined) { c = count++; map.set(k, c); }
+      ids[i] = c;
+    }
+    let tris = 0;
+    for (let t = 0; t < n; t += 3) { const a = ids[t], b = ids[t + 1], c = ids[t + 2]; if (a !== b && b !== c && a !== c) tris++; }
+    return { ids, count, tris };
+  }
+  private decimateBuild(cl: { ids: Int32Array; count: number }): Soup {
+    const d = this.d, n = this.verts, ids = cl.ids;
+    const sum = new Float64Array(cl.count * 6), cnt = new Int32Array(cl.count), first = new Int32Array(cl.count).fill(-1);
+    for (let i = 0; i < n; i++) {
+      const c = ids[i], o = i * STRIDE;
+      if (first[c] < 0) first[c] = o;
+      cnt[c]++; for (let j = 0; j < 6; j++) sum[c * 6 + j] += d[o + j];
     }
     const out = new Soup();
     for (let t = 0; t < n; t += 3) {
-      const k0 = key[t], k1 = key[t + 1], k2 = key[t + 2];
-      if (k0 === k1 || k1 === k2 || k0 === k2) continue;
-      for (const k of [k0, k1, k2]) {
-        const a = acc.get(k)!, v = a.s, nl = Math.hypot(v[3], v[4], v[5]) || 1;
-        out.vert(v[0] / a.c, v[1] / a.c, v[2] / a.c, v[3] / nl, v[4] / nl, v[5] / nl, v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13]);
+      const a = ids[t], b = ids[t + 1], c = ids[t + 2];
+      if (a === b || b === c || a === c) continue;
+      for (const k of [a, b, c]) {
+        const q = k * 6, f = first[k], nl = Math.hypot(sum[q + 3], sum[q + 4], sum[q + 5]) || 1, m = cnt[k];
+        out.vert(sum[q] / m, sum[q + 1] / m, sum[q + 2] / m, sum[q + 3] / nl, sum[q + 4] / nl, sum[q + 5] / nl, d[f + 6], d[f + 7], d[f + 8], d[f + 9], d[f + 10], d[f + 11], d[f + 12], d[f + 13]);
       }
     }
     return out;
   }
-  /** Decimates until at most `target` triangles remain (binary search on the cluster size). */
+  /** Decimates until at most `target` triangles remain (binary search on the cluster size; only the winning size is built). */
   decimateTo(target: number): Soup {
     if (this.tris <= target) return this.clone();
-    let lo = 0.01, hi = 3, best = this.decimate(hi);
+    let lo = 0.01, hi = 3, best = this.cluster(hi);
     for (let i = 0; i < 7; i++) {
-      const mid = Math.sqrt(lo * hi), r = this.decimate(mid);
+      const mid = Math.sqrt(lo * hi), r = this.cluster(mid);
       if (r.tris > target) lo = mid; else { hi = mid; best = r; }
     }
-    return best;
+    return this.decimateBuild(best);
   }
   /** Bakes into a skinned BufferGeometry (rigid single-bone weights). */
   toGeometry(): THREE.BufferGeometry {
