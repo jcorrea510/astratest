@@ -2,20 +2,20 @@
 import * as THREE from 'three';
 
 export interface SkyKey { h: number; top: string; horizon: string; sun: string; sunI: number; hemiSky: string; hemiGround: string; hemiI: number; fog: string; exposure: number; night: number; cloud: string }
-// Warm apricot daylight, teal shadows, magenta-amber golden hour, deep teal nights.
+// Round 13 (W4): photographic daylight: warm near-white sun (~6x the sky fill), desaturated sky ambient with a warm neutral ground bounce (no blue-black shadows), hazy pale horizon; amber golden hour; deep blue nights with lifted ground bounce (no crushed blacks).
 // Round 12: less sky fill and more sun by day (contrast: shadows read as shadows, with AO for the contact detail); darker nights (moon 0.38, sky fill 0.5: street lamps and headlights make the light pools).
 const KEYS: SkyKey[] = [
-  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
-  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#15334a', exposure: 1.3, night: 1, cloud: '#22344c' },
+  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#15334a', exposure: 1.3, night: 1, cloud: '#22344c' },
   { h: 5.8, top: '#2a3f6b', horizon: '#e98f6b', sun: '#ffb184', sunI: 0.9, hemiSky: '#7d8fb5', hemiGround: '#4a3a3a', hemiI: 0.56, fog: '#c78a7c', exposure: 1.0, night: 0.55, cloud: '#e7a08a' },
-  { h: 7.2, top: '#4f86b8', horizon: '#ffcf9e', sun: '#ffd2a1', sunI: 2.64, hemiSky: '#9cc4e0', hemiGround: '#6d5646', hemiI: 0.61, fog: '#e5c6aa', exposure: 1.0, night: 0, cloud: '#fff0dd' },
-  { h: 11, top: '#3f86c9', horizon: '#bfe1ec', sun: '#fff1dc', sunI: 3.45, hemiSky: '#a7d3ee', hemiGround: '#7a6656', hemiI: 0.68, fog: '#bfdbe2', exposure: 0.95, night: 0, cloud: '#ffffff' },
-  { h: 15.5, top: '#3d7fc0', horizon: '#c9e2e6', sun: '#ffe7c4', sunI: 3.33, hemiSky: '#a4cde6', hemiGround: '#7e6452', hemiI: 0.66, fog: '#c7dadb', exposure: 0.95, night: 0, cloud: '#fffaf0' },
-  { h: 18.2, top: '#4a6fa8', horizon: '#ffb47a', sun: '#ffb070', sunI: 2.99, hemiSky: '#8fb3d4', hemiGround: '#7a5040', hemiI: 0.61, fog: '#f0b48e', exposure: 1.0, night: 0, cloud: '#ffd2a8' },
+  { h: 7.2, top: '#5b8dbb', horizon: '#f2d2b0', sun: '#ffd6a8', sunI: 2.8, hemiSky: '#a9c2d6', hemiGround: '#7a6250', hemiI: 0.58, fog: '#e6cdb4', exposure: 1.0, night: 0, cloud: '#fff0dd' },
+  { h: 11, top: '#3a7fc4', horizon: '#cfe3ee', sun: '#fff3e0', sunI: 3.7, hemiSky: '#bccfdd', hemiGround: '#8a7b6b', hemiI: 0.62, fog: '#cfdde3', exposure: 0.95, night: 0, cloud: '#ffffff' },
+  { h: 15.5, top: '#3d7cbc', horizon: '#d4e2e8', sun: '#ffeacb', sunI: 3.5, hemiSky: '#b6cadb', hemiGround: '#86705c', hemiI: 0.62, fog: '#d2dde0', exposure: 0.95, night: 0, cloud: '#fffaf0' },
+  { h: 18.2, top: '#4a6fa8', horizon: '#ffb47a', sun: '#ffb877', sunI: 3.0, hemiSky: '#a3b6cc', hemiGround: '#7a5848', hemiI: 0.58, fog: '#ecbb98', exposure: 1.0, night: 0, cloud: '#ffd2a8' },
   { h: 19.4, top: '#3a4f8a', horizon: '#ff8a5c', sun: '#ff8550', sunI: 1.72, hemiSky: '#8a89b8', hemiGround: '#5a3a3c', hemiI: 0.54, fog: '#d9826c', exposure: 1.05, night: 0.3, cloud: '#ff9f7a' },
   { h: 20.4, top: '#141f45', horizon: '#7d4a6e', sun: '#c6a0d8', sunI: 0.38, hemiSky: '#4f5f95', hemiGround: '#2a2230', hemiI: 0.52, fog: '#4b3d5c', exposure: 1.15, night: 0.85, cloud: '#5e4a6e' },
-  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#12293c', exposure: 1.3, night: 1, cloud: '#1c2e44' },
-  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#262a36', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#12293c', exposure: 1.3, night: 1, cloud: '#1c2e44' },
+  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
 ];
 
 const ca = new THREE.Color(), cb = new THREE.Color();
@@ -63,9 +63,12 @@ export class Sky {
         void main(){
           vec3 d = normalize(vDir);
           float h = clamp(d.y, -0.2, 1.0);
-          vec3 col = mix(uHorizon, uTop, pow(smoothstep(-0.02, 0.62, h), 0.75));
+          // Round 13: a pale desaturated haze band hugging the horizon, then the zenith colour (photographic gradient)
+          vec3 haze = mix(uHorizon, vec3(dot(uHorizon, vec3(0.333))), 0.25);
+          vec3 col = mix(haze, uTop, pow(smoothstep(-0.02, 0.7, h), 0.65));
+          col = mix(col, haze, (1.0 - smoothstep(0.0, 0.16, h)) * 0.35 * (1.0 - uNight));
           float sd = max(dot(d, normalize(uSunDir)), 0.0);
-          col += uSunCol * (pow(sd, 6.0) * 0.28 + pow(sd, 90.0) * 0.6) * (1.0 - uNight * 0.7);
+          col += uSunCol * (pow(sd, 4.0) * 0.16 + pow(sd, 24.0) * 0.22 + pow(sd, 400.0) * 0.8) * (1.0 - uNight * 0.7);
           float disc = smoothstep(0.9993, 0.9997, sd);
           col = mix(col, uSunCol * 2.2 + 0.4, disc * (1.0 - uNight));
           // moon opposite-ish the sun at night
@@ -77,11 +80,15 @@ export class Sky {
           vec2 sp = d.xz / (d.y + 0.25) * 140.0;
           float st = step(0.9965, hash(floor(sp))) * smoothstep(0.05, 0.4, d.y);
           col += vec3(st) * uNight * uStars * (0.6 + 0.4 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
-          // stylised clouds
+          // soft clouds: wide smoothstep for feathered edges, darker underside (one extra noise tap towards the sun), silver lining near the sun
           vec2 cp = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.004, uTime * 0.002);
-          float c = smoothstep(0.52, 0.78, fbm(cp)) * smoothstep(0.02, 0.25, d.y);
-          vec3 cc = mix(uCloud, uSunCol, pow(sd, 3.0) * 0.5);
-          col = mix(col, cc, c * 0.75);
+          float fb = fbm(cp);
+          float c = smoothstep(0.46, 0.86, fb) * smoothstep(0.0, 0.2, d.y);
+          float shade = clamp(noise(cp * 2.0 + normalize(uSunDir.xz + vec2(0.001)) * 0.35) - fb * 0.5, 0.0, 1.0);
+          vec3 cc = uCloud * (1.0 - 0.28 * c * (1.0 - shade) * (1.0 - uNight));
+          cc = mix(cc, uSunCol, pow(sd, 3.0) * 0.4);
+          col = mix(col, cc, c * 0.8);
+          col = mix(col, haze, (1.0 - smoothstep(0.0, 0.1, d.y)) * c * 0.5);
           // horizon haze below 0
           col = mix(col, uHorizon * 0.9, smoothstep(0.02, -0.15, d.y));
           gl_FragColor = vec4(col, 1.0);

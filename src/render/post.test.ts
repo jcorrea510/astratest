@@ -38,3 +38,24 @@ describe('composer target', () => {
     }
   });
 });
+
+import { DAY_FOG_NEAR } from './renderer';
+describe('Round 13 photographic daylight', () => {
+  it('noon: sun is 4-8x the sky fill, ambient is not strongly blue, exposure sane', () => {
+    for (const h of [10, 11, 12, 14, 15.5]) {
+      const s = sampleSky(h);
+      const r = s.sunI / s.hemiI;
+      expect(r).toBeGreaterThan(4); expect(r).toBeLessThan(8);
+      expect(s.hemiSky.b - s.hemiSky.r).toBeLessThan(0.3);
+      expect(s.sun.r).toBeGreaterThanOrEqual(s.sun.b);
+      expect(s.exposure).toBeGreaterThan(0.85); expect(s.exposure).toBeLessThan(1.1);
+    }
+  });
+  it('night exposure stays modest and the ground bounce is not black', () => {
+    for (const h of [0, 2, 23]) { const s = sampleSky(h); expect(s.exposure).toBeLessThanOrEqual(1.31); expect(s.hemiGround.b).toBeGreaterThan(0.03); }
+  });
+  it('daytime fog starts at a finite distance and is a light haze colour', () => {
+    expect(DAY_FOG_NEAR).toBeGreaterThan(30); expect(DAY_FOG_NEAR).toBeLessThan(QUALITY.low.drawDistance);
+    const s = sampleSky(12); expect((s.fog.r + s.fog.g + s.fog.b) / 3).toBeGreaterThan(0.5);
+  });
+});
