@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
-import { HeatState, heliHold, HELI_SIGHT_RANGE } from './police';
+import { HeatState, heliHold, heliInbound, HELI_SIGHT_RANGE } from './police';
 import { Dispatch } from './dispatch';
 import { QUALITY } from '../core/settings';
 
@@ -36,5 +36,12 @@ describe('police helicopter search hold', () => {
     expect(heliHold(HELI_SIGHT_RANGE + 250, false)).toBeGreaterThan(0); // inbound from 450 m
     expect(heliHold(60, true)).toBe(2.5);
     expect(heliHold(60, false)).toBe(0); // overhead but roofed: the timer runs
+  });
+  it('an outrun helicopter (arrived, then left behind, or flying in too long) no longer holds the heat', () => {
+    expect(heliHold(HELI_SIGHT_RANGE + 250, false, false)).toBe(0);
+    expect(heliInbound(false, 20, 300, 290)).toBe(true); // closing in
+    expect(heliInbound(false, 20, 900, 300)).toBe(false); // the player got 600 m further away than its best approach
+    expect(heliInbound(true, 20, 300, 150)).toBe(false); // it was overhead once, then left behind
+    expect(heliInbound(false, 120, 300, 300)).toBe(false); // flying in for two minutes is not "on its way"
   });
 });

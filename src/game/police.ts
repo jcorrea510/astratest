@@ -28,8 +28,16 @@ const COP_KINDS = ['police', 'fbi', 'swat', 'army', 'tank'];
 /** Speeding counts when the player is more than 15 mph (6.7 m/s) over the lane's limit. Pure, unit tested. */
 /** Metres within which a police helicopter's spotlight can find the player; further out it is still flying in. */
 export const HELI_SIGHT_RANGE = 200;
-/** Seconds the search timer stays held after a scan: 2.5 with the spotlight on the player, 0.5 while the helicopter is still inbound (it spawns 380-700 m out), else 0. */
-export const heliHold = (hd: number, los: boolean) => hd < HELI_SIGHT_RANGE ? (los ? 2.5 : 0) : 0.5;
+/** Longest a helicopter counts as "still flying in" (it spawns 380-700 m out and climbs over the towers on the way). */
+export const HELI_INBOUND_MAX = 90;
+/** Still on its first approach: never yet within sight range, not flying in for too long, and closing in (not this far behind its best approach: the player has outrun it). Pure. */
+export const heliInbound = (arrived: boolean, inT: number, hd: number, bestD: number) => !arrived && inT < HELI_INBOUND_MAX && hd < bestD + 40;
+/**
+ * Seconds the search timer stays held after a scan: 2.5 with the spotlight on the player; 0.5 while the helicopter is still on its
+ * first approach (`inbound`: it has never been within sight range and has flown in for under HELI_INBOUND_MAX s); else 0.
+ * A helicopter the player has since outrun (beyond sight range after arriving, or never catching up) no longer holds the heat.
+ */
+export const heliHold = (hd: number, los: boolean, inbound = true) => hd < HELI_SIGHT_RANGE ? (los ? 2.5 : 0) : inbound ? 0.5 : 0;
 export const isSpeeding = (speed: number, limit: number) => Math.abs(speed) > limit + 6.7;
 /** A vehicle moving from (px,pz) to (x,z) enters the box of a signalised junction while its light is red. Pure, unit tested. */
 export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz: number, x: number, z: number, time: number): boolean {
@@ -120,7 +128,7 @@ export class Police {
   clock: () => number = () => (this.traffic as unknown as { time?: () => number }).time?.() ?? 0;
   /** the player's current stolen police vehicle (cops that see the player in it pursue, whatever the heat) */
   stolenCop: object | null = null; private pendingStolen = false;
-  private heliSeeT = 0; private violT = 0; private vPrev = new THREE.Vector3(); private vPrevOk = false; private limitT = 0; private limit = 14;
+  private heliSeeT = 0; private heliRef: object | null = null; private heliInT = 0; private heliArrived = false; private heliBestD = Infinity; private violT = 0; private vPrev = new THREE.Vector3(); private vPrevOk = false; private limitT = 0; private limit = 14;
   private bails: { car: AiCar; t: number }[] = [];
   private violCool = 0; private strictSeen = false; private eyeC = new THREE.Vector3(); private speedT = 0; private violKind: ViolationKind | null = null; private playerFast = false;
   private extDetector = false;
@@ -381,12 +389,14 @@ export class Police {
       const hl = this.dispatch.heli;
       if (hl && !hl.destroyed) {
         const hp = hl.position, hd = Math.hypot(hp.x - pp.x, hp.z - pp.z);
+        if (hl !== this.heliRef) { this.heliRef = hl; this.heliInT = 0; this.heliArrived = false; this.heliBestD = Infinity; }
+        this.heliInT += 0.25; this.heliBestD = Math.min(this.heliBestD, hd); if (hd < HELI_SIGHT_RANGE) this.heliArrived = true; // one scan every 0.25 s
         if (hd < HELI_SIGHT_RANGE) {
           this.eyeA.set(hp.x, hp.y - 2.5, hp.z);
           const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
           if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
           if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = heliHold(hd, true); strict = true; }
-        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false)); // still flying in from the precinct: the search is not called off while it is on its way
+        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false, heliInbound(this.heliArrived, this.heliInT, hd, this.heliBestD))); // still flying in from the precinct: the search is not called off while it is on its way (but an outrun helicopter does not hold it)
       }
       if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
