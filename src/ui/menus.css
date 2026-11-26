@@ -415,3 +415,8 @@
   .ma-root .ma-foot-hints { display: none; }
 }
 :root[data-reduce-motion='true'] .ma-root * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+
+/* Controller navigation: a clear focus ring on whatever the d-pad / stick has selected (keyboard and mouse keep the softer per-widget highlight) */
+.ma-root.is-pad [data-nav]:focus { outline: calc(3 * var(--u)) solid var(--apricot); outline-offset: calc(2 * var(--u)); }
+.ma-root.is-pad .ma-range:focus { outline: none; }
+.ma-root.is-pad .ma-range:focus::-webkit-slider-thumb { box-shadow: 0 0 0 calc(4 * var(--u)) var(--apricot), 0 0 calc(14 * var(--u)) rgba(255, 195, 126, 0.6); }

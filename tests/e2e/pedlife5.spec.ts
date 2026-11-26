@@ -80,7 +80,7 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
 test('people wait at a bus stop, board when the bus kneels, and riders step off', async () => {
   test.setTimeout(500_000);
   await page.evaluate(`(() => {
-    const g = window.__game; g.trafficCap = 0; g.pedCap = 40;
+    const g = window.__game; g.trafficCap = 0; g.pedCap = 40; g.buses.spawnOff = false; // (quietStreets stopped the buses)
     for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
     const st = g.buses.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 60, 0.4, st.z + st.dx * 6 + st.dz * 60, 0);
@@ -108,6 +108,10 @@ test('people wait at a bus stop, board when the bus kneels, and riders step off'
   })()`) as Promise<any>;
   let r: any = {}; let framed: any = null;
   for (let k = 0; k < 400 && !framed; k++) { r = await poll(); if (r.near) framed = r; }
+  // (CI once never framed a boarder in 400 s of game time while it passes locally: log what the stop and the buses were doing)
+  if (!framed) console.log('busstop', JSON.stringify({ r, ...(await page.evaluate(`(() => { const g = window.__game, B = g.buses, st = window.__bus0.st;
+    return { runs: B.runs.map(x => ({ waiting: !!x.waiting, car: !!x.car, d: x.car ? Math.round(Math.hypot(x.car.v.position.x - st.x, x.car.v.position.z - st.z)) : null })),
+      boarding: B.boarding.length, stats: B.stats, peds: g.pop.npcs.length, nearStop: g.pop.npcs.filter(n => Math.hypot(n.pos.x - st.x, n.pos.z - st.z) < 12).map(n => n.activity + '/' + n.brain) }; })()`) as object) }));
   expect(framed).not.toBeNull();
   await page.screenshot({ path: `${SHOTS}/ped-busstop.png`, timeout: 120_000 });
   let done: any = {};

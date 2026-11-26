@@ -167,11 +167,21 @@ test('player traffic violations are reported (speeding, wrong way, collision)', 
   expect(r.collision).toBe(true);
 });
 
+test('cleared streets stay clear of buses too (a bus ran over the bodies in the deaths test)', async () => {
+  await quietStreets(page);
+  const n = await page.evaluate(() => {
+    const g = (window as any).__game; let seen = 0;
+    for (let i = 0; i < 900; i++) { g.frame(1 / 30, false); if (i % 30 === 0) seen = Math.max(seen, g.traffic.cars.filter((c: any) => c.v.kind === 'bus').length); }
+    return seen;
+  });
+  expect(n).toBe(0);
+});
+
 test('city buses: loop routes, stop at the kerb with door open and kneeling, drivable', async () => {
   test.setTimeout(400_000);
   await quietStreets(page); // Round 10: start clean (a bus abandoned by the soak test above sat on the spawn point)
   const r = await page.evaluate(`(() => {
-    const g = window.__game; const B = g.buses; const out = { routes: B.routes.length };
+    const g = window.__game; const B = g.buses; B.spawnOff = false; /* quietStreets stopped them */ const out = { routes: B.routes.length };
     for (const v of [...g.vehicles.list]) if (v.kind === 'bus' && !v.persistent) g.vehicles.remove(v);
     for (const run of B.runs) run.car = null;
     g.trafficCap = 0; g.pedCap = 0;
