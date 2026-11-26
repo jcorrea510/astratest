@@ -919,6 +919,7 @@ export class Game {
     // far from the ground (flying over roofs) a 15 cm near plane leaves ~1 cm depth steps, so coplanar roof layers flicker: push it out
     { const cam = this.renderer.camera, nn = Math.min(2, 0.15 + Math.max(0, cp.y - 15) * 0.012); if (Math.abs(cam.near - nn) > 0.05 || (nn === 0.15 && cam.near !== 0.15)) { cam.near = nn; cam.updateProjectionMatrix(); } }
     const shadowR = this.renderer.quality.shadowRange * 1.3 + 10;
+    this.visuals.treeLod?.update(cp.x, cp.z, this.player.pos.x, this.player.pos.z, Math.min(max, 140), shadowR);
     for (const m of this.visuals.chunkMeshes) {
       const mesh = m as THREE.Mesh;
       const inst = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh, bb = inst ? null : mesh.geometry?.boundingBox, bs = inst ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;

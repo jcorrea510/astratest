@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
+import { ChunkInstancer } from './geometry';
 import { TrimBuilder, T_PAINT, T_METAL, T_IRON, T_ROUGH, T_PLASTIC, T_GLASS, T_NIGHTGLOW, T_GLOW, type TrimParams } from './builders';
 
 const C = (h: string) => new THREE.Color(h);
@@ -289,6 +290,70 @@ export function treeGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: T
   // thin outer fringe of small cards breaks the silhouette so the crown reads as layered foliage, not a ball
   canopy(r, 0, h + 2.0, 0, 2.9, 1.9, 2.9, 10, 0.95, o, tint.clone().multiplyScalar(1.08), crown);
   return { trunk: weather(t.build(), seed, 0.9, 0.18), leaves: leafGeo(o) };
+}
+/**
+ * Far tree (R14 W2b): ~14 big leaf cards + a 4-sided trunk, same leaf texture / tint family as the near tree. Few alpha-tested
+ * pixels (low overdraw: iPad has no early-z for discard) and a handful of triangles; used beyond TREE_LOD_NEAR.
+ */
+export function treeFarGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry } {
+  const r = new Rng(seed); const t = new TrimBuilder(); const bark = C(['#5a4c40', '#665848', '#4f4338'][seed % 3]);
+  const h = 3.7;
+  t.cyl(0, 0, 0, 0.3, 0.14, h + 0.6, 4, bark, [0.95, 0, 2, 0]);
+  const o: LeafOut = { pos: [], nor: [], uv: [], col: [] };
+  const tint = C('#98b85f');
+  const crown = { x: 0, y: h + 1.7, z: 0, R: 3.1 };
+  canopy(r, 0, h + 1.9, 0, 2.7, 1.9, 2.7, 14, 3.1, o, tint, crown);
+  return { trunk: t.build(), leaves: leafGeo(o) };
+}
+/** Tree LOD thresholds (m from the nearest edge of a 40 m cell to the camera), with hysteresis so a cell never flickers at the border. */
+export const TREE_LOD_NEAR = 48, TREE_LOD_HYST = 7;
+export function treeLodNear(dist: number, wasNear: boolean): boolean {
+  return wasNear ? dist < TREE_LOD_NEAR + TREE_LOD_HYST : dist < TREE_LOD_NEAR - TREE_LOD_HYST;
+}
+/** A tree casts a sun shadow only while its cell is within the sun-shadow range of the player (far LOD casts too, it is ~50 triangles). */
+export function treeCastsShadow(distToPlayer: number, shadowR: number): boolean {
+  return distToPlayer < shadowR;
+}
+const TREE_CELL = 40;
+/**
+ * Street trees in 40 m cells; every cell has a near mesh set (trunk + leaves per variant) and ONE far set (trunk + leaves,
+ * shared by all variants). `update` swaps per cell by distance (hysteresis) and turns shadow casting off for far / out of range cells.
+ */
+export class TreeLodField {
+  private inst = new ChunkInstancer(TREE_CELL);
+  private meshes: THREE.InstancedMesh[] = [];
+  private cellNear = new Map<string, boolean>();
+  constructor(variants: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }[], far: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, trunkMat: THREE.Material, leafMat: THREE.Material) {
+    variants.forEach((g, k) => { this.inst.register(`tree${k}`, g.trunk, trunkMat); this.inst.register(`leaf${k}`, g.leaves, leafMat); });
+    this.inst.register('ftrunk', far.trunk, trunkMat); this.inst.register('fleaf', far.leaves, leafMat);
+  }
+  add(k: number, x: number, y: number, z: number, yaw: number, s: number) {
+    this.inst.add(`tree${k}`, x, y, z, yaw, s); this.inst.add(`leaf${k}`, x, y, z, yaw, s);
+    const c = new THREE.Color().setScalar(0.92 + ((k * 37 + Math.floor(x * 3 + z * 7)) % 9) * 0.02); // far trees vary a little in brightness
+    this.inst.add('ftrunk', x, y, z, yaw, s); this.inst.add('fleaf', x, y, z, yaw, s, c);
+  }
+  build(parent: THREE.Object3D): THREE.InstancedMesh[] {
+    this.meshes = this.inst.build(parent);
+    for (const m of this.meshes) {
+      const far = m.name.startsWith('ftrunk') || m.name.startsWith('fleaf'); const bs = m.boundingSphere!;
+      m.userData.treeLod = { far, cell: m.name.slice(m.name.indexOf('@')), minX: bs.center.x - bs.radius, maxX: bs.center.x + bs.radius, minZ: bs.center.z - bs.radius, maxZ: bs.center.z + bs.radius };
+      m.userData.shadow = m.castShadow;
+    }
+    return this.meshes;
+  }
+  /** Call every few frames. `reach` = draw distance, `shadowR` = how far from the player trees still cast sun shadows. */
+  update(camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number) {
+    for (const m of this.meshes) {
+      const d = m.userData.treeLod as { far: boolean; cell: string; minX: number; maxX: number; minZ: number; maxZ: number };
+      const dist = Math.hypot(Math.max(d.minX - camX, 0, camX - d.maxX), Math.max(d.minZ - camZ, 0, camZ - d.maxZ));
+      // the near and far meshes of one cell share one state (their bounds differ by a few cm, so decide once per cell per update)
+      let near: boolean;
+      if (!d.far) { near = treeLodNear(dist, this.cellNear.get(d.cell) ?? true); this.cellNear.set(d.cell, near); } else near = this.cellNear.get(d.cell) ?? true;
+      m.visible = dist < reach && (d.far ? !near : near);
+      const dp = Math.hypot(Math.max(d.minX - plX, 0, plX - d.maxX), Math.max(d.minZ - plZ, 0, plZ - d.maxZ));
+      m.castShadow = m.visible && treeCastsShadow(dp, shadowR);
+    }
+  }
 }
 export function palmGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry } {
   const r = new Rng(seed); const t = new TrimBuilder();
