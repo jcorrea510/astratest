@@ -34,7 +34,8 @@ export async function quietStreets(page: Page) {
     g.trafficCap = 0; g.pedCap = 0;
     for (const c of [...g.traffic.cars]) if (!c.persistent) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     for (const v of [...g.vehicles.list]) if (!v.persistent && !v.driver) g.vehicles.remove(v);
-    for (const n of [...g.pop.npcs]) if (!n.persistent && !n.char.inVehicle) g.pop.remove(n);
+    // passengers of the cars removed above would otherwise stay behind as invisible witnesses sitting in a deleted car
+    for (const n of [...g.pop.npcs]) if (!n.persistent && (!n.char.inVehicle || !n.char.inVehicle.persistent)) g.pop.remove(n);
   });
 }
 export async function tap(page: Page, code: string) {
