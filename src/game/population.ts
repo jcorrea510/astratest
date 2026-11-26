@@ -334,7 +334,7 @@ export class Population {
       const inView = d < 3 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
       // Round 7 perf: people out of view only tick their skeleton 4x a second (their shadows are budgeted to the nearest anyway)
       n.inView = inView;
-      const every = animEvery(d, inView, !!c.ragdoll); // Round 12 perf: src/actors/animLod.ts
+      const every = animEvery(d, inView, !!c.ragdoll, c.speed < 0.25 && !c.human.busy); // Round 12 perf: src/actors/animLod.ts
       n.posed = n.animAcc >= every || !c.alive || !!c.ragdoll;
       if (n.posed) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);

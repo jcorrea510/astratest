@@ -12,6 +12,13 @@ describe('skeleton update rate', () => {
     expect(animEvery(120, true, false)).toBeCloseTo(0.1);
     expect(animEvery(5, false, false)).toBeCloseTo(0.4);
   });
+  it('someone standing still drops to 20 Hz beyond arm reach, but never loses the close-up rate or a ragdoll', () => {
+    expect(animEvery(10, true, false, true)).toBeCloseTo(0.05);
+    expect(animEvery(10, true, false, false)).toBeCloseTo(0.025);
+    expect(animEvery(2, true, false, true)).toBe(0);
+    expect(animEvery(10, true, true, true)).toBeCloseTo(0.025);
+    expect(animEvery(120, true, false, true)).toBeCloseTo(0.1);
+  });
   it('a ragdoll keeps the on-screen rate even when off screen', () => {
     expect(animEvery(1.5, false, true)).toBe(0);
   });
