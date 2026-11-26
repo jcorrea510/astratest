@@ -34,6 +34,7 @@ import {
 } from '../render/materials';
 import { loadSettings } from '../core/settings';
 import { planStreetscape, emitStreetscape, densityFor } from './streetscape';
+import { FINE_REACH } from '../game/farLod';
 import { Chunked, FacadeBuilder, TrimBuilder, SOLID, T_METAL, T_STONE, T_PAINT, T_NIGHTGLOW, T_GLOW } from './builders';
 import {
   type BuildCtx, type Helipad, type SignSpec, type BillboardSpec, streetBuilding, tower, house, warehouse,
@@ -338,7 +339,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const merged = mergeLots(city);
   const occ = merged.map(m => { const swap = Math.abs(Math.sin(m.rot)) > 0.7; return { x: m.x, z: m.z, hw: (swap ? m.d : m.w) / 2, hd: (swap ? m.w : m.d) / 2 }; });
   const occupied = (x: number, z: number) => occ.some(o => Math.abs(x - o.x) < o.hw && Math.abs(z - o.z) < o.hd);
-  const ctx: BuildCtx = { fac, trim, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
+  const fine = new Chunked(80, () => new TrimBuilder()); // Round 14: near-only building detail (see FINE_REACH)
+  const ctx: BuildCtx = { fac, trim, fine, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
   const towerLots = merged.filter(l => l.kind === 'tower' && l.blockId >= 0 && city.blocks[l.blockId].district === 'heights').sort((a, b) => b.height - a.height);
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
   const pf = precinctFootprint();
@@ -786,6 +788,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const bmat = buildingMaterial();
   chunkMeshes.push(...fac.meshes(bmat, root, { name: 'facade' }).map(m => { m.userData.farScale = 1.9; return m; }));
   chunkMeshes.push(...trim.meshes(tmat, root, { name: 'trim', small: true }));
+  chunkMeshes.push(...fine.meshes(tmat, root, { name: 'trimfine', small: true }).map(m => { m.userData.reachCap = FINE_REACH; return m; }));
   if (bg.length) { const bm = new THREE.Mesh(mergeGeoms(bg), bbMat); root.add(bm); }
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
   trees.build(root);

@@ -20,3 +20,14 @@ describe('chunk culling (R14)', () => {
     expect(chunkCull(tall, 900, 0, 900, 64, 500, 54, false)).toEqual({ visible: false, cast: false });
   });
 });
+
+import { chunkCull as cc, FINE_REACH, HYST } from './farLod';
+describe('building LOD hysteresis', () => {
+  const box = { minX: 100, maxX: 110, minZ: 0, maxZ: 10, maxY: 20 };
+  it('a visible fine chunk stays visible 8% past its reach, a hidden one waits', () => {
+    const x = 100 - FINE_REACH * 1.04;
+    expect(cc(box, x, 5, x, 5, FINE_REACH, 60, true, true).visible).toBe(true);
+    expect(cc(box, x, 5, x, 5, FINE_REACH, 60, true, false).visible).toBe(false);
+    expect(HYST).toBeGreaterThan(1);
+  });
+});

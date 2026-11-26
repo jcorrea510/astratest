@@ -44,13 +44,18 @@ export function boxDistXZ(b: ChunkBox, x: number, z: number): number {
   return Math.hypot(dx, dz);
 }
 
+/** Round 14 building LOD: the small detail chunks of buildings (sills, balconies, fire escapes, roof clutter, lamps) are drawn only within this many metres; beyond it a building is its facade shell + coarse trim (parapet, cornice, belt course). */
+export const FINE_REACH = 95;
+/** A chunk that is already visible stays visible until 8 % past its reach, so the edge does not flicker. */
+export const HYST = 1.08;
+
 /**
  * Round 14: per-chunk visibility and sun-shadow casting. `reach` is the draw distance for this chunk (already scaled);
  * a chunk casts only when its footprint is within `shadowR` of the player (tall chunks get extra margin since their shadows
  * reach far: at most 90 m); `small` chunks (street dressing, rooftop plant) cast over a shorter range.
  */
-export function chunkCull(b: ChunkBox, camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number, small: boolean): { visible: boolean; cast: boolean } {
-  const visible = boxDistXZ(b, camX, camZ) < reach;
+export function chunkCull(b: ChunkBox, camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number, small: boolean, wasVisible = false): { visible: boolean; cast: boolean } {
+  const visible = boxDistXZ(b, camX, camZ) < (wasVisible ? reach * HYST : reach);
   if (!visible) return { visible, cast: false };
   const margin = small ? 0 : Math.min(90, Math.max(0, b.maxY - 12) * 0.9);
   const lim = (small ? shadowR * 0.7 : shadowR) + margin;
