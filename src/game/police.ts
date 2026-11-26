@@ -382,7 +382,7 @@ export class Police {
           const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
           if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
           if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = 2.5; strict = true; }
-        }
+        } else this.heliSeeT = Math.max(this.heliSeeT, 0.5); // still flying in from the precinct (spawns 380-700 m out): the search is not called off while it is on its way
       }
       if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
