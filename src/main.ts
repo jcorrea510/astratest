@@ -389,6 +389,8 @@ function quitToTitle() {
   if (!g || !a || !sandbox) { location.href = location.pathname; return; }
   try {
     started = false; // first, so the pointer-lock / blur handlers do not pause a game that is leaving
+    // a debug / autostart URL must not start a game again on the next refresh: drop its query (no reload)
+    if (location.search) history.replaceState(history.state, '', location.pathname + location.hash);
     if (g.wheelOpen) closeWheel(true);
     a.closeShop(); a.robberies.reset();
     g.exitVehicle(true);
