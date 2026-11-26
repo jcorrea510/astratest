@@ -354,21 +354,39 @@ test('saving while swimming at sea loads you at the safehouse, not in the water'
 
 // ---------- Bug-bash D ----------
 test('the respray prompt goes away once the car has been resprayed', async ({ page }) => {
+  // Round 9 moved the garage into drive-in halls (src/game/bays.ts): drive into the Glow Garage, respray from the menu, leave;
+  // the "Stop inside" prompt must not come back while the car is still standing in the hall.
+  test.setTimeout(400_000);
   const p = watch(page);
-  await boot(page);
+  await boot(page); await quietStreets(page);
   const r = await page.evaluate(() => {
-    const g = (window as any).__game, a = (window as any).__meridian.activities;
-    g.money = 1000;
-    const v = g.vehicles.spawn('sedan', -260, 102, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+    const g = (window as any).__game, A = (window as any).__meridian.activities;
+    g.money = 1000; g.police.clear();
+    const v = g.vehicles.spawn('sedan', -182, 100, 0, -1, 0.4); v.persistent = true; g.seatPlayer(v);
     for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
     v.damage(300, v.position.clone(), null);
-    g.playerVehicle.phys.teleport(-200, 0.6, 102, Math.PI / 2);
-    for (let i = 0; i < 3; i++) g.frame(1 / 30, false);
-    const before = a.prompt();
-    for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
-    return { before, paid: 1000 - g.money, after: a.prompt() };
+    let before: string | null = null, n = 0;
+    while (A.garage.state === 'idle' && n++ < 400) {
+      if (v.position.z > 115 && before === null) before = A.prompt();
+      if (v.position.z < 119) g.input.press('KeyW'); else { g.input.release('KeyW'); g.input.press('KeyS'); }
+      g.frame(1 / 30, false);
+    }
+    g.input.release('KeyW'); g.input.release('KeyS');
+    n = 0; while (A.garage.state !== 'menu' && n++ < 200) g.frame(1 / 30, false);
+    const menu = A.garage.state;
+    (document.querySelectorAll('.ma-garage-sw')[2] as HTMLElement).focus();
+    (document.querySelector('[data-act="paint"]') as HTMLElement).click();
+    const leave = Array.from(document.querySelectorAll('.ma-garage button')).find(b => b.textContent === 'Leave') as HTMLElement;
+    leave.click();
+    n = 0; while (A.garage.state !== 'idle' && n++ < 200) g.frame(1 / 30, false);
+    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+    return { before, menu, paid: 1000 - g.money, inHall: A.garageAt(v.position) >= 0, after: A.prompt() };
   });
+  console.log('respray', JSON.stringify(r));
+  expect(r.before).toContain('Stop inside');
+  expect(r.menu).toBe('menu');
   expect(r.paid).toBe(150);
+  expect(r.inHall).toBe(true);
   expect(r.after).toBe(null);
   clean(p);
 });
