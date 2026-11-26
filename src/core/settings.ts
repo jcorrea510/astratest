@@ -1,17 +1,18 @@
 /** Player settings with presets and persistence. */
+import { defaultQualityFor } from '../render/perfPolicy';
 import { sanitizePadBindings, type PadOverrides } from './padBindings';
 export type QualityName = 'low' | 'medium' | 'high';
 export interface QualityPreset {
-  pixelRatio: number; /** Round 11: re-render the sun's shadow map every Nth frame */ shadowEvery: number; shadowMap: number; shadowRange: number; bloom: boolean; msaa: number;
+  pixelRatio: number; /** Round 14: max render pixels per frame (the ratio is lowered on big screens to fit) */ pixelBudget: number; /** Round 11: re-render the sun's shadow map every Nth frame */ shadowEvery: number; shadowMap: number; shadowRange: number; bloom: boolean; msaa: number;
   drawDistance: number; pedestrians: number; traffic: number; pointLights: number; /** Round 11: real point lights shared by all local lights (src/render/lightPool.ts) */ lightPool: number; /** real headlight spots (Round 7) */ headlights: number; particles: number;
   /** cheap instanced far crowds (src/game/crowd.ts): distant cars, pedestrians, curbside parked cars */
   farCars: number; farPeds: number; parked: number;
   /** Round 12: screen-space ambient occlusion samples (0 = off) */ ao: number;
 }
 export const QUALITY: Record<QualityName, QualityPreset> = {
-  low: { pixelRatio: 0.75, shadowEvery: 1, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, lightPool: 2, headlights: 1, particles: 300, farCars: 220, farPeds: 140, parked: 110, ao: 0 },
-  medium: { pixelRatio: 1, shadowEvery: 2, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, lightPool: 4, headlights: 2, particles: 700, farCars: 420, farPeds: 340, parked: 250, ao: 8 },
-  high: { pixelRatio: 1.25, shadowEvery: 1, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, lightPool: 8, headlights: 4, particles: 1200, farCars: 560, farPeds: 520, parked: 380, ao: 12 },
+  low: { pixelRatio: 1, pixelBudget: 1.1e6, shadowEvery: 1, shadowMap: 0, shadowRange: 0, bloom: false, msaa: 0, drawDistance: 260, pedestrians: 40, traffic: 18, pointLights: 0, lightPool: 2, headlights: 1, particles: 300, farCars: 220, farPeds: 140, parked: 110, ao: 0 },
+  medium: { pixelRatio: 1.5, pixelBudget: 2.4e6, shadowEvery: 2, shadowMap: 2048, shadowRange: 34, bloom: true, msaa: 0, drawDistance: 340, pedestrians: 64, traffic: 32, pointLights: 4, lightPool: 4, headlights: 2, particles: 700, farCars: 420, farPeds: 340, parked: 250, ao: 8 },
+  high: { pixelRatio: 2, pixelBudget: 4.2e6, shadowEvery: 1, shadowMap: 3072, shadowRange: 52, bloom: true, msaa: 2, drawDistance: 420, pedestrians: 120, traffic: 44, pointLights: 8, lightPool: 8, headlights: 4, particles: 1200, farCars: 560, farPeds: 520, parked: 380, ao: 12 },
 };
 
 export type Action =
@@ -115,10 +116,7 @@ export function saveSettings(s: Settings, storage: Pick<Storage, 'setItem'> | nu
 }
 export function detectDefaultQuality(): QualityName {
   try {
-    const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
-    const cores = navigator.hardwareConcurrency ?? 8;
-    if (mem <= 4 || cores <= 4) return 'low';
-    return 'medium';
+    return defaultQualityFor({ ua: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints || 0, cores: navigator.hardwareConcurrency ?? 8, memory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory, dpr: window.devicePixelRatio || 1 });
   } catch { return 'medium'; }
 }
 function clampNum(v: unknown, a: number, b: number, d: number) { return typeof v === 'number' && Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : d; }
