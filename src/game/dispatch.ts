@@ -75,6 +75,16 @@ export function reinforceHidden(distTarget: number, distCam: number, inFrustum: 
   return distTarget >= REINFORCE_MIN && distCam >= REINFORCE_MIN && (!inFrustum || Math.min(distTarget, distCam) >= UNSEEN_DIST);
 }
 export const HELI_MIN_DIST = 380, HELI_MAX_DIST = 700;
+/**
+ * Altitude a police helicopter enters at: the default (55 m over the player) unless a rooftop under it is higher. The spawn point is
+ * a bearing and a distance, so it can land inside a 130 m tower: the rotor strike ray then wrecked it on the very first step and
+ * it respawned inside the tower every frame (no helicopter ever reached the player, the spotlight never held the heat). Pure.
+ */
+export function heliSpawnY(baseY: number, roofTops: readonly number[]): number {
+  let y = baseY;
+  for (const t of roofTops) y = Math.max(y, t + 14);
+  return y;
+}
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Dispatch {
@@ -247,6 +257,12 @@ export class Dispatch {
     }
     return out;
   }
+  /** Height of the highest static surface (ground, rooftop, hillside) at x / z, 0 when there is none. */
+  private terrainTop(x: number, z: number): number {
+    const ph = (this.pop as unknown as { env: { physics: { ray: (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, t: number, g?: number) => { toi: number } | null } } }).env.physics;
+    const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1);
+    return hit ? 400 - hit.toi : 0;
+  }
   updateHeli(dt: number, player: Character, heat: number, active: boolean, vsHeli = false, camera?: THREE.Camera) {
     const h = this.hooks; if (!h) return;
     if (this.heli && (this.heli.destroyed || !this.pop || !active)) {
@@ -257,7 +273,9 @@ export class Dispatch {
       const sp = this.heliSpawnPoint(player.pos, camera), yaw = Math.atan2(player.pos.x - sp.x, player.pos.z - sp.z);
       this.heli = h.spawnHeli(sp.x, sp.z, yaw);
       const b = this.heli; b.engineOn = true; b.rotor = 1; b.persistent = true;
-      b.teleport(sp.x, sp.y, sp.z, yaw);
+      // clear every rooftop under the rotor disc (centre and four points 10 m out), not just the default altitude
+      const tops = [[0, 0], [10, 0], [-10, 0], [0, 10], [0, -10]].map(([ox, oz]) => this.terrainTop(sp.x + ox, sp.z + oz));
+      b.teleport(sp.x, heliSpawnY(sp.y, tops), sp.z, yaw);
       this.ensureLight();
     }
     const b = this.heli; if (!b) return;
@@ -269,8 +287,7 @@ export class Dispatch {
     // Round 11: clear the rooftops and hills around and ahead (at a flat 42 m it hit a 77 m tower every 11 s and respawned)
     const fx = d > 1 ? dx / d : 0, fz = d > 1 ? dz / d : 0;
     // ...and the ground: the hills rise 40 m above the street (it flew into a hillside at 47 m every 11 s, then respawned)
-    const ph = (this.pop as unknown as { env: { physics: { ray: (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, t: number, g?: number) => { toi: number } | null } } }).env.physics;
-    const ground = (x: number, z: number) => { const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1); return hit ? 400 - hit.toi : 0; };
+    const ground = (x: number, z: number) => this.terrainTop(x, z);
     // a fan of downward rays: here and 40 / 90 / 150 m ahead, on the line and 15 m either side (rooftops and hillsides)
     let roofs = 0;
     for (const a of [0, 40, 90, 150]) for (const l of [-15, 0, 15]) roofs = Math.max(roofs, ground(pos.x + fx * a + fz * l, pos.z + fz * a - fx * l));

@@ -28,7 +28,7 @@ describe('dispatch origins', () => {
   });
 });
 
-import { HELI_MIN_DIST, REINFORCE_MIN, reinforceHidden } from './dispatch';
+import { HELI_MIN_DIST, REINFORCE_MIN, reinforceHidden, heliSpawnY } from './dispatch';
 import { HeatState } from './police';
 describe('police helicopter arrival', () => {
   it('enters far from the player, never inside the camera view, heading in from the precinct side', () => {
@@ -47,6 +47,11 @@ describe('police helicopter arrival', () => {
     expect(reinforceHidden(300, 300, true)).toBe(false); // on screen at street range
     expect(reinforceHidden(300, 300, false)).toBe(true);
     expect(reinforceHidden(60, 60, false)).toBe(false); // too near
+  });
+  it('enters above any tower under its spawn point (it was wrecked inside a 130 m block on the first step and respawned every frame)', () => {
+    expect(heliSpawnY(56, [0, 0, 0, 0, 0])).toBe(56); // open ground: the default altitude
+    expect(heliSpawnY(56, [20, 137, 90, 0, 40])).toBe(137 + 14); // clears the tallest rooftop under the rotor disc
+    expect(heliSpawnY(56, [])).toBe(56);
   });
   it('reinforcements keep a minimum distance bigger than the street view', () => { expect(REINFORCE_MIN).toBeGreaterThanOrEqual(120); });
 });

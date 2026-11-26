@@ -7,7 +7,9 @@ async function aimAt(page: Page, target: string) {
     const g = (window as any).__game, T = g.renderer.camera.position.constructor;
     const v = (window as any).__victim;
     for (let i = 0; i < 6; i++) {
-      if (v) { v.brain = 'scripted'; v.char.vel.set(0, 0, 0); }
+      // a wounded civilian bolts for a quarter second after the shot and ends up side-on: his near arm then really is in front of his chest
+      // (a legitimate 'arm' hit). The scene holds him in place, so it also holds him facing the shooter.
+      if (v) { v.brain = 'scripted'; v.char.vel.set(0, 0, 0); v.char.yaw = Math.atan2(g.player.pos.x - v.char.pos.x, g.player.pos.z - v.char.pos.z); }
       const p = (new Function('g', `return ${target}`))(g);
       g.frame(1 / 60, false);
       const cam = g.renderer.camera.getWorldPosition(new T());
