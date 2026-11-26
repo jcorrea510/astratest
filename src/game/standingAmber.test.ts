@@ -5,6 +5,7 @@ describe('standing start on amber (traffic6 bus that entered the junction after 
   it('a standing car whose centre is past its stop point, short of the box, holds when the amber is nearly spent', () => {
     expect(signalCap('yellow', -(BOX_EDGE + 0.6), 0, 1.0)).toBe(0); // the bus: dStop -5.5, 1 s of amber left
     expect(signalCap('yellow', -2, 0.3, 3)).toBe(0);
+    expect(signalCap('yellow', -0.1, 1.8, 1.5)).toBe(0); // crept to the bar at 1.8 m/s: must not launch again into the red
   });
   it('still goes with plenty of amber, from green, or when already rolling', () => {
     expect(signalCap('yellow', -2, 0, 6)).toBe(Infinity);

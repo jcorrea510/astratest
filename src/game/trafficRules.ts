@@ -74,7 +74,7 @@ export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, spee
   // Round 12 (traffic6 red-runner): a long vehicle (a bus at a stop just before the junction) can stand with its centre already
   // past its stop point (dStop < 0) yet short of the box. Standing there on amber it used to pull away, "committed", and entered
   // the junction after the red. A standing car with too little amber left to clear the box waits for the next green.
-  if (state === 'yellow' && speed < 1.2 && dStop < 0 && yellowLeft < 3.5) return 0;
+  if (state === 'yellow' && speed < 2.5 && dStop < 0 && yellowLeft < 3.5) return 0; // (a car that crept up to the bar on amber at 1-2 m/s re-accelerated into the red)
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
     // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
     if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;

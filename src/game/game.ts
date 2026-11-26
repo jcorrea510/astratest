@@ -349,6 +349,7 @@ export class Game {
     const loop = (now: number) => {
       if (!this.running) return;
       requestAnimationFrame(loop);
+      if (fullscreenSettling()) { this.last = now; return; } // the browser is switching fullscreen: leave the main thread free for it (core/fullscreen)
       const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
@@ -374,7 +375,7 @@ export class Game {
     Vehicle.renderAlpha = this.paused ? 1 : Math.min(1, this.acc * 60);
     this.update(dt, raw);
     this.onFrame?.(raw);
-    if (render && !fullscreenSettling()) this.renderer.render(); // (no draw while the browser switches fullscreen: see core/fullscreen)
+    if (render) this.renderer.render();
     this.input.endFrame();
   }
   get inputBlocked() { return this.blockedInput || this.wheelOpen || this.menuOpen || this.deathT >= 0; }
