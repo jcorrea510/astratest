@@ -2,6 +2,7 @@
 import { type Bench, nearestFreeBench } from '../world/benches';
 import { holdOnHuman } from '../combat/gunRig';
 import { holdEvery, holdNow } from './animLod';
+import { sweepEvery } from './sweepLod';
 import * as THREE from 'three';
 import { Character } from './character';
 import type { HumanTemplate, Look } from './human';
@@ -385,13 +386,17 @@ export class NpcBrainRunner {
       c.pos.addScaledVector(tv, dt); c.vel.copy(tv);
       { const nd = n.nextNode >= 0 ? this.env.city.pedNodes[n.nextNode] : undefined; if (nd && (nd.y !== undefined || c.pos.y > 0.6)) { const ty = (nd.y ?? 0) + 0.2; c.pos.y += THREE.MathUtils.clamp(ty - c.pos.y, -dt * 1.2, dt * 1.2); } } // bridge walkways: follow the deck height
       c.body.setNextKinematicTranslation({ x: c.pos.x, y: c.pos.y + 0.87, z: c.pos.z });
-    } else c.move(tv, dt, false);
-    if (speed > 0) {
+    } else {
+      // Round 12 perf: officers / gang members far away or off screen batch their collision sweep (src/actors/sweepLod.ts)
+      c.sweepEvery = n.role !== 'civilian' && c.knockT <= 0 && c.downT <= 0 ? sweepEvery(c.pos.distanceToSquared(env.player.pos), n.inView) : 1;
+      c.move(tv, dt, false);
+    }
+    if (speed > 0 && c.swept) {
       const moved = c.pos.distanceTo(n.lastPos);
       if (moved < speed * dt * 0.25) { n.stuckT += dt; if (n.stuckT > 0.6) { n.stuckT = 0; n.sideT = 0.8; n.sideDir = Math.random() < 0.5 ? 1 : -1; if (n.brain === 'combat') n.goal = null; } }
       else n.stuckT = Math.max(0, n.stuckT - dt);
     }
-    n.lastPos.copy(c.pos);
+    if (c.swept) n.lastPos.copy(c.pos);
     const yaw = faceYaw ?? (speed > 0.2 && c.speed > 0.3 ? Math.atan2(c.vel.x, c.vel.z) : null);
     if (yaw !== null) c.faceTowards(yaw, aiming ? 10 : 7, dt);
     c.twist = 0;
@@ -487,7 +492,8 @@ export class NpcBrainRunner {
       c.human.trigger = fighting && n.cooldown > 0 ? 1 : 0;
       // Round 12 perf: the two-hand IK is the costliest per-person pose work; thin it out by distance / visibility (src/actors/animLod.ts).
       // A skipped frame keeps the gun where it was, carried along with the body so it never trails a running officer.
-      const every = holdEvery(n.pos.distanceToSquared(this.env.player.pos), n.inView);
+      const hd = n.pos.distanceToSquared(this.env.player.pos);
+      const every = fighting ? holdEvery(hd, n.inView) : hd < 8 * 8 && n.inView ? 2 : holdEvery(hd, n.inView) * 2; // a low-ready gun (not firing) needs fewer solves
       if (n.holdValid && !holdNow(++n.holdTick, n.id, every)) {
         n.model.position.x += c.pos.x - n.holdPos.x; n.model.position.y += c.pos.y - n.holdPos.y; n.model.position.z += c.pos.z - n.holdPos.z;
         n.holdPos.copy(c.pos); n.model.updateMatrixWorld(true); return;

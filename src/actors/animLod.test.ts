@@ -3,9 +3,9 @@ import { holdEvery, holdNow } from './animLod';
 
 describe('animation LOD rate policy', () => {
   it('solves the gun IK every frame close and on screen, thinner further out, rarely off screen', () => {
-    expect(holdEvery(10 * 10, true)).toBe(1);
-    expect(holdEvery(19 * 19, true)).toBe(1);
-    expect(holdEvery(25 * 25, true)).toBe(2);
+    expect(holdEvery(7 * 7, true)).toBe(1);
+    expect(holdEvery(19 * 19, true)).toBe(2);
+    expect(holdEvery(30 * 30, true)).toBe(4);
     expect(holdEvery(40 * 40, true)).toBe(4);
     expect(holdEvery(5 * 5, false)).toBe(8); // behind the camera: not even close ones pay
   });
