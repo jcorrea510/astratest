@@ -1,27 +1,9 @@
 guns-all ok {"calls":123,"tris":57474}
 gun-pistol ok {"calls":7,"tris":2230}
-gun-heavyPistol ok {"calls":7,"tris":2314}
-gun-revolver ok {"calls":7,"tris":4972}
-gun-smg ok {"calls":7,"tris":3312}
-gun-shotgun ok {"calls":7,"tris":2166}
 gun-rifle ok {"calls":5,"tris":3088}
-gun-carbine ok {"calls":7,"tris":2872}
-gun-sniper ok {"calls":8,"tris":4296}
-gun-lmg ok {"calls":7,"tris":3732}
-gun-rpg ok {"calls":9,"tris":3254}
-gun-knife ok {"calls":4,"tris":1290}
 people-body ok {"calls":16,"tris":110631}
 people-face ok {"calls":13,"tris":92888}
 people-face2 ok {"calls":13,"tris":95922}
 people-crowd ok {"calls":24,"tris":179828}
-signal-day FAILED page.screenshot: Timeout 30000ms exceeded.
-Call log:
-  - taking page screenshot
-  - waiting for fonts to load...
-  - fonts loaded
-
-signal-day-far ok {"calls":242,"triangles":1279998,"textures":87,"geometries":2078,"programs":139}
-night-headlights ok {"calls":233,"triangles":1173951,"textures":98,"geometries":2081,"programs":147}
-street-people-day ok {"calls":209,"triangles":1309725,"textures":97,"geometries":2085,"programs":147}
-car-close-day ok {"calls":69,"triangles":435223,"textures":97,"geometries":2085,"programs":147}
-night-street ok {"calls":211,"triangles":1290620,"textures":101,"geometries":2088,"programs":147}
+signal-day ok {"calls":118,"triangles":762131,"textures":78,"geometries":2046,"programs":138}
+street-people-day ok {"calls":141,"triangles":890926,"textures":83,"geometries":2052,"programs":139}

@@ -40,4 +40,11 @@ describe('skin shader chunks', () => {
     const decls = [...SKIN_GLSL.matchAll(/^\s{2}(?:float|vec3)\s+(\w+)/gm)].map(m => m[1]);
     expect(new Set(decls).size).toBe(decls.length);
   });
+  it('nails: non-skin texels on hands become natural pink (polish via uNeck.w only)', () => {
+    expect(SKIN_GLSL).toContain('float nlM = ri == 2');
+    expect(SKIN_GLSL).toContain('uNeck.w > 0.5 ? uC[10]');
+  });
+  it('neck, chest and hands clamp texture luminance so they match the face tone', () => {
+    expect(SKIN_GLSL).toContain('lr = ri == 0 ? lr : clamp(lr, 0.45, 1.1)');
+  });
 });

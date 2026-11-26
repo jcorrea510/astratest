@@ -10,7 +10,7 @@ import { FACE_PARS, EYES_GLSL } from './shade/face';
 import { TOP_PARS, TOP_GLSL } from './shade/top';
 import { BOTTOM_PARS, BOTTOM_GLSL, SHOE_GLSL, SOLE_GLSL } from './shade/bottom';
 import { patchHair } from './shade/hair';
-import type { FullLook } from './look';
+import { nailPolish, type FullLook } from './look';
 import type { BodyBase } from './humanAssets';
 
 export const TOP_IDS: Record<FullLook['topStyle'], number> = { tee: 0, tank: 1, longsleeve: 2, hoodie: 3, jacket: 4, suit: 5, shirt: 6, polo: 7, dress: 8, uniform: 9, blouse: 10 };
@@ -72,7 +72,7 @@ int ri = int(region + 0.5);
 float covTop = 0.0, covBot = 0.0, covShoe = 0.0;
 if (ri == 1) {
   float nd = length((position.xz - uNeck.xy) * vec2(1.0, 1.2));
-  covTop = smoothstep(uTop.y - 0.06, uTop.y, cloth) * max(1.0 - smoothstep(uTop.z, uTop.z + 0.05, cloth), smoothstep(uNeck.z, uNeck.z + 0.03, nd));
+  covTop = smoothstep(uTop.y - 0.06, uTop.y, cloth) * max(1.0 - smoothstep(uTop.z, uTop.z + 0.05, cloth), smoothstep(uNeck.z, uNeck.z + 0.06, nd));
   covBot = 1.0 - smoothstep(uBottom.w, uBottom.w + 0.05, cloth);
 } else if (ri == 2) { covTop = (1.0 - smoothstep(uTop.x, uTop.x + 0.05, cloth)) * (1.0 - step(1.05, cloth)); }
 else if (ri == 3) { covBot = 1.0 - smoothstep(uBottom.x, uBottom.x + 0.05, cloth); covShoe = smoothstep(uBottom.z - 0.05, uBottom.z, cloth); }
@@ -179,6 +179,9 @@ export function applyLookUniforms(m: THREE.MeshStandardMaterial, base: BodyBase,
   const neckline = top === 'tank' ? 0.9 : top === 'dress' || top === 'blouse' ? 0.93 : top === 'suit' || top === 'jacket' ? 1.03 : ['shirt', 'polo', 'uniform', 'hoodie'].includes(top) ? 1.0 : 0.96;
   u.uTop.value.set(sleeve, hem, neckline, TOP_IDS[top]);
   u.uNeck.value.z = top === 'tank' ? 0.1 : top === 'dress' || top === 'blouse' ? 0.095 : ['shirt', 'polo', 'uniform', 'jacket', 'suit', 'hoodie'].includes(top) ? 0.07 : 0.082;
+  const polish = nailPolish(l);
+  u.uNeck.value.w = polish ? 1 : 0;
+  if (polish) C[10].copy(lin(polish));
   const b = l.bottomStyle;
   const legEnd = b === 'skirt' || top === 'dress' ? 0.2 : b === 'shorts' ? 0.43 : 0.99;
   const shoeTop = l.shoeStyle === 'boots' ? 0.8 : 0.995;

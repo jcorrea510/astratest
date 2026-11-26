@@ -54,6 +54,10 @@ const MUTED = ['#3d5a80', '#6b8cae', '#8aa4b8', '#7a3b3f', '#a05a4e', '#b8785a',
 const DENIM = ['#1f2b45', '#2a3b5c', '#3a4f78', '#4a6492', '#6a82a8', '#8ea3bf', '#a9b8cc', '#2b2d33'];
 const CHINO = ['#2a2c31', '#3a3f4a', '#4e4a44', '#6f6250', '#a39275', '#bfae8c', '#4a4f33', '#1d2433'];
 const SUIT_COLOURS = ['#1f2126', '#2b2d33', '#262f45', '#3d3f45', '#4a4a4f', '#54483c'];
+/** Inner top under an open jacket or hoodie: believable tee colours, never pure white. */
+const TEE_INNER = ['#4a4d52', '#6b6e72', '#9a9a96', '#c8c6bf', '#202226', '#3d5a80', '#7a3b3f', '#5e7f6a', '#6b5a7a', '#a58a96', '#b99a52', '#8aa4b8'];
+/** Nail polish shades (muted, real lacquers). */
+export const NAIL_POLISH = ['#7a2a38', '#a8505a', '#c9908c', '#2b2d3a', '#5a3a52', '#8a3a3a'];
 const SHIRT_WHITES = ['#e6e3da', '#d9e0e8', '#ece4d4', '#c9d3df'];
 const SNEAKER = ['#e6e3da', '#d4d2cb', '#202226', '#3d3f45', '#8a8d91', '#26334f', '#6b4a3a'];
 const BOOT = ['#3a2a1e', '#5a3d26', '#202226', '#6f4f33'];
@@ -137,7 +141,7 @@ export function randomLook(seed: number): FullLook {
   const shoes = shoeStyle === 'sneakers' ? r.pick(SNEAKER) : shoeStyle === 'boots' ? r.pick(BOOT) : r.pick(FORMAL);
   const inner = topStyle === 'jacket' || topStyle === 'hoodie' || topStyle === 'suit';
   // Accent: the shirt under a jacket/suit, otherwise a plausible pair for the top (light/dark neutral or a muted tone).
-  const accent = topStyle === 'suit' ? r.pick(SHIRT_WHITES) : inner ? r.pick([...NEUTRAL.slice(3), ...SHIRT_WHITES]) : r.chance(0.7) ? r.pick(NEUTRAL.slice(4)) : r.pick(MUTED);
+  const accent = topStyle === 'suit' ? r.pick(SHIRT_WHITES) : inner ? r.pick(TEE_INNER) : r.chance(0.7) ? r.pick(NEUTRAL.slice(4)) : r.pick(MUTED);
   const hatStyle: HatStyle = ['afro', 'bun', 'buns', 'long', 'ponytail', 'braids', 'bob'].includes(hairStyle) || topStyle === 'suit' || topStyle === 'dress' ? 'none' : r.chance(0.14) ? r.pick(['cap', 'cap', 'beanie'] as const) : 'none';
   // Patterns are rare (~13% of tops) and only on garments where they read as real.
   let pattern: Pattern = 'plain';
@@ -147,8 +151,8 @@ export function randomLook(seed: number): FullLook {
     else if (topStyle === 'tee') pattern = r.pick(['graphic', 'stripes', 'twotone'] as const);
     else if (topStyle === 'blouse' || topStyle === 'dress') pattern = r.pick(['stripes', 'twotone'] as const);
     else if (topStyle === 'hoodie') pattern = 'twotone';
-    else if (topStyle === 'suit') pattern = 'pinstripe';
   }
+  if (topStyle === 'suit' && r.chance(0.16)) pattern = 'pinstripe'; // most suits are solid
   if (pattern === 'pinstripe') { const c = r.pick(['#262f45', '#33363b', '#202226']); top = c; }
   const finalBottom = topStyle === 'suit' ? top : bottom;
   const sleeves = topStyle === 'tank' ? 'tank' : ['tee', 'polo', 'blouse', 'dress'].includes(topStyle) && r.chance(0.8) ? 'short' : 'long';
@@ -170,3 +174,13 @@ export const PLAYER_DEFAULT_LOOK: FullLook = {
   top: '#66764a', bottom: '#2b2f38', shoes: '#f2f0ea', hat: '#1c1d21', detail: '#c9a54a',
   sleeves: 'long', legs: 'pants', height: 1.0, build: 1.04, weight: 0.05, eyes: '#2a1a10', headScale: 1, jaw: 0.3,
 };
+
+/** Nail polish colour for a look, or null for natural nails: only some women, deterministic per look. */
+export function nailPolish(l: Look): string | null {
+  const sex = l.sex ?? (['long', 'bun', 'ponytail', 'bob', 'buns', 'pixie'].includes(l.hairStyle) ? 'f' : 'm');
+  if (sex !== 'f') return null;
+  let h = 2166136261;
+  for (const ch of l.skin + l.hair + l.top) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h >>>= 0;
+  return h % 100 < 25 ? NAIL_POLISH[(h >>> 8) % NAIL_POLISH.length] : null;
+}
