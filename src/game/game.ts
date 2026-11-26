@@ -1,5 +1,6 @@
 /** Game orchestrator: owns the world, systems and the main loop. */
 import * as THREE from 'three';
+import { shouldSkipRaf, nearestLamps } from './frameUtil';
 import { addPooledLight } from '../render/lightPool';
 import { Renderer } from '../render/renderer';
 import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
@@ -86,6 +87,9 @@ export class Game {
   camOverride: ((raw: number) => boolean) | null = null;
   dayLength = 24 * 60;
   private acc = 0;
+  private rafEma = 16.7;
+  private camDirTmp = new THREE.Vector3();
+  private lampPick: { i: number; d: number }[] = [];
   private last = 0;
   private running = false;
   fps = 60; /** Round 11: smoothed CPU ms per frame (sim + draw submission) */ cpuMs = 8;
@@ -356,7 +360,10 @@ export class Game {
       if (!this.running) return;
       requestAnimationFrame(loop);
       if (fullscreenSettling()) { this.last = now; return; } // the browser is switching fullscreen: leave the main thread free for it (core/fullscreen)
-      const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
+      // ProMotion (120 Hz rAF): render every other callback so the GPU draws 60 fps; the skipped callback's time folds into the next dt
+      const gap = now - this.last; this.rafEma = this.rafEma * 0.9 + Math.min(50, gap) * 0.1;
+      if (shouldSkipRaf(gap, this.rafEma)) return;
+      const raw = Math.max(0, Math.min(0.1, gap / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
       const c0 = performance.now(); this.guard.run(() => this.frame(raw)); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
@@ -376,7 +383,7 @@ export class Game {
       const step = 1 / 60;
       let n = 0;
       while (this.acc >= step && n < 4) { this.fixedUpdate(step); this.acc -= step; n++; }
-      if (n === 4) this.acc = 0;
+      if (n === 4) this.acc = Math.min(this.acc, step); // spiral guard: drop the backlog but keep a sub-step remainder (no jitter from a hard reset)
     }
     Vehicle.renderAlpha = this.paused ? 1 : Math.min(1, this.acc * 60);
     this.update(dt, raw);
@@ -677,6 +684,7 @@ export class Game {
     this.pickups.push(p); return p;
   }
   private updatePickups(dt: number) {
+    if (!this.pickups.length) return;
     for (const p of [...this.pickups]) {
       p.ttl -= dt;
       p.mesh.children[0].rotation.y += dt * 2; p.mesh.children[0].position.y = Math.sin(this.time * 3 + p.id) * 0.06;
@@ -758,7 +766,7 @@ export class Game {
     else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.visualYaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
     else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.visualYaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
     else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
-    const camDir = this.renderer.camera.getWorldDirection(new THREE.Vector3());
+    const camDir = this.renderer.camera.getWorldDirection(this.camDirTmp);
     this.audio.setListener(this.renderer.camera.position, camDir);
     this.warmT -= raw;
     if (this.warmT <= 0 && this.warmKinds.length && !this.paused) { this.warmT = 1.5; getTemplate(this.warmKinds.shift()!); }
@@ -768,7 +776,7 @@ export class Game {
       const p = this.player.pos;
       const water = Math.max(0, 1 - Math.min(Math.max(0, 440 - p.z), p.z > -60 ? Math.max(0, 480 - p.x) : 999) / 90);
       const d = districtAt(this.city, p.x, p.z);
-      const near = this.vehicles.list.filter(v => v.driver && v.position.distanceTo(p) < 90).length;
+      let near = 0; for (const v of this.vehicles.list) if (v.driver && v.position.distanceToSquared(p) < 8100) near++;
       this.audio.setAmbience({ night: this.renderer.skyState.night, water, traffic: Math.min(1, near / 8 + (d === 'heights' ? 0.3 : 0.1)), park: d === 'juniper' ? 1 : d === 'hillside' ? 0.6 : d === 'strand' ? 0.3 : 0, altitude: Math.min(1, Math.max(0, (this.renderer.camera.position.y - 25) / 70)) });
     }
     this.renderer.updateEnvironment(this.hour, this.time, this.player.pos);
@@ -872,8 +880,8 @@ export class Game {
     if (this.lampTimer <= 0) {
       this.lampTimer = 0.4;
       const cp = this.renderer.camera.position;
-      const sorted = this.visuals.lampHeads.map((h, i) => ({ i, d: h.distanceToSquared(cp) })).sort((a, b) => a.d - b.d);
-      this.lampLights.forEach((l, k) => { if (k < n && sorted[k]) l.position.copy(this.visuals.lampHeads[sorted[k].i]).setY(this.visuals.lampHeads[sorted[k].i].y - 0.4); });
+      const sorted = nearestLamps(this.visuals.lampHeads, cp, n, this.lampPick);
+      for (let k = 0; k < this.lampLights.length; k++) { const e = sorted[k]; if (k < n && e) { const hd = this.visuals.lampHeads[e.i]; this.lampLights[k].position.set(hd.x, hd.y - 0.4, hd.z); } }
     }
     // Lights stay in the scene (constant light count avoids shader recompiles); intensity fades them.
     this.lampLights.forEach((l, k) => { l.intensity = k < n ? on * 28 : 0; });
