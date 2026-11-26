@@ -71,6 +71,10 @@ export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, spee
     if (state === 'red' && dStop > -BOX_EDGE && Math.max(0, speed) ** 2 / (2 * MAX_DECEL) < dStop + BOX_EDGE - 0.3) return 0;
     return Infinity;
   }
+  // Round 12 (traffic6 red-runner): a long vehicle (a bus at a stop just before the junction) can stand with its centre already
+  // past its stop point (dStop < 0) yet short of the box. Standing there on amber it used to pull away, "committed", and entered
+  // the junction after the red. A standing car with too little amber left to clear the box waits for the next green.
+  if (state === 'yellow' && speed < 2.5 && dStop < 0 && yellowLeft < 3.5) return 0; // (a car that crept up to the bar on amber at 1-2 m/s re-accelerated into the red)
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
     // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
     if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;
@@ -152,3 +156,10 @@ export function aiPedal(err: number, speed: number, targetSpeed: number): number
 export const STOP_BAR = 4.6;
 /** Metres from the junction edge (lane end) to a stopped car's centre: nose 0.3 m behind the stop bar (it used to stand on the zebra). */
 export function stopBack(halfLen: number): number { return STOP_BAR + 0.3 + Math.max(1.8, halfLen); }
+
+/**
+ * Round 12 (traffic6): a civilian 'goto' car (bus, taxi) within 20 m of its target used to ignore the signals altogether, so a
+ * bus standing at a stop beside the junction crept to its target at ~2 m/s straight through the red. Signals are ignored near
+ * the target only when the stop line is not close (the car is dropping someone at a kerb mid-block). Pure (tests).
+ */
+export function skipSignalNearTarget(dStop: number): boolean { return !(dStop > -BOX_EDGE - 3 && dStop < 25); }
