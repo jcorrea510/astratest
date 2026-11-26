@@ -926,7 +926,7 @@ export class Game {
       let cb = mesh.userData.cbox as ChunkBox | undefined;
       if (!cb) { cb = bb ? { minX: bb.min.x, maxX: bb.max.x, minZ: bb.min.z, maxZ: bb.max.z, maxY: bb.max.y } : { minX: bs!.center.x - bs!.radius, maxX: bs!.center.x + bs!.radius, minZ: bs!.center.z - bs!.radius, maxZ: bs!.center.z + bs!.radius, maxY: bs!.center.y + bs!.radius }; mesh.userData.cbox = cb; }
       const small = !!mesh.userData.small;
-      const r = chunkCull(cb, cp.x, cp.z, this.player.pos.x, this.player.pos.z, small ? Math.min(max, 140) : max * (mesh.userData.farScale ?? 1), shadowR, small); // R14 CW: footprint boxes, not spheres; CITY: facades reach further (farScale)
+      const r = chunkCull(cb, cp.x, cp.z, this.player.pos.x, this.player.pos.z, small ? Math.min(max, mesh.userData.reachCap ?? 140) : max * (mesh.userData.farScale ?? 1), shadowR, small, mesh.visible); // R14 CW: footprint boxes, not spheres; CITY: facades reach further (farScale)
       mesh.visible = r.visible;
       if (mesh.userData.shadow === undefined) mesh.userData.shadow = mesh.castShadow;
       mesh.castShadow = mesh.userData.shadow && r.cast;
