@@ -111,7 +111,7 @@ function applySettings(s: Settings) {
   saveSettings(settings);
   audio?.setVolumes(settings.master, settings.music, settings.sfx);
   audio?.applyChannelSettings(settings);
-  if (game) { game.cam.shakeScale = settings.cameraShake; game.renderer.setLook(settings.look); setRealisticDriving(settings.driving === 'realistic'); if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
+  if (game) { game.cam.shakeScale = settings.cameraShake; game.renderer.setLook(settings.look); setRealisticDriving(settings.driving === 'realistic'); touch?.setMode(settings.touchControls); if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
 }
 
 /** Context loss and frame-loop crashes: pause with a clear message instead of leaving a dead canvas. */
@@ -242,7 +242,7 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     ui.hideLoading();
     ui.setHudVisible(true);
     g.onFrame = dt => frame(dt);
-    touch ??= new TouchControls(ui.touchHost.root, ui.touchHost.layer, g.input, params.get('touch') === '1');
+    touch ??= new TouchControls(ui.touchHost.root, ui.touchHost.layer, g.input, params.get('touch') === '1', settings.touchControls);
     g.start();
     g.input.requestLock();
     if (!loaded) {

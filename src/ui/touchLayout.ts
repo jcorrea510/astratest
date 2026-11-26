@@ -98,3 +98,13 @@ export function touchPromptFor(prompt: string | null, bindings: Partial<Record<A
   for (const b of LAYOUTS[ctx]) if ((bindings[b.action] ?? []).some(c => capOf(c) === want)) return b.label + m[2];
   return prompt;
 }
+
+/** Should the on-screen controls show? 'auto': any touchscreen (coarse pointer, touch points, iPad Safari that reports as a Mac)
+ *  or a finger just touched; a mouse click hides them on a touch laptop until the next tap. */
+export function touchWanted(mode: 'auto' | 'on' | 'off', d: { forced?: boolean; coarse: boolean; maxTouch: number; sawTouch: boolean; sawMouse: boolean }): boolean {
+  if (d.forced || mode === 'on') return true;
+  if (mode === 'off') return false;
+  if (d.sawTouch) return true;
+  if (d.sawMouse) return false;
+  return d.coarse || d.maxTouch > 0;
+}

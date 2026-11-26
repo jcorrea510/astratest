@@ -5,9 +5,9 @@
  * Pure layout and maths live in touchLayout.ts.
  */
 import type { Input } from '../core/input';
-import type { Action } from '../core/settings';
+import type { Action, TouchControlsMode } from '../core/settings';
 import { h } from './dom';
-import { LAYOUTS, TOP_BUTTONS, LOOK_GAIN, STICK_SPRINT, axesFor, stickAxes, uFor, pxSize, type TouchButton, type TouchContext } from './touchLayout';
+import { LAYOUTS, TOP_BUTTONS, LOOK_GAIN, STICK_SPRINT, axesFor, stickAxes, uFor, pxSize, touchWanted, type TouchButton, type TouchContext } from './touchLayout';
 import './touch.css';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -62,7 +62,7 @@ export class TouchControls {
   private stickSprint = false;
   private mq: MediaQueryList | null = null;
 
-  constructor(root: HTMLElement, layer: HTMLElement, input: Input, forced = false) {
+  constructor(root: HTMLElement, layer: HTMLElement, input: Input, forced = false, mode: TouchControlsMode = 'auto') {
     this.root = root; this.input = input;
     this.el = h('div', 'ma-touch');
     this.el.dataset.touchUi = '';
@@ -79,20 +79,29 @@ export class TouchControls {
     for (const t of ['contextmenu', 'selectstart', 'dragstart'] as const) this.el.addEventListener(t, e => e.preventDefault());
     document.addEventListener('gesturestart', e => e.preventDefault());
     try { this.mq = matchMedia('(pointer: coarse)'); this.mq.addEventListener?.('change', () => this.refresh()); } catch { /* no matchMedia */ }
-    window.addEventListener('pointerdown', e => {
+    const onPointer = (e: PointerEvent) => {
       const t = e.pointerType === 'touch' || e.pointerType === 'pen';
-      if (t !== this.sawTouch) { this.sawTouch = t; this.refresh(); }
-    }, { capture: true, passive: true });
+      const m = e.pointerType === 'mouse';
+      if (t !== this.sawTouch || m !== this.sawMouse) { this.sawTouch = t; this.sawMouse = m; this.refresh(); }
+    };
+    window.addEventListener('pointerdown', onPointer, { capture: true, passive: true });
+    // a finger that only drags (no pointerdown reached us yet, e.g. inside an iframe on iOS) still counts
+    window.addEventListener('touchstart', () => { if (!this.sawTouch) { this.sawTouch = true; this.sawMouse = false; this.refresh(); } }, { capture: true, passive: true });
     window.addEventListener('blur', () => this.releaseAll());
-    this.forced = forced;
+    this.forced = forced; this.mode = mode;
     this.refresh();
   }
   private forced = false;
+  private mode: TouchControlsMode = 'auto';
+  private sawMouse = false;
   get isEnabled(): boolean { return this.enabled; }
+  /** Settings > Controls > Touch Controls (auto / on / off). */
+  setMode(mode: TouchControlsMode) { if (mode === this.mode) return; this.mode = mode; this.refresh(); }
   /** Coarse pointer (touch screen) or a finger just touched: show the controls. A mouse click hides them again unless the screen is coarse. */
   private refresh() {
     let coarse = false; try { coarse = !!this.mq?.matches; } catch { /* ignore */ }
-    const on = this.forced || coarse || this.sawTouch;
+    let maxTouch = 0; try { maxTouch = navigator.maxTouchPoints || ('ontouchstart' in window ? 1 : 0); } catch { /* ignore */ }
+    const on = touchWanted(this.mode, { forced: this.forced, coarse, maxTouch, sawTouch: this.sawTouch, sawMouse: this.sawMouse });
     if (on === this.enabled) return;
     this.enabled = on;
     this.input.touchActive = on;
