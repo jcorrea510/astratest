@@ -322,8 +322,9 @@ export class Population {
         h.mesh.visible = vis;
         // Round 7 perf: seated people barely move: full rate only up close
         n.animAcc += dt;
-        if (vis) { h.setBodyLod(dv > 36 ? 2 : dv > 13 ? 1 : 0); if (n.animAcc >= (dv > 40 ? 0.1 : dv > 14 ? 0.05 : 0)) { h.update(n.animAcc); n.animAcc = 0; } }
-        h.setDetail(vis && dv < 40); h.mesh.castShadow = dv < 18; for (const e of h.extras) e.castShadow = dv < 12;
+        if (vis) { h.setLodDistance(dv, true); if (n.animAcc >= (dv > 40 ? 0.1 : dv > 14 ? 0.05 : 0)) { h.update(n.animAcc); n.animAcc = 0; } }
+        if (!vis) h.setLodDistance(dv, false);
+        h.mesh.castShadow = dv < 18; for (const e of h.extras) e.castShadow = dv < 12;
         continue;
       }
       const d = c.pos.distanceTo(focus);
@@ -340,7 +341,7 @@ export class Population {
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 32;
       h.mesh.visible = inView;
-      h.setBodyLod(d > 36 ? 2 : d > 13 ? 1 : 0); h.setDetail(d < 48 && inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
+      h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }
     // shadow caster budget: only the nearest people are drawn into the shadow map (the rest keep their lit body)
     const sc: { n: Npc; d: number }[] = [];
