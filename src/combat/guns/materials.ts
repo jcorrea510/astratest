@@ -46,8 +46,12 @@ float gmRough = 0.0;
 float gmMetal = 0.0;
 float gmBump = 0.0;
 vec3 gmUnitN = normalize(gmN);
-float gmEdge = smoothstep(0.04, 0.22, length(fwidth(gmUnitN)));
-float gmFine = gmNoise(gmP * 900.0);
+// Round 13 review: edges by geometric curvature (normal change per metre), not per pixel: a thin barrel or a far gun turned
+// its whole surface into "worn edge" and showed white blotches. gmLod fades sub-millimetre detail once a pixel covers it.
+float gmFoot = max(length(fwidth(gmP)), 1e-6);
+float gmEdge = smoothstep(260.0, 900.0, length(fwidth(gmUnitN)) / gmFoot);
+float gmLod = 1.0 - smoothstep(0.0004, 0.0016, gmFoot);
+float gmFine = mix(0.5, gmNoise(gmP * 900.0), gmLod);
 float gmMid = gmNoise(gmP * 160.0);
 `;
 
@@ -157,7 +161,7 @@ const BUMP = /* glsl */ `
 { // micro bump from gmBump (metres), screen-space derivatives (same method as three's perturbNormalArb)
   vec3 gmDpx = dFdx(-vViewPosition);
   vec3 gmDpy = dFdy(-vViewPosition);
-  vec2 gmDh = vec2(dFdx(gmBump), dFdy(gmBump));
+  vec2 gmDh = vec2(dFdx(gmBump * gmLod), dFdy(gmBump * gmLod));
   vec3 gmR1 = cross(gmDpy, normal);
   vec3 gmR2 = cross(normal, gmDpx);
   float gmDet = dot(gmDpx, gmR1);
@@ -169,7 +173,7 @@ const BUMP = /* glsl */ `
 export function patchGunMaterial(m: THREE.MeshStandardMaterial, name: Mat) {
   const kind = KIND[name];
   if (kind === undefined) return;
-  m.customProgramCacheKey = () => `gunmat-${name}-v1`;
+  m.customProgramCacheKey = () => `gunmat-${name}-v2`;
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>\n${VERT_PARS}`)

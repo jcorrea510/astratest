@@ -34,3 +34,14 @@ describe('gun materials', () => {
     expect(tris).toBeLessThan(60000);
   });
 });
+
+// Round 13 review (CI shot gun-rifle): the barrel showed white blotches: edge wear keyed on per-pixel normal change made a
+// thin cylinder (or any far gun) all "edge". Edges now come from geometric curvature, and sub-mm bump fades with distance.
+it('edge wear uses curvature per metre and micro detail fades with pixel footprint', () => {
+  const m = mats().steel as THREE.MeshStandardMaterial;
+  const sh = { vertexShader: '#include <common>\n#include <begin_vertex>', fragmentShader: '#include <common>\n#include <color_fragment>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>' };
+  m.onBeforeCompile(sh as never, null as never);
+  expect(sh.fragmentShader).toContain('length(fwidth(gmUnitN)) / gmFoot');
+  expect(sh.fragmentShader).toContain('dFdx(gmBump * gmLod)');
+  expect(sh.fragmentShader).not.toContain('smoothstep(0.04, 0.22, length(fwidth(gmUnitN)))');
+});
