@@ -1,7 +1,6 @@
 /** NPC brains: civilians wander and react, gang members and police fight intelligently. */
 import { type Bench, nearestFreeBench } from '../world/benches';
 import { holdOnHuman } from '../combat/gunRig';
-import { holdEvery, holdNow } from './animLod';
 import { sweepEvery } from './sweepLod';
 import * as THREE from 'three';
 import { Character } from './character';
@@ -58,7 +57,7 @@ export class Npc {
   far = false;
   animAcc = Math.random() * 0.016; // random phase: people on the 30 Hz skeleton rate do not all land on the same frames
   /** Round 12 animation LOD: on screen last frame, frames since the last gun-hold solve, and the body position at that solve */
-  inView = true; holdWasInView = true; holdTick = 0; holdPos = new THREE.Vector3(); holdValid = false;
+  inView = true; holdWasInView = true; /** the skeleton was re-posed this frame (set by Population.update) */ posed = true; holdPos = new THREE.Vector3(); holdValid = false;
   /** Makes the next updateModel solve the gun hold immediately (hit tests that need current arm bones call this, then updateModel). */
   forcePose() { this.holdValid = false; }
   /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
@@ -490,13 +489,12 @@ export class NpcBrainRunner {
       const fighting = n.brain === 'combat' && !!tgt;
       if (fighting) tvA.set(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z);
       c.human.trigger = fighting && n.cooldown > 0 ? 1 : 0;
-      // Round 12 perf: the two-hand IK is the costliest per-person pose work; thin it out by distance / visibility (src/actors/animLod.ts).
-      // A skipped frame keeps the gun where it was, carried along with the body so it never trails a running officer.
-      const hd = n.pos.distanceToSquared(this.env.player.pos);
-      if (n.inView && !n.holdWasInView) n.holdValid = false; // just came on screen: re-solve the grip now, not up to 0.4 s later
+      // Round 12 perf: the two-hand IK is the costliest per-person pose work. It only has to run when the skeleton was just
+      // re-posed (the mixer overwrote the arms): the animation rate policy (src/actors/animLod.ts) already thins that by distance and
+      // visibility. On a frame the skeleton kept its last pose (arms still solved), the gun is just carried along with the body.
+      if (n.inView && !n.holdWasInView) n.holdValid = false; // just came on screen: re-solve the grip now
       n.holdWasInView = n.inView;
-      const every = fighting ? holdEvery(hd, n.inView) : hd < 8 * 8 && n.inView ? 2 : holdEvery(hd, n.inView) * 2; // a low-ready gun (not firing) needs fewer solves
-      if (n.holdValid && !holdNow(++n.holdTick, n.id, every)) {
+      if (n.holdValid && !n.posed) {
         n.model.position.x += c.pos.x - n.holdPos.x; n.model.position.y += c.pos.y - n.holdPos.y; n.model.position.z += c.pos.z - n.holdPos.z;
         n.holdPos.copy(c.pos); n.model.updateMatrixWorld(true); return;
       }
