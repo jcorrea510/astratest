@@ -237,6 +237,8 @@ test('tour: every feature in one session, clean console and sane world after eve
   await S('rob a walk-in store', async () => {
     const r = await page.evaluate(() => {
       const g = (window as any).__game; const R = (window as any).__meridian.activities.robberies; const k = R.kiosks[1];
+      // the previous steps leave 3 stars with 4 cars and 10 officers on the player (hp 33): they can arrest or kill mid hold-up, so start clean
+      g.police.clear(); g.player.health = g.player.maxHealth;
       g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol'); g.money = 0;
       g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, 0); for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
       k.brave = false; const c = k.clerk; g.input.press('Mouse2'); let started = false;

@@ -26,6 +26,10 @@ export const DISPATCH_HOLD = 14;
 export type ViolationKind = 'red_light' | 'speeding' | 'wrong_way' | 'collision' | 'reckless';
 const COP_KINDS = ['police', 'fbi', 'swat', 'army', 'tank'];
 /** Speeding counts when the player is more than 15 mph (6.7 m/s) over the lane's limit. Pure, unit tested. */
+/** Metres within which a police helicopter's spotlight can find the player; further out it is still flying in. */
+export const HELI_SIGHT_RANGE = 200;
+/** Seconds the search timer stays held after a scan: 2.5 with the spotlight on the player, 0.5 while the helicopter is still inbound (it spawns 380-700 m out), else 0. */
+export const heliHold = (hd: number, los: boolean) => hd < HELI_SIGHT_RANGE ? (los ? 2.5 : 0) : 0.5;
 export const isSpeeding = (speed: number, limit: number) => Math.abs(speed) > limit + 6.7;
 /** A vehicle moving from (px,pz) to (x,z) enters the box of a signalised junction while its light is red. Pure, unit tested. */
 export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz: number, x: number, z: number, time: number): boolean {
@@ -377,12 +381,12 @@ export class Police {
       const hl = this.dispatch.heli;
       if (hl && !hl.destroyed) {
         const hp = hl.position, hd = Math.hypot(hp.x - pp.x, hp.z - pp.z);
-        if (hd < 200) {
+        if (hd < HELI_SIGHT_RANGE) {
           this.eyeA.set(hp.x, hp.y - 2.5, hp.z);
           const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
           if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
-          if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = 2.5; strict = true; }
-        }
+          if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = heliHold(hd, true); strict = true; }
+        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false)); // still flying in from the precinct: the search is not called off while it is on its way
       }
       if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
