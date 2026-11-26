@@ -6,7 +6,7 @@ const ALL = { BOTTOM_PARS, BOTTOM_GLSL, SHOE_GLSL, SOLE_GLSL };
 const strip = (s: string) => s.replace(/\/\/.*$/gm, '');
 
 // names provided by the enclosing fragment shader (humanMaterial.ts) or GLSL itself
-const OUTER = new Set(['uC', 'uBottom', 'uPat', 'uBody', 'vBind', 'vCloth', 'ri', 'bn', 'front', 'grain', 'flatN', 'bumpH', 'vnoise', 'hsh', 'col', 'rough']);
+const OUTER = new Set(['uC', 'uBottom', 'uPat', 'uBody', 'vBind', 'vCloth', 'ri', 'bn', 'front', 'grain', 'flatN', 'bumpH', 'gSheen', 'vnoise', 'hsh', 'col', 'rough']);
 const BUILTIN = new Set(['float', 'vec2', 'vec3', 'vec4', 'int', 'bool', 'if', 'else', 'return', 'step', 'smoothstep', 'mix', 'clamp', 'min', 'max', 'abs', 'sin', 'fract', 'length', 'dot', 'atan', 'fwidth']);
 
 describe('bottom/shoe shader chunks', () => {

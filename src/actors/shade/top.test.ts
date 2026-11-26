@@ -40,7 +40,7 @@ describe('top shader chunk', () => {
     const builtins = new Set(['abs', 'sin', 'cos', 'atan', 'pow', 'sqrt', 'min', 'max', 'mix', 'clamp', 'smoothstep', 'step', 'fract', 'floor', 'length', 'dot', 'fwidth',
       'float', 'vec2', 'vec3', 'vec4', 'bool', 'int', 'if', 'else', 'return', 'true', 'false']);
     // provided by humanMaterial.ts' fragment shader (spot-checked against its source below)
-    const scope = ['vnoise', 'hsh', 'vBind', 'vCloth', 'bn', 'front', 'grain', 'uC', 'uTop', 'uBody', 'uNeck', 'uPat', 'topId', 'ri', 'col', 'rough', 'bumpH'];
+    const scope = ['vnoise', 'hsh', 'vBind', 'vCloth', 'bn', 'front', 'grain', 'uC', 'uTop', 'uBody', 'uNeck', 'uPat', 'topId', 'ri', 'col', 'rough', 'bumpH', 'gSheen'];
     for (const id of scope) expect(material, id).toContain(id);
     const declared = new Set<string>();
     for (const m of all.matchAll(/\b(?:float|vec2|vec3|vec4|bool|int)\s+(\w+)/g)) declared.add(m[1]);
@@ -88,5 +88,13 @@ describe('P7 defect fixes', () => {
     expect(line).toBeTruthy();
     expect(line).not.toMatch(/noise|hsh|grain/);
     expect(material).toContain('smoothstep(uNeck.z, uNeck.z + 0.06, nd)');
+  });
+});
+
+describe('R14 PL cloth and collar', () => {
+  it('sets per-fabric sheen and the neckline gets an anti-aliased contact seam', () => {
+    expect(TOP_GLSL).toContain('gSheen =');
+    expect(material).toContain('nEdge');
+    expect(material).toContain('smoothstep(0.0, 2.5 * nEw, abs(nEdge))');
   });
 });
