@@ -15,7 +15,9 @@ test('pedestrians walk across the bridge walkway at deck height', async () => {
     const g = window.__game; const N = g.city.pedNodes; g.pedCap = 20;
     const start = N.filter(n => n.y !== undefined && n.x > 560 && n.x < 580 && n.z < 200)[0];
     const peds = [];
-    for (let k = 0; k < 3; k++) { const n = g.pop.spawn('civilian', start.x + k, start.z, start.y + 0.3); n.node = start.id; n.nextNode = start.id; n.persistent = true; /* far-crowd hand-over would swap walkers out beyond ~110 m */ peds.push(n); }
+    // head east onto the span: each walker picks its own next node at random, and all three turning back west (seen on CI) never reaches x 600
+    const east = start.edges.map(e => N[e.to]).filter(m => m && m.y !== undefined).sort((a, b) => b.x - a.x)[0];
+    for (let k = 0; k < 3; k++) { const n = g.pop.spawn('civilian', start.x + k, start.z, start.y + 0.3); n.node = start.id; n.nextNode = east ? east.id : start.id; n.persistent = true; /* far-crowd hand-over would swap walkers out beyond ~110 m */ peds.push(n); }
     g.player.place(start.x + 8, start.y + 0.3, start.z, 0);
     let minY = 99, maxY = -99, maxX = 0, alive = 0;
     for (let i = 0; i < 90 * 30; i++) { g.frame(1 / 30, i === 90 * 30 - 1); for (const n of peds) { if (!n.alive || n.disposed) continue; if (n.pos.x > 560 && n.pos.x < 710) minY = Math.min(minY, n.pos.y); maxY = Math.max(maxY, n.pos.y); maxX = Math.max(maxX, n.pos.x); } }
