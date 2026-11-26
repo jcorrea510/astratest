@@ -34,3 +34,25 @@ export function parkHeliBody(b: ParkableBody, parked: boolean) {
     if (!b.isSleeping()) b.sleep();
   } else if (b.gravityScale() !== 1) b.setGravityScale(1, true);
 }
+
+/** Axis-aligned footprint of a static chunk (world xz) plus its top height. */
+export interface ChunkBox { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number }
+
+/** Horizontal distance from (x,z) to the box footprint (0 inside). Much tighter than centre-minus-sphere-radius for a long chunk. */
+export function boxDistXZ(b: ChunkBox, x: number, z: number): number {
+  const dx = Math.max(b.minX - x, 0, x - b.maxX), dz = Math.max(b.minZ - z, 0, z - b.maxZ);
+  return Math.hypot(dx, dz);
+}
+
+/**
+ * Round 14: per-chunk visibility and sun-shadow casting. `reach` is the draw distance for this chunk (already scaled);
+ * a chunk casts only when its footprint is within `shadowR` of the player (tall chunks get extra margin since their shadows
+ * reach far: at most 90 m); `small` chunks (street dressing, rooftop plant) cast over a shorter range.
+ */
+export function chunkCull(b: ChunkBox, camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number, small: boolean): { visible: boolean; cast: boolean } {
+  const visible = boxDistXZ(b, camX, camZ) < reach;
+  if (!visible) return { visible, cast: false };
+  const margin = small ? 0 : Math.min(90, Math.max(0, b.maxY - 12) * 0.9);
+  const lim = (small ? shadowR * 0.7 : shadowR) + margin;
+  return { visible, cast: boxDistXZ(b, plX, plZ) < lim };
+}

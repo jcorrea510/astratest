@@ -169,7 +169,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const walks = new GeoBuilder();
   const inner = new GeoBuilder();
   const grassInner = new GeoBuilder();
-  const trim = new Chunked(125, () => new TrimBuilder());
+  const trim = new Chunked(80, () => new TrimBuilder());
   // Broadway cuts three blocks into triangles: raised pavement triangles either side of a street-level channel
   const triPrism = (gb: GeoBuilder, t0: { x: number; z: number }[], y0: number, y1: number, top: THREE.Color, side: THREE.Color) => {
     let t = t0;
@@ -331,7 +331,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // ---------- Buildings ----------
   worldGlass.reset();
-  const fac = new Chunked(250, () => new FacadeBuilder());
+  const fac = new Chunked(150, () => new FacadeBuilder());
   const signs: SignSpec[] = [], billboards: BillboardSpec[] = [], helipads: Helipad[] = [];
   const merged = mergeLots(city);
   const occ = merged.map(m => { const swap = Math.abs(Math.sin(m.rot)) > 0.7; return { x: m.x, z: m.z, hw: (swap ? m.d : m.w) / 2, hd: (swap ? m.w : m.d) / 2 }; });
