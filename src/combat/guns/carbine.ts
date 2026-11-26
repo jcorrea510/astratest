@@ -1,7 +1,7 @@
-/** Model: carbine (see combat/weapons.ts for its name and stats). */
+/** Model: carbine ("Kite Carbine"): short AR-pattern carbine, tan furniture, slim stock, brake, tube red dot. */
 import type { Kit, Built } from './kit';
-import { longGun } from './families';
+import { buildAR } from './rifle';
 
 export function build(k: Kit): Built {
-  return longGun(k, { recv: [-0.08, 0.17], recvH: 0.065, barrel: 0.46, guard: 0.18, stock: 'tube', stockLen: 0.24, mag: 'curved', magLen: 0.17, optic: 'dot', muzzle: 'flash', furniture: 'tan' });
+  return buildAR(k, { guardLen: 0.17, barrelEnd: 0.43, furniture: 'tan', stock: 'slim', stockLen: 0.17, muzzle: 'brake', optic: 'dot' });
 }
