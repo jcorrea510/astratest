@@ -14,6 +14,24 @@ export function jobFare(metres: number, seconds: number): { fare: number; tip: n
   return { fare, tip };
 }
 
+type FareLane = Parameters<typeof samplePath>[0] & { connector?: boolean; length: number; lane: number; lanes: number };
+/**
+ * The middle of a random kerb lane 250-650 m away (the farthest one under 650 m when none is in that ring). Pure: used by tests.
+ * It used to try 60 random lanes and give up, which on a big map often dropped a fare that had already got in.
+ */
+export function pickFareDest(lanes: readonly FareLane[], from: { x: number; z: number }, rnd: () => number = Math.random): THREE.Vector3 | null {
+  const ring: THREE.Vector3[] = []; let far: THREE.Vector3 | null = null, farD = 0;
+  const sp = { x: 0, z: 0, dx: 0, dz: 1 };
+  for (const l of lanes) {
+    if (l.connector || l.ys || l.length < 40 || l.lane !== l.lanes - 1) continue;
+    samplePath(l, l.length * 0.5, sp);
+    const d = Math.hypot(sp.x - from.x, sp.z - from.z);
+    if (d >= 250 && d <= 650) ring.push(new THREE.Vector3(sp.x, 0, sp.z));
+    else if (d < 250 && d > farD) { farD = d; far = new THREE.Vector3(sp.x, 0, sp.z); }
+  }
+  return ring.length ? ring[Math.min(ring.length - 1, Math.floor(rnd() * ring.length))] : far;
+}
+
 type Phase = { kind: 'idle' } | { kind: 'pickup'; n: Npc; t: number } | { kind: 'ride'; n: Npc; dest: THREE.Vector3; dist: number; t: number };
 
 export class TaxiJob {
@@ -47,17 +65,7 @@ export class TaxiJob {
     if (msg) this.g.events.onToast(msg, 'warning');
   }
   /** A drop-off point on a kerb lane 250-650 m away. */
-  private pickDest(from: THREE.Vector3): THREE.Vector3 | null {
-    const lanes = this.g.city.lanes;
-    for (let k = 0; k < 60; k++) {
-      const l = lanes[Math.floor(Math.random() * lanes.length)];
-      if (l.connector || l.ys || l.length < 40 || l.lane !== l.lanes - 1) continue;
-      const sp = { x: 0, z: 0, dx: 0, dz: 1 }; samplePath(l, l.length * 0.5, sp);
-      const d = Math.hypot(sp.x - from.x, sp.z - from.z); if (d < 250 || d > 650) continue;
-      return new THREE.Vector3(sp.x, 0, sp.z);
-    }
-    return null;
-  }
+  private pickDest(from: THREE.Vector3): THREE.Vector3 | null { return pickFareDest(this.g.city.lanes, from); }
   update(dt: number) {
     const g = this.g, pv = g.playerVehicle, ph = this.phase;
     if (!pv || pv.kind !== 'taxi' || pv.destroyed) { if (ph.kind !== 'idle') this.cancel(ph.kind === 'ride' ? 'Your fare got out.' : null); this.hinted = false; return; }
