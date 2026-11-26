@@ -269,7 +269,7 @@ export class StoreExtras {
     if (this.canBoxes(k) && held) {
       ex.boxT += dt; ex.pickT -= dt; if (ex.pickT <= 0) { ex.pickT = 0.8; g.player.human.playOnce('PickUp_Table', 'full', 0.12); g.audio.play('glass', { pos: k.pos, volume: 0.3 }); }
       this.ui.robberyMeter({ label: 'Prying open deposit boxes', progress: ex.boxT / BOX_TIME, cash: this.bag });
-      if (ex.boxT >= BOX_TIME) { ex.boxT = 0; ex.boxes++; const v2 = boxLoot(Math.random(), this.host.mult()); this.bag += v2; this.ui.toast(`Deposit box: $${v2} in jewellery and cash (in the bag)`, 'money'); this.ui.robberyMeter(null); }
+      if (ex.boxT >= BOX_TIME) { ex.boxT = 0; ex.boxes++; const v2 = boxLoot(Math.random(), this.host.mult()); this.bag += v2; this.ui.toast(`Deposit box: $${v2} in jewelry and cash (in the bag)`, 'money'); this.ui.robberyMeter(null); }
     } else if (ex.boxT > 0 && !held) { ex.boxT = 0; this.ui.robberyMeter(null); }
     if (ex.stage >= 3) { ex.vaultOpen = Math.min(1, ex.vaultOpen + dt / 2.4); sh.setVault(ex.vaultOpen * ex.vaultOpen * (3 - 2 * ex.vaultOpen)); }
     if (this.canVaultLoot(k)) {

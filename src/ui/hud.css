@@ -47,15 +47,23 @@
   transition: opacity 0.2s, transform 0.2s; visibility: hidden;
 }
 .ma-root .ma-heat.is-visible { opacity: 1; transform: none; visibility: visible; }
-.ma-root .ma-star { width: calc(27 * var(--u)); height: calc(27 * var(--u)); color: rgba(255, 255, 255, 0.16); }
-.ma-root .ma-star-fill { fill: currentColor; stroke: rgba(0, 0, 0, 0.55); stroke-width: 1.2; stroke-linejoin: round; paint-order: stroke; }
-.ma-root .ma-star.is-on { color: #ffe27a; }
-.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(40, 20, 0, 0.9); stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
-.ma-root .ma-star.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
-.ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-siren 0.8s steps(1) infinite; }
-.ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
-@keyframes ma-star-siren { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
-.ma-root .ma-heat.is-flash { border-color: rgba(255, 77, 94, 0.5); }
+.ma-root .ma-heat { align-items: center; }
+.ma-root .ma-heat-seg {
+  width: calc(22 * var(--u)); height: calc(9 * var(--u)); border-radius: calc(2 * var(--u)); box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.14); border: calc(1 * var(--u)) solid rgba(0, 0, 0, 0.55);
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.ma-root .ma-heat-seg.is-on { background: #ffe27a; box-shadow: 0 0 calc(6 * var(--u)) rgba(255, 226, 122, 0.45); }
+.ma-root .ma-heat-seg.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
+.ma-root .ma-heat.is-rising .ma-heat-seg.is-on { animation: ma-heat-flash 0.5s steps(1) infinite; }
+.ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: ma-heat-pulse 2s ease-in-out infinite; }
+@keyframes ma-heat-flash { 0% { background: var(--heat-red); } 50% { background: var(--heat-blue); } }
+@keyframes ma-heat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on, .ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: none; }
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on { background: var(--heat-red); }
+}
+.ma-root .ma-heat.is-rising, .ma-root .ma-heat.is-search { border-color: rgba(255, 77, 94, 0.5); }
 
 /* ---------------------------------------------------------------- top left: gear, fps */
 .ma-root .ma-gear { left: var(--edge-x); top: calc(16 * var(--u)); width: calc(30 * var(--u)); height: calc(30 * var(--u)); font-size: calc(17 * var(--u)); background: var(--glass); border: 1px solid var(--hair); opacity: 0.8; }
@@ -266,10 +274,6 @@
 .ma-root .ma-ammo-sep, .ma-root .ma-ammo-reserve { font-size: calc(19 * var(--u)); color: rgba(255, 255, 255, 0.5); }
 .ma-root .ma-weapon-name { margin: calc(1 * var(--u)) 0 0; text-align: right; font-size: max(12px, calc(12 * var(--u))); letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.66); font-weight: 600; text-shadow: var(--ink-shadow); }
 .ma-root .ma-heat { padding: calc(4 * var(--u)) 0 0; gap: calc(2 * var(--u)); }
-.ma-root .ma-star { width: calc(26 * var(--u)); height: calc(26 * var(--u)); color: rgba(255, 255, 255, 0.2); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55)); }
-.ma-root .ma-star-fill { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; paint-order: normal; }
-.ma-root .ma-star.is-on { color: #ffd45e; filter: drop-shadow(0 0 calc(5 * var(--u)) rgba(255, 190, 60, 0.55)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)); }
-.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(60, 30, 0, 0.75); stroke-width: 1.1; filter: none; }
 .ma-root .ma-heat.is-flash { border-color: transparent; }
 
 /* bottom left: circular radar */
@@ -317,14 +321,13 @@
 /* ---------------------------------------------------------------- heat: steady / colour-blind variants, save indicator */
 :root[data-colorblind='deuteranopia'] .ma-root, :root[data-colorblind='protanopia'] .ma-root { --heat-red: #ffb000; --heat-blue: #4aa8ff; }
 :root[data-colorblind='tritanopia'] .ma-root { --heat-red: #ff4d6a; --heat-blue: #5ff0ff; }
-/* colour-blind modes: the siren alternates solid and outlined stars (pattern), and the count is written out */
-:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-pattern 0.8s steps(1) infinite; }
-:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
-@keyframes ma-star-pattern { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
-:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(odd) .ma-star-fill { stroke-dasharray: 3 2; stroke-width: 2.4; stroke: #fff; }
+/* colour-blind modes: the siren alternates solid and outlined segments (pattern), and the count is written out */
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: ma-heat-flash 0.8s steps(1) infinite; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(even) { animation-delay: -0.4s; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(odd) { border: calc(2 * var(--u)) dashed #fff; }
 :root:not([data-colorblind='off']) .ma-root .ma-heat.is-visible::after { content: attr(data-n) '/5'; margin-left: calc(4 * var(--u)); align-self: center; font-size: max(12px, calc(13 * var(--u))); font-weight: 800; color: #fff; letter-spacing: 0.04em; text-shadow: var(--txt-shadow); }
 /* Reduce Motion: no flashing at all, a steady siren colour */
-:root[data-reduce-motion='true'] .ma-root .ma-heat.is-flash .ma-star.is-on { animation: none !important; color: var(--heat-red); }
+:root[data-reduce-motion='true'] .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: none !important; background: var(--heat-red); }
 .ma-root .ma-save {
   position: absolute; right: var(--edge-x); bottom: calc(8 * var(--u)); display: flex; align-items: center; gap: calc(7 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u));
   font-size: max(12px, calc(12 * var(--u))); font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.85); background: rgba(12, 14, 18, 0.55);
