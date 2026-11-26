@@ -118,6 +118,7 @@ const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
+const _dp = new THREE.Vector3(), _ds = new THREE.Vector3(), _dq = new THREE.Quaternion(); // matrixWorld decompose scratch (IK)
 /** Round 11: culling sphere for a person's skinned meshes (body space, metres; bind-pose sphere r 1.08 m at hip height). */
 export const PERSON_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);
 /** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
@@ -462,15 +463,15 @@ export class Human {
    * on the arm, then the hand bone is turned to `quat`). Hand-local axes: y = fingers, rim (+z) = thumb side.
    * w blends from the animated pose (0) to the full hold (1). Call every frame; the mixer resets the bones next frame.
    */
-  gripSolve(side: 'L' | 'R', palm: THREE.Vector3, quat: THREE.Quaternion, w: number) {
+  gripSolve(side: 'L' | 'R', palm: THREE.Vector3, quat: THREE.Quaternion, w: number, fresh = false) {
     const hand = side === 'L' ? this.leftHand : this.rightHand;
     if (w <= 0.001 || !hand.parent) return;
-    this.root.updateMatrixWorld(true);
-    const sc = hand.getWorldScale(_gt).y || 1;
+    if (!fresh) this.root.updateMatrixWorld(true); // `fresh`: the caller just updated the world matrices and has not moved a bone of this arm since (saves a full skeleton pass)
+    hand.matrixWorld.decompose(_dp, _dq, _gt); const sc = _gt.y || 1; // (matrixWorld is fresh here: read it directly, getWorldScale would re-walk every ancestor)
     _gt.set(0, GRIP_PALM * sc, 0).applyQuaternion(quat); _gt.negate().add(palm); // wrist target (kept apart from solveArm's scratch vectors)
     this.solveArm(side, _gt, w);
     hand.updateMatrixWorld(true);
-    hand.parent.getWorldQuaternion(_iq1).invert();
+    hand.parent.matrixWorld.decompose(_dp, _iq1, _ds); _iq1.invert();
     _iq2.copy(_iq1).multiply(quat);
     hand.quaternion.slerp(_iq2, w); hand.updateMatrixWorld(true);
     this.curlFingers(side, w);
@@ -516,11 +517,14 @@ export class Human {
   }
   private solveChain(A: THREE.Object3D | undefined, B: THREE.Object3D | undefined, C: THREE.Object3D | undefined, target: THREE.Vector3, w: number) {
     if (!A || !B || !C) return;
-    const a = A.getWorldPosition(_ia), b = B.getWorldPosition(_ib), c = C.getWorldPosition(_ic);
+    // world matrices are fresh on entry (callers update the skeleton first), so read them directly: getWorldPosition / getWorldQuaternion
+    // re-compose every ancestor bone on each call, which made this solve the costliest part of a gun-holding NPC's frame
+    const a = _ia.setFromMatrixPosition(A.matrixWorld), b = _ib.setFromMatrixPosition(B.matrixWorld), c = _ic.setFromMatrixPosition(C.matrixWorld);
     const l1 = a.distanceTo(b), l2 = b.distanceTo(c);
     if (l1 < 1e-4 || l2 < 1e-4) return;
     const rot = (bone: THREE.Object3D, q: THREE.Quaternion) => {
-      const pq = bone.parent!.getWorldQuaternion(_iq1), wq = bone.getWorldQuaternion(_iq2).premultiply(q);
+      bone.parent!.matrixWorld.decompose(_dp, _iq1, _ds); bone.matrixWorld.decompose(_dp, _iq2, _ds);
+      const pq = _iq1, wq = _iq2.premultiply(q);
       bone.quaternion.copy(pq.invert().multiply(wq)); bone.updateMatrixWorld(true);
     };
     const d = THREE.MathUtils.clamp(a.distanceTo(target), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.005);
@@ -531,7 +535,7 @@ export class Human {
     _iqw.setFromAxisAngle(_ia2, want - cur);
     const save = [A.quaternion.clone(), B.quaternion.clone()];
     rot(B, _iqw);
-    C.getWorldPosition(_ic);
+    _ic.setFromMatrixPosition(C.matrixWorld);
     _iu.subVectors(_ic, a).normalize(); _iv.subVectors(target, a).normalize();
     _iqw.setFromUnitVectors(_iu, _iv);
     rot(A, _iqw);

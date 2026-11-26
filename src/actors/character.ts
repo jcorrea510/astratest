@@ -119,7 +119,7 @@ export class Character {
       this.sweepAcc += dt;
       if (!sweepNow(++this.sweepTick, this.sweepId, this.sweepEvery)) { this.swept = false; return; }
       const step = Math.min(this.sweepAcc, 0.25); this.sweepAcc = 0;
-      const n = sweepSubsteps(step, Math.hypot(this.vel.x, this.vel.z), CAP_R * 0.8);
+      const n = sweepSubsteps(step, Math.hypot(this.vel.x, this.vel.z), 1.2);
       for (let i = 0; i < n; i++) this.sweep(step / n);
       return;
     }
