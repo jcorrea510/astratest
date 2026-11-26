@@ -4,18 +4,30 @@ import * as THREE from 'three';
 export interface SkyKey { h: number; top: string; horizon: string; sun: string; sunI: number; hemiSky: string; hemiGround: string; hemiI: number; fog: string; exposure: number; night: number; cloud: string }
 // Round 13 (W4): photographic daylight: warm near-white sun (~6x the sky fill), desaturated sky ambient with a warm neutral ground bounce (no blue-black shadows), hazy pale horizon; amber golden hour; deep blue nights with lifted ground bounce (no crushed blacks).
 // Round 12: less sky fill and more sun by day (contrast: shadows read as shadows, with AO for the contact detail); darker nights (moon 0.38, sky fill 0.5: street lamps and headlights make the light pools).
+
+/** Blackbody colour temperature (Kelvin) to a hex colour (Tanner Helland fit), used to key sun colour by elevation. */
+export function kelvinHex(k: number): string {
+  const t = k / 100;
+  const r = t <= 66 ? 255 : 329.7 * Math.pow(t - 60, -0.1332);
+  const g = t <= 66 ? 99.47 * Math.log(t) - 161.1 : 288.1 * Math.pow(t - 60, -0.0755);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5 * Math.log(t - 10) - 305.0;
+  const c = (v: number) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0');
+  return '#' + c(r) + c(g) + c(b);
+}
+/** Approximate colour temperature of direct sun by key hour: low sun is warm (reddened path), midday ~5800K. */
+const K = kelvinHex;
 const KEYS: SkyKey[] = [
-  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
-  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#15334a', exposure: 1.3, night: 1, cloud: '#22344c' },
-  { h: 5.8, top: '#2a3f6b', horizon: '#e98f6b', sun: '#ffb184', sunI: 0.9, hemiSky: '#7d8fb5', hemiGround: '#4a3a3a', hemiI: 0.56, fog: '#c78a7c', exposure: 1.0, night: 0.55, cloud: '#e7a08a' },
-  { h: 7.2, top: '#5b8dbb', horizon: '#f2d2b0', sun: '#ffd6a8', sunI: 2.8, hemiSky: '#a9c2d6', hemiGround: '#7a6250', hemiI: 0.58, fog: '#e6cdb4', exposure: 1.0, night: 0, cloud: '#fff0dd' },
-  { h: 11, top: '#3a7fc4', horizon: '#cfe3ee', sun: '#fff3e0', sunI: 3.7, hemiSky: '#bccfdd', hemiGround: '#8a7b6b', hemiI: 0.62, fog: '#cfdde3', exposure: 0.95, night: 0, cloud: '#ffffff' },
-  { h: 15.5, top: '#3d7cbc', horizon: '#d4e2e8', sun: '#ffeacb', sunI: 3.5, hemiSky: '#b6cadb', hemiGround: '#86705c', hemiI: 0.62, fog: '#d2dde0', exposure: 0.95, night: 0, cloud: '#fffaf0' },
-  { h: 18.2, top: '#4a6fa8', horizon: '#ffb47a', sun: '#ffb877', sunI: 3.0, hemiSky: '#a3b6cc', hemiGround: '#7a5848', hemiI: 0.58, fog: '#ecbb98', exposure: 1.0, night: 0, cloud: '#ffd2a8' },
-  { h: 19.4, top: '#3a4f8a', horizon: '#ff8a5c', sun: '#ff8550', sunI: 1.72, hemiSky: '#8a89b8', hemiGround: '#5a3a3c', hemiI: 0.54, fog: '#d9826c', exposure: 1.05, night: 0.3, cloud: '#ff9f7a' },
+  { h: 0, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#24394d', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 4.6, top: '#081428', horizon: '#1e3c55', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#213548', exposure: 1.3, night: 1, cloud: '#22344c' },
+  { h: 5.8, top: '#2a3f6b', horizon: '#e98f6b', sun: K(2400), sunI: 0.9, hemiSky: '#7d8fb5', hemiGround: '#4a3a3a', hemiI: 0.56, fog: '#c78a7c', exposure: 1.0, night: 0.55, cloud: '#e7a08a' },
+  { h: 7.2, top: '#5b8dbb', horizon: '#f2d2b0', sun: K(3900), sunI: 2.8, hemiSky: '#a9c2d6', hemiGround: '#7a6250', hemiI: 0.58, fog: '#e6cdb4', exposure: 1.0, night: 0, cloud: '#fff0dd' },
+  { h: 11, top: '#3a7fc4', horizon: '#cfe3ee', sun: K(5800), sunI: 3.7, hemiSky: '#bccfdd', hemiGround: '#8a7b6b', hemiI: 0.62, fog: '#cfdde6', exposure: 0.95, night: 0, cloud: '#ffffff' },
+  { h: 15.5, top: '#3d7cbc', horizon: '#d4e2e8', sun: K(5500), sunI: 3.5, hemiSky: '#b6cadb', hemiGround: '#86705c', hemiI: 0.62, fog: '#d2dde0', exposure: 0.95, night: 0, cloud: '#fffaf0' },
+  { h: 18.2, top: '#4a6fa8', horizon: '#ffb47a', sun: K(3600), sunI: 3.0, hemiSky: '#a3b6cc', hemiGround: '#7a5848', hemiI: 0.58, fog: '#ecbb98', exposure: 1.0, night: 0, cloud: '#ffd2a8' },
+  { h: 19.4, top: '#3a4f8a', horizon: '#ff8a5c', sun: K(2300), sunI: 1.72, hemiSky: '#8a89b8', hemiGround: '#5a3a3c', hemiI: 0.54, fog: '#d9826c', exposure: 1.05, night: 0.3, cloud: '#ff9f7a' },
   { h: 20.4, top: '#141f45', horizon: '#7d4a6e', sun: '#c6a0d8', sunI: 0.38, hemiSky: '#4f5f95', hemiGround: '#2a2230', hemiI: 0.52, fog: '#4b3d5c', exposure: 1.15, night: 0.85, cloud: '#5e4a6e' },
-  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#12293c', exposure: 1.3, night: 1, cloud: '#1c2e44' },
-  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#183b54', exposure: 1.3, night: 1, cloud: '#1a2c40' },
+  { h: 21.5, top: '#060d1f', horizon: '#173550', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#1d3144', exposure: 1.3, night: 1, cloud: '#1c2e44' },
+  { h: 24, top: '#0a1730', horizon: '#1d4562', sun: '#7fa6d6', sunI: 0.38, hemiSky: '#5a86b4', hemiGround: '#2e3240', hemiI: 0.5, fog: '#24394d', exposure: 1.3, night: 1, cloud: '#1a2c40' },
 ];
 
 const ca = new THREE.Color(), cb = new THREE.Color();
@@ -59,7 +71,7 @@ export class Sky {
         uniform vec3 uTop, uHorizon, uSunCol, uSunDir, uCloud; uniform float uNight, uTime, uStars; varying vec3 vDir;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
-        float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
+        float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<3;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
         void main(){
           vec3 d = normalize(vDir);
           float h = clamp(d.y, -0.2, 1.0);
@@ -68,6 +80,13 @@ export class Sky {
           vec3 col = mix(haze, uTop, pow(smoothstep(-0.02, 0.7, h), 0.65));
           col = mix(col, haze, (1.0 - smoothstep(0.0, 0.16, h)) * 0.35 * (1.0 - uNight));
           float sd = max(dot(d, normalize(uSunDir)), 0.0);
+          // Rayleigh-ish: the horizon band warms and brightens on the sun side (forward scattering), stays cool opposite
+          float hz = 1.0 - smoothstep(0.0, 0.35, max(d.y, 0.0));
+          col += uSunCol * hz * pow(sd, 2.0) * 0.10 * (1.0 - uNight);
+          col = mix(col, col * vec3(0.94, 0.97, 1.03), hz * (1.0 - sd) * 0.4 * (1.0 - uNight));
+          // night: sodium/LED city glow hugging the horizon (also tints the fog colour via the keys)
+          float glow = pow(1.0 - smoothstep(0.0, 0.32, max(d.y, 0.0)), 2.0);
+          col += vec3(0.55, 0.30, 0.13) * glow * 0.20 * uNight * (0.75 + 0.25 * noise(d.xz * 9.0));
           col += uSunCol * (pow(sd, 4.0) * 0.16 + pow(sd, 24.0) * 0.22 + pow(sd, 400.0) * 0.8) * (1.0 - uNight * 0.7);
           float disc = smoothstep(0.9993, 0.9997, sd);
           col = mix(col, uSunCol * 2.2 + 0.4, disc * (1.0 - uNight));
@@ -79,7 +98,7 @@ export class Sky {
           // stars
           vec2 sp = d.xz / (d.y + 0.25) * 140.0;
           float st = step(0.9965, hash(floor(sp))) * smoothstep(0.05, 0.4, d.y);
-          col += vec3(st) * uNight * uStars * (0.6 + 0.4 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
+          float sb = hash(floor(sp) + 7.3); col += mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), sb) * st * (0.35 + 0.9 * sb * sb) * uNight * uStars * (0.75 + 0.25 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
           // soft clouds: wide smoothstep for feathered edges, darker underside (one extra noise tap towards the sun), silver lining near the sun
           vec2 cp = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.004, uTime * 0.002);
           float fb = fbm(cp);
