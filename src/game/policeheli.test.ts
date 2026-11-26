@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
-import { HeatState } from './police';
+import { HeatState, heliHold, HELI_SIGHT_RANGE } from './police';
 import { Dispatch } from './dispatch';
 import { QUALITY } from '../core/settings';
 
@@ -29,5 +29,12 @@ describe('crowds', () => {
     expect(QUALITY.medium.pedestrians).toBeGreaterThanOrEqual(60);
     expect(QUALITY.medium.pedestrians + QUALITY.medium.farPeds).toBeGreaterThanOrEqual(350);
     expect(QUALITY.medium.traffic).toBeGreaterThan(18);
+  });
+});
+describe('police helicopter search hold', () => {
+  it('holds the search timer while the helicopter is still flying in, and 2.5 s under the spotlight', () => {
+    expect(heliHold(HELI_SIGHT_RANGE + 250, false)).toBeGreaterThan(0); // inbound from 450 m
+    expect(heliHold(60, true)).toBe(2.5);
+    expect(heliHold(60, false)).toBe(0); // overhead but roofed: the timer runs
   });
 });
