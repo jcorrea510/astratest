@@ -363,8 +363,8 @@ test('tour: every feature in one session, clean console and sane world after eve
     });
     expect(walk).toEqual({ swimming: true, alive: true });
     const car = await page.evaluate(() => {
-      const g = (window as any).__game; g.player.place(0, 0.3, 925, 0);
-      const v = g.vehicles.spawn('sedan', 0, 925, 0); v.persistent = true; g.seatPlayer(v);
+      const g = (window as any).__game; g.player.place(10, 0.3, 925, 0);
+      const v = g.vehicles.spawn('sedan', 10, 925, 0); v.persistent = true; g.seatPlayer(v);
       g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
       for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
       return { flooded: v.flooded, inCar: !!g.playerVehicle, alive: g.player.alive };
