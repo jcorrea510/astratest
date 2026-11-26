@@ -8,12 +8,83 @@
  */
 export const SKIN_PARS = /* glsl */ ``;
 
-export const SKIN_LIGHT_PARS = /* glsl */ ``;
+/**
+ * Skin lighting: RE_Direct is redirected to RE_Direct_Person. Fragments that are not skin (gSkin false) call three's own
+ * RE_Direct_Physical unchanged. Skin (gSkin set in SKIN_GLSL) gets
+ *  - a per-channel wrapped diffuse (red wraps furthest, blue least) = soft, red-shifted terminator (cheap pre-integrated SSS),
+ *  - a dual-lobe specular (sharp oily lobe + broad lobe, Fresnel f0 0.028); gSkinSss / gSkinShine scale both per fragment.
+ * Ambient / IBL are untouched.
+ */
+export const SKIN_LIGHT_PARS = /* glsl */ `bool gSkin = false;
+float gSkinSss = 1.0;
+float gSkinShine = 1.0;
+void RE_Direct_Person( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
+  if ( !gSkin ) {
+    RE_Direct_Physical( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+    return;
+  }
+  vec3 L = directLight.direction;
+  float ndl = dot( geometryNormal, L );
+  vec3 wr = vec3( 0.62, 0.3, 0.16 ) * gSkinSss;
+  vec3 wd = clamp( ( vec3( ndl ) + wr ) / ( vec3( 1.0 ) + wr ), vec3( 0.0 ), vec3( 1.0 ) );
+  wd = wd * wd;
+  reflectedLight.directDiffuse += directLight.color * wd * BRDF_Lambert( material.diffuseContribution );
+  float dotNL = saturate( ndl );
+  float dotNV = saturate( dot( geometryNormal, geometryViewDir ) );
+  vec3 H = normalize( L + geometryViewDir );
+  float dotNH = saturate( dot( geometryNormal, H ) );
+  float dotVH = saturate( dot( geometryViewDir, H ) );
+  float fx = 1.0 - dotVH;
+  float F = 0.028 + 0.972 * fx * fx * fx * fx * fx;
+  float rS = clamp( material.roughness * 0.6, 0.18, 0.4 );
+  float rB = clamp( material.roughness * 1.15, 0.4, 0.9 );
+  float aS = rS * rS;
+  float aB = rB * rB;
+  float lobeS = D_GGX( aS, dotNH ) * V_GGX_SmithCorrelated( aS, dotNL, dotNV );
+  float lobeB = D_GGX( aB, dotNH ) * V_GGX_SmithCorrelated( aB, dotNL, dotNV );
+  float spec = F * ( 0.3 * gSkinShine * lobeS + 0.7 * lobeB );
+  reflectedLight.directSpecular += directLight.color * dotNL * spec;
+}
+#undef RE_Direct
+#define RE_Direct RE_Direct_Person
+`;
 
 export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips, shading, pores) but take the tone from the wanted skin colour
   vec3 ratio = clamp(tx.rgb / vec3(0.397, 0.153, 0.072), vec3(0.05), vec3(3.0));
   float lr = dot(ratio, vec3(0.3, 0.5, 0.2));
   col = uC[0] * (0.25 + 0.85 * lr) * mix(vec3(1.0), ratio / max(lr, 0.05), 0.28); rough = 0.6; flatN = 0.0;
+  // dark tones: re-saturate toward warm red (blood under skin) instead of going grey; creases darker and warmer
+  float skDeep = 1.0 - smoothstep(0.12, 0.75, lr);
+  float skLum = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(skLum), col, 1.0 + 0.45 * skDeep);
+  col *= mix(vec3(1.0), vec3(1.0, 0.84, 0.78), skDeep * 0.55);
+  // natural blotchy variation (slightly redder or paler patches)
+  float skRed = (vnoise(vBind * 9.0) - 0.5) * 0.5 + (vnoise(vBind * 31.0 + vec3(7.3)) - 0.5) * 0.25;
+  col *= vec3(1.0 + 0.1 * skRed, 1.0 - 0.07 * skRed, 1.0 - 0.09 * skRed);
+  // warm flush: ears and cheek band on the head, hands (end of the arm) slightly redder
+  float skFlush = 0.0;
+  if (ri == 0) {
+    float skEar = smoothstep(0.75, 0.9, abs(vHn.x)) * (1.0 - smoothstep(0.2, 0.45, abs(vHn.z - 0.05)));
+    float skCheek = smoothstep(0.25, 0.45, abs(vHn.x)) * (1.0 - smoothstep(0.6, 0.85, abs(vHn.x))) * smoothstep(-0.45, -0.25, vHn.y) * (1.0 - smoothstep(-0.05, 0.15, vHn.y)) * smoothstep(0.35, 0.7, vHn.z);
+    skFlush = skEar * 0.14 + skCheek * 0.07;
+  } else if (ri == 2) skFlush = smoothstep(0.93, 1.0, vCloth) * 0.1;
+  col *= vec3(1.0 + 0.5 * skFlush, 1.0 - 0.9 * skFlush, 1.0 - 1.1 * skFlush);
+  // roughness: slight variation, T-zone (forehead centre, chin) shinier
+  rough = 0.58 + 0.1 * (vnoise(vBind * 14.0) - 0.5);
+  gSkin = true; gSkinSss = 1.0; gSkinShine = 1.0;
+  if (ri == 0) {
+    float skTz = (1.0 - smoothstep(0.15, 0.4, abs(vHn.x))) * smoothstep(0.2, 0.6, vHn.z) * (smoothstep(0.0, 0.2, vHn.y) * (1.0 - smoothstep(0.5, 0.8, vHn.y)) + 0.6 * smoothstep(-0.7, -0.85, vHn.y));
+    rough -= 0.14 * skTz; gSkinShine = 1.0 + 0.7 * skTz;
+  }
+  // micro relief in metres (faded with distance so it never shimmers): pores up close, fine skin lines further out
+  float skD = length(vViewPosition);
+  float skPoreF = 1.0 - smoothstep(0.3, 1.0, skD);
+  float skFineF = 1.0 - smoothstep(0.9, 3.5, skD);
+  float skPn = vnoise(vBind * 1100.0);
+  float skW = vnoise(vBind * vec3(160.0, 60.0, 160.0) + vec3(vnoise(vBind * 37.0) * 3.0));
+  float skRidge = 1.0 - smoothstep(0.0, 0.07, abs(skW - 0.5));
+  bumpH = -0.00011 * smoothstep(0.55, 0.85, skPn) * skPoreF - 0.00025 * skRidge * skFineF;
+  col *= 1.0 - 0.05 * skRidge * skFineF;
   if (ri == 0 && vHn.y > -1.5) {
     vec3 hc = uC[6];
     float h = hairlineF(vHn.x, vHn.z);
@@ -28,6 +99,7 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
     else if (mode > 4.5) a = scalp * (0.55 + 0.45 * abs(sin(vHn.x * 22.0))) ;
     else if (mode > 3.5) a = scalp * 0.0;
     col = mix(col, hc * (0.75 + 0.5 * n), a);
+    rough = mix(rough, 0.82, a); gSkinSss *= 1.0 - 0.7 * a; gSkinShine *= 1.0 - 0.85 * a; // painted hair: matte, no skin glow
     // facial hair paint (lower face, below the cheekbones; lips kept clear)
     float fm = uPat.z;
     if (fm > 0.5) {
@@ -42,7 +114,9 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
       else if (fm < 3.5) b = max(mous * 0.9, jaw * 0.15);
       else b = max(max(mous, chin) * 0.85, jaw * 0.12);
       b *= 1.0 - lips;
-      col = mix(col, hc * 0.8, clamp(b, 0.0, 1.0));
+      float bc = clamp(b, 0.0, 1.0);
+      col = mix(col, hc * 0.8, bc);
+      rough = mix(rough, 0.8, bc); gSkinSss *= 1.0 - 0.5 * bc; gSkinShine *= 1.0 - 0.7 * bc;
     }
   }
   if (ri == 0) faceDetail(col, rough, vHn, tx.rgb);
