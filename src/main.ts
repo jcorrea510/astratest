@@ -30,6 +30,7 @@ import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut } from './core/fullscreen';
 import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
+import { probeWebgl2 } from './core/webglProbe';
 import { LOOK } from './render/renderer';
 
 installFullscreenShortcut();
@@ -76,9 +77,7 @@ function isMobile(): boolean {
   const small = Math.min(screen.width, screen.height) < 600;
   return coarse && (small || 'ontouchstart' in window) && isPhoneLike(navigator, Math.min(screen.width, screen.height));
 }
-function webglOk(): boolean {
-  try { const c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch { return false; }
-}
+const webglOk = probeWebgl2;
 
 ui.init({
   city, settings, callbacks: {
