@@ -45,10 +45,15 @@ export class StaticStream<T extends object> {
   }
   private setCell(k: number, near: boolean) {
     const list = this.cells.get(k); if (!list) return;
-    for (const e of list) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
       if (e.near === near) continue;
+      if (!this.alive(e.c)) { // removed by the game (a broken lamp...): forget it, it must never be touched again
+        if (!e.near && e.user) this.off--;
+        list[i] = list[list.length - 1]; list.pop(); this.entries.delete(e.c); this.total--;
+        continue;
+      }
       e.near = near;
-      if (!this.alive(e.c)) continue; // removed by the game (a broken lamp...)
       if (near) { if (e.user) { this.apply(e.c, true); this.off--; } } else if (e.user) { this.apply(e.c, false); this.off++; }
     }
   }

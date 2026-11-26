@@ -46,7 +46,9 @@ export class Physics {
     this.world.timestep = 1 / 60;
     this.eventQueue = new RAPIER.EventQueue(true);
     patchSetEnabled();
-    this.stream = new StaticStream<RAPIER.Collider>((c, on) => origSetEnabled!.call(c, on), c => !!this.world.getCollider(c.handle));
+    this.stream = new StaticStream<RAPIER.Collider>((c, on) => origSetEnabled!.call(c, on), // Rapier's handle map ignores the handle's generation: once a removed collider's slot is reused, getCollider(oldHandle)
+      // returns the NEW collider, so liveness must be identity (a broken lamp's old collider otherwise traps "unreachable").
+      c => this.world.getCollider(c.handle) === c);
   }
   private streamed(c: RAPIER.Collider, x: number, z: number, halfXZ: number) {
     if (halfXZ >= STREAM_MAX_HALF) return c;

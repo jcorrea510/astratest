@@ -45,6 +45,7 @@ import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
 import { ArmyGuards, guardsHostile } from './armyGuards';
 import { farIdleVehicle } from './farLod';
+import { fullscreenSettling } from '../core/fullscreen';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -354,6 +355,7 @@ export class Game {
     const loop = (now: number) => {
       if (!this.running) return;
       requestAnimationFrame(loop);
+      if (fullscreenSettling()) { this.last = now; return; } // the browser is switching fullscreen: leave the main thread free for it (core/fullscreen)
       const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);

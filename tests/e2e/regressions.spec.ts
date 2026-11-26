@@ -215,25 +215,32 @@ test('beach stunt ramps pay when hit from Coastal Drive', async ({ page }) => {
   test.setTimeout(300_000);
   const p = watch(page);
   await boot(page);
+  await quietStreets(page); // a scripted drive: no traffic in the way of the run-up
   const res = await page.evaluate(() => {
     const g = (window as any).__game; const out: number[] = [];
-    for (const rx of [-300, 200]) {
+    const ROAD_Z = 913.5, RAMP_Z = 921.5; // eastbound lane of Coastal Drive (the last street, z 910) and the promenade ramps
+    for (const rx of [0, 200]) { // Promenade hop, Strand flyer
       if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
-      const x0 = rx - 110; g.player.place(x0, 0.3, 403.5, 0);
-      const v = g.vehicles.spawn('sedan', x0, 403.5, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+      const x0 = Math.max(rx - 160, -155); g.player.place(x0, 0.3, ROAD_Z, 0); // full-speed run-up; the drive starts at x -165 (river west of it)
+      const v = g.vehicles.spawn('sedan', x0, ROAD_Z, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
       for (let i = 0; i < 9; i++) g.frame(1 / 30, false);
-      const m0 = g.money; g.input.press('KeyW');
-      for (let s = 0; s < 240; s++) {
+      const m0 = g.money; g.input.press('KeyW'); let flown = false, landed = false;
+      for (let s = 0; s < 600; s++) {
         const q = v.position, f = v.phys.forward();
-        const lead = q.x < rx - 30 ? { x: q.x + 20, z: 403.5 } : { x: rx + Math.sin(1.2) * 10, z: 411.5 + Math.cos(1.2) * 10 };
-        const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
+        if (!v.phys.grounded && q.x > rx - 4) flown = true;
+        if (flown && v.phys.grounded) landed = true;
         g.input.release('KeyA'); g.input.release('KeyD');
-        if (q.x > rx + 4) { g.input.release('KeyW'); if (q.x > rx + 15 && v.phys.grounded) g.input.press('KeyS'); } // jump, land, brake on the sand
-        else if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        if (landed) { g.input.release('KeyW'); g.input.press('KeyS'); if (Math.abs(v.speed) < 0.5) break; } // brake on the sand, short of the sea
+        else if (q.x > rx + 4) g.input.release('KeyW'); // off the lip: coast through the air
+        else {
+          const lead = q.x < rx - 30 ? { x: q.x + 20, z: ROAD_Z } : { x: rx + Math.sin(1.2) * 10, z: RAMP_Z + Math.cos(1.2) * 10 };
+          const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
+          if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        }
         g.frame(1 / 30, false);
       }
       for (const k of ['KeyW', 'KeyA', 'KeyD', 'KeyS']) g.input.release(k);
-      for (let s = 0; s < 120; s++) g.frame(1 / 30, false);
+      for (let s = 0; s < 60; s++) g.frame(1 / 30, false);
       out.push(g.money - m0, v.flooded || v.destroyed ? 1 : 0);
     }
     return out;
