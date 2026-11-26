@@ -683,6 +683,8 @@ export class UI implements GameUI {
   private isDocked() { return this.layers.some(l => l.id === 'pause'); }
 
   // ---------------------------------------------------------------- HUD
+  /** Where the on-screen touch controls mount (main.ts builds them once the game exists). */
+  get touchHost(): { root: HTMLElement; layer: HTMLElement } { return { root: this.root, layer: this.hudLayer }; }
   setHudVisible(v: boolean): void {
     if (v === this.hudVisible) return;
     this.hudVisible = v;

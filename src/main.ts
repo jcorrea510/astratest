@@ -28,6 +28,8 @@ import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut } from './core/fullscreen';
+import { TouchControls } from './ui/touch';
+import { touchContext } from './ui/touchLayout';
 import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
 import { probeWebgl2 } from './core/webglProbe';
@@ -53,6 +55,7 @@ const ui = new UI();
 setTimeout(() => { renderWeaponIcons(); }, 0);
 const city = generateCity();
 let game: Game | null = null;
+let touch: TouchControls | null = null;
 let ctx: MissionCtx | null = null;
 let activities: Activities | null = null;
 let sandbox: Sandbox | null = null;
@@ -238,6 +241,7 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     ui.hideLoading();
     ui.setHudVisible(true);
     g.onFrame = dt => frame(dt);
+    touch ??= new TouchControls(ui.touchHost.root, ui.touchHost.layer, g.input, params.get('touch') === '1');
     g.start();
     g.input.requestLock();
     if (!loaded) {
@@ -436,6 +440,7 @@ function closeWheel(discard = false) {
 function frame(raw: number) {
   const g = game!, a = activities!;
   const input = g.input;
+  touch?.sync({ show: !g.paused && !ui.isMenuOpen() && !a.shopIsOpen && g.deathT < 0, ctx: touchContext({ heli: !!g.playerHeli, vehicle: !!g.playerVehicle || !!g.taxi.riding }) });
   ui.setInputSource(input.lastSource); setPromptSource(input.lastSource);
   a.garage.tick(raw); // Round 9: the garage door / camera / menu run in real time, also while the world is frozen
   // pause / map
