@@ -5,6 +5,11 @@
  * vertex shader. One program is shared by everyone; each person owns only uniform values.
  */
 import * as THREE from 'three';
+import { SKIN_PARS, SKIN_LIGHT_PARS, SKIN_GLSL } from './shade/skin';
+import { FACE_PARS, EYES_GLSL } from './shade/face';
+import { TOP_PARS, TOP_GLSL } from './shade/top';
+import { BOTTOM_PARS, BOTTOM_GLSL, SHOE_GLSL, SOLE_GLSL } from './shade/bottom';
+import { patchHair } from './shade/hair';
 import type { FullLook } from './look';
 import type { BodyBase } from './humanAssets';
 
@@ -95,7 +100,13 @@ float hairlineF(float x, float z) {
   float front = smoothstep(0.15, 0.8, z); float h = -0.42 + 1.0 * front;
   float ear = smoothstep(0.55, 0.8, abs(x)) * (1.0 - smoothstep(0.3, 0.5, abs(z - 0.05)));
   return max(h, -0.42 + ear * 0.5);
-}`)
+}
+${SKIN_PARS}
+${FACE_PARS}
+${TOP_PARS}
+${BOTTOM_PARS}`)
+      .replace('#include <lights_physical_pars_fragment>', `#include <lights_physical_pars_fragment>
+${SKIN_LIGHT_PARS}`)
       .replace('#include <map_fragment>', `
 vec4 tx = texture2D(map, vMapUv);
 int ri = int(vRegion + 0.5);
@@ -117,130 +128,14 @@ else if (ri == 4 || ri == 5 || ri == 8) part = 6;
 else if (ri == 6) part = 1; else if (ri == 7) part = 3; else if (ri == 9) part = 9; else if (ri == 10) part = 7; else if (ri == 11) part = 8; else if (ri == 12) part = 5;
 vec3 col = tx.rgb; float rough = 0.85; float flatN = 1.0;
 if (part == 0) {
-  // keep the texture's local detail (lips, shading, pores) but take the tone from the wanted skin colour
-  vec3 ratio = clamp(tx.rgb / vec3(0.397, 0.153, 0.072), vec3(0.05), vec3(3.0));
-  float lr = dot(ratio, vec3(0.3, 0.5, 0.2));
-  col = uC[0] * (0.25 + 0.85 * lr) * mix(vec3(1.0), ratio / max(lr, 0.05), 0.28); rough = 0.6; flatN = 0.0;
-  if (ri == 0 && vHn.y > -1.5) {
-    vec3 hc = uC[6];
-    float h = hairlineF(vHn.x, vHn.z);
-    float scalp = smoothstep(h - 0.03, h + 0.1, vHn.y);
-    float mode = uPat.y;
-    float n = vnoise(vHn * 60.0);
-    float a = 0.0;
-    if (mode > 0.5 && mode < 1.5) a = scalp * 0.95;
-    else if (mode > 1.5 && mode < 2.5) a = scalp * (0.72 + 0.2 * n);
-    else if (mode > 2.5 && mode < 3.5) a = scalp * mix(0.25 + 0.15 * n, 0.85 + 0.1 * n, smoothstep(h + 0.05, h + 0.55, vHn.y));
-    else if (mode > 5.5) a = scalp * 0.9 * (1.0 - smoothstep(0.1, 0.5, vHn.z)); // under scanned hair: sides and back only
-    else if (mode > 4.5) a = scalp * (0.55 + 0.45 * abs(sin(vHn.x * 22.0))) ;
-    else if (mode > 3.5) a = scalp * 0.0;
-    col = mix(col, hc * (0.75 + 0.5 * n), a);
-    // facial hair paint (lower face, below the cheekbones; lips kept clear)
-    float fm = uPat.z;
-    if (fm > 0.5) {
-      float jaw = smoothstep(0.05, -0.2, vHn.y) * smoothstep(-0.05, 0.35, vHn.z) * smoothstep(-1.05, -0.8, vHn.y);
-      float jawS = smoothstep(-0.12, -0.34, vHn.y) * smoothstep(-0.05, 0.35, vHn.z) * smoothstep(-1.05, -0.8, vHn.y); // stubble sits lower on the cheeks
-      float lips = smoothstep(0.42, 0.28, abs(vHn.x)) * smoothstep(-0.78, -0.66, vHn.y) * smoothstep(-0.3, -0.42, vHn.y) * smoothstep(0.7, 0.85, vHn.z);
-      float mous = smoothstep(0.42, 0.3, abs(vHn.x)) * smoothstep(-0.48, -0.42, vHn.y) * smoothstep(-0.22, -0.3, vHn.y) * smoothstep(0.7, 0.85, vHn.z);
-      float chin = smoothstep(0.3, 0.18, abs(vHn.x)) * smoothstep(-0.6, -0.75, vHn.y) * smoothstep(0.3, 0.6, vHn.z);
-      float b = 0.0;
-      if (fm < 1.5) b = max(jawS, mous * 0.9) * (0.34 + 0.3 * (vnoise(vHn * 170.0) - 0.5) + 0.08 * (n - 0.5)); // a fine, even shadow
-      else if (fm < 2.5) b = jaw * 0.75;
-      else if (fm < 3.5) b = max(mous * 0.9, jaw * 0.15);
-      else b = max(max(mous, chin) * 0.85, jaw * 0.12);
-      b *= 1.0 - lips;
-      col = mix(col, hc * 0.8, clamp(b, 0.0, 1.0));
-    }
-  }
-} else if (part == 1) {
-  col = uC[1];
-  float pat = uPat.x;
-  if (pat > 0.5 && pat < 1.5) col = mix(uC[1], uC[2], step(0.62, fract(vBind.y * 16.0)));
-  else if (pat > 1.5 && pat < 2.5) { float a = step(0.5, fract(vBind.x * 11.0 + 0.25)), b = step(0.5, fract(vBind.y * 11.0)); col = mix(uC[1], uC[2], (a + b) * 0.3); col = mix(col, uC[8], step(0.93, fract(vBind.x * 22.0)) * 0.25 + step(0.93, fract(vBind.y * 22.0)) * 0.25); }
-  else if (pat > 2.5 && pat < 3.5 && ri == 1) {
-    vec2 c = vec2(vBind.x, vBind.y - (uBody.y + 0.02));
-    float r = length(c / vec2(1.0, 1.15));
-    float print = front * step(r, 0.07) * (step(0.045, r) + step(r, 0.028));
-    col = mix(col, uC[2], print);
-  } else if (pat > 3.5 && pat < 4.5 && ri == 2) col = uC[2];
-  // Round 9 (owner: "make all the things in the outfit store better"): more prints
-  else if (pat > 4.5 && pat < 5.5) col = mix(col, uC[2], 0.7 * smoothstep(0.0035, 0.0, abs(fract(vBind.x * 38.0) - 0.5) / 38.0)); // pinstripe
-  else if (pat > 5.5 && pat < 6.5) { // woodland camo: three noise blobs
-    float n1 = vnoise(vBind * 9.0), n2 = vnoise(vBind * 14.0 + 7.3), n3 = vnoise(vBind * 21.0 + 2.1);
-    col = mix(col, uC[2], smoothstep(0.52, 0.56, n1)); col = mix(col, uC[2] * 0.45, smoothstep(0.58, 0.62, n2)); col = mix(col, col * 1.35 + 0.03, smoothstep(0.62, 0.66, n3));
-  } else if (pat > 6.5) { // houndstooth: broken check
-    vec2 q = vec2(vBind.x, vBind.y) * 60.0; vec2 f = fract(q); float chk = step(0.5, f.x) == step(0.5, f.y) ? 1.0 : 0.0;
-    float tooth = step(f.x + f.y, 0.75) * step(0.5, f.x) * (1.0 - step(0.5, f.y)); col = mix(col, uC[2], clamp(chk + tooth, 0.0, 1.0) * 0.85);
-  }
-  // garment construction details
-  if (ri == 1) {
-    float cx = abs(vBind.x);
-    if (topId > 2.5 && topId < 3.5) { // hoodie: kangaroo pocket + drawstrings
-      float pocket = front * step(cx, 0.11) * step(0.17, vCloth) * step(vCloth, 0.34);
-      col *= 1.0 - pocket * 0.12;
-      col = mix(col, uC[2], front * step(abs(cx - 0.035), 0.004) * step(0.72, vCloth) * step(vCloth, 0.9));
-    } else if (topId > 3.5 && topId < 4.5) { // open jacket over a tee
-      float open = front * step(cx, 0.045 + 0.03 * smoothstep(0.75, 0.98, vCloth));
-      col = mix(col, uC[2], open);
-      col *= 1.0 - front * smoothstep(0.006, 0.0, abs(cx - 0.045 - 0.03 * smoothstep(0.75, 0.98, vCloth))) * 0.4;
-      col *= 1.0 - smoothstep(0.012, 0.0, abs(vCloth - uTop.y - 0.025)) * 0.25; // ribbed hem
-    } else if (topId > 4.5 && topId < 5.5) { // suit: lapels, shirt, tie, buttons
-      float v = (uBody.z - vBind.y) * 0.38 + 0.012;
-      float shirt = front * step(cx, v) * step(0.55, vCloth);
-      col = mix(col, uC[2], shirt);
-      col = mix(col, uC[8], shirt * step(cx, 0.011 + 0.006 * smoothstep(0.9, 0.62, vCloth)));
-      col *= 1.0 - front * smoothstep(0.005, 0.0, abs(cx - v)) * 0.5 * step(0.55, vCloth);
-      col = mix(col, uC[8] * 0.6, front * step(length(vec2(cx, vCloth - 0.42)), 0.008));
-    } else if ((topId > 5.5 && topId < 7.5) || topId > 8.5) { // shirt / polo / uniform / blouse: placket and buttons
-      float pl = front * step(cx, 0.012) * step(topId > 6.5 && topId < 7.5 ? 0.78 : 0.0, vCloth);
-      col *= 1.0 - pl * 0.1;
-      col = mix(col, vec3(0.85), front * step(cx, 0.004) * step(0.5, fract(vCloth * 14.0)) * step(0.47, fract(vCloth * 14.0 + 0.5)) * pl * 0.0);
-      float btn = front * step(length(vec2(cx, (fract(vCloth * 9.0) - 0.5) * 0.11)), 0.0045) * step(topId > 6.5 && topId < 7.5 ? 0.8 : 0.1, vCloth);
-      col = mix(col, uC[2] * 0.9, btn);
-      if (topId > 8.5 && topId < 9.5) { // police uniform: badge on the left chest, name bar on the right
-        float badge = front * step(length(vec2(vBind.x - 0.09, vBind.y - uBody.y - 0.05) * vec2(1.0, 0.85)), 0.022);
-        col = mix(col, uC[2], badge);
-        col = mix(col, vec3(0.9), front * step(abs(vBind.x + 0.09), 0.03) * step(abs(vBind.y - uBody.y - 0.04), 0.006));
-      }
-    }
-  }
-  col *= 0.94 + 0.1 * grain;
-  // Round 9: cloth folds (bunching at the elbow crease and the waist, soft drape lines) and occlusion at the collar / hem
-  if (ri == 2) col *= 1.0 - 0.16 * smoothstep(0.08, 0.0, abs(vCloth - 0.5)) * (0.55 + 0.45 * sin(vBind.x * 90.0 + vBind.z * 70.0));
-  if (ri == 1) {
-    col *= 1.0 - 0.08 * smoothstep(0.6, 1.0, sin(vCloth * 46.0 + vnoise(vBind * 18.0) * 5.0)) * (1.0 - front * 0.4);
-    col *= 1.0 - 0.18 * smoothstep(0.03, 0.0, abs(vCloth - uTop.y - 0.01));
-  }
-  // fabric: bomber = worn leather sheen, suit = wool, hoodie / sweats = matte knit, shirts = cotton
-  rough = topId > 3.5 && topId < 4.5 ? 0.48 : topId > 4.5 && topId < 5.5 ? 0.7 : topId > 2.5 && topId < 3.5 ? 0.97 : 0.88;
-  if (topId > 3.5 && topId < 4.5) col *= 0.92 + 0.16 * vnoise(vBind * 120.0);
-} else if (part == 3) {
-  col = uC[3];
-  float bs = uBottom.y;
-  if (bs < 0.5) { // denim: twill, worn thighs, outer seams
-    float tw = sin((vBind.y * 1.0 + vBind.x * 0.6 + vBind.z * 0.6) * 1700.0) * 0.5 + 0.5;
-    col *= 0.86 + 0.2 * tw * (0.6 + 0.4 * grain);
-    if (ri == 3) col *= 1.0 + 0.16 * front * smoothstep(0.45, 0.15, vCloth) * (0.6 + 0.4 * vnoise(vBind * 60.0));
-    col = mix(col, uC[3] * 0.55 + vec3(0.05, 0.035, 0.0), smoothstep(0.985, 1.0, abs(bn.x)) * 0.6);
-  } else if (bs > 3.5) { // sweats: knit and side stripe
-    col *= 0.92 + 0.12 * grain;
-    if (ri == 3) col = mix(col, uC[2], smoothstep(0.93, 0.96, abs(bn.x)));
-  } else col *= 0.93 + 0.1 * grain;
-  // Round 9: knee and ankle bunching on long pants, pocket shadow at the hip
-  if (ri == 3) {
-    col *= 1.0 - 0.12 * smoothstep(0.07, 0.0, abs(vCloth - 0.5)) * (0.5 + 0.5 * sin(vBind.x * 120.0 + vBind.z * 80.0));
-    col *= 1.0 - 0.1 * smoothstep(0.1, 0.0, abs(vCloth - uBottom.x + 0.06)) * (0.5 + 0.5 * sin(vBind.z * 150.0));
-  }
-  rough = bs < 0.5 ? 0.92 : bs > 3.5 ? 0.97 : 0.86;
-} else if (part == 4) {
-  col = uC[4]; float s = uPat.w;
-  rough = s > 1.5 ? 0.3 : s > 0.5 ? 0.55 : 0.7;
-  if (s < 0.5) col = mix(col, uC[2], smoothstep(0.55, 0.6, abs(bn.x)) * step(vBind.y, uBody.x + 0.06) * step(uBody.x + 0.04, vBind.y) * 0.8);
-} else if (part == 5) { col = uC[5]; rough = 0.8; }
+${SKIN_GLSL}} else if (part == 1) {
+${TOP_GLSL}} else if (part == 3) {
+${BOTTOM_GLSL}} else if (part == 4) {
+${SHOE_GLSL}} else if (part == 5) {${SOLE_GLSL}}
 else if (part == 6) { col = uC[6] * (0.38 + 2.4 * lum); rough = 0.5; flatN = ri == 8 ? 0.0 : 0.0; }
 else if (part == 7) { col = uC[7] * (0.9 + 0.15 * vnoise(vBind * 300.0)); rough = 0.85; }
 else if (part == 8) { col = uC[8]; rough = 0.45; }
-else if (part == 9) { col = tx.rgb; rough = 0.12; flatN = 0.0; }
+else if (part == 9) {${EYES_GLSL}}
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = rough;')
@@ -248,121 +143,6 @@ diffuseColor.rgb *= col;`)
 }
 
 /** HAIR variant: layered strand shells with a strand-aligned highlight (see hairShells.ts for the attributes). */
-function patchHair(sh: THREE.WebGLProgramParametersWithUniforms) {
-  sh.vertexShader = sh.vertexShader
-    .replace('#include <common>', `#include <common>
-attribute vec4 hs; attribute vec4 hd;
-uniform vec4 uShape; uniform vec3 uHeadJoint;
-varying vec4 vHs; varying vec4 vHd; varying vec3 vHairT;`)
-    .replace('#include <skinnormal_vertex>', `#include <skinnormal_vertex>
-vec3 hT = hd.xyz;
-#ifdef USE_SKINNING
-hT = (skinMatrix * vec4(hT, 0.0)).xyz;
-#endif
-vHairT = normalize((modelViewMatrix * vec4(hT, 0.0)).xyz);`)
-    .replace('#include <begin_vertex>', `#include <begin_vertex>
-vHs = hs; vHd = hd;
-transformed = uHeadJoint + (transformed - uHeadJoint) * uShape.z;`);
-  sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>
-uniform vec3 uC[12]; uniform float uFlash;
-varying vec4 vHs; varying vec4 vHd; varying vec3 vHairT;
-float hairSpec = 1.0, hairTilt = 0.0;
-float h11(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
-float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }`)
-    .replace('#include <lights_physical_pars_fragment>', `#include <lights_physical_pars_fragment>
-// Hair lighting: wrapped diffuse plus two Kajiya-Kay lobes along the strand (primary white, secondary tinted, shifted).
-void RE_Direct_Hair(const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
-  float nl = dot(geometryNormal, directLight.direction);
-  reflectedLight.directDiffuse += clamp((nl + 0.35) / 1.35, 0.0, 1.0) * directLight.color * BRDF_Lambert(material.diffuseColor);
-  vec3 T = normalize(vHairT), H = normalize(directLight.direction + geometryViewDir);
-  float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.15), H);
-  float s1 = pow(max(0.0, 1.0 - d1 * d1), 90.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 18.0);
-  vec3 tint = material.diffuseColor / max(max(material.diffuseColor.r, material.diffuseColor.g), max(material.diffuseColor.b, 0.03));
-  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.09 * s1 + 0.06 * s2 * tint);
-}
-#undef RE_Direct
-#define RE_Direct RE_Direct_Hair`)
-    .replace('#include <map_fragment>', `
-float lay = vHs.z, dens = vHs.w, u = vHs.x, v = vHs.y;
-float sc = floor(vHd.w / 8.0 + 0.01), fl = vHd.w - sc * 8.0;
-bool solidLod = fl > 3.5;
-float mode = solidLod ? fl - 4.0 : fl;
-float li = floor(lay * 40.0 + 0.5);
-float a = 0.0, b = 1.0, r1 = 0.5, farK = 0.0;
-if (mode < 0.5) {
-  // locks: round bundles of ~8 strands lying along the surface, waving together; their height varies along their length,
-  // so the layers carve real relief (lower layers show between locks, darker)
-  float lu = u / 8.0, l0 = mod(floor(lu), 90.0);
-  float lw = lu + sin(v * 48.0 + h11(l0) * 6.283) * 0.3 + sin(v * 15.0 + l0 * 1.3) * 0.45;
-  float lk = mod(floor(lw), 90.0), x = fract(lw) * 2.0 - 1.0;
-  float lenK = sc > 0.5 ? sc * 0.25 : 1.0; // short cuts: shorter, choppier locks
-  float segL = (0.028 + 0.03 * h11(lk + 3.1)) * lenK, sv = v / segL + h11(lk + 9.7), sg = floor(sv);
-  float hg = mix(mix(0.5, 1.0, h21(vec2(lk, sg))), mix(0.5, 1.0, h21(vec2(lk, sg + 1.0))), smoothstep(0.0, 1.0, fract(sv)));
-  float top = hg * mix(0.3, 1.0, sqrt(max(0.0, 1.0 - x * x))) * dens;
-  farK = solidLod ? 1.0 : smoothstep(0.22, 0.55, fwidth(lw));
-  float fu = max(fwidth(u), 1e-4), sf = 1.0 - smoothstep(0.35, 0.9, fu);
-  // single strands: fine albedo striation, a few strays above the locks
-  float uu = u + (lw - lu) * 8.0, cell = mod(floor(uu), 720.0);
-  r1 = h21(vec2(cell, lk)); float r3 = h21(vec2(cell + 41.3, sg));
-  float stray = sf * step(r3, 0.05 * dens) * step(lay, top + 0.3) * (1.0 - smoothstep(0.18 - fu, 0.18 + fu, abs(fract(uu) - 0.5)));
-  a = max(step(lay, top), stray);
-  a *= step(h21(vec2(lk, sg) + 5.3), dens * 1.6 - 0.2); // locks thin out towards the hairline: soft, ragged edge
-  if (lay < 0.01) a = step(0.5 + 0.4 * (h11(lk + sg) - 0.5), dens);   // opaque core with ragged tips
-  b = mix(1.0, mix(0.74, 1.2, r1), sf) * mix(0.85, 1.12, h11(lk + 21.0));
-  hairTilt = x * 0.75;
-} else if (mode < 1.5) {
-  // coils standing out of the surface (curls, afro, short fuzz); cell size from the style
-  float cs = 1.0 + sc * 0.5;
-  vec2 g = vec2(u, v / 0.00087) / cs;
-  vec2 c = floor(g); r1 = h21(c); float r2 = h21(c + 7.1), r3 = h21(c + 3.3);
-  vec2 pc = floor(g / 5.0);
-  float puff = mix(0.62, 1.0, h21(pc)) ;
-  float len = mix(0.55, 1.0, r2) * puff * dens;
-  float ph = lay * 14.0 + r1 * 6.283;
-  vec2 o = fract(g) - 0.5 - 0.17 * vec2(cos(ph), sin(ph));
-  float fg = max(fwidth(g.x), 1e-4);
-  farK = solidLod ? 1.0 : smoothstep(0.3, 0.8, fg);
-  float w = 0.36 * (1.0 - 0.5 * lay / max(len, 0.05));
-  a = lay < 0.3 * dens ? 1.0 : step(lay, len) * (1.0 - smoothstep(w - fg, w + fg, length(o)));
-  a *= step(h21(c + 11.7), dens * 1.7 - 0.3); // sparse towards the hairline
-  b = mix(0.72, 1.15, r3) * mix(0.9, 1.08, h21(pc + 1.7));
-  hairTilt = o.x * 1.4;
-} else if (mode > 2.5) {
-  // scanned mesh: the sculpt's baked shading (as the body material drew it) plus fine strands across the locks
-  float lum = 0.3;
-#ifdef USE_MAP
-  vec3 txc = texture2D(map, vMapUv).rgb; lum = dot(txc, vec3(0.299, 0.587, 0.114));
-#endif
-  float fu = max(fwidth(u), 1e-4), sf = 1.0 - smoothstep(0.35, 0.9, fu);
-  float uu = u + sin(v * 90.0 + floor(u / 6.0)) * 0.6;
-  r1 = h11(floor(uu)); float r2 = h11(floor(uu / 5.0) + 17.0);
-  a = 1.0;
-  b = (0.38 + 2.4 * lum) * mix(1.0, mix(0.8, 1.14, r1) * mix(0.9, 1.07, r2), sf);
-  hairTilt = (fract(uu) - 0.5) * 0.5 * sf;
-} else {
-  // cornrows: raised braided rows running along v
-  float ru = u / 16.0, rc = fract(ru) - 0.5;
-  float prof = sqrt(max(0.0, 1.0 - rc * rc * 5.0));
-  a = step(lay, prof * max(dens, 0.6)) * step(0.55, dens); // rows end cleanly at the hairline
-  float zz = fract(v / 0.0055 + abs(rc) * 1.8 + floor(ru) * 0.5);
-  b = 0.55 + 0.6 * smoothstep(0.0, 0.6, zz) * (1.0 - smoothstep(0.85, 1.0, zz));
-  farK = solidLod ? 1.0 : smoothstep(0.25, 0.6, fwidth(ru));
-  hairTilt = rc * 2.2;
-}
-a = mix(a, lay < 0.01 ? step(0.5, dens) : step(lay, 0.65 * dens), farK);
-if (a < 0.5) discard;
-b = mix(b, 1.0, farK * 0.7); hairTilt *= 1.0 - farK;
-float ao = lay < 0.01 ? 0.4 : mix(0.38, 1.0, smoothstep(0.0, 0.95, lay / max(dens, 0.3))); // depth relative to the local thickness: no dark rims
-hairSpec = mix(0.6, 1.3, r1) * mix(0.5, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : mode < 0.5 && sc > 0.5 ? 0.55 : 1.0);
-hairSpec *= 1.0 - 0.6 * farK; // solid (far) layers: no crisp band where the strands would have broken the highlight up
-vec3 col = uC[6] * b * ao;
-col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
-diffuseColor.rgb *= col;`)
-    .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = 0.72;')
-    .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-normal = normalize(normal + cross(normalize(vHairT), normal) * hairTilt);`);
-}
 
 /** Hex (sRGB) to a linear working-space colour (THREE.Color already converts with colour management on). */
 const lin = (c: string) => new THREE.Color(c);
