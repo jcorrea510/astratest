@@ -82,7 +82,7 @@ test('a locked parked car needs the window smashed and a hotwire before it drive
   expect(Math.abs(await page.evaluate(() => (window as any).__v.speed))).toBeLessThan(0.5);
   await step(page, 2);
   // (CI once saw no ignition here, 1 run in many: log what the entry was doing)
-  const hw = await page.evaluate(() => { const g = (window as any).__game, v = (window as any).__v; return { ign: v.ignition, phase: g.carEntry.phase ?? null, t: g.carEntry.job?.t ?? null, seated: g.playerVehicle === v, heat: g.police?.heat?.heat ?? g.police?.state?.heat ?? null, dead: v.destroyed }; });
+  const hw = await page.evaluate(() => { const g = (window as any).__game, v = (window as any).__v; return { ign: v.ignition, phase: g.carEntry.phase ?? null, t: g.carEntry.job?.t ?? null, seated: g.playerVehicle === v, paused: g.paused, ts: g.timeScale, wheel: g.wheelOpen, dead: v.destroyed }; });
   console.log('hotwire', JSON.stringify(hw));
   expect(hw.ign).toBe(true);
   expect(await page.evaluate(() => (window as any).__game.carEntry.active)).toBe(false);

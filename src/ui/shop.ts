@@ -21,6 +21,8 @@ export class Shop {
   private onCloseCb: () => void = () => {};
   private open = false;
 
+  /** false for the tap that only selects a row on a touch screen */
+  private tapBuys = true; private lastTapId = '';
   constructor(private sound: (k: 'click' | 'hover' | 'back') => void) {
     this.el = h('div', 'ma-layer ma-modal-layer ma-shop');
     this.el.setAttribute('role', 'dialog');
@@ -46,7 +48,13 @@ export class Shop {
     split.append(this.list, this.detail);
     panel.appendChild(split);
     this.list.addEventListener('focusin', e => { const row = (e.target as Element).closest<HTMLElement>('[data-item-id]'); if (row) this.select(row.dataset.itemId!); });
-    this.list.addEventListener('pointerover', e => { const row = (e.target as Element).closest<HTMLElement>('[data-item-id]'); if (row && row.dataset.itemId !== this.selectedId) this.select(row.dataset.itemId!); });
+    // touch: the first tap on a row only selects it (detail pane); a second tap on the selected row, or the Buy button, buys. No accidental purchases.
+    this.list.addEventListener('pointerdown', e => {
+      const row = (e.target as Element).closest<HTMLElement>('[data-item-id]');
+      this.tapBuys = e.pointerType !== 'touch' || (!!row && row.dataset.itemId === this.lastTapId);
+      this.lastTapId = e.pointerType === 'touch' && row ? row.dataset.itemId ?? '' : '';
+    }, true);
+    this.list.addEventListener('pointerover', e => { if (e.pointerType === 'touch') return; const row = (e.target as Element).closest<HTMLElement>('[data-item-id]'); if (row && row.dataset.itemId !== this.selectedId) this.select(row.dataset.itemId!); });
     const foot = h('div', 'ma-panel-foot');
     const hints = h('div', 'ma-foot-hints');
     for (const [k, t] of [['↑↓', 'Browse'], ['Enter', 'Buy'], ['Esc', 'Leave store']]) {
@@ -118,7 +126,7 @@ export class Shop {
       }
       b.appendChild(right);
       b.setAttribute('aria-label', `${it.label}, ${it.info ? (it.info.value ?? (it.owned ? 'done' : 'to do')) : it.owned ? 'owned' : formatMoney(it.price)}`);
-      b.addEventListener('click', () => this.buy(it.id, b));
+      b.addEventListener('click', () => { if (!this.tapBuys) { this.tapBuys = true; this.select(it.id); return; } this.buy(it.id, b); });
       this.list.appendChild(b);
     }
     const target = (focusedId && this.list.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(focusedId)}"]`)) || (first ? this.list.querySelector<HTMLElement>('.is-buy') ?? this.list.querySelector<HTMLElement>('[data-nav]') : null);

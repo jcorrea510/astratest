@@ -1,0 +1,80 @@
+/*
+ * Touch controls (iPad / phone landscape). Same glass language as the HUD: dark translucent discs, hairline border, apricot when active.
+ * Sizes are in --u (never below 44 px); edges respect the notch / home bar. Hidden unless the device has a touch screen.
+ */
+.ma-root .ma-touch { position: absolute; inset: 0; display: none; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ma-root .ma-touch.is-on { display: block; }
+.ma-root .ma-touch * { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.ma-root .ma-touch-look, .ma-root .ma-touch-move { position: absolute; top: 0; bottom: 0; pointer-events: auto; }
+.ma-root .ma-touch-move { left: 0; width: 44%; }
+.ma-root .ma-touch-look { left: 44%; right: 0; }
+
+/* floating stick: a faint ring shows where the thumb goes, the real one appears under the finger */
+.ma-root .ma-touch-ghost, .ma-root .ma-touch-stick {
+  position: absolute; width: calc(120 * var(--u)); height: calc(120 * var(--u)); margin: calc(-60 * var(--u)) 0 0 calc(-60 * var(--u));
+  border-radius: 50%; border: calc(2 * var(--u)) solid rgba(255, 255, 255, 0.22); background: rgba(12, 14, 18, 0.28); pointer-events: none;
+}
+.ma-root .ma-touch-ghost { left: calc(env(safe-area-inset-left, 0px) + 130 * var(--u)); top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 330 * var(--u)); margin: 0; opacity: 0.7; transition: opacity 0.15s; }
+.ma-root .ma-touch-ghost.is-hidden { opacity: 0; }
+.ma-root .ma-touch-ghost-knob, .ma-root .ma-touch-knob {
+  position: absolute; left: 50%; top: 50%; width: calc(52 * var(--u)); height: calc(52 * var(--u)); margin: calc(-26 * var(--u)) 0 0 calc(-26 * var(--u));
+  border-radius: 50%; background: rgba(255, 255, 255, 0.22); border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.ma-root .ma-touch-stick { display: none; border-color: rgba(255, 195, 126, 0.5); }
+.ma-root .ma-touch-stick.is-down { display: block; }
+.ma-root .ma-touch-knob { background: rgba(255, 195, 126, 0.55); border-color: rgba(255, 195, 126, 0.9); will-change: transform; }
+
+/* buttons */
+.ma-root .ma-touch-buttons, .ma-root .ma-touch-top { position: absolute; inset: 0; pointer-events: none; }
+.ma-root .ma-touch-btn {
+  --sz: calc(66 * var(--u));
+  position: absolute; width: var(--sz); height: var(--sz); min-width: 44px; min-height: 44px; padding: 0; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; pointer-events: auto;
+  color: #fff; background: var(--glass); border: 1px solid var(--hair-2, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 calc(4 * var(--u)) calc(14 * var(--u)) rgba(0, 0, 0, 0.32); font-family: var(--display); font-weight: 800; cursor: default;
+  -webkit-backdrop-filter: blur(calc(8 * var(--u))); backdrop-filter: blur(calc(8 * var(--u)));
+  transition: transform 0.06s, background 0.1s, border-color 0.1s;
+}
+.ma-root .ma-touch-ic { width: 38%; height: 38%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ma-root .ma-touch-lbl { font-size: max(9px, calc(11 * var(--u))); letter-spacing: 0.1em; line-height: 1; margin-top: calc(2 * var(--u)); color: rgba(255, 255, 255, 0.78); text-shadow: var(--txt-shadow); }
+.ma-root .ma-touch-btn.is-down, .ma-root .ma-touch-btn.is-on { background: rgba(255, 195, 126, 0.88); border-color: var(--apricot); color: var(--ink); transform: scale(0.94); }
+.ma-root .ma-touch-btn.is-down .ma-touch-lbl, .ma-root .ma-touch-btn.is-on .ma-touch-lbl { color: var(--ink); text-shadow: none; }
+.ma-root .ma-touch-btn.is-fire, .ma-root .ma-touch-btn.is-gas { border-color: rgba(255, 195, 126, 0.55); background: rgba(60, 38, 18, 0.62); }
+.ma-root .ma-touch-btn.is-fire .ma-touch-ic, .ma-root .ma-touch-btn.is-gas .ma-touch-ic { width: 42%; height: 42%; }
+.ma-root .ma-touch-btn.is-fire.is-down, .ma-root .ma-touch-btn.is-gas.is-down { background: rgba(255, 195, 126, 0.9); }
+
+/* pause + map, top left (the gear is replaced) */
+.ma-root .ma-touch-top .ma-touch-btn {
+  --sz: max(44px, calc(46 * var(--u))); border-radius: calc(10 * var(--u)); left: calc(env(safe-area-inset-left, 0px) + 20 * var(--u) + var(--i) * (var(--sz) + 10 * var(--u))); top: calc(env(safe-area-inset-top, 0px) + 14 * var(--u));
+  flex-direction: row;
+}
+.ma-root .ma-touch-top .ma-touch-lbl { display: none; }
+.ma-root .ma-touch-top .ma-touch-ic { width: 52%; height: 52%; }
+
+/* with a touch screen: no tiny gear, notices and the FPS counter move clear of the two top-left buttons */
+.ma-root.has-touch .ma-gear { display: none; }
+.ma-root.has-touch .ma-notice-tl { left: calc(var(--edge-x) + 120 * var(--u)); width: calc(320 * var(--u)); }
+.ma-root.has-touch .ma-fps { left: calc(var(--edge-x) + 120 * var(--u)); top: calc(66 * var(--u)); }
+.ma-root.has-touch .ma-hud-bl { bottom: calc(env(safe-area-inset-bottom, 0px) + 34 * var(--u)); }
+
+/* menus by touch: every control a finger has to hit is >= 44 px, and nothing relies on hover */
+@media (pointer: coarse) {
+  .ma-root .ma-btn, .ma-root .ma-tab, .ma-root .ma-back, .ma-root .ma-legend-chip, .ma-root button[data-nav], .ma-root .ma-row, .ma-root .ma-mi { min-height: 44px; }
+  .ma-root input[type="range"], .ma-range { min-height: 44px; touch-action: pan-y; }
+  .ma-root input[type='checkbox'] { min-width: 28px; min-height: 28px; }
+  .ma-root select { min-height: 44px; }
+  .ma-root .ma-layer { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .ma-root .ma-layer, .ma-root .ma-layer * { touch-action: manipulation; }
+  .ma-root .ma-layer input[type='range'] { touch-action: pan-y; }
+}
+
+/* the speedometer / vehicle panel would sit under the pedals: tuck it between the minimap and the buttons */
+.ma-root.has-touch .ma-hud-br { right: calc(env(safe-area-inset-right, 0px) + 350 * var(--u)); bottom: calc(env(safe-area-inset-bottom, 0px) + 34 * var(--u)); }
+.ma-root.has-touch .ma-keyslot:disabled { opacity: 0.55; }
+
+/* Same menu sizing keyed to the touch UI itself (a finger on a hybrid / trackpad iPad, or a coarse screen): every tappable row, tab, swatch and slider is >= 44 px. */
+.ma-root.has-touch :is(.ma-btn, .ma-tab, .ma-back, .ma-menu-item, .ma-ptab, .ma-shop-item, .ma-shop-buy, .ma-garage-row, .ma-garage-sw, .ma-keyslot, .ma-legend-chip, button[data-nav]) { min-height: 44px; }
+.ma-root.has-touch :is(.ma-garage-sw) { min-width: 44px; }
+.ma-root.has-touch :is(input[type="range"], .ma-range) { min-height: 44px; touch-action: pan-y; }
+.ma-root.has-touch :is(.ma-layer, .ma-layer *) { touch-action: manipulation; }
+.ma-root.has-touch .ma-layer input[type='range'] { touch-action: pan-y; }

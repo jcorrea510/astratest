@@ -1,6 +1,6 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-import { padHeld, setPadContext, type PadContext, readPad, padActive, radialDeadzone, lookStick, EMPTY_PAD, type PadState } from './gamepad';
+import { padHeld, setPadContext, type PadContext, readPad, padActive, radialDeadzone, lookStick, EMPTY_PAD, type PadState, setPadOverrides, setPadFamilyFromId } from './gamepad';
 import { publishRuntime } from './runtime';
 import { pointerLockSupported, isIPad } from './platform';
 export type { PadState };
@@ -15,6 +15,13 @@ export class Input {
   /** True when the browser has no Pointer Lock (iPad Safari): the cursor itself looks around and a finger drag looks too. */
   virtualLock = false;
   private lastTouch = new Map<number, { x: number; y: number }>();
+  /** On-screen touch controls (ui/touch.ts) drive these: held actions, the floating stick and drag-look. */
+  touchActive = false;
+  private touchHeld = new Set<Action>();
+  private touchPressed = new Set<Action>();
+  private touchReleased = new Set<Action>();
+  private touchDeferred = new Set<Action>();
+  touchMove = { x: 0, y: 0 };
   pad: PadState = { ...EMPTY_PAD, buttons: [] };
   private padPrev: PadState = { ...EMPTY_PAD, buttons: [] };
   lastSource: ActionSource = 'kbm';
@@ -66,7 +73,7 @@ export class Input {
   captureNext(cb: (code: string) => void) { this.captureCb = cb; }
   requestLock() {
     if (document.pointerLockElement === this.canvas) return;
-    if (!pointerLockSupported(this.canvas)) { this.virtualLock = true; this.locked = true; return; }
+    if (this.touchActive || !pointerLockSupported(this.canvas)) { this.virtualLock = true; this.locked = true; return; }
     try {
       const r = (this.canvas as HTMLCanvasElement).requestPointerLock?.() as unknown as Promise<void> | undefined;
       if (r && typeof r.catch === 'function') r.catch(() => { if (isIPad()) { this.virtualLock = true; this.locked = true; } /* else: user gesture required; we retry on next click */ });
@@ -82,11 +89,13 @@ export class Input {
     if (a === 'aim' && this.settings.aimToggle && this.aimLatch && this.lastSource === 'kbm') return true;
     if (a === 'aim' && this.settings.aimToggle && this.lastSource === 'kbm' && this.codes(a).some(c => c.startsWith('Mouse') && this.down.has(c))) return this.aimLatch;
     if (this.codes(a).some(c => this.isCodeDown(c))) return true;
+    if (this.touchHeld.has(a)) return true;
     return padHeld(a, this.pad, this._padCtx);
   }
   justPressed(a: Action): boolean {
     if (!this.enabled && a !== 'pause') return false;
     if (this.codes(a).some(c => this.pressed.has(c))) return true;
+    if (this.touchPressed.has(a)) return true;
     // edges of the pad's level state, so trigger-bound actions (RT fire, LT aim) get presses too (Round 8: a pistol on RT never fired)
     if (this.pad.connected && padHeld(a, this.pad, this._padCtx) && !padHeld(a, this.padPrev, this._padCtx)) return true;
     return false;
@@ -95,6 +104,7 @@ export class Input {
   rawPressed(code: string): boolean { return this.enabled && this.pressed.has(code); }
   justReleased(a: Action): boolean {
     if (this.codes(a).some(c => this.released.has(c))) return true;
+    if (this.touchReleased.has(a)) return true;
     if (!padHeld(a, this.pad, this._padCtx) && padHeld(a, this.padPrev, this._padCtx)) return true;
     return false;
   }
@@ -107,6 +117,7 @@ export class Input {
       const m = radialDeadzone(this.pad.lx, this.pad.ly, this.padDz(), this._mv);
       if (m.x !== 0 || m.y !== 0) { x = m.x; y = -m.y; }
     }
+    if (this.touchMove.x !== 0 || this.touchMove.y !== 0) { x = this.touchMove.x; y = this.touchMove.y; }
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
     return { x, y };
   }
@@ -125,6 +136,7 @@ export class Input {
   throttle(): number {
     if (!this.enabled) return 0;
     if (this.pad.connected && (this.pad.rt > 0.05 || this.pad.lt > 0.05)) return this.pad.rt - this.pad.lt;
+    if (this.touchMove.y !== 0 && !this.touchHeld.has('forward') && !this.touchHeld.has('back')) return this.touchMove.y;
     return (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0);
   }
   private _mv = { x: 0, y: 0 };
@@ -133,15 +145,34 @@ export class Input {
     publishRuntime(this.settings);
     this.padPrev = this.pad;
     this.pad = readPad();
+    setPadOverrides(this.settings.padBindings);
+    if (this.pad.connected) setPadFamilyFromId(this.pad.id);
     if (padActive(this.pad)) this.lastSource = 'pad';
   }
   /** Call at the end of every frame. */
-  endFrame() { this.pressed.clear(); this.released.clear(); this.mouseDX = 0; this.mouseDY = 0; this.wheel = 0; }
+  endFrame() {
+    this.touchPressed.clear(); this.touchReleased.clear();
+    for (const a of this.touchDeferred) { this.touchHeld.delete(a); this.touchReleased.add(a); }
+    this.touchDeferred.clear();
+    this.pressed.clear(); this.released.clear(); this.mouseDX = 0; this.mouseDY = 0; this.wheel = 0;
+  }
+  /** Touch: a button went down / up. A tap shorter than a frame still reads as held for that frame. */
+  setTouchAction(a: Action, down: boolean) {
+    if (down) { this.touchDeferred.delete(a); if (!this.touchHeld.has(a)) this.touchPressed.add(a); this.touchHeld.add(a); this.lastSource = 'kbm'; return; }
+    if (!this.touchHeld.has(a)) return;
+    if (this.touchPressed.has(a)) { this.touchDeferred.add(a); return; }
+    this.touchHeld.delete(a); this.touchReleased.add(a);
+  }
+  touchIsHeld(a: Action): boolean { return this.touchHeld.has(a); }
+  setTouchMove(x: number, y: number) { this.touchMove.x = x; this.touchMove.y = y; }
+  /** Touch drag-look, in mouse-pixel units. */
+  addLook(dx: number, dy: number) { this.mouseDX += dx; this.mouseDY += dy; }
+  clearTouch() { this.touchHeld.clear(); this.touchPressed.clear(); this.touchDeferred.clear(); this.touchMove.x = 0; this.touchMove.y = 0; }
   /** Scripted input helpers (used by automated playtests). */
   press(code: string) { this.pressed.add(code); this.scripted.add(code); }
   release(code: string) { this.scripted.delete(code); this.released.add(code); }
   tap(code: string) { this.pressed.add(code); }
-  clearAll() { this.down.clear(); this.scripted.clear(); }
+  clearAll() { this.down.clear(); this.scripted.clear(); this.clearTouch(); }
 }
 
 /** Pad-only Y invert. The global invertY already flips mouse and pad together (game.ts), so padInvertY only adds an invert when the global one is off; ticking both never cancels out. */
