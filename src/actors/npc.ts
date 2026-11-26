@@ -113,6 +113,7 @@ export interface NpcEnv {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+const _qGunFix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3(), tvS = new THREE.Vector3();
 export class NpcBrainRunner {
   private rng = new Rng(99);
@@ -525,7 +526,7 @@ export class NpcBrainRunner {
     }
     c.human.rightHand.getWorldPosition(n.model.position);
     if (n.brain === 'combat' && tgt) { n.model.lookAt(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z); }
-    else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)); }
+    else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(_qGunFix); }
     n.model.updateMatrixWorld(true);
   }
   /** Starts a standing activity (phone, smoke, filming...). */

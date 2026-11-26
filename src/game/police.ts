@@ -414,15 +414,15 @@ export class Police {
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
     // Clean dead/removed units
     for (const u of this.units) if (!this.traffic.cars.includes(u)) { u.persistent = false; u.v.persistent = false; u.v.siren = false; }
-    this.units = this.units.filter(u => this.traffic.cars.includes(u));
+    { const us = this.units; let k = 0; for (let i = 0; i < us.length; i++) if (this.traffic.cars.includes(us[i])) us[k++] = us[i]; us.length = k; } // in place: no per-frame array
     for (const n of this.foot) if (!n.alive) n.persistent = false;
-    this.foot = this.foot.filter(n => this.pop.npcs.includes(n) && n.alive);
+    { const ft = this.foot; let k = 0; for (let i = 0; i < ft.length; i++) if (ft[i].alive && this.pop.npcs.includes(ft[i])) ft[k++] = ft[i]; ft.length = k; }
     this.violentT = Math.max(0, this.violentT - dt);
     const D = this.dispatch;
     if (D.arrest) D.updateArrest(dt, player);
     // officers that left their unit on their own (shot up, wrecked) still fight
     for (const n of D.collectCrew()) if (!this.foot.includes(n)) { D.arm(n, D.footKind.get(n) ?? 'police', st.heat, this.lethal); this.foot.push(n); }
-    for (const [car] of [...D.kinds]) if (!this.traffic.cars.includes(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
+    for (const car of D.kinds.keys()) if (!this.traffic.cars.includes(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
     if (st.heat > 0) {
       const target = seen ? pp : st.lastSeen;
       const lethal = this.lethal, pv = player.inVehicle as { position: THREE.Vector3; speed: number; yaw: number; doorPoint(side: 1 | -1): THREE.Vector3 } | null;

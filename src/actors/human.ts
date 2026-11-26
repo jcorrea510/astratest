@@ -117,8 +117,13 @@ const GRIP_PALM = 0.062;
 const _ft = new THREE.Vector3();
 const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THREE.Quaternion();
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
-const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion();
+const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion(), _sqA = new THREE.Quaternion(), _sqB = new THREE.Quaternion(), _sqN = new THREE.Quaternion();
 const _dp = new THREE.Vector3(), _ds = new THREE.Vector3(), _dq = new THREE.Quaternion(); // matrixWorld decompose scratch (IK)
+/** Applies a world-space rotation to a bone's local quaternion (its and its parent's world matrices must be current) and refreshes its subtree. */
+function rotBone(bone: THREE.Object3D, q: THREE.Quaternion) {
+  bone.parent!.matrixWorld.decompose(_dp, _iq1, _ds); bone.matrixWorld.decompose(_dp, _iq2, _ds);
+  bone.quaternion.copy(_iq1.invert().multiply(_iq2.premultiply(q))); bone.updateMatrixWorld(true);
+}
 /** Round 11: culling sphere for a person's skinned meshes (body space, metres; bind-pose sphere r 1.08 m at hip height). */
 export const PERSON_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);
 /** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
@@ -522,24 +527,19 @@ export class Human {
     const a = _ia.setFromMatrixPosition(A.matrixWorld), b = _ib.setFromMatrixPosition(B.matrixWorld), c = _ic.setFromMatrixPosition(C.matrixWorld);
     const l1 = a.distanceTo(b), l2 = b.distanceTo(c);
     if (l1 < 1e-4 || l2 < 1e-4) return;
-    const rot = (bone: THREE.Object3D, q: THREE.Quaternion) => {
-      bone.parent!.matrixWorld.decompose(_dp, _iq1, _ds); bone.matrixWorld.decompose(_dp, _iq2, _ds);
-      const pq = _iq1, wq = _iq2.premultiply(q);
-      bone.quaternion.copy(pq.invert().multiply(wq)); bone.updateMatrixWorld(true);
-    };
     const d = THREE.MathUtils.clamp(a.distanceTo(target), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.005);
     const want = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
     _iu.subVectors(a, b).normalize(); _iv.subVectors(c, b).normalize();
     const cur = Math.acos(THREE.MathUtils.clamp(_iu.dot(_iv), -1, 1));
     _ia2.crossVectors(_iu, _iv); if (_ia2.lengthSq() < 1e-8) _ia2.set(1, 0, 0).applyQuaternion(this.root.quaternion); _ia2.normalize();
     _iqw.setFromAxisAngle(_ia2, want - cur);
-    const save = [A.quaternion.clone(), B.quaternion.clone()];
-    rot(B, _iqw);
+    _sqA.copy(A.quaternion); _sqB.copy(B.quaternion);
+    rotBone(B, _iqw);
     _ic.setFromMatrixPosition(C.matrixWorld);
     _iu.subVectors(_ic, a).normalize(); _iv.subVectors(target, a).normalize();
     _iqw.setFromUnitVectors(_iu, _iv);
-    rot(A, _iqw);
-    if (w < 0.999) { A.quaternion.slerpQuaternions(save[0], A.quaternion.clone(), w); B.quaternion.slerpQuaternions(save[1], B.quaternion.clone(), w); A.updateMatrixWorld(true); }
+    rotBone(A, _iqw);
+    if (w < 0.999) { _sqN.copy(A.quaternion); A.quaternion.slerpQuaternions(_sqA, _sqN, w); _sqN.copy(B.quaternion); B.quaternion.slerpQuaternions(_sqB, _sqN, w); A.updateMatrixWorld(true); }
   }
   private holdClip(name: string, dt: number) {
     for (const l of [this.lower, this.upper]) {
