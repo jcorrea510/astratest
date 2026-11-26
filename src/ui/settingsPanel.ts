@@ -134,7 +134,7 @@ export class SettingsPanel {
     const d = DEFAULT_SETTINGS;
     if (this.tab === 'display') this.update(s => { s.fov = d.fov; s.cameraShake = d.cameraShake; s.showFps = d.showFps; s.look = d.look; s.quality = d.quality; s.blood = d.blood; s.resolutionScale = d.resolutionScale; s.fpsCap = d.fpsCap; }, this.deps.get().quality !== d.quality);
     else if (this.tab === 'access') this.update(s => { s.uiScale = d.uiScale; s.reduceMotion = d.reduceMotion; s.speedBlur = d.speedBlur; s.colorblind = d.colorblind; });
-    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.padBindings = {}; s.vibration = d.vibration; });
+    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.padBindings = {}; s.vibration = d.vibration; s.touchControls = d.touchControls; });
     else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; s.ambienceVolume = d.ambienceVolume; s.voiceVolume = d.voiceVolume; s.uiVolume = d.uiVolume; });
     else this.update(s => { s.bindings = defaultBindings(); });
     this.render();
@@ -182,6 +182,7 @@ export class SettingsPanel {
       this.body.appendChild(this.slider('Look Sensitivity', 'Mouse and right-stick camera speed.', 0.2, 3, 0.05, s.sensitivity, mult, v => this.update(x => { x.sensitivity = v; })));
       this.body.appendChild(this.slider('Aim Sensitivity', 'Look speed while aiming down the sights, relative to Look Sensitivity.', 0.3, 1.5, 0.05, s.adsSensitivity, mult, v => this.update(x => { x.adsSensitivity = v; })));
       this.body.appendChild(this.toggle('Invert Vertical Look', 'Push forward to look down.', s.invertY, v => this.update(x => { x.invertY = v; })));
+      this.body.appendChild(this.segRow('Touch Controls', 'On-screen stick and buttons. Auto shows them on any touchscreen (phone, iPad, touch laptop).', [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']], s.touchControls ?? 'auto', v => this.update(x => { x.touchControls = v as Settings['touchControls']; })));
       this.body.appendChild(this.toggle('Click to Aim', 'Mouse: click aim once to raise the gun, again to lower it (best on a trackpad). Off: hold to aim.', s.aimToggle, v => this.update(x => { x.aimToggle = v; })));
       this.body.appendChild(this.toggle('Realistic Driving', 'Off: arcade assists. On: real-world grip (about 0.9 g for sedans) and more weight transfer.', s.driving === 'realistic', v => this.update(x => { x.driving = v ? 'realistic' : 'arcade'; })));
       this.body.appendChild(this.slider('Controller Look Speed', 'Right-stick camera speed on a gamepad.', 0.3, 3, 0.05, s.padSensitivity, mult, v => this.update(x => { x.padSensitivity = v; })));

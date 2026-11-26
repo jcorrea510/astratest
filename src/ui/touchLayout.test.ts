@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LAYOUTS, TOP_BUTTONS, MIN_TARGET_PX, axesFor, touchPromptFor, pxSize, stickAxes, touchContext, uFor } from './touchLayout';
+import { LAYOUTS, TOP_BUTTONS, MIN_TARGET_PX, axesFor, touchPromptFor, pxSize, stickAxes, touchContext, touchWanted, uFor } from './touchLayout';
 import { DEFAULT_BINDINGS } from '../core/settings';
 
 describe('touch layout', () => {
@@ -63,5 +63,21 @@ describe('touch prompts', () => {
     expect(touchPromptFor('Y  Something', DEFAULT_BINDINGS, 'foot')).toBe('Y  Something');
     expect(touchPromptFor('Hold up the clerk', DEFAULT_BINDINGS, 'foot')).toBe('Hold up the clerk');
     expect(touchPromptFor(null, DEFAULT_BINDINGS, 'foot')).toBeNull();
+  });
+});
+
+describe('touchWanted', () => {
+  const base = { coarse: false, maxTouch: 0, sawTouch: false, sawMouse: false };
+  it('auto shows on any touchscreen, including an iPad that reports a fine pointer as a Mac', () => {
+    expect(touchWanted('auto', base)).toBe(false);
+    expect(touchWanted('auto', { ...base, maxTouch: 5 })).toBe(true);
+    expect(touchWanted('auto', { ...base, coarse: true })).toBe(true);
+    expect(touchWanted('auto', { ...base, sawTouch: true })).toBe(true);
+  });
+  it('a mouse click hides them on a touch laptop; on / off / ?touch=1 override', () => {
+    expect(touchWanted('auto', { ...base, maxTouch: 10, sawMouse: true })).toBe(false);
+    expect(touchWanted('on', base)).toBe(true);
+    expect(touchWanted('off', { ...base, coarse: true, sawTouch: true })).toBe(false);
+    expect(touchWanted('off', { ...base, forced: true })).toBe(true);
   });
 });

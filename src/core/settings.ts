@@ -57,7 +57,9 @@ export interface Settings {
   /** render-resolution multiplier on top of the preset pixel ratio, 0.5-1 */ resolutionScale: number;
   /** frame-rate cap: 0 = off */ fpsCap: 0 | 30 | 60;
   /** extra audio buses 0-1 */ ambienceVolume: number; voiceVolume: number; uiVolume: number;
+  /** on-screen touch controls: auto = any touchscreen, on = always, off = never */ touchControls: TouchControlsMode;
 }
+export type TouchControlsMode = 'auto' | 'on' | 'off';
 export type ColorblindMode = 'off' | 'deuteranopia' | 'protanopia' | 'tritanopia';
 export const COLORBLIND_MODES: ColorblindMode[] = ['off', 'deuteranopia', 'protanopia', 'tritanopia'];
 /** A Mac with a trackpad (not an iPad, which reports as Mac but has touch). */
@@ -65,7 +67,7 @@ export function isMacLike(): boolean { try { return typeof navigator !== 'undefi
 export function prefersReducedMotion(): boolean { try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } }
 export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike(),
   padSensitivity: 1, padDeadzone: 0.12, padInvertY: false, padBindings: {}, vibration: true, adsSensitivity: 0.8, speedBlur: true, reduceMotion: prefersReducedMotion(), colorblind: 'off',
-  uiScale: 1, resolutionScale: 1, fpsCap: 0, ambienceVolume: 0.8, voiceVolume: 0.9, uiVolume: 0.8 };
+  uiScale: 1, resolutionScale: 1, fpsCap: 0, ambienceVolume: 0.8, voiceVolume: 0.9, uiVolume: 0.8, touchControls: 'auto' };
 export const SETTINGS_KEY = 'meridian-afterglow.settings.v1';
 
 export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStorage()): Settings {
@@ -91,6 +93,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     if (typeof merged.speedBlur !== 'boolean') merged.speedBlur = true;
     if (typeof merged.reduceMotion !== 'boolean') merged.reduceMotion = prefersReducedMotion();
     if (!COLORBLIND_MODES.includes(merged.colorblind)) merged.colorblind = 'off';
+    if (merged.touchControls !== 'on' && merged.touchControls !== 'off') merged.touchControls = 'auto';
     if (merged.fpsCap !== 0 && merged.fpsCap !== 30 && merged.fpsCap !== 60) merged.fpsCap = 0;
     if (merged.driving !== 'arcade' && merged.driving !== 'realistic') merged.driving = 'arcade';
     delete (merged as unknown as Record<string, unknown>).pedDensity; delete (merged as unknown as Record<string, unknown>).trafficDensity; delete (merged as unknown as Record<string, unknown>).pedestrians; delete (merged as unknown as Record<string, unknown>).traffic;
