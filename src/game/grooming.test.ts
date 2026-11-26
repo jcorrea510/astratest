@@ -14,6 +14,10 @@ describe('grooming catalogue', () => {
     for (const f of ['topStyle', 'top', 'bottomStyle', 'bottom', 'shoeStyle', 'shoes', 'hatStyle', 'hat']) expect(c.some(t => t.id === f), f).toBe(true);
     expect(clothingTabs('m').find(t => t.id === 'bottomStyle')!.options.some(o => o.id === 'skirt')).toBe(false);
   });
+  it('uses US spelling in player-facing labels', () => {
+    const all = [...barberTabs('m'), ...clothingTabs('f')];
+    for (const t of all) { expect(t.label).not.toMatch(/colour/i); for (const o of t.options) expect(o.label).not.toMatch(/grey|colour/i); }
+  });
   it('prices only what changes, and a barber never sells clothes', () => {
     expect(lookCost('barber', base, base)).toBe(0);
     const cut = dressed(base, { hairStyle: 'afro', hair: '#7b3a1e', facial: 'beard' });

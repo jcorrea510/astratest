@@ -47,15 +47,23 @@
   transition: opacity 0.2s, transform 0.2s; visibility: hidden;
 }
 .ma-root .ma-heat.is-visible { opacity: 1; transform: none; visibility: visible; }
-.ma-root .ma-star { width: calc(27 * var(--u)); height: calc(27 * var(--u)); color: rgba(255, 255, 255, 0.16); }
-.ma-root .ma-star-fill { fill: currentColor; stroke: rgba(0, 0, 0, 0.55); stroke-width: 1.2; stroke-linejoin: round; paint-order: stroke; }
-.ma-root .ma-star.is-on { color: #ffe27a; }
-.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(40, 20, 0, 0.9); stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
-.ma-root .ma-star.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
-.ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-siren 0.8s steps(1) infinite; }
-.ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
-@keyframes ma-star-siren { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
-.ma-root .ma-heat.is-flash { border-color: rgba(255, 77, 94, 0.5); }
+.ma-root .ma-heat { align-items: center; }
+.ma-root .ma-heat-seg {
+  width: calc(22 * var(--u)); height: calc(9 * var(--u)); border-radius: calc(2 * var(--u)); box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.14); border: calc(1 * var(--u)) solid rgba(0, 0, 0, 0.55);
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.ma-root .ma-heat-seg.is-on { background: #ffe27a; box-shadow: 0 0 calc(6 * var(--u)) rgba(255, 226, 122, 0.45); }
+.ma-root .ma-heat-seg.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
+.ma-root .ma-heat.is-rising .ma-heat-seg.is-on { animation: ma-heat-flash 0.5s steps(1) infinite; }
+.ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: ma-heat-pulse 2s ease-in-out infinite; }
+@keyframes ma-heat-flash { 0% { background: var(--heat-red); } 50% { background: var(--heat-blue); } }
+@keyframes ma-heat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on, .ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: none; }
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on { background: var(--heat-red); }
+}
+.ma-root .ma-heat.is-rising, .ma-root .ma-heat.is-search { border-color: rgba(255, 77, 94, 0.5); }
 
 /* ---------------------------------------------------------------- top left: gear, fps */
 .ma-root .ma-gear { left: var(--edge-x); top: calc(16 * var(--u)); width: calc(30 * var(--u)); height: calc(30 * var(--u)); font-size: calc(17 * var(--u)); background: var(--glass); border: 1px solid var(--hair); opacity: 0.8; }

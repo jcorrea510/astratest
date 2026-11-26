@@ -219,7 +219,7 @@ export class Activities {
       repair: { price: rep, enabled: rep > 0 && g.money >= rep, note: !rep ? 'Nothing to fix.' : g.money < rep ? need(rep) : 'Engine, body panels, glass and lights back to new.' },
       paints: GARAGE_PAINTS.map(([hex, name]) => ({ hex, name })), paintPrice: RESPRAY,
       paintEnabled: !seen && g.money >= RESPRAY,
-      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New colour, and the heat is off.' : 'Hover a colour to see it on the car.',
+      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New color, and the heat is off.' : 'Hover a color to see it on the car.',
       sell: { price: q.price, ok: q.ok, note: q.reason },
     };
   }

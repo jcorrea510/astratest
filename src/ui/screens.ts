@@ -216,7 +216,7 @@ export function buildCredits(): { el: HTMLDivElement; scroller: HTMLDivElement; 
     scroller.appendChild(g);
   };
   sec('Meridian Afterglow', [['Design, code, art, audio', 'The Meridian Afterglow team'], ['City, story and brands', 'Original, fictional'], ['Built with', 'three.js, Rapier, Vite, TypeScript']]);
-  sec('Open assets (CC0)', [['City props', 'Kay Lousberg, KayKit City Builder Bits'], ['People and animation', 'Quaternius, Universal Base Characters and Animation Library'], ['Engine and tyre audio', 'Kenney, Starter Kit Racing']]);
+  sec('Open assets (CC0)', [['City props', 'Kay Lousberg, KayKit City Builder Bits'], ['People and animation', 'Quaternius, Universal Base Characters and Animation Library'], ['Engine and tire audio', 'Kenney, Starter Kit Racing']]);
   sec('Type', [['Barlow and Barlow Condensed', 'Jeremy Tribby, SIL Open Font License']]);
   sec('Thanks', [['Playtesting', 'Everyone who drove into the sea on purpose']]);
   panel.appendChild(scroller);

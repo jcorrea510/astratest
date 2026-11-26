@@ -93,7 +93,7 @@ export class GaragePanel {
     this.pickName.textContent = this.picked ? (view.paints.find(p => p.hex === this.picked)?.name ?? '') : `Now: ${view.paintName}`;
     const canPaint = view.paintEnabled && !!this.picked;
     this.paintBtn.textContent = '';
-    this.paintBtn.append(h('span', 'ma-garage-name', this.picked ? 'Respray' : 'Pick a colour'), h('span', 'ma-garage-price', formatMoney(view.paintPrice)));
+    this.paintBtn.append(h('span', 'ma-garage-name', this.picked ? 'Respray' : 'Pick a color'), h('span', 'ma-garage-price', formatMoney(view.paintPrice)));
     this.paintBtn.classList.toggle('is-off', !canPaint); this.paintBtn.setAttribute('aria-disabled', String(!canPaint));
     this.paintNote.textContent = view.paintNote;
     this.setRow(this.sellBtn, this.sellPrice, view.sell.ok, view.sell.price > 0 ? `+${formatMoney(view.sell.price)}` : '');

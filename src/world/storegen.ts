@@ -6,7 +6,7 @@ import { STORES, STORE_W, STORE_D, POLICE_STATION, GAS_STATION, type Store, type
 const ROSTER: { kind: StoreKind; color: string; cash: [number, number]; names: string[] }[] = [
   { kind: 'convenience', color: '#d1495b', cash: [250, 450], names: ['Night Owl Mart', 'Quick Harbor 24/7', 'Corner Moon Market', 'Dime Store 24', 'Brightside Mini Mart', 'Lantern Stop', 'Blue Heron Mart', 'Anchor Row Mini Mart', 'Ferry Slip Convenience', 'Midnight Hydrant 24'] },
   { kind: 'liquor', color: '#29335c', cash: [450, 700], names: ['Anchor Spirits', 'Velvet Cork Liquor', 'Salt & Barrel', 'Rooster Wine & Spirits', 'Brass Bell Spirits', 'Wharf Street Wines'] },
-  { kind: 'gas', color: '#0f7b4f', cash: [300, 500], names: ['Dust Road Fuel', 'Coastline Petrol', 'Rust Belt Gas & Go', 'Mile Marker Fuel'] },
+  { kind: 'gas', color: '#0f7b4f', cash: [300, 500], names: ['Dust Road Fuel', 'Coastline Gas', 'Rust Belt Gas & Go', 'Mile Marker Fuel'] },
   { kind: 'diner', color: '#8c1c22', cash: [350, 550], names: ['Blue Plate Diner', 'Sunny Side Griddle', 'Twin Anchors Cafe', 'Late Light Diner', 'Biscuit Barn', 'Ticker Tape Diner', 'Pier Light Cafe'] },
   { kind: 'pawn', color: '#141414', cash: [800, 1300], names: ['Second Chance Pawn', 'Gold Standard Pawn', 'Mercantile Loan & Pawn'] },
   { kind: 'jewelry', color: '#2a2a30', cash: [900, 1500], names: ['Brass Key Jewelers', 'Aurelia Fine Jewelry', 'Starling & Gold', 'Lumen Diamond Co.'] },

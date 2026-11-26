@@ -3,7 +3,8 @@ import type { CityMap } from '../world/citymap';
 import { BUILD } from '../build';
 import { MPS_TO_MPH } from '../core/units';
 import type { HudState, WeaponIcon } from './contracts';
-import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
+import { WRENCH_SVG, weaponSvg } from './icons';
+import { HEAT_SEGMENTS, heatFilled, heatMode, type HeatMode } from './heatSegments';
 import { formatMoney, formatTimer } from './geometry';
 import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
@@ -45,6 +46,8 @@ export class Hud {
   private heatEl: HTMLDivElement;
   private flares: HTMLSpanElement[] = [];
   private heatShown = -1;
+  private heatRiseAt = -1e9;
+  private heatModeShown: HeatMode = 'idle';
   private weaponEl: HTMLDivElement;
   private weaponIconEl: HTMLDivElement;
   private weaponIcon: WeaponIcon | null = null;
@@ -136,9 +139,8 @@ export class Hud {
     tr.appendChild(this.weaponEl);
     this.heatEl = h('div', 'ma-heat');
     this.heatEl.setAttribute('aria-label', 'Heat level');
-    for (let i = 0; i < 5; i++) {
-      const f = h('span', 'ma-flare ma-star');
-      f.innerHTML = STAR_SVG;
+    for (let i = 0; i < HEAT_SEGMENTS; i++) {
+      const f = h('span', 'ma-heat-seg');
       this.heatEl.appendChild(f);
       this.flares.push(f);
     }
@@ -298,17 +300,26 @@ export class Hud {
     if (mt !== this.moneyText) { this.moneyText = mt; this.money.set(mt); }
 
     // Heat
-    const filled = Math.max(0, Math.min(5, Math.ceil(s.heat - 0.05)));
+    const filled = heatFilled(s.heat);
+    const nowMs = performance.now();
+    if (filled > this.heatShown && this.heatShown >= 0) this.heatRiseAt = nowMs;
     if (filled !== this.heatShown) {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < HEAT_SEGMENTS; i++) {
         const on = i < filled;
         if (on && i >= this.heatShown && this.heatShown >= 0) { this.flares[i].classList.remove('is-pop'); void this.flares[i].offsetWidth; this.flares[i].classList.add('is-pop'); }
         setClass(this.flares[i], 'is-on', on);
       }
+      this.heatEl.setAttribute('aria-label', `Heat level ${filled} of ${HEAT_SEGMENTS}`);
       this.heatShown = filled;
     }
+    const mode: HeatMode = heatMode(filled, s.heatFlash, nowMs - this.heatRiseAt);
+    if (mode !== this.heatModeShown) {
+      this.heatModeShown = mode;
+      setClass(this.heatEl, 'is-rising', mode === 'rising');
+      setClass(this.heatEl, 'is-search', mode === 'search');
+    }
     setClass(this.heatEl, 'is-visible', filled > 0);
-    const flash = s.heatFlash && filled > 0;
+    const flash = mode !== 'idle';
     setClass(this.heatEl, 'is-flash', flash);
     setClass(this.radarEl, 'is-wanted', filled > 0);
     setClass(this.radarEl, 'is-searching', flash);
