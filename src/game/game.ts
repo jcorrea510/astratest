@@ -45,7 +45,7 @@ import { HeliManager } from '../vehicles/helicopterManager';
 import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
 import { ArmyGuards, guardsHostile } from './armyGuards';
-import { farIdleVehicle } from './farLod';
+import { farIdleVehicle, chunkCull, type ChunkBox } from './farLod';
 import { fullscreenSettling } from '../core/fullscreen';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
@@ -920,13 +920,15 @@ export class Game {
     const shadowR = this.renderer.quality.shadowRange * 1.3 + 10;
     for (const m of this.visuals.chunkMeshes) {
       const mesh = m as THREE.Mesh;
-      const bs = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
-      if (!bs) continue;
-      const d = Math.hypot(bs.center.x - cp.x, bs.center.z - cp.z) - bs.radius;
-      mesh.visible = d < (mesh.userData.small ? Math.min(max, 140) : max * (mesh.userData.farScale ?? 1)); // CITY: facades reach further (farScale)
+      const inst = (mesh as unknown as THREE.InstancedMesh).isInstancedMesh, bb = inst ? null : mesh.geometry?.boundingBox, bs = inst ? (mesh as unknown as THREE.InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
+      if (!bb && !bs) continue;
+      let cb = mesh.userData.cbox as ChunkBox | undefined;
+      if (!cb) { cb = bb ? { minX: bb.min.x, maxX: bb.max.x, minZ: bb.min.z, maxZ: bb.max.z, maxY: bb.max.y } : { minX: bs!.center.x - bs!.radius, maxX: bs!.center.x + bs!.radius, minZ: bs!.center.z - bs!.radius, maxZ: bs!.center.z + bs!.radius, maxY: bs!.center.y + bs!.radius }; mesh.userData.cbox = cb; }
+      const small = !!mesh.userData.small;
+      const r = chunkCull(cb, cp.x, cp.z, this.player.pos.x, this.player.pos.z, small ? Math.min(max, 140) : max * (mesh.userData.farScale ?? 1), shadowR, small); // R14 CW: footprint boxes, not spheres; CITY: facades reach further (farScale)
+      mesh.visible = r.visible;
       if (mesh.userData.shadow === undefined) mesh.userData.shadow = mesh.castShadow;
-      const ds = Math.hypot(bs.center.x - this.player.pos.x, bs.center.z - this.player.pos.z) - bs.radius;
-      mesh.castShadow = mesh.userData.shadow && ds < shadowR;
+      mesh.castShadow = mesh.userData.shadow && r.cast;
     }
   }
   // ---------------- HUD data ----------------
