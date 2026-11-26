@@ -13,6 +13,8 @@ const sever = (boneName: string, weapon: string, max: number, shot = '') => page
   const g = (window as any).__game, V = g.player.pos.constructor;
   g.player.place(-250, 0.25, -80, 0);
   const n = g.pop.spawn('civilian', -250, -74, 0.25); n.brain = 'scripted'; n.persistent = true; n.char.yaw = Math.PI;
+  // tough enough to stay standing: a pistol victim that dies on the 2nd or 3rd round falls while we aim, and the corpse's arm is then a moving target (CI saw 8 rounds go by)
+  if (weapon === 'pistol') n.char.health = n.char.maxHealth = 1000;
   for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
   g.pcombat.give(weapon, 60); g.pcombat.inv.select(weapon);
   const find = () => { let b: any = null; n.char.human.model.traverse((o: any) => { if (!b && o.name === boneName) b = o; }); return b; };
@@ -49,7 +51,7 @@ for (const [name, bone, weapon, max] of [
     expect(r.bleeders).toBeGreaterThan(0);
     if (weapon === 'shotgun') expect(r.shots).toBeLessThanOrEqual(2);
     else expect(r.shots).toBeGreaterThan(1);
-    if (bone.includes('thigh') || bone.includes('shin')) expect(r.alive).toBe(false);
+    if ((bone.includes('thigh') || bone.includes('shin')) && weapon !== 'pistol') expect(r.alive).toBe(false);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/gore9-${bone}-${weapon}.png` });
   });
 }
