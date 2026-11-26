@@ -46,7 +46,10 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
     float brick = smoothstep(mw.x - aaX, mw.x + aaX, f.x) * smoothstep(mw.x - aaX, mw.x + aaX, 1.0 - f.x) * smoothstep(mw.y - aaY, mw.y + aaY, f.y) * smoothstep(mw.y - aaY, mw.y + aaY, 1.0 - f.y);
     float v = fH(id + seed * 0.37);
     vec3 bc = col * (m < 0.5 ? mix(0.72, 1.14, v) * vec3(1.0 + (fH(id * 1.3) - 0.5) * 0.12, 1.0, 1.0 - (fH(id * 2.1) - 0.5) * 0.1) : vec3(mix(0.93, 1.04, v)));
-    vec3 mort = m < 0.5 ? vec3(0.46, 0.43, 0.4) : col * 0.9;
+    float burnt = step(0.92, fH(id * 1.7 + seed * 0.11));
+    bc *= mix(1.0, 0.6, burnt) * mix(0.9 + 0.2 * fN(p * 0.35 + seed * 2.0), 1.0, far);
+    bc *= mix(0.92 + 0.16 * fN(p * vec2(41.0, 67.0) + seed), 1.0, far);
+    vec3 mort = m < 0.5 ? vec3(0.36, 0.34, 0.31) * (0.85 + 0.3 * fH(id + 5.0)) : col * 0.9;
     vec3 detail = mix(mort, bc, brick);
     vec3 avg = mix(mort, col * (m < 0.5 ? 0.93 : 0.99), 0.86);
     col = mix(detail, avg, far);
@@ -54,6 +57,8 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
     rough = 0.9;
   } else if (m < 1.5) { // plaster / stucco
     col *= 0.9 + 0.16 * fBm(p * 0.6 + seed);
+    col *= 1.0 - 0.14 * smoothstep(0.55, 0.85, fBm(p * vec2(0.45, 0.14) + seed * 1.7));
+    col *= mix(0.95 + 0.1 * fN(p * 55.0), 1.0, far);
     h += fN(p * 9.0) * 0.0025 * (1.0 - far);
     rough = 0.93;
   } else if (m < 2.5) { // concrete panels
@@ -95,6 +100,15 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
   }
 }
 
+// fake sky / street reflection for glass: Fresnel weight and a horizon-to-zenith gradient with per-pane tilt
+float glassFresnel(vec3 V, vec3 N){ float c = clamp(dot(-V, N), 0.0, 1.0); return 0.04 + 0.5 * pow(1.0 - c, 4.0); }
+vec3 glassSky(vec3 V, vec3 N, vec2 cell, float seed, float night){
+  vec3 Nt = normalize(N + vec3(fH(cell + seed) - 0.5, (fH(cell * 1.7 + seed) - 0.5) * 0.5, fH(cell * 2.9 + seed) - 0.5) * 0.14);
+  vec3 R = reflect(V, Nt);
+  vec3 sky = mix(vec3(0.5, 0.58, 0.66), vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.9, R.y));
+  sky = mix(vec3(0.12, 0.12, 0.115), sky, smoothstep(-0.15, 0.1, R.y));
+  return sky * mix(0.5, 0.03, night);
+}
 // interior mapping: trace a view ray into a box room behind the window; returns lit interior colour
 vec3 gGlow;
 // shop dressing by store style: 0 convenience 1 gas 2 liquor 3 jewelry 4 pawn 5 bank 6 clothing 7 barber 8 diner 9 electronics 10 office lobby 11 laundromat
@@ -270,7 +284,13 @@ if (fKind < 0.5) {
   // weathering: streaks, splash at the base, blotches
   float streak = fBm(vec2(fP.x * 0.9 + fSeed, fP.y * 0.07));
   wallC *= mix(1.0, 0.8, smoothstep(0.5, 0.85, streak));
-  wallC *= mix(0.68, 1.0, smoothstep(0.0, 1.8, vWPos.y - vFacade3.y)) * mix(0.94, 1.0, smoothstep(0.0, 0.25, vWPos.y - vFacade3.y));
+  float baseH = vWPos.y - vFacade3.y;
+  float grimeEdge = 1.4 + 0.9 * fN(vec2(fP.x * 0.8 + fSeed, 3.0));
+  wallC *= mix(0.52, 1.0, smoothstep(0.0, grimeEdge, baseH)) * mix(0.9, 1.0, smoothstep(0.0, 0.3, baseH));
+  float topV = vFacade3.x + vFacade3.w * fCs.y;
+  float belowTop = topV - fP.y;
+  float roofStreak = smoothstep(0.35, 0.8, fN(vec2(fP.x * 2.3 + fSeed, fP.y * 0.12))) * (1.0 - smoothstep(0.0, 3.5, belowTop)) * step(0.5, vFacade3.w) * step(-0.2, belowTop);
+  wallC *= 1.0 - 0.2 * roofStreak;
   wallC *= 0.92 + 0.12 * fN(fP * 0.25 + fSeed * 3.0);
   vec3 col = wallC; float h = wallH; float rough = wr, metal = wm;
   vec2 gp = vec2(fP.x, fP.y - vFacade3.x);
@@ -302,7 +322,8 @@ if (fKind < 0.5) {
     float spF = mix(spB, 0.26, farR);
     vec3 farTint = mix(vec3(1.0, 0.82, 0.6), vec3(0.85, 0.93, 1.0), step(0.82, rs));
     vec3 farLitE = farTint * lit * mix(0.03, 0.28, fNight) * (1.0 - spF);
-    fEmis = mix(inter * g * 0.9, mix(farLitE, avgEm * 0.5, farR), far);
+    float frsC = glassFresnel(fV, fN3);
+    fEmis = mix((inter * (1.0 - frsC) + glassSky(fV, fN3, cell, fSeed, fNight) * frsC) * g * 0.9, mix(farLitE, avgEm * 0.5, farR), far);
     fGlass = mix(g, 0.75 * (1.0 - spF), far) + spandrel * glassM * 0.6 * (1.0 - far);
     rough = mix(0.35, 0.04, max(fGlass, glassM)); metal = mix(0.6, 0.85, glassM) * mix(1.0, 0.6, far * fNight);
     col = mix(col, mix(tint * 0.2 * jit, tint * 0.5 + 0.05, spF), far);
@@ -318,8 +339,11 @@ if (fKind < 0.5) {
     col = mix(col, vec3(0.78, 0.74, 0.66) * (0.9 + 0.1 * fN(fP * 4.0)), lintel);
     h += lintel * 0.01;
     // projecting stone sill with a rain stain streaking down the wall beneath it
-    float sillB = boxMask(lp, vec2(lo.x - 0.07, lo.y - 0.1), vec2(hi.x + 0.07, lo.y), aa) * inGrid * step(m, 0.5);
-    col = mix(col, vec3(0.74, 0.7, 0.62) * (0.92 + 0.1 * fN(fP * 5.0)), sillB);
+    float sillB = boxMask(lp, vec2(lo.x - 0.07, lo.y - 0.1), vec2(hi.x + 0.07, lo.y), aa) * inGrid;
+    vec3 sillCol = m < 0.5 ? vec3(0.74, 0.7, 0.62) : col * 1.18 + 0.02;
+    float sillShadow = boxMask(lp, vec2(lo.x - 0.05, lo.y - 0.2), vec2(hi.x + 0.05, lo.y - 0.1), 0.05) * inGrid * (1.0 - far);
+    col *= 1.0 - 0.28 * sillShadow;
+    col = mix(col, sillCol * (0.92 + 0.1 * fN(fP * 5.0)), sillB);
     float stainX = boxMask(lp, vec2(lo.x + 0.05, 0.0), vec2(hi.x - 0.05, lo.y - 0.1), 0.12) * smoothstep(lo.y - 1.2, lo.y - 0.1, lp.y) * inGrid;
     col *= 1.0 - 0.2 * stainX * (0.6 + 0.4 * fN(vec2(fP.x * 6.0, fP.y * 0.5))) * (1.0 - far);
     h += sillB * 0.012;
@@ -346,7 +370,9 @@ if (fKind < 0.5) {
     col = mix(col, frameCol, win);
     col = mix(col, glassCol, win * glassM * (1.0 - shade));
     col = mix(col, blindC * reveal, win * shade);
-    fEmis = inter * win * glassM * (1.0 - shade) * reveal + blindC * win * shade * lit * fNight * 0.5;
+    vec3 skyR = glassSky(fV, fN3, cell, fSeed, fNight);
+    float frs = glassFresnel(fV, fN3);
+    fEmis = inter * win * glassM * (1.0 - shade) * reveal * (1.0 - frs) + skyR * frs * win * glassM * (1.0 - shade) + blindC * win * shade * lit * fNight * 0.5;
     fGlass = win * glassM * (1.0 - shade);
     rough = mix(rough, 0.05, fGlass); rough = mix(rough, 0.6, win * (1.0 - glassM)); metal = mix(metal, 0.0, win);
     h -= win * 0.04;
@@ -379,7 +405,7 @@ if (fKind < 0.5) {
     vec3 frameCol = mix(vec3(0.12, 0.12, 0.13), vec3(0.55, 0.4, 0.25), step(0.6, fract(fSeed * 0.71)));
     col = mix(col, frameCol, win);
     col = mix(col, mix(vec3(0.13, 0.17, 0.21), vec3(0.02), fNight), win * glassM);
-    fEmis = inter * win * glassM * mix(0.7, 0.45, fNight) * (1.0 - grille);
+    fEmis = (inter * mix(0.7, 0.45, fNight) * (1.0 - glassFresnel(fV, fN3)) + glassSky(fV, fN3, cell, fSeed, fNight) * glassFresnel(fV, fN3)) * win * glassM * (1.0 - grille);
     col = mix(col, vec3(0.42, 0.43, 0.44) * (0.75 + 0.25 * step(0.5, fract(lp.y / 0.09))), grille);
     fGlass = win * glassM * (1.0 - grille);
     rough = mix(rough, 0.05, fGlass); metal = mix(metal, 0.5, win * (1.0 - glassM));

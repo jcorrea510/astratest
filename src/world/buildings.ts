@@ -26,13 +26,14 @@ export interface BuildCtx {
 }
 
 const C = (h: string) => new THREE.Color(h);
-export const BRICK_COLORS = ['#8e4a37', '#9a5640', '#7d3f30', '#a8664c', '#6e3b2f', '#b07454', '#84503e', '#94604a', '#5f4a42'];
-export const PLASTER_COLORS = ['#d8cbb3', '#c9b89a', '#e3d9c6', '#bfae94', '#d1c2a8', '#a99f92', '#cfc8bb'];
-export const PASTEL_COLORS = ['#e9c6a8', '#f0d9b5', '#a9d3c9', '#f2b5a7', '#d8c3e0', '#f4e1a1', '#b8d8e8', '#f5cfc0', '#e6e0cf'];
-export const CONCRETE_COLORS = ['#a8a59e', '#b9b4aa', '#9c9a95', '#c4beb2', '#8f8d88'];
-export const STONE_COLORS = ['#c9bea8', '#b8ab92', '#d6cdb9', '#a89a84'];
+export const BRICK_COLORS = ['#7d4636', '#86503d', '#6e3d30', '#93614a', '#5f3a2f', '#9a6a50', '#74493a', '#80574a', '#554540', '#8a5a42'];
+export const PLASTER_COLORS = ['#c2b7a4', '#b9aa90', '#d0c7b6', '#b0a28b', '#c0b399', '#9d948a', '#bfb9ad'];
+// historical name; now muted stucco / limestone earth tones (no candy pastels)
+export const PASTEL_COLORS = ['#b8a58f', '#b6aa95', '#a3a79a', '#b5a094', '#a9a4a8', '#b0a583', '#9fa9ad', '#b9a89a', '#b8b3a3'];
+export const CONCRETE_COLORS = ['#9b9892', '#a8a399', '#8e8c88', '#b0aa9f', '#7f7d79'];
+export const STONE_COLORS = ['#b9ad98', '#a89c85', '#c0b8a6', '#978b77'];
 export const GLASS_TINTS = ['#5d7f8f', '#47677a', '#6f8790', '#3a5566', '#7a8f88', '#6a6a72', '#4f6b5e', '#5c7590'];
-export const SIDING_COLORS = ['#e8e4da', '#c9d4d8', '#d9c7a6', '#a9b8a0', '#e2d2b8', '#b4c3cc', '#efe7d2', '#c97b63'];
+export const SIDING_COLORS = ['#d6d2c7', '#b3bcbf', '#b5a98c', '#97a392', '#c3b9a6', '#a1adb4', '#d3cdbd', '#9c6552'];
 export const ROOF_COLORS = ['#4a4644', '#5a4d43', '#6b3f32', '#3f4448', '#7a5a46', '#58534d'];
 
 /** Local -> world helper for a footprint centred at (cx,cz) with yaw (local +z = front). */
