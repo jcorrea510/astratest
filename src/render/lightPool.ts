@@ -41,6 +41,13 @@ export function assignLights(scores: number[], held: number[], margin = 1.35): n
   return out;
 }
 
+/**
+ * Round 14 (fill rate): every lit pixel loops over every real point light, even idle ones at intensity 0, so the preset
+ * counts are trimmed (Low 2, Medium 3, High 5): street lamps beyond the nearest few are faint and the ranking already
+ * hands the real lights to the most important ones. Pure (tests).
+ */
+export function poolBudget(preset: number): number { return preset <= 2 ? Math.max(0, preset) : preset <= 4 ? 3 : 5; }
+
 export class LightPool {
   readonly real: THREE.PointLight[] = [];
   private virt: THREE.PointLight[] = [];
@@ -55,7 +62,8 @@ export class LightPool {
   remove(l: THREE.PointLight) { const i = this.virt.indexOf(l); if (i < 0) return; this.virt.splice(i, 1); this.held = this.held.map(h => (h === i ? -1 : h > i ? h - 1 : h)); }
   get count() { return this.real.length; }
   /** Number of real lights (changes shader light count: call on quality change only). */
-  setCount(n: number) {
+  setCount(preset: number) {
+    const n = poolBudget(preset);
     while (this.real.length < n) { const l = new THREE.PointLight(0xffffff, 0, 20, 1.6); l.castShadow = false; l.name = 'poolLight'; this.scene.add(l); this.real.push(l); this.held.push(-1); }
     while (this.real.length > n) { const l = this.real.pop()!; this.scene.remove(l); l.dispose(); this.held.pop(); }
   }
