@@ -3,11 +3,15 @@
  * Brains, damage, death and knockdown still run every frame: only the kinematic move + sweep is batched, with the skipped dt accumulated.
  */
 
-/** Frames between two collision sweeps of an officer / gang member: every frame within ~12 m on screen, every 2nd on screen to 80 m and off screen within 40 m, every 4th beyond. */
+/**
+ * Frames between two collision sweeps of an officer / gang member. The controller shape-casts along the whole accumulated step, so a longer
+ * step is as safe as several short ones; only the position resolution gets coarser (0.1 s at most), which nobody sees off screen or far away.
+ * On screen: every frame within 3 m, every 2nd to 40 m, every 3rd beyond. Off screen: every 2nd within 12 m, every 4th to 40 m, every 6th beyond.
+ */
 export function sweepEvery(distSq: number, inView: boolean): number {
-  if (distSq > 80 * 80) return 4;
-  if (!inView) return distSq > 40 * 40 ? 4 : 2;
-  return distSq > 12 * 12 ? 2 : 1;
+  if (distSq > 80 * 80) return 6;
+  if (inView) return distSq > 40 * 40 ? 3 : distSq > 3 * 3 ? 2 : 1;
+  return distSq > 40 * 40 ? 6 : distSq > 12 * 12 ? 4 : 2;
 }
 
 /** True when this fighter sweeps this frame (staggered by id so the load spreads evenly over frames). */

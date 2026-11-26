@@ -7,7 +7,7 @@ describe('animation LOD rate policy', () => {
     expect(holdEvery(19 * 19, true)).toBe(2);
     expect(holdEvery(30 * 30, true)).toBe(4);
     expect(holdEvery(40 * 40, true)).toBe(4);
-    expect(holdEvery(5 * 5, false)).toBe(8); // behind the camera: not even close ones pay
+    expect(holdEvery(5 * 5, false)).toBe(24); // behind the camera: not even close ones pay
   });
   it('staggers solves by id: exactly one in `every` frames per character, and different characters land on different frames', () => {
     for (const every of [1, 2, 4, 8]) {

@@ -58,7 +58,7 @@ export class Npc {
   far = false;
   animAcc = 0;
   /** Round 12 animation LOD: on screen last frame, frames since the last gun-hold solve, and the body position at that solve */
-  inView = true; holdTick = 0; holdPos = new THREE.Vector3(); holdValid = false;
+  inView = true; holdWasInView = true; holdTick = 0; holdPos = new THREE.Vector3(); holdValid = false;
   /** Makes the next updateModel solve the gun hold immediately (hit tests that need current arm bones call this, then updateModel). */
   forcePose() { this.holdValid = false; }
   /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
@@ -493,6 +493,8 @@ export class NpcBrainRunner {
       // Round 12 perf: the two-hand IK is the costliest per-person pose work; thin it out by distance / visibility (src/actors/animLod.ts).
       // A skipped frame keeps the gun where it was, carried along with the body so it never trails a running officer.
       const hd = n.pos.distanceToSquared(this.env.player.pos);
+      if (n.inView && !n.holdWasInView) n.holdValid = false; // just came on screen: re-solve the grip now, not up to 0.4 s later
+      n.holdWasInView = n.inView;
       const every = fighting ? holdEvery(hd, n.inView) : hd < 8 * 8 && n.inView ? 2 : holdEvery(hd, n.inView) * 2; // a low-ready gun (not firing) needs fewer solves
       if (n.holdValid && !holdNow(++n.holdTick, n.id, every)) {
         n.model.position.x += c.pos.x - n.holdPos.x; n.model.position.y += c.pos.y - n.holdPos.y; n.model.position.z += c.pos.z - n.holdPos.z;

@@ -5,7 +5,7 @@
 
 /** Frames between two gun-hold IK solves for an armed NPC: every frame up close, thinner with distance, rare when off screen. */
 export function holdEvery(distSq: number, inView: boolean): number {
-  if (!inView) return 8;
+  if (!inView) return 24;
   if (distSq < 8 * 8) return 1;
   if (distSq < 25 * 25) return 2;
   return 4;
