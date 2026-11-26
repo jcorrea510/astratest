@@ -93,10 +93,12 @@ export class OutputGradePass extends Pass {
 
 /** Grade parameters per look; exposed so tests can assert the default is neutral. */
 export const LOOK = {
-  natural: { sat: 1.1, split: 0.2, vignette: 0.16, nightExposure: 0.84, shadowDesat: 0.35 },
+  natural: { sat: 1.08, split: 0.08, vignette: 0.14, nightExposure: 0.84, shadowDesat: 0.55 },
   stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
+/** Round 13: daytime fog starts earlier (aerial perspective: distance lightens and desaturates towards the haze colour). */
+export const DAY_FOG_NEAR = 95;
 /** Adaptive resolution floor (fraction of the preset's pixel ratio)... */
 const DYN_MIN = 0.7;
 const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
@@ -287,7 +289,7 @@ export class Renderer {
       this.hemi.intensity *= 1 + 0.12 * (1 - s.night);
     }
     (this.scene.fog as THREE.Fog).color.copy(s.fog);
-    (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(150, 70, s.night);
+    (this.scene.fog as THREE.Fog).near = THREE.MathUtils.lerp(DAY_FOG_NEAR, 70, s.night);
     this.renderer.toneMappingExposure = s.exposure * THREE.MathUtils.lerp(1, L.nightExposure, s.night);
     const range = (this.quality.shadowRange || 60) * 1.6, texel = (range * 2) / (this.quality.shadowMap || 1024);
     const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;

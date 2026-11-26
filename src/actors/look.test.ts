@@ -26,6 +26,52 @@ describe('people looks', () => {
   });
 });
 
+const hsv = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  return { s: mx === 0 ? 0 : (mx - mn) / mx, v: mx };
+};
+
+describe('crowd palettes and outfit rules', () => {
+  const L = Array.from({ length: 2000 }, (_, i) => randomLook(i));
+  it('clothes are real-world colours: capped saturation, no pure white/black', () => {
+    for (const l of L) {
+      for (const c of [l.top, l.bottom, l.shoes, l.accent, l.hat]) {
+        const { s, v } = hsv(c);
+        expect(s, c).toBeLessThanOrEqual(0.6); expect(v, c).toBeLessThanOrEqual(0.93); expect(v, c).toBeGreaterThanOrEqual(0.07);
+      }
+    }
+  });
+  it('most tops are neutral/earth/denim, accent colours are a minority', () => {
+    const sat = L.filter(l => hsv(l.top).s > 0.38 && hsv(l.top).v > 0.5).length / L.length;
+    expect(sat).toBeLessThan(0.2);
+  });
+  it('outfits are coherent', () => {
+    for (const l of L) {
+      if (l.topStyle === 'suit') { expect(l.bottomStyle).toBe('trousers'); expect(l.shoeStyle).toBe('formal'); expect(l.bottom).toBe(l.top); expect(l.hatStyle).toBe('none'); }
+      if (l.topStyle === 'dress') { expect(l.bottomStyle).toBe('skirt'); expect(l.sex).toBe('f'); }
+      if (l.topStyle === 'hoodie') { expect(['jeans', 'sweats', 'shorts']).toContain(l.bottomStyle); expect(l.shoeStyle).not.toBe('formal'); }
+      if (l.bottomStyle === 'shorts' || l.bottomStyle === 'sweats') expect(l.shoeStyle).not.toBe('formal');
+      if (l.bottomStyle === 'skirt') expect(['dress', 'tee', 'blouse', 'tank', 'longsleeve']).toContain(l.topStyle);
+      expect(l.legs).toBe(l.bottomStyle === 'shorts' ? 'shorts' : 'pants');
+      if (l.pattern !== 'plain') expect(['suit', 'tee', 'shirt', 'polo', 'longsleeve', 'blouse', 'dress', 'hoodie']).toContain(l.topStyle);
+    }
+    expect(L.filter(l => l.pattern !== 'plain').length / L.length).toBeLessThan(0.15);
+  });
+  it('skin and hair follow a realistic spread', () => {
+    const idx = L.map(l => SKIN_TONES.indexOf(l.skin));
+    expect(idx.every(i => i >= 0)).toBe(true);
+    const mid = idx.filter(i => i >= 2 && i <= 6).length / L.length;
+    expect(mid).toBeGreaterThan(0.45);
+    const natural = new Set(['#16110f', '#1d1612', '#271b14', '#33241a', '#3f2b1e', '#4f3523', '#5f412a', '#6e4b2f', '#7d6040', '#94724a', '#a98a5c', '#b99a62', '#cdb27a', '#d9c392', '#6e3220', '#84401f', '#9a5026', '#7f7b76', '#9a9690', '#bdbab4']);
+    expect(L.every(l => natural.has(l.hair))).toBe(true);
+    expect(L.filter(l => ['#b99a62', '#cdb27a', '#d9c392'].includes(l.hair)).length / L.length).toBeLessThan(0.06);
+  });
+  it('is deterministic per seed', () => {
+    for (let i = 0; i < 50; i++) expect(randomLook(i * 37)).toEqual(randomLook(i * 37));
+  });
+});
+
 describe('actions', () => {
   it('every action references a real UAL clip and has ordered pose keys', () => {
     for (const [name, a] of Object.entries(ACTIONS)) {

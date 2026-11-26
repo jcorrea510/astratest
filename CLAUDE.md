@@ -2,7 +2,7 @@
 
 Browser open-world crime sandbox (original IP, Teen). Vite 7 + TypeScript strict + Three.js r182 + Rapier 0.19.
 Live: https://jcorrea510.github.io/astratest/ (GitHub Actions deploys `main` after tests). Work branch: claude/game-polish-balance-pu1cvc.
-Current brief: docs/BRIEF11.md, plan docs/ROUND11.md (earlier: BRIEF9..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
+Current plan: docs/ROUND13.md (earlier: BRIEF11/ROUND11..BRIEF2). Target: hyper-realistic, not cartoony; M1 Air must stay smooth. Plan/status: docs/PROGRESS.md. Agent rules: docs/AGENT_RULES.md.
 
 ## Standing rules from the owner (always apply)
 - Owner (21 Nov): bugs the owner reports are fixed by the lead personally (no subagents for those); measure with a headless probe first.

@@ -40,7 +40,7 @@ import {
   BRICK_COLORS, PLASTER_COLORS, PASTEL_COLORS, CONCRETE_COLORS, STONE_COLORS,
 } from './buildings';
 import {
-  LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, SIGNAL_LENS_DY, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
+  LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, SIGNAL_LENS_DY, SIGNAL_LENS_Z, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
   powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
@@ -91,10 +91,10 @@ function slab(gb: GeoBuilder, x0: number, z0: number, x1: number, z1: number, y0
     gb.quad(V(x0, y0, z0), V(x0, y0, z1), V(x0, y1, z1), V(x0, y1, z0), [z0 / uvScale, 0, z1 / uvScale, 0, z1 / uvScale, h, z0 / uvScale, h], side);
   }
 }
-function surfaceMat(s: Surface, repeat: number, opts: THREE.MeshStandardMaterialParameters = {}, macro = 0.16, key = 'ground') {
+function surfaceMat(s: Surface, repeat: number, opts: THREE.MeshStandardMaterialParameters = {}, macro = 0.16, key = 'ground', grain = 0) {
   for (const t of [s.map, s.normalMap, s.roughnessMap]) t.repeat.set(repeat, repeat);
   const m = new THREE.MeshStandardMaterial({ map: s.map, normalMap: s.normalMap, roughnessMap: s.roughnessMap, roughness: 1, normalScale: new THREE.Vector2(0.8, 0.8), ...opts });
-  return addMacroVariation(m, macro, 0.011, key);
+  return addMacroVariation(m, macro, 0.011, key, grain);
 }
 
 export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets, city: CityMap): CityVisuals {
@@ -135,7 +135,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   physics.addStaticBox(SEA_EDGE_X, 6, (SEA_EDGE_Z - 62) / 2, 1, 14, (SEA_EDGE_Z + 62) / 2);
 
   const asphaltS = asphaltSurface();
-  const asphaltMat = surfaceMat(asphaltS, 1, { normalScale: new THREE.Vector2(0.32, 0.32) }, 0.2, 'asphalt'); // Round 12: grazing headlights over-read strong bumps as snow
+  const asphaltMat = surfaceMat(asphaltS, 1, { normalScale: new THREE.Vector2(0.32, 0.32) }, 0.2, 'asphalt', 0.07); // Round 12: grazing headlights over-read strong bumps as snow
   const road = new GeoBuilder();
   for (let j = 0; j < ISLAND_LEFT.length; j++) slab(road, AVENUES[ISLAND_LEFT[j]] - halfWidth(2), j === 0 ? minZ : STREETS[j] - halfWidth(lanesForStreet(j)), maxX, j === ISLAND_LEFT.length - 1 ? maxZ : STREETS[j + 1] + halfWidth(lanesForStreet(j + 1)), 0, 0, C('#ffffff'), C('#ffffff'), 12);
   const roadMesh = new THREE.Mesh(road.build(), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
@@ -165,7 +165,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   water.position.y = WATER_LEVEL; water.receiveShadow = true; root.add(water);
 
   // ---------- Sidewalks / block slabs / lot interiors ----------
-  const paveMat = surfaceMat(pavementSurface(), 1, { vertexColors: true, normalScale: new THREE.Vector2(0.5, 0.5) }, 0.14, 'pave');
+  const paveMat = surfaceMat(pavementSurface(), 1, { vertexColors: true, normalScale: new THREE.Vector2(0.5, 0.5) }, 0.14, 'pave', 0.05);
   const walks = new GeoBuilder();
   const inner = new GeoBuilder();
   const grassInner = new GeoBuilder();
@@ -584,14 +584,14 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       const head: SignalHead = { inter: sp.inter, axis: sp.axis, lamps: [0, 0, 0] };
       for (let k = 0; k < 3; k++) {
         head.lamps[k] = lampPositions.length;
-        const lx = hp.x, ly = hp.y + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY, lz = hp.z + 0.1;
+        const lx = hp.x, ly = hp.y + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY, lz = hp.z + SIGNAL_LENS_Z;
         lampPositions.push({ p: new THREE.Vector3(x + lx * c + lz * s, CURB_HEIGHT + ly, z - lx * s + lz * c), f: new THREE.Vector3(-sp.dx, 0, -sp.dz) });
       }
       signalHeads.push(head);
     }
   }
   const lampGeo = new THREE.CircleGeometry(SIGNAL_LENS_R, 16);
-  const signalLamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ toneMapped: false }), lampPositions.length);
+  const signalLamps = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ toneMapped: false, map: signalLensTexture() }), lampPositions.length);
   const dummy = new THREE.Object3D();
   lampPositions.forEach((lp, i) => {
     dummy.position.copy(lp.p); dummy.lookAt(lp.p.x + lp.f.x, lp.p.y, lp.p.z + lp.f.z);
@@ -901,3 +901,27 @@ function buildPier(root: THREE.Group, physics: Physics, trim: Chunked<TrimBuilde
   root.add(wheel);
   return wheel;
 }
+
+/**
+ * Round 13 (owner: "traffic lights look bad in the daytime"): a real LED signal lens is not a flat disc of colour: a grid of
+ * LED points behind a fresnel lens, brightest in the middle, with a darker rim. One shared 64x64 texture (built once, no DOM).
+ */
+export function signalLensTexture(): THREE.DataTexture {
+  const N = 64, d = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v);
+    // hexagonal LED grid (~11 across)
+    const gy = v * 5.5, row = Math.round(gy), gx = u * 5.5 + (row & 1 ? 0.5 : 0);
+    const led = Math.hypot(gx - Math.round(gx), gy - row);
+    const dot = 1 - Math.min(1, Math.max(0, (led - 0.22) / 0.2));
+    const centre = 1 - 0.32 * Math.min(1, r * r);
+    const rim = r > 0.9 ? 1 - Math.min(1, (r - 0.9) / 0.1) * 0.55 : 1;
+    const ring = 1 - 0.06 * (0.5 + 0.5 * Math.cos(r * 40)); // fresnel rings
+    const val = Math.round(255 * Math.min(1, (0.7 + 0.3 * dot) * centre * rim * ring));
+    const i = (y * N + x) * 4; d[i] = d[i + 1] = d[i + 2] = val; d[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(d, N, N);
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  return t;
+}
+

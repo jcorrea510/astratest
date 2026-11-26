@@ -33,26 +33,31 @@ function fbmField(size: number, rng: Rng, base: number, oct = 4) {
 }
 
 export interface Surface { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture }
+/** Per-pixel painter: col = linear rgb 0..1, h = height (arbitrary units), rough = 0..1. `g` is the stroke overlay (absent in node). */
+export type SurfacePainter = (col: Float32Array, h: Float32Array, rough: Float32Array, overlay: CanvasRenderingContext2D | null) => void;
+const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function dataTex(rgba: Uint8ClampedArray, size: number, srgb: boolean) {
+  const t = new THREE.DataTexture(new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.length), size, size, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.needsUpdate = true; return t;
+}
 /**
  * Builds albedo + normal + roughness textures from per-pixel albedo/height/roughness buffers.
  * paint() fills col (rgb 0..1), h (metres-ish) and rough (0..1); strokes may also be drawn on the 2D context `g`
- * (it is composited over col first).
+ * (it is composited over col first). Without a DOM (node tests) the overlay is null and DataTextures are returned.
  */
-function surface(size: number, bumpScale: number, paint: (col: Float32Array, h: Float32Array, rough: Float32Array, overlay: CanvasRenderingContext2D) => void): Surface {
-  const n = size * size;
+function surface(size: number, bumpScale: number, paint: SurfacePainter): Surface {
+  const n = size * size, hasDom = typeof document !== 'undefined';
   const col = new Float32Array(n * 3), h = new Float32Array(n), rough = new Float32Array(n).fill(0.9);
-  const ov = canvas(size, size);
-  paint(col, h, rough, ov.g);
-  // composite overlay strokes (alpha = darkening/colour, blue channel encodes depth)
-  const od = ov.g.getImageData(0, 0, size, size).data;
-  const { c, g } = canvas(size, size); const img = g.createImageData(size, size); const d = img.data;
+  const ov = hasDom ? canvas(size, size) : null;
+  paint(col, h, rough, ov ? ov.g : null);
+  const out = new Uint8ClampedArray(n * 4);
+  const od = ov ? ov.g.getImageData(0, 0, size, size).data : null;
   for (let i = 0; i < n; i++) {
-    const a = od[i * 4 + 3] / 255;
-    for (let k = 0; k < 3; k++) { const v = col[i * 3 + k] * (1 - a) + (od[i * 4 + k] / 255) * a; d[i * 4 + k] = Math.max(0, Math.min(255, Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255))); }
-    d[i * 4 + 3] = 255;
+    const a = od ? od[i * 4 + 3] / 255 : 0;
+    for (let k = 0; k < 3; k++) { const v = col[i * 3 + k] * (1 - a) + (od ? od[i * 4 + k] / 255 : 0) * a; out[i * 4 + k] = Math.max(0, Math.min(255, Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255))); }
+    out[i * 4 + 3] = 255;
     h[i] -= a * 0.6;
   }
-  g.putImageData(img, 0, 0);
   // Round 12: one 3x3 box blur of the height field before deriving normals. Per-texel white-noise heights made per-texel
   // random normals, which sparkled like glitter under headlights at grazing angles (the night streets looked like snow).
   const hb = new Float32Array(n);
@@ -62,8 +67,7 @@ function surface(size: number, bumpScale: number, paint: (col: Float32Array, h: 
     hb[y * size + x] = acc / 9;
   }
   h.set(hb);
-  const nc = canvas(size, size), nimg = nc.g.createImageData(size, size), nd = nimg.data;
-  const rc = canvas(size, size), rimg = rc.g.createImageData(size, size), rd = rimg.data;
+  const nd = new Uint8ClampedArray(n * 4), rd = new Uint8ClampedArray(n * 4);
   const H = (x: number, y: number) => h[((y + size) % size) * size + ((x + size) % size)];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = y * size + x;
@@ -72,110 +76,198 @@ function surface(size: number, bumpScale: number, paint: (col: Float32Array, h: 
     nd[i * 4] = Math.round((-dx / l * 0.5 + 0.5) * 255); nd[i * 4 + 1] = Math.round((dy / l * 0.5 + 0.5) * 255); nd[i * 4 + 2] = Math.round((1 / l * 0.5 + 0.5) * 255); nd[i * 4 + 3] = 255;
     const r = Math.round(Math.max(0, Math.min(1, rough[i])) * 255); rd[i * 4] = r; rd[i * 4 + 1] = r; rd[i * 4 + 2] = r; rd[i * 4 + 3] = 255;
   }
-  nc.g.putImageData(nimg, 0, 0); rc.g.putImageData(rimg, 0, 0);
-  return { map: tex(c), normalMap: tex(nc.c, true, false), roughnessMap: tex(rc.c, true, false) };
+  if (!hasDom) return { map: dataTex(out, size, true), normalMap: dataTex(nd, size, false), roughnessMap: dataTex(rd, size, false) };
+  const put = (data: Uint8ClampedArray) => { const c = canvas(size, size); const im = c.g.createImageData(size, size); im.data.set(data); c.g.putImageData(im, 0, 0); return c.c; };
+  return { map: tex(put(out)), normalMap: tex(put(nd), true, false), roughnessMap: tex(put(rd), true, false) };
 }
 
+/**
+ * Asphalt painter (exported for tests). One tile covers 12 m (about 1.2 cm per texel at 1024).
+ * Warm-neutral dark grey (R >= G >= B): bitumen-bound fine stones, lighter quartz chips, dark binder pits, wear patches.
+ */
+export function paintAsphalt(S: number, col: Float32Array, h: Float32Array, rough: Float32Array, g: CanvasRenderingContext2D | null, seed = 3) {
+  const r = new Rng(seed);
+  const big = fbmField(S, r, 4), mid = fbmField(S, r, 16), fine = noiseField(S, 256, r), stoneN = noiseField(S, 512, r), stoneM = noiseField(S, 170, r), streak = noiseField(S, 6, r), warp = fbmField(S, r, 8);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x;
+    const b = big(x, y), m = mid(x, y), f = fine(x, y);
+    const grain = r.next();
+    const st = stoneN(x, y), sm = stoneM(x, y);
+    // aggregate: clustered stones (dark mass, lighter quartz/limestone chips, dark binder pits)
+    const chip = smooth(0.74, 0.92, st) * (0.6 + 0.4 * sm);
+    const pit = smooth(0.8, 0.95, 1 - st) * 0.5;
+    // broad wear: patchy, fades between fresh dark and sun-bleached grey (no single direction, so no visible tracks)
+    const wear = smooth(0.4, 0.75, b) * 0.6 + smooth(0.45, 0.8, streak(x, y * 0.35)) * 0.25;
+    let v = 0.092 + b * 0.03 + m * 0.026 + f * 0.012 + wear * 0.038 + chip * 0.05 - pit * 0.03 + (grain - 0.5) * 0.024;
+    if (grain > 0.985) v += 0.05; // sparkling chip
+    // warm-neutral: slightly red/yellow, never blue
+    col[i * 3] = v * 1.035; col[i * 3 + 1] = v * 1.0; col[i * 3 + 2] = v * 0.955;
+    h[i] = chip * 0.55 - pit * 0.4 + m * 0.5 + grain * 0.25;
+    rough[i] = Math.max(0.8, Math.min(0.95, 0.9 - wear * 0.07 + (grain - 0.5) * 0.06 + (b - 0.5) * 0.06 - chip * 0.02));
+  }
+  // repair patches: utility cuts, darker (fresh) or lighter (aged), irregular warped edges, sealed seam
+  for (let k = 0; k < 6; k++) {
+    const px = r.range(0, S), py = r.range(0, S), pw = r.range(70, 240), ph = r.range(40, 170), fresh = k % 2 === 0;
+    const tone = fresh ? 0.72 : 1.16;
+    for (let y = Math.floor(py) - 3; y < py + ph + 3; y++) for (let x = Math.floor(px) - 3; x < px + pw + 3; x++) {
+      const wx = (warp(x, y) - 0.5) * 7, wy = (warp(y + 77, x) - 0.5) * 7;
+      const dx = Math.min(x + wx - px, px + pw - (x + wx)), dy = Math.min(y + wy - py, py + ph - (y + wy));
+      const d = Math.min(dx, dy);
+      const i = (((y % S) + S) % S) * S + (((x % S) + S) % S);
+      if (d > 0) { col[i * 3] *= tone; col[i * 3 + 1] *= tone; col[i * 3 + 2] *= tone * (fresh ? 1.0 : 0.98); h[i] += 0.22; rough[i] = Math.max(0.8, Math.min(0.95, rough[i] + (fresh ? 0.02 : -0.02))); }
+      if (Math.abs(d) < 1.4) { col[i * 3] *= 0.45; col[i * 3 + 1] *= 0.45; col[i * 3 + 2] *= 0.45; h[i] -= 0.5; rough[i] = 0.8; } // tar seam
+    }
+  }
+  // oil / fluid stains: irregular, dark, a little glossier
+  for (let k = 0; k < 22; k++) {
+    const cx = r.range(0, S), cy = r.range(0, S), rad = r.range(8, 52), sq = r.range(0.35, 1), ang = r.range(0, Math.PI);
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    for (let y = Math.floor(cy - rad); y < cy + rad; y++) for (let x = Math.floor(cx - rad); x < cx + rad; x++) {
+      const ux = x - cx, uy = y - cy; const px = (ux * ca + uy * sa) / rad, py = (-ux * sa + uy * ca) / (rad * sq);
+      const d = Math.hypot(px, py) * (0.8 + 0.4 * warp(x, y)); if (d > 1) continue;
+      const i = (((y % S) + S) % S) * S + (((x % S) + S) % S); const a = Math.pow(1 - d, 1.4) * 0.6;
+      col[i * 3] *= 1 - a * 0.85; col[i * 3 + 1] *= 1 - a * 0.9; col[i * 3 + 2] *= 1 - a; rough[i] = Math.max(0.8, rough[i] - a * 0.12);
+    }
+  }
+  if (!g) return;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // tar-sealed cracks (thick, dark) and open hairline cracks
+  for (let k = 0; k < 30; k++) {
+    let x = r.range(0, S), y = r.range(0, S), a = r.range(0, Math.PI * 2);
+    const sealed = r.chance(0.45), lw = sealed ? r.range(2.4, 4.2) : r.range(0.8, 1.8);
+    g.strokeStyle = sealed ? `rgba(22,21,20,${r.range(0.7, 0.9)})` : `rgba(18,17,16,${r.range(0.45, 0.75)})`; g.lineWidth = lw;
+    g.beginPath(); g.moveTo(x, y);
+    const steps = r.int(6, 20);
+    for (let s = 0; s < steps; s++) {
+      a += r.range(-0.55, 0.55); x += Math.cos(a) * r.range(7, 20); y += Math.sin(a) * r.range(7, 20); g.lineTo(x, y);
+      if (r.chance(0.15)) { g.stroke(); g.beginPath(); g.moveTo(x, y); }
+    }
+    g.stroke();
+  }
+  // faint rubber scuff arcs
+  g.strokeStyle = 'rgba(12,12,12,0.12)'; g.lineWidth = 6;
+  for (let k = 0; k < 8; k++) { const x = r.range(0, S), y = r.range(0, S), a = r.range(0, 6.28); g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * 60, y + Math.sin(a) * 60, x + Math.cos(a + 0.4) * 140, y + Math.sin(a + 0.4) * 140); g.stroke(); }
+}
 /** Road asphalt: aggregate, tar-sealed cracks, repair patches, oil stains. One tile covers 12 m. */
 export function asphaltSurface(): Surface {
-  const S = 1024, r = new Rng(3);
-  return surface(S, 3.0, (col, h, rough, g) => {
-    const big = fbmField(S, r, 4), mid = fbmField(S, r, 16), fine = noiseField(S, 256, r);
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const i = y * S + x;
-      const b = big(x, y), m = mid(x, y), f = fine(x, y);
-      const grain = r.next();
-      let v = 0.085 + b * 0.035 + m * 0.03 + (grain > 0.93 ? 0.06 : grain < 0.08 ? -0.02 : 0) + f * 0.015;
-      const worn = Math.max(0, b - 0.55) * 0.12; v += worn; // polished lighter wheel tracks feel
-      col[i * 3] = v * 0.98; col[i * 3 + 1] = v; col[i * 3 + 2] = v * 1.04;
-      h[i] = grain * 0.35 + m * 0.6;
-      rough[i] = 0.82 + grain * 0.12 - worn;
+  const S = 1024;
+  return surface(S, 2.6, (col, h, rough, g) => paintAsphalt(S, col, h, rough, g));
+}
+
+/**
+ * Sidewalk painter (exported for tests). One tile covers 6 m = 4 x 4 slabs of 1.5 m: tooled joints, per-slab tone/tint/tilt,
+ * broom finish, chipped joint edges, rust/oil stains, gum, hairline cracks.
+ */
+export function paintPavement(S: number, col: Float32Array, h: Float32Array, rough: Float32Array, g: CanvasRenderingContext2D | null, seed = 5) {
+  const r = new Rng(seed), slabs = 4, sp = S / slabs;
+  const mid = fbmField(S, r, 8), fine = noiseField(S, 256, r), mottle = fbmField(S, r, 24), chipN = noiseField(S, 64, r), jn = noiseField(S, 96, r);
+  const tone: number[] = [], tint: number[] = [], broomX: number[] = [], score: number[] = [], tiltX: number[] = [], tiltY: number[] = [];
+  for (let k = 0; k < slabs * slabs; k++) { tone.push(r.range(0.84, 1.1)); tint.push(r.range(-1, 1)); broomX.push(r.chance(0.5) ? 1 : 0); score.push(r.chance(0.35) ? 1 : 0); tiltX.push(r.range(-0.05, 0.05)); tiltY.push(r.range(-0.05, 0.05)); }
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x;
+    const sx = Math.floor(x / sp), sy = Math.floor(y / sp), si = sy * slabs + sx;
+    const lx = x - sx * sp, ly = y - sy * sp;
+    const jx = Math.min(lx, sp - lx), jy = Math.min(ly, sp - ly), jd = Math.min(jx, jy);
+    // wobbling joint width 1.6..4 px
+    const jw = 1.6 + jn(x, y) * 2.4;
+    const joint = jd < jw;
+    const lip = smooth(jw + 7, jw, jd); // tooled rounded edge: lighter lip next to the joint
+    const f = fine(x, y), mt = mottle(x, y);
+    // broom finish: fine parallel ridges across the slab, varying phase
+    const bp = broomX[si] ? y : x; const broom = Math.sin(bp * 1.9 + mid(x, y) * 8 + si * 3.1) * 0.5 + Math.sin(bp * 0.83 + f * 4) * 0.5;
+    const grain = r.next();
+    let v = (0.33 + mid(x, y) * 0.09 + mt * 0.05 + f * 0.03 + broom * 0.012 + (grain - 0.5) * 0.045) * tone[si];
+    v *= 1 + (lx / sp - 0.5) * tiltX[si] + (ly / sp - 0.5) * tiltY[si];
+    v *= 1 + lip * 0.05;
+    // chipped joint edge: random spalls beside the joint
+    const chip = smooth(0.78, 0.9, chipN(x, y)) * smooth(10, 1, jd);
+    v *= 1 - chip * 0.2;
+    let sc = 1; if (score[si] && Math.abs(lx - sp / 2) < 1.2 && ly > 10 && ly < sp - 10) sc = 0.72; // saw-cut control joint
+    v *= sc;
+    if (joint) v *= 0.4 + 0.2 * f;
+    const t = tint[si];
+    col[i * 3] = v * (1.0 + t * 0.02); col[i * 3 + 1] = v * 0.985; col[i * 3 + 2] = v * (0.955 - t * 0.02);
+    h[i] = joint ? -1.1 : (f * 0.18 + broom * 0.07 + grain * 0.1 - chip * 0.4 + (sc < 1 ? -0.5 : 0));
+    rough[i] = joint ? 0.95 : Math.max(0.8, Math.min(0.95, 0.88 + (grain - 0.5) * 0.06 - mt * 0.04));
+  }
+  // damp/oil/rust stains (soft blobs written into col so they exist without a DOM)
+  const blob = (cx: number, cy: number, rad: number, dark: number, cr: number, cg: number, cb: number) => {
+    for (let y = Math.floor(cy - rad); y < cy + rad; y++) for (let x = Math.floor(cx - rad); x < cx + rad; x++) {
+      const d = Math.hypot(x - cx, y - cy) / rad; if (d > 1) continue;
+      const a = Math.pow(1 - d, 1.6) * dark; const i = (((y % S) + S) % S) * S + (((x % S) + S) % S);
+      col[i * 3] = col[i * 3] * (1 - a) + col[i * 3] * cr * a; col[i * 3 + 1] = col[i * 3 + 1] * (1 - a) + col[i * 3 + 1] * cg * a; col[i * 3 + 2] = col[i * 3 + 2] * (1 - a) + col[i * 3 + 2] * cb * a;
     }
-    // repair patches: slightly darker, crisp edges
-    for (let k = 0; k < 7; k++) {
-      const px = r.range(0, S), py = r.range(0, S), pw = r.range(60, 220), ph = r.range(40, 160);
-      for (let y = Math.floor(py); y < py + ph; y++) for (let x = Math.floor(px); x < px + pw; x++) {
-        const i = ((y % S) * S + (x % S)); const tone = k % 2 ? 0.75 : 1.18;
-        col[i * 3] *= tone; col[i * 3 + 1] *= tone; col[i * 3 + 2] *= tone; h[i] += 0.25;
-      }
+  };
+  for (let k = 0; k < 14; k++) blob(r.range(0, S), r.range(0, S), r.range(20, 90), r.range(0.25, 0.55), 0.55, 0.52, 0.5);
+  for (let k = 0; k < 4; k++) blob(r.range(0, S), r.range(0, S), r.range(10, 30), r.range(0.3, 0.6), 0.9, 0.62, 0.4);
+  // gum spots: small flat grey-black discs with a slightly lighter rim
+  for (let k = 0; k < 70; k++) {
+    const cx = r.range(0, S), cy = r.range(0, S), rad = r.range(2, 4.2);
+    for (let y = Math.floor(cy - rad - 1); y < cy + rad + 1; y++) for (let x = Math.floor(cx - rad - 1); x < cx + rad + 1; x++) {
+      const d = Math.hypot(x - cx, y - cy); if (d > rad + 0.5) continue;
+      const i = (((y % S) + S) % S) * S + (((x % S) + S) % S); const rim = d > rad - 0.9;
+      const gv = rim ? 0.2 : 0.13; col[i * 3] = col[i * 3] * 0.3 + gv * 0.7; col[i * 3 + 1] = col[i * 3 + 1] * 0.3 + gv * 0.68; col[i * 3 + 2] = col[i * 3 + 2] * 0.3 + gv * 0.65; rough[i] = 0.6; h[i] += 0.3;
     }
-    // oil stains
-    for (let k = 0; k < 18; k++) {
-      const cx = r.range(0, S), cy = r.range(0, S), rad = r.range(10, 46), sq = r.range(0.5, 1);
-      for (let y = Math.floor(cy - rad); y < cy + rad; y++) for (let x = Math.floor(cx - rad); x < cx + rad; x++) {
-        const d = Math.hypot((x - cx) / rad, (y - cy) / (rad * sq)); if (d > 1) continue;
-        const i = (((y % S) + S) % S) * S + (((x % S) + S) % S); const a = (1 - d) * 0.55;
-        col[i * 3] *= 1 - a; col[i * 3 + 1] *= 1 - a; col[i * 3 + 2] *= 1 - a * 0.9; rough[i] = Math.min(rough[i], 0.55 + d * 0.3);
-      }
-    }
-    // tar-sealed cracks: branching dark lines
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    for (let k = 0; k < 34; k++) {
-      let x = r.range(0, S), y = r.range(0, S), a = r.range(0, Math.PI * 2);
-      g.strokeStyle = `rgba(14,14,15,${r.range(0.55, 0.9)})`; g.lineWidth = r.range(1.2, 3.2);
-      g.beginPath(); g.moveTo(x, y);
-      for (let s = 0; s < r.int(6, 18); s++) {
-        a += r.range(-0.6, 0.6); x += Math.cos(a) * r.range(8, 22); y += Math.sin(a) * r.range(8, 22); g.lineTo(x, y);
-        if (r.chance(0.15)) { g.stroke(); g.beginPath(); g.moveTo(x, y); }
-      }
-      g.stroke();
-    }
-  });
+  }
+  if (!g) return;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (let k = 0; k < 9; k++) {
+    let x = r.range(0, S), y = r.range(0, S); g.strokeStyle = `rgba(28,26,25,${r.range(0.3, 0.55)})`; g.lineWidth = r.range(0.8, 1.6);
+    g.beginPath(); g.moveTo(x, y); const st = r.int(5, 12); for (let s = 0; s < st; s++) { x += r.range(-22, 22); y += r.range(-22, 22); g.lineTo(x, y); } g.stroke();
+  }
 }
 /** Concrete sidewalk slabs (1.5 m) with joints, stains, gum and occasional cracks. One tile covers 6 m. */
 export function pavementSurface(): Surface {
-  const S = 512, r = new Rng(5), slabs = 4, sp = S / slabs;
-  return surface(S, 4.0, (col, h, rough, g) => {
-    const mid = fbmField(S, r, 8), fine = noiseField(S, 128, r);
-    const tones: number[] = []; for (let k = 0; k < slabs * slabs; k++) tones.push(r.range(0.9, 1.08));
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const i = y * S + x;
-      const sx = Math.floor(x / sp), sy = Math.floor(y / sp);
-      const jx = Math.min(x % sp, sp - (x % sp)), jy = Math.min(y % sp, sp - (y % sp));
-      const joint = Math.min(jx, jy) < 1.6 ? 1 : 0;
-      const edge = Math.min(jx, jy) < 4 ? 0.96 : 1;
-      const v = (0.42 + mid(x, y) * 0.1 + fine(x, y) * 0.04 + (r.next() - 0.5) * 0.04) * tones[sy * slabs + sx] * edge * (joint ? 0.55 : 1);
-      col[i * 3] = v * 1.0; col[i * 3 + 1] = v * 0.985; col[i * 3 + 2] = v * 0.95;
-      h[i] = joint ? -0.5 : fine(x, y) * 0.1;
-      rough[i] = 0.88;
-    }
-    for (let k = 0; k < 40; k++) { const x = r.range(0, S), y = r.range(0, S); g.fillStyle = `rgba(40,38,36,${r.range(0.15, 0.45)})`; g.beginPath(); g.arc(x, y, r.range(1, 2.6), 0, 7); g.fill(); }
-    for (let k = 0; k < 8; k++) { const x = r.range(0, S), y = r.range(0, S); const gr = g.createRadialGradient(x, y, 0, x, y, r.range(12, 40)); gr.addColorStop(0, 'rgba(60,52,44,0.25)'); gr.addColorStop(1, 'rgba(60,52,44,0)'); g.fillStyle = gr; g.fillRect(x - 40, y - 40, 80, 80); }
-    g.strokeStyle = 'rgba(30,30,30,0.5)'; g.lineWidth = 1;
-    for (let k = 0; k < 5; k++) { let x = r.range(0, S), y = r.range(0, S); g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += r.range(-14, 14); y += r.range(-14, 14); g.lineTo(x, y); } g.stroke(); }
-  });
+  const S = 1024;
+  return surface(S, 3.4, (col, h, rough, g) => paintPavement(S, col, h, rough, g));
+}
+export function paintGrass(S: number, col: Float32Array, h: Float32Array, rough: Float32Array, seed = 7) {
+  const r = new Rng(seed);
+  const big = fbmField(S, r, 4), mid = fbmField(S, r, 24), patch = fbmField(S, r, 10), clump = noiseField(S, 96, r), streakN = noiseField(S, 128, r);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x; const b = big(x, y), m = mid(x, y), blade = r.next(), p = patch(x, y), cl = clump(x, y);
+    const dry = smooth(0.52, 0.78, b) * 0.9 + smooth(0.6, 0.8, p) * 0.3; // sun-bleached straw patches
+    const lush = smooth(0.35, 0.6, 1 - p) * 0.35;
+    const streak = streakN(x * 0.35, y); // vertical blade streaks
+    const v = 0.62 + blade * 0.4 + m * 0.22 + cl * 0.18 + (streak - 0.5) * 0.25;
+    // deep green <-> olive <-> straw
+    const rr = 0.095 + dry * 0.17 - lush * 0.015, gg = 0.17 + dry * 0.07 + lush * 0.04, bb = 0.05 + dry * 0.015;
+    col[i * 3] = rr * v; col[i * 3 + 1] = gg * v; col[i * 3 + 2] = bb * v;
+    if (blade > 0.985) { col[i * 3] *= 0.45; col[i * 3 + 1] *= 0.45; col[i * 3 + 2] *= 0.45; }
+    else if (blade < 0.012) { col[i * 3] = 0.2; col[i * 3 + 1] = 0.17; col[i * 3 + 2] = 0.08; } // bare soil / dead blade specks
+    h[i] = blade * 0.45 + cl * 0.5 + m * 0.3; rough[i] = Math.min(0.95, 0.88 + blade * 0.07);
+  }
 }
 export function grassSurface(): Surface {
-  const S = 512, r = new Rng(7);
-  return surface(S, 2.0, (col, h, rough) => {
-    const big = fbmField(S, r, 4), mid = fbmField(S, r, 24);
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const i = y * S + x; const b = big(x, y), m = mid(x, y), blade = r.next();
-      const dry = Math.max(0, b - 0.55) * 1.6;
-      const v = 0.75 + blade * 0.45 + m * 0.2;
-      col[i * 3] = (0.12 + dry * 0.12) * v; col[i * 3 + 1] = (0.2 + dry * 0.06) * v; col[i * 3 + 2] = (0.07 + dry * 0.02) * v;
-      if (blade > 0.985) { col[i * 3] *= 0.5; col[i * 3 + 1] *= 0.5; col[i * 3 + 2] *= 0.5; }
-      h[i] = blade * 0.5; rough[i] = 0.95;
-    }
-  });
+  const S = 512;
+  return surface(S, 2.0, (col, h, rough) => paintGrass(S, col, h, rough));
+}
+export function paintSand(S: number, col: Float32Array, h: Float32Array, rough: Float32Array, seed = 11) {
+  const r = new Rng(seed);
+  const mid = fbmField(S, r, 8), rip = noiseField(S, 24, r), damp = fbmField(S, r, 5);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x; const gr = r.next(); const dp = smooth(0.55, 0.8, damp(x, y));
+    const v = (0.6 + mid(x, y) * 0.14 + (gr - 0.5) * 0.12) * (1 - dp * 0.22);
+    col[i * 3] = v * 0.93; col[i * 3 + 1] = v * 0.81; col[i * 3 + 2] = v * 0.6;
+    if (gr > 0.992) { col[i * 3] *= 0.55; col[i * 3 + 1] *= 0.55; col[i * 3 + 2] *= 0.55; } // dark mineral grains
+    else if (gr < 0.004) { col[i * 3] = 0.8; col[i * 3 + 1] = 0.76; col[i * 3 + 2] = 0.68; } // shell fragments
+    h[i] = Math.sin((y + rip(x, y) * 30 + mid(x, y) * 10) * 0.35) * 0.3 + gr * 0.2; rough[i] = 0.97 - dp * 0.08;
+  }
 }
 export function sandSurface(): Surface {
-  const S = 256, r = new Rng(11);
-  return surface(S, 1.5, (col, h, rough) => {
-    const mid = fbmField(S, r, 8), rip = noiseField(S, 32, r);
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const i = y * S + x; const v = 0.62 + mid(x, y) * 0.12 + (r.next() - 0.5) * 0.08;
-      col[i * 3] = v * 0.93; col[i * 3 + 1] = v * 0.8; col[i * 3 + 2] = v * 0.6;
-      h[i] = Math.sin((y + rip(x, y) * 30) * 0.35) * 0.3 + r.next() * 0.2; rough[i] = 0.97;
-    }
-  });
+  const S = 512;
+  return surface(S, 1.5, (col, h, rough) => paintSand(S, col, h, rough));
 }
 /** Back-compat helpers returning only the albedo. */
 export function grassTexture(): THREE.Texture { return grassSurface().map; }
 export function sandTexture(): THREE.Texture { return sandSurface().map; }
 
-/** World-space macro variation (breaks texture tiling) for ground materials using map uv in metres / tile. */
-export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18, scale = 0.012, key = 'macro') {
+/**
+ * World-space macro variation (breaks texture tiling) for ground materials using map uv in metres / tile.
+ * Two scales of brightness + a very large scale warm/cool tint. `grain` > 0 adds close-range world-space fine grain
+ * (about 4 cm and 1.6 cm features) that fades out with distance, giving asphalt/concrete detail finer than one texel.
+ */
+export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18, scale = 0.012, key = 'macro', grain = 0) {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
     prev?.call(m, sh, r);
@@ -186,9 +278,14 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
       float mn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mh(i), mh(i + vec2(1, 0)), f.x), mix(mh(i + vec2(0, 1)), mh(i + vec2(1, 1)), f.x), f.y); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
       { float mv = mn(vMW.xz * ${scale.toFixed(4)}) * 0.6 + mn(vMW.xz * ${(scale * 4.1).toFixed(4)}) * 0.4;
-        diffuseColor.rgb *= 1.0 + (mv - 0.5) * ${(strength * 2).toFixed(3)}; }`);
+        float mt = mn(vMW.xz * ${(scale * 0.23).toFixed(4)} + vec2(17.0, 5.0)) - 0.5;
+        diffuseColor.rgb *= 1.0 + (mv - 0.5) * ${(strength * 2).toFixed(3)};
+        diffuseColor.rgb *= vec3(1.0 + mt * 0.07, 1.0, 1.0 - mt * 0.07);${grain > 0 ? `
+        float gd = mn(vMW.xz * 24.0) * 0.55 + mn(vMW.xz * 63.0) * 0.45;
+        float gf = 1.0 - smoothstep(18.0, 70.0, length(vViewPosition));
+        diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf;` : ''} }`);
   };
-  m.customProgramCacheKey = () => key;
+  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '');
   return m;
 }
 
@@ -342,15 +439,33 @@ export function paintWearTexture(): THREE.Texture {
 }
 /** Leaf cluster card (alpha) for trees. */
 export function leafTexture(kind: 'broad' | 'palm' = 'broad'): THREE.Texture {
-  const S = 256, r = new Rng(kind === 'broad' ? 23 : 29); const { c, g } = canvas(S, S);
+  const S = kind === 'broad' ? 512 : 256, r = new Rng(kind === 'broad' ? 23 : 29); const { c, g } = canvas(S, S);
   if (kind === 'broad') {
-    for (let k = 0; k < 420; k++) {
-      const a = r.range(0, Math.PI * 2), rad = Math.sqrt(r.next()) * 112;
-      const x = 128 + Math.cos(a) * rad, y = 128 + Math.sin(a) * rad * 0.9;
-      const l = r.range(0.55, 1.05), hue = r.range(0.22, 0.3);
-      const col = new THREE.Color().setHSL(hue, r.range(0.35, 0.6), 0.16 + l * 0.18 * (1 - rad / 200));
-      g.fillStyle = `#${col.getHexString()}`;
-      g.save(); g.translate(x, y); g.rotate(r.range(0, Math.PI * 2)); g.beginPath(); g.ellipse(0, 0, r.range(5, 10), r.range(3, 5), 0, 0, Math.PI * 2); g.fill(); g.restore();
+    // a leafy sprig: ~70 individual pointed leaves on short stalks, back (dark, small) to front (bright), with gaps between
+    // twigs so the alpha-tested card shows sky holes. Canvas edges are antialiased -> soft alpha edge before the alphaTest cut.
+    const cx = S / 2, cy = S / 2;
+    const leaf = (x: number, y: number, ang: number, len: number, wid: number, col: string, vein: string) => {
+      g.save(); g.translate(x, y); g.rotate(ang);
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, 0);
+      g.bezierCurveTo(len * 0.25, -wid, len * 0.7, -wid * 0.8, len, 0);
+      g.bezierCurveTo(len * 0.7, wid * 0.8, len * 0.25, wid, 0, 0); g.fill();
+      g.strokeStyle = vein; g.lineWidth = 1.4; g.beginPath(); g.moveTo(0, 0); g.lineTo(len * 0.92, 0); g.stroke();
+      g.restore();
+    };
+    for (let layer = 0; layer < 3; layer++) {
+      const n = layer === 0 ? 34 : layer === 1 ? 30 : 22;
+      for (let k = 0; k < n; k++) {
+        const a = r.range(0, Math.PI * 2), rad = Math.pow(r.next(), 0.7) * S * 0.3;
+        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad * 0.92;
+        if (rad < S * 0.07 && r.next() < 0.6) continue; // open centre: sky shows through
+        const edge = rad / (S * 0.3);
+        const light = (layer === 0 ? 0.2 : layer === 1 ? 0.3 : 0.4) + r.range(-0.03, 0.05) + edge * 0.04;
+        const hue = r.range(0.2, 0.31) + (r.next() < 0.18 ? 0.04 : 0);
+        const col = new THREE.Color().setHSL(hue, r.range(0.4, 0.62), light);
+        const vein = new THREE.Color().setHSL(hue + 0.02, 0.4, light + 0.1);
+        const len = S * r.range(0.14, 0.21) * (layer === 0 ? 0.9 : 1), wid = len * r.range(0.26, 0.38);
+        leaf(x, y, a + r.range(-0.9, 0.9), len, wid, `#${col.getHexString()}`, `#${vein.getHexString()}`);
+      }
     }
   } else {
     // a single frond: central rib with leaflets

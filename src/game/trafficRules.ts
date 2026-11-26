@@ -87,6 +87,24 @@ export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, spee
  * (m/s) above it: the stop curve is lowered by it so the car halts at the bar instead of rolling over it at walking pace.
  */
 export const PEDAL_LAG = 2.4;
+/**
+ * Round 13 (owner: "cars aren't going on green lights, the ones in the left lane"): a left turner first at its line used
+ * to wait for a 5.5 s gap in a non-stop oncoming stream, and its amber "sneak" lasted only 0.8 s while the oncoming cars
+ * still counted, so it (and every car queued behind it) sat through several cycles. Like a real driver it now takes the
+ * amber to turn once oncoming traffic is stopping, starting while enough amber is left to reach the box before the red
+ * (`yellowLeft` s of amber left; ~6 m from a standstill takes ~2.2 s, and it may be under way ~1 s into the all-red).
+ */
+export const LEFT_CLEAR_MIN = 1.4;
+export function mayClearLeft(state: 'green' | 'yellow' | 'red', yellowLeft: number, dStop: number, speed: number): boolean {
+  if (state !== 'yellow' || yellowLeft < LEFT_CLEAR_MIN) return false;
+  return dStop < 2.5 && dStop > -BOX_EDGE + 0.5 && Math.abs(speed) < 2;
+}
+/** An approaching car (stop line `dStop` ahead) that will halt for its own amber/red, so a clearing left turner may ignore it. */
+export function willStopForSignal(state: 'green' | 'yellow' | 'red', dStop: number, speed: number, yellowLeft = Infinity): boolean {
+  return state !== 'green' && dStop > -1 && signalCap(state, dStop, Math.max(0, speed), yellowLeft) !== Infinity;
+}
+/** Seconds a left turner stands at its line on green before only a really close car still holds it (was 40: three cycles). */
+export const LEFT_PATIENCE = 18;
 /** Speed cap that halts an AI car at a line `dStop` m ahead (0.4 m short of it), allowing for the pedal's lag. */
 export function lineStop(dStop: number): number { return Math.max(0, stopSpeed(dStop - 0.4) - PEDAL_LAG); }
 /**

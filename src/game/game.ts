@@ -52,7 +52,7 @@ import type { HeliVariant } from '../vehicles/helicopterModel';
 import { Blood } from '../render/blood'; // R6-F
 import { CombatFx } from '../ui/combatfx';
 import { Orders } from './orders';
-import { signalLampColors } from '../render/signalColors';
+import { signalLampColors, signalOffColors } from '../render/signalColors';
 import { TaxiRide } from './taxiRide';
 import { TaxiJob } from './taxiJob';
 import { LoopGuard } from './loopGuard';
@@ -891,13 +891,13 @@ export class Game {
     this.signalTimer -= 1;
     if (this.signalTimer > 0) return; this.signalTimer = 8;
     const lamps = this.visuals.signalLamps;
-    const cols = signalLampColors(this.renderer.quality.bloom);
-    const off = new THREE.Color(0.06, 0.06, 0.06);
+    const night = this.renderer.skyState.night;
+    const cols = signalLampColors(this.renderer.quality.bloom, night), off = signalOffColors(night);
     for (const h of this.visuals.signalHeads) {
       const st = signalState(this.city.intersections[h.inter], h.axis, this.time);
-      lamps.setColorAt(h.lamps[0], st === 'red' ? cols.red : off);
-      lamps.setColorAt(h.lamps[1], st === 'yellow' ? cols.yellow : off);
-      lamps.setColorAt(h.lamps[2], st === 'green' ? cols.green : off);
+      lamps.setColorAt(h.lamps[0], st === 'red' ? cols.red : off[0]);
+      lamps.setColorAt(h.lamps[1], st === 'yellow' ? cols.yellow : off[1]);
+      lamps.setColorAt(h.lamps[2], st === 'green' ? cols.green : off[2]);
     }
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
     this.visuals.pedSignals.update(this.time);

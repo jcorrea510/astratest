@@ -10,8 +10,15 @@ import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
 
 export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vector3 }
-/** Headlight spot intensity (renderer units, decay 1.1): bright pool on the road out to ~25 m. */
-export const HEADLIGHT_CD = 420;
+/**
+ * Headlight spot intensity and fall-off. Round 13 (owner, on an iPad: "headlights shine too bright when reflecting, it's hard
+ * to see"): 420 cd with decay 1.1 lit the road 5-15x brighter than the street lights around it, and the glare off asphalt,
+ * paint and glass blew out. Now a believable low beam: a pool a few times the street lighting near the car, fading by ~25 m.
+ */
+export const HEADLIGHT_CD = 190;
+export const HEADLIGHT_DECAY = 1.45;
+/** Road illuminance (renderer units) a headlight spot gives at `d` metres: what the tests hold to. */
+export const headlightAt = (d: number) => HEADLIGHT_CD / Math.pow(Math.max(1, d), HEADLIGHT_DECAY);
 export class VehicleManager {
   list: Vehicle[] = [];
   onCrash: ((e: CrashEvent) => void) | null = null;
@@ -159,7 +166,7 @@ export class VehicleManager {
   private heads: { l: THREE.SpotLight; t: THREE.Object3D; v: Vehicle | null; w: number }[] = [];
   setHeadlightCount(n: number) {
     while (this.heads.length < n) {
-      const l = new THREE.SpotLight(0xfff0d8, 0, 55, 0.5, 0.55, 1.1), t = new THREE.Object3D();
+      const l = new THREE.SpotLight(0xfff0d8, 0, 45, 0.5, 0.6, HEADLIGHT_DECAY), t = new THREE.Object3D();
       l.target = t; l.castShadow = false; this.scene.add(l, t); this.heads.push({ l, t, v: null, w: 0 });
     }
     while (this.heads.length > n) { const h = this.heads.pop()!; this.scene.remove(h.l, h.t); h.l.dispose(); }

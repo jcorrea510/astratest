@@ -22,7 +22,7 @@ describe('procedural vehicle models', () => {
       const hi = t.lods[0].body.attributes.position.count / 3, lo = t.lods[1].body.attributes.position.count / 3;
       const glass = (t.lods[0].glass?.attributes.position.count ?? 0) / 3;
       process.stdout.write(`MODEL ${kind.padEnd(11)} hi ${hi} lo ${lo} glass ${glass} wheel ${wheelSoup(SHAPES[kind], 0).tris} doors ${t.doors.length} panes ${t.panes.map(p => p.name).join(',')}\n`);
-      expect(hi).toBeLessThan(42000);
+      expect(hi).toBeLessThan(52000); // R13-W6: was 42000 before the detailed wheels, calipers and small parts (budget: < 1.3x per kind, see parts.test.ts)
       expect(lo).toBeLessThan(hi * 0.5);
       expect(lo).toBeLessThan(2700 + t.wheelBones.length * 240);
       const far = t.lods[2].body.attributes.position.count / 3;

@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, mayClearLeft, willStopForSignal, LEFT_PATIENCE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -41,7 +41,7 @@ export interface AiCar { v: Vehicle; driver: Npc; lane: Lane; s: number; mode: D
   /** waiting for a legitimate reason last step (signal, pedestrian, queue ahead), and who we are stuck behind */
   legitWait?: boolean; legitDepth?: number; blockedBy?: Vehicle | null;
   /** stop-sign / left-turn wait bookkeeping: lane it was counted on and seconds stood at the line */
-  ssLane?: number; ssWait?: number; lcRetry?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
+  ssLane?: number; ssWait?: number; /** Round 13: lane on which this left turner started clearing on amber/all-red */ clearGo?: number; lcRetry?: number; /** seconds waited at a line because the exit lane is backed up */ boxWait?: number }
 interface CrashSite { pos: THREE.Vector3; t: number; v: Vehicle }
 
 const sp: { x: number; z: number; dx: number; dz: number; y?: number } = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -199,12 +199,23 @@ export class Traffic {
     }
     return r;
   }
+  /** Round 13: an AI car approaching junction `interId` that will halt for its own amber/red (a clearing left turner may go). */
+  private stopsForSignal(o: Vehicle, interId: number, t: number): boolean {
+    const oc = this.carOf(o);
+    if (!oc || (oc.mode !== 'cruise' && oc.mode !== 'goto') || oc.lane.connector || oc.lane.intersection !== interId) return false;
+    if (oc.mode === 'goto' && oc.driver.role !== 'civilian') return false;
+    const oi = this.city.intersections[interId], ax = laneSigAxis(oc.lane);
+    const left = oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1;
+    return willStopForSignal(signalState(oi, ax, t), this.distToStop(oc), o.speed, left ? 0 : yellowLeft(oi, ax, t));
+  }
   /**
    * A left turner waits while the box is busy, an oncoming car would reach the junction within a few seconds, or an
    * opposing left turner with priority (lower id) is about to go. After a long wait (`patient` false) only a car that is
    * really close still holds it (a deadlock breaker that never drives into a moving car).
    */
-  private leftBlocked(inter: { id: number; x: number; z: number; halfX: number; halfZ: number }, self: Vehicle, f: { x: number; z: number }, patient = true): boolean {
+  private leftBlocked(inter: { id: number; x: number; z: number; halfX: number; halfZ: number }, self: Vehicle, f: { x: number; z: number }, patient = true, clearT?: number): boolean {
+    // Round 13: `clearT` set = our light is in its amber/all-red, so oncoming cars that will stop for theirs do not count
+    const clearing = clearT !== undefined;
     if (patient && this.boxBusy(inter, self)) return true;
     for (const o of this.vehicles.list) {
       if (o === self) continue;
@@ -212,8 +223,9 @@ export class Traffic {
       // Round 11 (zero crashes): an oncoming car standing first at its own line on our green is about to pull away, not
       // parked: judge it as if already rolling (left turners went, it set off and hit them mid-turn)
       const osp = Math.abs(o.speed);
+      if (clearing && this.stopsForSignal(o, inter.id, clearT)) continue;
       let mayGo = false;
-      if (osp < 1.5) { const oc = this.carOf(o); mayGo = !!oc && !oc.lane.connector && oc.lane.intersection === inter.id && this.distToStop(oc) < 6 && !(oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1); }
+      if (osp < 1.5 && !clearing) { const oc = this.carOf(o); mayGo = !!oc && !oc.lane.connector && oc.lane.intersection === inter.id && this.distToStop(oc) < 6 && !(oc.nextChoice !== undefined && this.turnOf(oc.nextChoice) === 1); }
       if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, osp, f.x, f.z, mayGo) && (patient || arrivalTime(Math.hypot(ox, oz), osp) < 3.5)) return true;
       if (!patient) { if (Math.abs(ox) < inter.halfX && Math.abs(oz) < inter.halfZ && Math.abs(o.speed) > 1) return true; continue; }
       // opposing left turner waiting at its line: the lower id goes first (their paths can cross at uneven junctions)
@@ -230,6 +242,7 @@ export class Traffic {
     }
     // Round 10: the far crowd's drawn cars count too (an oncoming one 60-90 m out is not a real car yet)
     for (const o of this.farObs) {
+      if (clearing) break; // 60-90 m out on amber: they stop for it
       if (o.yaw === undefined || !o.v) continue;
       const ox = o.x - inter.x, oz = o.z - inter.z;
       if (oncomingConflict(ox, oz, Math.sin(o.yaw), Math.cos(o.yaw), o.v, f.x, f.z) && (patient || arrivalTime(Math.hypot(ox, oz), o.v) < 3.5)) return true;
@@ -367,7 +380,11 @@ export class Traffic {
         // current speed: amber means stop unless it physically cannot (it used to commit, slow for the turn and enter on red)
         // ...except the one already waiting at the line: it takes the amber to turn once the oncoming cars stop (gap check below)
         const leftTurn = car.nextChoice !== undefined && this.turnOf(car.nextChoice) === 1, yl = yellowLeft(inter, laneSigAxis(car.lane), t);
-        const sneak = leftTurn && st === 'yellow' && yl > 2.2 && dStop < 2 && dStop > -BOX_EDGE + 0.5 && Math.abs(speed) < 1;
+        // Round 13 (owner: left-lane cars not going): the first left turner takes the amber to turn once oncoming traffic is
+        // stopping (it used to get 0.8 s of amber and sat through cycles); once started it is committed
+        if (car.clearGo !== undefined && car.clearGo !== car.lane.id) car.clearGo = undefined;
+        const clearing = leftTurn && st !== 'green' && (car.clearGo === car.lane.id || mayClearLeft(st, yl, dStop, speed));
+        const sneak = clearing;
         const cap = sneak ? Infinity : signalCap(st, dStop, Math.max(0, speed), leftTurn ? 0 : yl);
         if (cap < Infinity) { targetSpeed = Math.min(targetSpeed, cap); legit = true; }
         else if (inter.signalized && dStop > -1 && dStop < 15 && this.crossInBox(car, inter.id, f)) { targetSpeed = Math.min(targetSpeed, lineStop(dStop)); legit = true; }
@@ -383,7 +400,8 @@ export class Traffic {
           } else if (dStop < 22 && car.nextChoice !== undefined) {
             if (this.turnOf(car.nextChoice) === 1) {
               if (standing) car.ssWait = (car.ssWait ?? 0) + dt;
-              if (this.leftBlocked(inter, v, f, (car.ssWait ?? 0) < 40)) { targetSpeed = Math.min(targetSpeed, lineStop(dStop)); legit = true; }
+              if (this.leftBlocked(inter, v, f, (car.ssWait ?? 0) < LEFT_PATIENCE, sneak ? t : undefined)) { targetSpeed = Math.min(targetSpeed, lineStop(dStop)); legit = true; }
+              else if (sneak) car.clearGo = car.lane.id;
             }
           }
         }
@@ -398,7 +416,7 @@ export class Traffic {
         for (const o of this.vehicles.list) {
           if (o === v || Math.abs(o.speed) < 3) continue;
           const of = o.phys.forward(), sg = o.speed < 0 ? -1 : 1, ox = o.position.x - inter.x, oz = o.position.z - inter.z;
-          if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, Math.abs(o.speed), ax, az) && Math.hypot(ox, oz) / Math.abs(o.speed) < 2.6) {
+          if (oncomingConflict(ox, oz, of.x * sg, of.z * sg, Math.abs(o.speed), ax, az) && Math.hypot(ox, oz) / Math.abs(o.speed) < 2.6 && !this.stopsForSignal(o, inter.id, t)) {
             targetSpeed = Math.min(targetSpeed, stopSpeed(Math.max(0, car.lane.length * 0.22 - car.s - 1.5))); legit = true; break;
           }
         }
