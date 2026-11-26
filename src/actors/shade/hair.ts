@@ -22,19 +22,24 @@ transformed = uHeadJoint + (transformed - uHeadJoint) * uShape.z;`);
     .replace('#include <common>', `#include <common>
 uniform vec3 uC[12]; uniform float uFlash;
 varying vec4 vHs; varying vec4 vHd; varying vec3 vHairT;
-float hairSpec = 1.0, hairTilt = 0.0;
+float hairSpec = 1.0, hairTilt = 0.0, hairLight = 0.3, hairSpark = 0.5, hairDepth = 1.0;
 float h11(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
 float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }`)
     .replace('#include <lights_physical_pars_fragment>', `#include <lights_physical_pars_fragment>
-// Hair lighting: wrapped diffuse plus two Kajiya-Kay lobes along the strand (primary white, secondary tinted, shifted).
+// Hair lighting: wrapped diffuse, backlit transmission (light hair glows at the rim) and two Kajiya-Kay lobes along the strand:
+// primary white and sharp, shifted towards the root; secondary tinted, broader, shifted towards the tip. Both sparkle per strand.
 void RE_Direct_Hair(const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
   float nl = dot(geometryNormal, directLight.direction);
   reflectedLight.directDiffuse += clamp((nl + 0.35) / 1.35, 0.0, 1.0) * directLight.color * BRDF_Lambert(material.diffuseColor);
+  float back = pow(clamp(dot(-directLight.direction, geometryViewDir) * 0.5 + 0.5, 0.0, 1.0), 4.0);
+  reflectedLight.directDiffuse += directLight.color * material.diffuseColor * (back * hairLight * hairDepth * 0.4 * (1.0 - 0.5 * clamp(nl, 0.0, 1.0)));
   vec3 T = normalize(vHairT), H = normalize(directLight.direction + geometryViewDir);
-  float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.15), H);
-  float s1 = pow(max(0.0, 1.0 - d1 * d1), 90.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 18.0);
+  float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.2), H);
+  float s1 = pow(max(0.0, 1.0 - d1 * d1), 110.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 14.0);
   vec3 tint = material.diffuseColor / max(max(material.diffuseColor.r, material.diffuseColor.g), max(material.diffuseColor.b, 0.03));
-  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.09 * s1 + 0.06 * s2 * tint);
+  tint = mix(tint, vec3(1.0, 0.9, 0.8), 0.25);
+  float spark = mix(0.55, 1.6, hairSpark);
+  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.1 * s1 * spark + 0.07 * s2 * tint * (0.7 + 0.6 * hairSpark));
 }
 #undef RE_Direct
 #define RE_Direct RE_Direct_Hair`)
@@ -59,9 +64,11 @@ if (mode < 0.5) {
   float fu = max(fwidth(u), 1e-4), sf = 1.0 - smoothstep(0.35, 0.9, fu);
   // single strands: fine albedo striation, a few strays above the locks
   float uu = u + (lw - lu) * 8.0, cell = mod(floor(uu), 720.0);
+  float sw0 = 0.08 + 0.12 * h11(cell * 1.7 + lk); // strand width varies: some flyaways are hair-fine, some coarse
   r1 = h21(vec2(cell, lk)); float r3 = h21(vec2(cell + 41.3, sg));
-  float stray = sf * step(r3, 0.05 * dens) * step(lay, top + 0.3) * (1.0 - smoothstep(0.18 - fu, 0.18 + fu, abs(fract(uu) - 0.5)));
+  float stray = sf * step(r3, 0.09 * dens) * step(lay, top + 0.4) * (1.0 - smoothstep(sw0 - fu, sw0 + fu, abs(fract(uu) - 0.5)));
   a = max(step(lay, top), stray);
+  a *= step((lay - 0.6) * 1.6, h21(vec2(cell, lk) + 3.7)); // outer layers: strands of different lengths, a fuzzy silhouette
   a *= step(h21(vec2(lk, sg) + 5.3), dens * 1.6 - 0.2); // locks thin out towards the hairline: soft, ragged edge
   if (lay < 0.01) a = step(0.5 + 0.4 * (h11(lk + sg) - 0.5), dens);   // opaque core with ragged tips
   b = mix(1.0, mix(0.74, 1.2, r1), sf) * mix(0.85, 1.12, h11(lk + 21.0));
@@ -108,10 +115,23 @@ if (mode < 0.5) {
 a = mix(a, lay < 0.01 ? step(0.5, dens) : step(lay, 0.65 * dens), farK);
 if (a < 0.5) discard;
 b = mix(b, 1.0, farK * 0.7); hairTilt *= 1.0 - farK;
-float ao = lay < 0.01 ? 0.4 : mix(0.38, 1.0, smoothstep(0.0, 0.95, lay / max(dens, 0.3))); // depth relative to the local thickness: no dark rims
-hairSpec = mix(0.6, 1.3, r1) * mix(0.5, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : mode < 0.5 && sc > 0.5 ? 0.55 : 1.0);
+float depthK = smoothstep(0.0, 0.95, lay / max(dens, 0.3));
+float ao = lay < 0.01 ? 0.35 : mix(0.3, 1.0, depthK); // depth relative to the local thickness: self-shadow between layers, no dark rims
+hairSpec = mix(0.6, 1.3, r1) * mix(0.4, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0.45 : mode < 0.5 && sc > 0.5 ? 0.55 : 1.0);
 hairSpec *= 1.0 - 0.6 * farK; // solid (far) layers: no crisp band where the strands would have broken the highlight up
-vec3 col = uC[6] * b * ao;
+hairDepth = ao;
+hairSpark = mix(h21(vec2(floor(u), floor(v / 0.004)) + r1 * 13.1), 0.5, farK);
+vec3 hc = uC[6];
+float hl = dot(hc, vec3(0.299, 0.587, 0.114)), hmx = max(max(hc.r, hc.g), hc.b), hsat = (hmx - min(min(hc.r, hc.g), hc.b)) / max(hmx, 1e-3);
+hairLight = smoothstep(0.04, 0.3, hl);
+float pk = h11(r1 * 91.7 + 3.0);
+// per-strand melanin: some strands warmer (pheomelanin), some ashier; outer strand ends lightened (sun, age)
+hc *= mix(vec3(0.93, 0.98, 1.05), vec3(1.1, 1.0, 0.88), r1);
+hc = mix(hc, hc * vec3(1.3, 1.12, 0.9), smoothstep(0.55, 1.0, lay) * step(0.5, pk) * 0.6 * (1.0 - farK));
+// grey hair (low saturation, not dark): a mix of white and darker strands
+float greyK = (1.0 - smoothstep(0.08, 0.3, hsat)) * smoothstep(0.1, 0.22, hl);
+hc = mix(hc, vec3(hl) * mix(0.55, 1.5, step(0.5, pk)), greyK * 0.45 * (1.0 - farK));
+vec3 col = hc * b * ao;
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)
     .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = 0.72;')
