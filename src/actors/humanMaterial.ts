@@ -366,15 +366,22 @@ normal = normalize(normal + cross(normalize(vHairT), normal) * hairTilt);`);
 
 /** Hex (sRGB) to a linear working-space colour (THREE.Color already converts with colour management on). */
 const lin = (c: string) => new THREE.Color(c);
+/** Garment colour: sRGB hex to linear once (THREE.Color with colour management), then kept inside what real dyed cloth reflects (no pure white or pure black fabric). */
+const FABRIC_MIN = 0.012, FABRIC_MAX = 0.85;
+const fabric = (out: THREE.Color, c: string) => {
+  out.set(c);
+  out.r = Math.min(FABRIC_MAX, Math.max(FABRIC_MIN, out.r)); out.g = Math.min(FABRIC_MAX, Math.max(FABRIC_MIN, out.g)); out.b = Math.min(FABRIC_MAX, Math.max(FABRIC_MIN, out.b));
+  return out;
+};
 
 /** Writes a look into a person material's uniforms. */
 export function applyLookUniforms(m: THREE.MeshStandardMaterial, base: BodyBase, l: FullLook) {
   const u = m.userData.uniforms as PersonUniforms;
   const C = u.uC.value;
   C[0].copy(lin(l.skin));
-  C[1].copy(lin(l.top)); C[2].copy(lin(l.accent)); C[3].copy(lin(l.bottom)); C[4].copy(lin(l.shoes));
-  C[5].copy(lin(l.shoeStyle === 'sneakers' ? '#efede6' : l.shoeStyle === 'boots' ? '#2a211b' : '#151515'));
-  C[6].copy(lin(l.hair)); C[7].copy(lin(l.hat)); C[8].copy(lin(l.detail)); C[9].copy(lin(l.eyes));
+  fabric(C[1], l.top); fabric(C[2], l.accent); fabric(C[3], l.bottom); fabric(C[4], l.shoes);
+  fabric(C[5], l.shoeStyle === 'sneakers' ? '#e6e3da' : l.shoeStyle === 'boots' ? '#2a211b' : '#151515');
+  C[6].copy(lin(l.hair)); fabric(C[7], l.hat); C[8].copy(lin(l.detail)); C[9].copy(lin(l.eyes));
   const top = l.topStyle;
   const sleeve = l.sleeves === 'tank' || top === 'tank' ? -1 : l.sleeves === 'short' && !['hoodie', 'jacket', 'suit', 'longsleeve'].includes(top) ? (top === 'polo' || top === 'uniform' ? 0.33 : 0.28) : 0.985;
   const waist = base.waistT;
