@@ -641,6 +641,11 @@ export class NpcBrainRunner {
     const off = keepRight(n.laneOffset), ox = (-ez / el) * off, oz = (ex / el) * off; // Round 8: everyone keeps to their right, so the two directions pass
     tv.set(target.x + ox - n.pos.x, 0, target.z + oz - n.pos.z);
     const d = tv.length();
+    // Re-anchored while standing in the carriageway (dodged a car, shoved, handed over from the far crowd): the nearest corner
+    // node can be 30 m off, and a crossing picked from here walked a diagonal through the traffic to it. Step up onto the
+    // nearest kerb first (and a step past it, not along the gutter); the walk to the node then follows the footpath. (Within 3 m
+    // of the node is the kerb queue for a crossing, left alone.)
+    if (n.node === n.nextNode && d > 3 && !n.onCross && kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z)) return 1.35;
     if (d < 0.9 || (n.node === n.nextNode)) {
       const arrived = n.node !== n.nextNode;
       n.node = n.nextNode; n.onCross = false;
@@ -672,6 +677,8 @@ export class NpcBrainRunner {
     // Round 7: follow the path line, not a beeline to the far node: someone off the line (dodged, spawned, handed over
     // from the far crowd) steps back onto it within a few metres instead of slanting across the roadway for 40 m
     if (from !== target && !n.onCross) {
+      // in the carriageway mid-block (shoved off the kerb, or a buddy pair walking abreast): back up onto the footpath first
+      if (kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z, 0)) return 1.35;
       const ax = from.x + ox, az = from.z + oz, ux = ex / el, uz = ez / el;
       const along = (n.pos.x - ax) * ux + (n.pos.z - az) * uz, lat = (n.pos.x - ax) * -uz + (n.pos.z - az) * ux;
       if (Math.abs(lat) > 6 || along < -4 || along > el + 4) { n.node = -1; n.nextNode = -1; n.pend = null; return 0.6; } // lost the path: re-anchor from here (nearest kerb / own block)
@@ -744,6 +751,25 @@ export class NpcBrainRunner {
 export function npcFireTiming(police: boolean, auto: boolean, interval: number, burstLeft: number, r: number): { burst: number; between: number; pause: number } {
   if (police) return { burst: burstLeft > 0 ? burstLeft : auto ? 4 + Math.floor(r * 4) : 2 + Math.floor(r * 3), between: Math.max(interval * 1.3, auto ? 0.09 : 0.24), pause: 0.35 + r * 0.5 };
   return { burst: burstLeft > 0 ? burstLeft : auto ? 3 + Math.floor(r * 4) : 1, between: interval * 1.4, pause: interval + 0.8 + r * 1.2 };
+}
+
+/**
+ * Round 12: a walker in a mid-block carriageway (or within `margin` m of its kerb) gets `dir` set towards its nearer kerb (leaning towards the
+ * target point tx, tz along the road), and true. Off the road (or inside a junction, which the road segments leave out) it returns false. Pure (tests).
+ */
+export function kerbEscape(roads: readonly { axis: 'x' | 'z'; coord: number; half: number; from: number; to: number }[], x: number, z: number, dir: { x: number; z: number }, tx = x, tz = z, margin = 0.3): boolean {
+  for (const r of roads) {
+    const along = r.axis === 'x' ? x : z, off = (r.axis === 'x' ? z : x) - r.coord;
+    if (Math.abs(off) >= r.half + margin || along <= r.from || along >= r.to) continue;
+    // square to the kerb, leaning 40 degrees towards where they are headed: against a row of parked cars they slide along it to a gap
+    // (within 1.5 m of the kerb: straight at it, since a walker meeting the kerb face at an angle slides along the gutter
+    // instead of stepping up)
+    const s = off >= 0 ? 1 : -1, ta = (r.axis === 'x' ? tx : tz) - along, a = Math.abs(ta) > 1 && Math.abs(off) < r.half - 1.5 ? Math.sign(ta) * 0.84 : 0;
+    const k = 1 / Math.hypot(1, a);
+    if (r.axis === 'x') { dir.x = a * k; dir.z = s * k; } else { dir.x = s * k; dir.z = a * k; }
+    return true;
+  }
+  return false;
 }
 
 /** Round 8: sideways place on a footpath / crosswalk for a walker (negative = right of the walking direction): always on
