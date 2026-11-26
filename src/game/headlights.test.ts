@@ -15,3 +15,19 @@ describe('headlight beams (Round 8: reflections flickered at night)', () => {
     expect(pickHeadlightCars([a, b, me], [a, b], L, me, 1)).toEqual([me]);
   });
 });
+import { HEADLIGHT_CD, headlightAt } from './vehicles';
+import { HEAD_LENS, BEAM_OPACITY } from '../vehicles/vehicle';
+describe('Round 13 (owner: "headlights shine too bright when reflecting, it\'s hard to see")', () => {
+  it('the low-beam pool is a few times the street lighting near the car and fades out by ~25 m, not a blinding patch', () => {
+    const old = (d: number) => 420 / Math.pow(d, 1.1);
+    expect(headlightAt(5)).toBeLessThan(old(5) / 2.5);
+    expect(headlightAt(10)).toBeLessThan(12);
+    expect(headlightAt(25)).toBeLessThan(2);
+    expect(headlightAt(5)).toBeGreaterThan(8); // still lights the road in front of the car
+    expect(HEADLIGHT_CD).toBeLessThan(420);
+  });
+  it('the headlamp lens and the painted road pool are toned down too', () => {
+    expect(HEAD_LENS).toBeLessThan(2.2);
+    expect(BEAM_OPACITY).toBeLessThanOrEqual(0.25);
+  });
+});

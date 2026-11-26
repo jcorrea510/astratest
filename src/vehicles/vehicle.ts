@@ -50,6 +50,10 @@ const _sm = new THREE.Matrix4(), _sa = new THREE.Vector3(), _sb = new THREE.Vect
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const _m2 = new THREE.Matrix4(), _v3 = new THREE.Vector3();
 const POLICE_LIKE = new Set<VehicleKind>(['police', 'fbi', 'swat']);
+/** Round 13 (owner: headlights too bright, hard to see): lens glow of lit headlamps (was 2.2: a white bloom blob facing you)
+ * and the opacity of the painted light pool on the road ahead (was 0.5, stacked on the real spot light). */
+export const HEAD_LENS = 1.5;
+export const BEAM_OPACITY = 0.22;
 
 let VEH_ID = 0;
 export class Vehicle {
@@ -439,8 +443,8 @@ export class Vehicle {
     const occupied = !!this.driver || this.persistent;
     const on = (this.headlights || night > 0.35) && !this.destroyed && !this.lightsBroken && occupied;
     this.headOn = on;
-    u.uHead.value = on ? 2.2 : 0;
-    if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.5 * night : 0; this.beam.visible = on && night > 0.05; }
+    u.uHead.value = on ? HEAD_LENS : 0;
+    if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? BEAM_OPACITY * night : 0; this.beam.visible = on && night > 0.05; }
     const lit = !this.destroyed && occupied;
     u.uTail.value = this.destroyed ? 0 : braking && lit ? 3.5 : on ? 1.2 : 0;
     u.uRev.value = lit && this.input.throttle < -0.1 && this.speed < -0.3 ? 3 : 0;
