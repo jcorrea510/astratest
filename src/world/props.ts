@@ -10,6 +10,31 @@ import { TrimBuilder, T_PAINT, T_METAL, T_IRON, T_ROUGH, T_PLASTIC, T_GLASS, T_N
 const C = (h: string) => new THREE.Color(h);
 const D2R = Math.PI / 180;
 
+/**
+ * Props that cast sun shadows. Small furniture (hydrants, bins, benches, meters, boxes, bollards, shrubs) is too small to read in a
+ * 2048 shadow map and only costs shadow-pass draws and triangles, so only tall or large silhouettes cast.
+ */
+const SUN_CASTERS = new Set(['streetlight', 'busstop', 'pole', 'poleT', 'dumpster0', 'dumpster1']);
+export function castsSunShadow(key: string): boolean {
+  return SUN_CASTERS.has(key) || /^(tree|leaf|palm|frond)\d/.test(key);
+}
+
+/**
+ * Weathering baked into vertex colours (free at run time): grime darkens and browns the lowest `grimeH` metres (road spray, dirt),
+ * and `wear` adds slow paint fade/chalking patches along the height so poles do not read as one flat colour.
+ */
+export function weather(g: THREE.BufferGeometry, seed: number, grimeH = 0.45, wear = 0.1): THREE.BufferGeometry {
+  const pos = g.attributes.position, col = g.attributes.color; if (!col) return g;
+  for (let i = 0; i < col.count; i++) {
+    const y = pos.getY(i), x = pos.getX(i), z = pos.getZ(i);
+    const gr = THREE.MathUtils.clamp(1 - y / grimeH, 0, 1);
+    const n = Math.sin(y * 1.7 + seed * 1.3) * Math.sin(x * 5.1 + z * 4.3 + seed) * 0.5 + 0.5; // 0..1 patchy
+    const k = (1 - gr * 0.42) * (1 - wear * n) * (1 + wear * 0.5 * Math.sin(y * 0.6 + seed));
+    col.setXYZ(i, col.getX(i) * k * (1 + gr * 0.04), col.getY(i) * k, col.getZ(i) * k * (1 - gr * 0.06));
+  }
+  col.needsUpdate = true; return g;
+}
+
 /** Street light: arm points along local +z. Lamp head position relative to the base. */
 export const LAMP = { reach: 2.3, height: 8.4 };
 export function streetLightGeo(): THREE.BufferGeometry {
@@ -21,7 +46,7 @@ export function streetLightGeo(): THREE.BufferGeometry {
   for (let i = 0; i < pts.length - 1; i++) t.beam(0, pts[i][1], pts[i][0], 0, pts[i + 1][1], pts[i + 1][0], 0.09, 0.09, pole, T_METAL);
   t.box(0, LAMP.height + 0.05, LAMP.reach + 0.15, 0.36, 0.16, 0.75, 0, dark, T_METAL);
   t.box(0, LAMP.height - 0.04, LAMP.reach + 0.18, 0.26, 0.03, 0.5, 0, C('#fff2d8'), T_NIGHTGLOW(7));
-  return t.build();
+  return weather(t.build(), 1, 0.6, 0.14);
 }
 /** Lens radius of the signal lamps: a real 12-inch lens (Round 13: the old 0.5 m lenses in a 2 m head read as a toy). */
 export const SIGNAL_LENS_R = 0.155;
@@ -64,27 +89,27 @@ export function signalGeo(arm: number): { geo: THREE.BufferGeometry; heads: THRE
 export function hydrantGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder(); const red = C('#b3261e'), cap = C('#d9d4c4');
   t.cyl(0, 0, 0, 0.2, 0.2, 0.08, 10, C('#7a7a75'), T_METAL);
-  t.cyl(0, 0.08, 0, 0.15, 0.14, 0.6, 10, red, [0.5, 0.2, 2, 0]);
-  t.cyl(0, 0.62, 0, 0.18, 0.18, 0.06, 10, red, [0.5, 0.2, 0, 0]);
+  t.cyl(0, 0.08, 0, 0.15, 0.14, 0.6, 8, red, [0.5, 0.2, 2, 0]);
+  t.cyl(0, 0.62, 0, 0.18, 0.18, 0.06, 8, red, [0.5, 0.2, 0, 0]);
   t.sphere(0, 0.7, 0, 0.14, red, [0.5, 0.2, 0, 0], 0.7);
   t.cyl(0, 0.78, 0, 0.04, 0.04, 0.08, 6, cap, T_METAL);
   for (const s of [-1, 1]) t.cyl(s * 0.14, 0.45, 0, 0.06, 0.06, 0.12, 8, cap, T_METAL, 0, 0, s * Math.PI / 2);
   t.cyl(0, 0.4, 0.14, 0.08, 0.08, 0.1, 8, cap, T_METAL, 0, Math.PI / 2);
-  return t.build();
+  return weather(t.build(), 2, 0.5, 0.05);
 }
 export function benchGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder(); const iron = C('#2a2c2e'), wood = C('#8a5f3c');
   for (const x of [-0.75, 0.75]) { t.box(x, 0.22, 0.05, 0.06, 0.44, 0.5, 0, iron, T_IRON); t.box(x, 0.65, -0.2, 0.06, 0.5, 0.06, 0, iron, T_IRON, -0.15); t.box(x, 0.62, 0.15, 0.06, 0.05, 0.5, 0, iron, T_IRON); }
   for (let k = 0; k < 4; k++) t.box(0, 0.45, -0.12 + k * 0.11, 1.8, 0.04, 0.09, 0, wood, [0.8, 0, 2, 0]);
   for (let k = 0; k < 3; k++) t.box(0, 0.62 + k * 0.13, -0.24 - k * 0.02, 1.8, 0.09, 0.03, 0, wood, [0.8, 0, 2, 0], -0.15);
-  return t.build();
+  return weather(t.build(), 3, 0.4, 0.12);
 }
 export function binGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder(); const g = C('#2f4a3a');
-  t.cyl(0, 0, 0, 0.27, 0.3, 0.92, 12, g, [0.55, 0.3, 2, 0]);
-  t.cyl(0, 0.92, 0, 0.32, 0.22, 0.12, 12, C('#26372d'), T_METAL);
-  for (const y of [0.25, 0.7]) t.cyl(0, y, 0, 0.305, 0.305, 0.04, 12, C('#1d2a22'), T_METAL);
-  return t.build();
+  t.cyl(0, 0, 0, 0.27, 0.3, 0.92, 10, g, [0.55, 0.3, 2, 0]);
+  t.cyl(0, 0.92, 0, 0.32, 0.22, 0.12, 10, C('#26372d'), T_METAL);
+  for (const y of [0.25, 0.7]) t.cyl(0, y, 0, 0.305, 0.305, 0.04, 10, C('#1d2a22'), T_METAL);
+  return weather(t.build(), 4, 0.5, 0.1);
 }
 export function busStopGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder(); const frame = C('#4b5257'), glass = C('#a9c2c8');
@@ -109,7 +134,7 @@ export function phoneGeo(): THREE.BufferGeometry {
   t.box(0, 2.15, 0.15, 0.85, 0.08, 0.5, 0, C('#2c3136'), T_METAL);
   t.box(0, 2.2, 0.15, 0.6, 0.2, 0.04, 0, C('#e8eef0'), T_GLOW(0.5));
   t.box(0, 1.6, 0.28, 0.3, 0.45, 0.04, 0, C('#1b1d20'), T_PLASTIC);
-  return t.build();
+  return weather(t.build(), 5, 0.5, 0.1);
 }
 export function newsBoxesGeo(seed: number): THREE.BufferGeometry {
   const t = new TrimBuilder(); const r = new Rng(seed);
@@ -120,7 +145,7 @@ export function newsBoxesGeo(seed: number): THREE.BufferGeometry {
     t.box(x, 0.62, 0, 0.48, 0.76, 0.42, 0, c, [0.5, 0.2, 2, 0]);
     t.box(x, 0.72, 0.215, 0.36, 0.3, 0.01, 0, C('#cfd8dc'), T_GLASS);
   }
-  return t.build();
+  return weather(t.build(), seed, 0.35, 0.1);
 }
 export function meterGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder();
@@ -128,14 +153,14 @@ export function meterGeo(): THREE.BufferGeometry {
   t.box(0, 1.27, 0, 0.18, 0.28, 0.14, 0, C('#8b9196'), T_METAL);
   t.sphere(0, 1.42, 0, 0.1, C('#8b9196'), T_METAL, 0.7);
   t.box(0, 1.3, 0.075, 0.1, 0.08, 0.01, 0, C('#202020'), T_GLASS);
-  return t.build();
+  return weather(t.build(), 6, 0.4, 0.1);
 }
 export function mailboxGeo(): THREE.BufferGeometry {
   const t = new TrimBuilder(); const b = C('#244f8c');
   for (const x of [-0.18, 0.18]) for (const z of [-0.18, 0.18]) t.box(x, 0.12, z, 0.06, 0.24, 0.06, 0, b, T_METAL);
   t.box(0, 0.7, 0, 0.5, 0.9, 0.5, 0, b, [0.5, 0.3, 2, 0]);
   t.cyl(0, 1.15, 0, 0.25, 0.25, 0.5, 10, b, [0.5, 0.3, 0, 0], 0, 0, Math.PI / 2);
-  return t.build();
+  return weather(t.build(), 7, 0.4, 0.08);
 }
 export function dumpsterGeo(seed: number): THREE.BufferGeometry {
   const t = new TrimBuilder(); const c = C(seed % 2 ? '#2e5b3a' : '#2a4d7a');
@@ -156,7 +181,7 @@ export function powerPoleGeo(transformer: boolean): THREE.BufferGeometry {
   t.box(0, 8.55, 0, 2.6, 0.12, 0.12, 0, wood, T_ROUGH);
   for (const x of [-1.1, 0, 1.1]) t.cyl(x, 8.6, 0, 0.05, 0.04, 0.16, 6, C('#cfd8d0'), [0.2, 0, 0, 0]);
   if (transformer) { t.cyl(0.25, 6.6, 0, 0.3, 0.3, 1.0, 10, C('#8c9296'), T_METAL); t.cyl(0.25, 7.6, 0, 0.3, 0.2, 0.08, 10, C('#6d7276'), T_METAL); }
-  return t.build();
+  return weather(t.build(), 8, 1.2, 0.12);
 }
 export function billboardFrameGeo(w: number): THREE.BufferGeometry {
   const t = new TrimBuilder(); const steel = C('#4a4d50');
@@ -166,6 +191,20 @@ export function billboardFrameGeo(w: number): THREE.BufferGeometry {
   for (const x of [-w / 3, 0, w / 3]) { t.beam(x, 3.15, 0.75, x, 3.55 + w * 0.5, 0.75, 0.04, 0.04, steel, T_METAL); t.box(x, 3.25, 0.7, 0.3, 0.18, 0.3, 0, C('#fff1d0'), T_NIGHTGLOW(4), 0.6); }
   return t.build();
 }
+
+
+/** Pad-mounted utility cabinet (ventilation louvres, hazard plate, concrete pad). Baked by streetscape; kept here with the other props. */
+export function utilityBoxGeo(seed: number): THREE.BufferGeometry {
+  const t = new TrimBuilder(); const r = new Rng(seed);
+  const body = C(['#5d6a60', '#6b6e70', '#4d5a66', '#7a7468'][seed % 4]);
+  t.box(0, 0.04, 0, 1.3, 0.08, 0.8, 0, C('#8f8c85'), T_STONE_LIKE);
+  t.box(0, 0.62, 0, 1.1, 1.1, 0.6, 0, body, [0.5, 0.3, 2, 0]);
+  t.box(0, 1.19, 0, 1.16, 0.06, 0.66, 0, C('#44484a'), T_METAL);
+  for (let k = 0; k < 4; k++) t.box(-0.3 + k * 0.2, 0.55, 0.305, 0.14, 0.02, 0.02, 0, C('#2a2d2f'), T_METAL);
+  t.box(0.35, 0.95, 0.305, 0.14, 0.1, 0.01, 0, r.chance(0.5) ? C('#e8c21a') : C('#d9d4c4'), T_PAINT);
+  return weather(t.build(), seed, 0.5, 0.12);
+}
+const T_STONE_LIKE: TrimParams = [0.85, 0, 2, 0];
 
 type LeafOut = { pos: number[]; nor: number[]; uv: number[]; col: number[] };
 const _up = new THREE.Vector3(0, 1, 0);
@@ -226,26 +265,30 @@ function limb(t: TrimBuilder, ax: number, ay: number, az: number, bx: number, by
 }
 /** Deciduous street tree (plane/maple-like): flared trunk, forked limbs visible below the crown, lobed crown with sky gaps. */
 export function treeGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry } {
-  const r = new Rng(seed); const t = new TrimBuilder(); const bark = C(['#5a4c40', '#665848', '#4f4338'][seed % 3]);
+  const r = new Rng(seed); const t = new TrimBuilder(); const bark = C(['#5a4c40', '#665848', '#4f4338'][seed % 3]); const barkAt = (k: number) => bark.clone().multiplyScalar(k * r.range(0.9, 1.1));
   const h = r.range(3.2, 4.2);
-  t.cyl(0, 0, 0, 0.36, 0.2, 0.55, 5, bark, [0.95, 0, 2, 0]); // root flare
-  t.cyl(0, 0.5, 0, 0.2, 0.13, h - 0.5, 5, bark, [0.95, 0, 2, 0]);
+  t.cyl(0, 0, 0, 0.36, 0.2, 0.55, 6, barkAt(0.72), [0.95, 0, 2, 0]); // root flare, darker with damp and dirt
+  t.cyl(0, 0.5, 0, 0.2, 0.16, (h - 0.5) * 0.5, 6, barkAt(0.95), [0.95, 0, 2, 0]);
+  t.cyl(0, 0.5 + (h - 0.5) * 0.5, 0, 0.16, 0.13, (h - 0.5) * 0.5, 6, barkAt(1.1), [0.95, 0, 2, 0]);
   const o: LeafOut = { pos: [], nor: [], uv: [], col: [] };
   const tint = C(['#9fbe62', '#92b25a', '#a9c46c', '#86a853'][seed % 4]);
+  { const hsl = { h: 0, s: 0, l: 0 }; tint.getHSL(hsl); tint.setHSL(hsl.h + r.range(-0.02, 0.02), hsl.s * r.range(0.85, 1.05), hsl.l * r.range(0.92, 1.06)); } // per-tree hue / lightness drift
   const nb = r.int(3, 5);
   const crown = { x: 0, y: h + 1.7, z: 0, R: 3.1 };
   for (let i = 0; i < nb; i++) {
     const a = (i / nb) * Math.PI * 2 + r.range(-0.35, 0.35), len = r.range(1.7, 2.5), up = r.range(0.9, 1.5);
     const by = h * r.range(0.7, 0.95);
     const ex = Math.cos(a) * len, ez = Math.sin(a) * len;
-    limb(t, 0, by, 0, ex, by + up, ez, 0.1, 0.05, 3, bark);
+    limb(t, 0, by, 0, ex, by + up, ez, 0.1, 0.05, 3, barkAt(1.05));
     const mx = ex * 0.55, mz = ez * 0.55, my = by + up * 0.55; // a twig forking sideways off the limb
     const a2 = a + r.range(0.5, 0.9) * (i % 2 ? 1 : -1);
     if (i % 2 === 0) limb(t, mx, my, mz, mx + Math.cos(a2) * 0.9, my + 0.7, mz + Math.sin(a2) * 0.9, 0.05, 0.03, 3, bark);
-    canopy(r, ex * 0.85, by + up + 0.65, ez * 0.85, 1.55, 1.2, 1.55, 12, 1.85, o, tint, crown);
+    canopy(r, ex * 0.85, by + up + 0.65, ez * 0.85, 1.6, 1.25, 1.6, 20, 1.55, o, tint, crown);
   }
-  canopy(r, 0, h + 2.1, 0, 2.1, 1.5, 2.1, 17, 1.95, o, tint, crown);
-  return { trunk: t.build(), leaves: leafGeo(o) };
+  canopy(r, 0, h + 2.1, 0, 2.2, 1.55, 2.2, 30, 1.65, o, tint, crown);
+  // thin outer fringe of small cards breaks the silhouette so the crown reads as layered foliage, not a ball
+  canopy(r, 0, h + 2.0, 0, 2.9, 1.9, 2.9, 10, 0.95, o, tint.clone().multiplyScalar(1.08), crown);
+  return { trunk: weather(t.build(), seed, 0.9, 0.18), leaves: leafGeo(o) };
 }
 export function palmGeos(seed: number): { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry } {
   const r = new Rng(seed); const t = new TrimBuilder();
@@ -285,8 +328,34 @@ export function shrubGeos(seed: number): { leaves: THREE.BufferGeometry } {
   canopy(r, 0, 0.55, 0, 0.9, 0.6, 0.9, 10, 1.1, o, C('#94b464'));
   return { leaves: leafGeo(o) };
 }
-export function leafMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
+/** Shared wind clock: a getter so the uniform follows real time with no per-frame hook in the game loop. */
+export const LEAF_WIND = { get value() { return (typeof performance !== 'undefined' ? performance.now() : 0) / 1000; } };
+/** Sway only where it can be seen: amplitude fades to zero between 30 m and 70 m from the camera, so far trees cost nothing extra. */
+export const LEAF_SWAY_NEAR = 30, LEAF_SWAY_FAR = 70;
+/**
+ * Leaf cards: alpha-tested (no blending, no sorting, no overdraw blending cost). `alphaToCoverage` is opt-in: it only helps when the
+ * scene target is multisampled, otherwise it turns the cut into a soft fringe.
+ */
+export function leafMaterial(map: THREE.Texture, opts: { alphaToCoverage?: boolean } = {}): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true });
+  if (opts.alphaToCoverage) m.alphaToCoverage = true;
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uLeafT = LEAF_WIND;
+    sh.vertexShader = 'uniform float uLeafT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+  #ifdef USE_INSTANCING
+  vec4 lwp = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+  #else
+  vec4 lwp = modelMatrix * vec4(transformed, 1.0);
+  #endif
+  float lnear = 1.0 - smoothstep(${LEAF_SWAY_NEAR.toFixed(1)}, ${LEAF_SWAY_FAR.toFixed(1)}, distance(lwp.xyz, cameraPosition));
+  if (lnear > 0.0) {
+    float lph = lwp.x * 0.35 + lwp.z * 0.27 + transformed.y * 0.9;
+    float lamp = lnear * 0.05 * clamp(transformed.y * 0.12, 0.0, 1.0);
+    transformed.x += lamp * sin(uLeafT * 1.6 + lph);
+    transformed.z += lamp * cos(uLeafT * 1.3 + lph * 1.2);
+  }`);
+  };
+  m.customProgramCacheKey = () => 'leafSway1';
   return m;
 }
 void D2R; void T_GLOW;

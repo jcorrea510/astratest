@@ -41,7 +41,7 @@ import {
 } from './buildings';
 import {
   LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, SIGNAL_LENS_DY, SIGNAL_LENS_Z, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
-  powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
+  powerPoleGeo, WIRE, billboardFrameGeo, castsSunShadow, treeGeos, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
 export interface SignalHead { inter: number; axis: SigAxis; lamps: [number, number, number] }
@@ -478,22 +478,22 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     breakables.push({ kind, x, y: CURB_HEIGHT, z, yaw, handle, geo: geoOf[kind], mat: tmat, lampIdx, makeCollider: make, collider: make() });
   };
   props.register('streetlight', geoOf.lamp, tmat);
-  props.register('hydrant', geoOf.hydrant, tmat);
-  props.register('bench', benchGeo(), tmat);
-  props.register('bin', geoOf.bin, tmat);
+  props.register('hydrant', geoOf.hydrant, tmat, castsSunShadow('hydrant'));
+  props.register('bench', benchGeo(), tmat, castsSunShadow('bench'));
+  props.register('bin', geoOf.bin, tmat, castsSunShadow('bin'));
   props.register('busstop', busStopGeo(), tmat);
-  props.register('phone', geoOf.phone, tmat);
-  for (let k = 0; k < 3; k++) props.register(`news${k}`, newsBoxesGeo(k * 7 + 1), tmat);
-  props.register('meter', geoOf.meter, tmat);
-  props.register('mailbox', geoOf.mailbox, tmat);
+  props.register('phone', geoOf.phone, tmat, castsSunShadow('phone'));
+  for (let k = 0; k < 3; k++) props.register(`news${k}`, newsBoxesGeo(k * 7 + 1), tmat, false);
+  props.register('meter', geoOf.meter, tmat, castsSunShadow('meter'));
+  props.register('mailbox', geoOf.mailbox, tmat, castsSunShadow('mailbox'));
   for (let k = 0; k < 2; k++) props.register(`dumpster${k}`, dumpsterGeo(k), tmat);
-  props.register('bollard', bollardGeo(), tmat);
+  props.register('bollard', bollardGeo(), tmat, castsSunShadow('bollard'));
   props.register('pole', powerPoleGeo(false), tmat); props.register('poleT', powerPoleGeo(true), tmat);
   const leafMat = leafMaterial(leafTexture('broad'));
   const palmMat = leafMaterial(leafTexture('palm'));
   for (let t = 0; t < 4; t++) { const g = treeGeos(100 + t); props.register(`tree${t}`, g.trunk, tmat); props.register(`leaf${t}`, g.leaves, leafMat); }
   for (let t = 0; t < 3; t++) { const g = palmGeos(200 + t); props.register(`palm${t}`, g.trunk, tmat); props.register(`frond${t}`, g.leaves, palmMat); }
-  for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat);
+  for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat, false);
   const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); props.add(`tree${k}`, x, y, z, yaw, s); props.add(`leaf${k}`, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
   const addPalm = (x: number, y: number, z: number, yaw: number, rr: Rng, collide = true) => { const k = rr.int(0, 2); props.add(`palm${k}`, x, y, z, yaw); props.add(`frond${k}`, x, y, z, yaw); if (collide) physics.addStaticCylinder(x, y + 2, z, 2, 0.25); };
 
