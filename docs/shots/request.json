@@ -1,11 +1,95 @@
 [
-  { "name": "guns-all", "lab": "mode=gun&all=1" },
-  { "name": "gun-rifle", "lab": "mode=gun&id=rifle" },
-  { "name": "gun-pistol", "lab": "mode=gun&id=pistol" },
-  { "name": "people-body", "lab": "mode=people&n=5&seed=1&view=body" },
-  { "name": "people-face", "lab": "mode=people&n=4&seed=3&view=face" },
-  { "name": "signal-day", "game": { "hour": 13, "frames": 40, "quality": "high", "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { player: [I.x + 14, 1, I.z + 14], cam: [I.x + 16, 2.2, I.z + 20], look: [I.x, 3.2, I.z] };" } },
-  { "name": "signal-day-far", "game": { "hour": 11, "frames": 20, "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { cam: [I.x + 4, 1.8, I.z + 60], look: [I.x, 3, I.z] };" } },
-  { "name": "night-headlights", "game": { "hour": 22, "frames": 90, "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { player: [I.x + 8, 1, I.z + 30], cam: [I.x + 6, 1.7, I.z + 40], look: [I.x, 1.2, I.z] };" } },
-  { "name": "street-people-day", "game": { "hour": 15, "frames": 60, "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 13, 1.7, I.z + 18], look: [I.x + 12, 1.2, I.z + 4] };" } }
+ {
+  "name": "guns-all",
+  "lab": "mode=gun&all=1"
+ },
+ {
+  "name": "gun-pistol",
+  "lab": "mode=gun&id=pistol"
+ },
+ {
+  "name": "gun-heavyPistol",
+  "lab": "mode=gun&id=heavyPistol"
+ },
+ {
+  "name": "gun-revolver",
+  "lab": "mode=gun&id=revolver"
+ },
+ {
+  "name": "gun-smg",
+  "lab": "mode=gun&id=smg"
+ },
+ {
+  "name": "gun-shotgun",
+  "lab": "mode=gun&id=shotgun"
+ },
+ {
+  "name": "gun-rifle",
+  "lab": "mode=gun&id=rifle"
+ },
+ {
+  "name": "gun-carbine",
+  "lab": "mode=gun&id=carbine"
+ },
+ {
+  "name": "gun-sniper",
+  "lab": "mode=gun&id=sniper"
+ },
+ {
+  "name": "gun-lmg",
+  "lab": "mode=gun&id=lmg"
+ },
+ {
+  "name": "gun-rpg",
+  "lab": "mode=gun&id=rpg"
+ },
+ {
+  "name": "gun-knife",
+  "lab": "mode=gun&id=knife"
+ },
+ {
+  "name": "people-body",
+  "lab": "mode=people&n=5&seed=1&view=body"
+ },
+ {
+  "name": "people-face",
+  "lab": "mode=people&n=4&seed=3&view=face"
+ },
+ {
+  "name": "people-face2",
+  "lab": "mode=people&n=4&seed=11&view=face"
+ },
+ {
+  "name": "signal-day",
+  "game": {
+   "hour": 13,
+   "frames": 40,
+   "quality": "high",
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { player: [I.x + 14, 1, I.z + 14], cam: [I.x + 16, 2.2, I.z + 20], look: [I.x, 3.2, I.z] };"
+  }
+ },
+ {
+  "name": "signal-day-far",
+  "game": {
+   "hour": 11,
+   "frames": 20,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { cam: [I.x + 4, 1.8, I.z + 60], look: [I.x, 3, I.z] };"
+  }
+ },
+ {
+  "name": "night-headlights",
+  "game": {
+   "hour": 22,
+   "frames": 90,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[6]; return { player: [I.x + 8, 1, I.z + 30], cam: [I.x + 6, 1.7, I.z + 40], look: [I.x, 1.2, I.z] };"
+  }
+ },
+ {
+  "name": "street-people-day",
+  "game": {
+   "hour": 15,
+   "frames": 60,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 13, 1.7, I.z + 18], look: [I.x + 12, 1.2, I.z + 4] };"
+  }
+ }
 ]
