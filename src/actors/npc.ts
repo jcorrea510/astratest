@@ -1,6 +1,7 @@
 /** NPC brains: civilians wander and react, gang members and police fight intelligently. */
 import { type Bench, nearestFreeBench } from '../world/benches';
 import { holdOnHuman } from '../combat/gunRig';
+import { holdEvery, holdNow } from './animLod';
 import * as THREE from 'three';
 import { Character } from './character';
 import type { HumanTemplate, Look } from './human';
@@ -55,6 +56,10 @@ export class Npc {
   holdCoverT = 0;
   far = false;
   animAcc = 0;
+  /** Round 12 animation LOD: on screen last frame, frames since the last gun-hold solve, and the body position at that solve */
+  inView = true; holdTick = 0; holdPos = new THREE.Vector3(); holdValid = false;
+  /** Makes the next updateModel solve the gun hold immediately (hit tests that need current arm bones call this, then updateModel). */
+  forcePose() { this.holdValid = false; }
   /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
   accDt = 0;
   arrestT = 0;
@@ -480,6 +485,14 @@ export class NpcBrainRunner {
       const fighting = n.brain === 'combat' && !!tgt;
       if (fighting) tvA.set(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z);
       c.human.trigger = fighting && n.cooldown > 0 ? 1 : 0;
+      // Round 12 perf: the two-hand IK is the costliest per-person pose work; thin it out by distance / visibility (src/actors/animLod.ts).
+      // A skipped frame keeps the gun where it was, carried along with the body so it never trails a running officer.
+      const every = holdEvery(n.pos.distanceToSquared(this.env.player.pos), n.inView);
+      if (n.holdValid && !holdNow(++n.holdTick, n.id, every)) {
+        n.model.position.x += c.pos.x - n.holdPos.x; n.model.position.y += c.pos.y - n.holdPos.y; n.model.position.z += c.pos.z - n.holdPos.z;
+        n.holdPos.copy(c.pos); n.model.updateMatrixWorld(true); return;
+      }
+      n.holdPos.copy(c.pos); n.holdValid = true;
       if (holdOnHuman(c.human, n.model, c.yaw, fighting ? tvA : null, fighting ? 1 : 0)) return;
     }
     c.human.rightHand.getWorldPosition(n.model.position);
