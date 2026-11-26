@@ -62,7 +62,7 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
   // a scare gets a sitter up straight away and frees the bench
   const up = await page.evaluate(`(() => {
     const g = window.__game; const { b } = window.__bench; b.occupied = true;
-    const m = g.pop.spawn('civilian', b.x, 0.2, b.z); m.bench = b; m.activity = 'sit'; m.destPt = m.pos.clone(); m.brain = 'wander';
+    const m = g.pop.spawn('civilian', b.x, b.z, 0.2); m.bench = b; m.activity = 'sit'; m.destPt = m.pos.clone(); m.brain = 'wander';
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
     const sitting = m.activity === 'sitting';
     g.pop.danger(g.player.pos, 40, g.player);

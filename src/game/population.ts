@@ -281,7 +281,7 @@ export class Population {
       if (n.role === 'civilian' && fd > 28 && (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'cower') && !n.char.ragdoll) {
         n.accDt += dt;
         if ((this.tick + n.id) % (fd > 90 ? 6 : fd > 50 ? 3 : 2) !== 0) continue; // Round 12 perf: 10 Hz past 90 m
-        const step = Math.min(n.accDt, 0.1); n.accDt = 0;
+        const step = Math.min(n.accDt, fd > 90 ? 0.3 : 0.1); n.accDt = 0; // (10 Hz past 90 m: the cap must cover the 6 skipped ticks or they walk at half speed)
         this.runner.update(n, step);
         continue;
       }
