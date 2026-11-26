@@ -20,8 +20,8 @@ export function repairPrice(healthFrac: number, lightsBroken = false): number {
 
 /** A garage never buys these: emergency / military / public-transport kinds (and taxis, which carry a fare meter and a licence). */
 export const SELL_REFUSED: ReadonlySet<VehicleKind> = new Set<VehicleKind>(['police', 'fbi', 'swat', 'army', 'tank', 'bus', 'taxi']);
-/** In-game seconds between two sales at the same garage (3 in-game minutes). */
-export const SELL_COOLDOWN = 180;
+/** Seconds between two sales at the same garage. Round 14 (owner): was 180 s, now a short breather so you can sell car after car. */
+export const SELL_COOLDOWN = 15;
 /** Fence rates on the car's resale value (carValue): a hot street car is a fraction of a legit one, cars you bought pay far more. */
 export const FENCE_STOLEN = 0.05, FENCE_OWNED = 0.575;
 /** Each further sale of the same kind within one in-game day pays this much less (compounding). */

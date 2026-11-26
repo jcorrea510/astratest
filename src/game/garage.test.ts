@@ -38,11 +38,11 @@ describe('selling cars (Round 9)', () => {
     const c = sellQuote({ ...base, cooldownLeft: 95 }); expect(c.ok).toBe(false); expect(c.reason).toContain('1:35');
     expect(sellQuote({ ...base, owned: true, sinceHeat: 5 }).ok).toBe(true); // your own car is not hot
   });
-  it('cooldown lasts 3 in-game minutes per garage and repeat sales of one kind pay less', () => {
+  it('cooldown is per garage and repeat sales of one kind pay less', () => {
     const log = newSaleLog();
     recordSale(log, 0, 'coupe');
     expect(log.cool[0]).toBe(SELL_COOLDOWN); expect(log.cool[1]).toBe(0);
-    tickSales(log, 100); expect(log.cool[0]).toBe(80);
+    tickSales(log, 5); expect(log.cool[0]).toBe(SELL_COOLDOWN - 5);
     tickSales(log, 100); expect(log.cool[0]).toBe(0);
     expect(recentOfKind(log, 'coupe')).toBe(1);
     expect(sellPrice('coupe', 1, false, 1)).toBeLessThan(sellPrice('coupe', 1, false, 0));
@@ -57,4 +57,12 @@ describe('garage sale log in the save (Round 9)', () => {
     expect(d.garage).toEqual({ cool: [100, 0, 0], sold: [{ kind: 'super', age: 3 }] });
     expect(parseSave(JSON.stringify({ version: 2, money: 5, pos: { x: 0, z: 0 } }))!.garage).toBeUndefined();
   });
+});
+
+// Round 14 (owner): "make it able to sell cars sooner after selling them". The wait between sales was 3 minutes.
+it('the next sale is open again within 15 seconds', () => {
+  expect(SELL_COOLDOWN).toBeLessThanOrEqual(15);
+  const log = newSaleLog(2); recordSale(log, 0, 'sedan');
+  tickSales(log, 15);
+  expect(log.cool[0]).toBe(0);
 });
