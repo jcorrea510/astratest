@@ -3,7 +3,7 @@ import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, type Action, type QualityNam
 import { ACTION_GROUPS, conflictSlots, defaultBindings, findConflicts, withBinding } from './bindings';
 import { backButton, button, h } from './dom';
 import { BUILD } from '../build';
-import { PAD_LAYOUTS, padGlyph, readPad, currentPadFamily, type PadContext } from '../core/gamepad';
+import { PAD_LAYOUTS, readPad, currentPadFamily, type PadContext } from '../core/gamepad';
 import { FAMILY_NAME, buttonLabel } from '../core/padGlyphs';
 import { PAD_BINDABLE, PAD_CONTEXTS, PAD_CONTEXT_LABEL, mergedButtons, resetPadContext, withPadBinding } from '../core/padBindings';
 
@@ -382,7 +382,7 @@ export class SettingsPanel {
       const row = h('div', 'ma-keyrow');
       row.dataset.navRow = '';
       row.appendChild(h('div', 'ma-keyrow-label', ACTION_LABELS[a]));
-      const g = cur[a]?.length ? padGlyph(a, ctx) : null;
+      const g = cur[a]?.length ? buttonLabel(cur[a]![0], currentPadFamily()) : null;
       const b = button('ma-keyslot ma-padslot', g ?? '—');
       if (!g) b.classList.add('is-empty');
       b.dataset.padAction = a;
@@ -412,14 +412,15 @@ export class SettingsPanel {
     window.addEventListener('keydown', onKey, true);
     this.padCapCleanup = () => window.removeEventListener('keydown', onKey, true);
     this.captureTimer = window.setTimeout(() => { if (token === this.captureToken) { this.finishCapture(); this.render(); this.refocusPad(action); } }, 8000);
-    let armed = false; // the press that opened the capture (A) must be released first
+    // buttons already down when the capture opens (the A that selected the slot) are ignored until released
+    const heldAtStart = new Set<number>(); readPad().buttons.slice(0, 16).forEach((v, i) => { if (v) heldAtStart.add(i); });
     const poll = () => {
       if (token !== this.captureToken) return;
       const p = readPad();
       if (p.connected) {
-        const down = p.buttons.slice(0, 16).findIndex(Boolean);
-        if (!armed) { if (down < 0) armed = true; }
-        else if (down >= 0) {
+        for (const i of [...heldAtStart]) if (!p.buttons[i]) heldAtStart.delete(i);
+        const down = p.buttons.slice(0, 16).findIndex((v, i) => v && !heldAtStart.has(i));
+        if (down >= 0) {
           this.finishCapture();
           const res = withPadBinding(PAD_LAYOUTS[ctx].buttons, this.deps.get().padBindings ?? {}, ctx, action, down);
           this.deps.sound('click');

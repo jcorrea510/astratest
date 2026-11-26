@@ -37,7 +37,7 @@ import { buildCard, buildCredits, buildDeath, buildLoading, buildMobileGate, log
 import { formatMoney } from './geometry';
 import { fmtDistance, MPS_TO_MPH } from '../core/units';
 import { createFullscreenButton } from '../core/fullscreen';
-import { padGlyph } from '../core/gamepad';
+import { padGlyph, setPadOverrides } from '../core/gamepad';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
 type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'groom' | 'garage' | 'sandbox' | 'credits';
@@ -264,6 +264,7 @@ export class UI implements GameUI {
 
   private applySettings(s: Settings, qualityChanged: boolean) {
     this.settings = s;
+    setPadOverrides(s.padBindings); // glyphs and prompts follow a rebind at once, even while paused
     this.applyPageSettings(s);
     this.callbacks.onSettingsChanged(structuredClone(s));
     if (qualityChanged) this.callbacks.onQualityChanged(s.quality);

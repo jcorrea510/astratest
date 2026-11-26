@@ -528,14 +528,14 @@ function exposeApi() {
 
 // ---------------- Boot ----------------
 function startBoot() {
-  installErrorToast();
+  installErrorToast(); installPadWatch();
   if (params.get('autostart') === '1') {
     void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
     return;
   }
   // loading screen -> live city flyover behind the title menu
   ui.showLoading(0, 'Preparing the city');
-  installAudioUnlock(); installPadWatch();
+  installAudioUnlock();
   bootWorld((f, l) => { if (!started) ui.showLoading(f, l); })
     .then(g => {
       if (started) return;
