@@ -127,6 +127,7 @@ else if (ri == 3) { part = vCloth > uBottom.z ? 4 : (vCloth < uBottom.x ? 3 : 0)
 else if (ri == 4 || ri == 5 || ri == 8) part = 6;
 else if (ri == 6) part = 1; else if (ri == 7) part = 3; else if (ri == 9) part = 9; else if (ri == 10) part = 7; else if (ri == 11) part = 8; else if (ri == 12) part = 5;
 vec3 col = tx.rgb; float rough = 0.85; float flatN = 1.0;
+float bumpH = 0.0; // optional micro height (m) a chunk may set (pores, weave, seams); applied as a bump after the normal map
 if (part == 0) {
 ${SKIN_GLSL}} else if (part == 1) {
 ${TOP_GLSL}} else if (part == 3) {
@@ -139,7 +140,16 @@ else if (part == 9) {${EYES_GLSL}}
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = rough;')
-      .replace('#include <normal_fragment_maps>', 'if (flatN < 0.5) {\n#include <normal_fragment_maps>\n}');
+      .replace('#include <normal_fragment_maps>', `if (flatN < 0.5) {
+#include <normal_fragment_maps>
+}
+{ // micro bump from bumpH (three's perturbNormalArb, screen-space derivatives)
+  vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition);
+  vec2 dh = vec2(dFdx(bumpH), dFdy(bumpH));
+  vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx);
+  float det = dot(dpx, r1);
+  if (abs(det) > 1e-12 && dot(dh, dh) > 0.0) normal = normalize(abs(det) * normal - sign(det) * (dh.x * r1 + dh.y * r2));
+}`);
 }
 
 /** HAIR variant: layered strand shells with a strand-aligned highlight (see hairShells.ts for the attributes). */
