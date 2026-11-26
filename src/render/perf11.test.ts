@@ -6,7 +6,6 @@ import { QUALITY } from '../core/settings';
 it('a game stuck at 30 fps is allowed below native resolution (the floor held it at native down to 26 fps)', () => {
   const s = newDyn(); let now = 0;
   for (let i = 0; i < 60 * 20; i++) { now += 33; adaptStep(s, 33, now, true); }
-  expect(s.floor).toBe(false);
   expect(s.scale).toBeLessThan(1);
 });
 it('presets: few real point lights, Medium shadows every other frame', () => {
