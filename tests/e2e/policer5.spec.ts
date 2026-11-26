@@ -96,6 +96,29 @@ test.describe('police R5', () => {
     clean(p);
   });
 
+  test('the police helicopter survives its entry whichever way the camera faces (it used to spawn inside a tower and respawn every frame)', async ({ page }) => {
+    const p = watch(page);
+    const r = await page.evaluate(() => {
+      const g = (window as any).__game, P = g.police, D = P.dispatch;
+      const wrapped = D.hooks.spawnHeli; let spawns = 0;
+      D.hooks.spawnHeli = (x: number, z: number, yaw: number) => { spawns++; return wrapped(x, z, yaw); };
+      g.hour = 14; P.holdT = 9999;
+      for (const n of g.pop.npcs) if (n.role === 'police') g.pop.remove(n);
+      const res: { yaw: number; spawns: number; destroyed: boolean }[] = [];
+      for (let k = 0; k < 6; k++) {
+        const yaw = k * 1.1; g.cam.yaw = yaw; g.cam.update(0.1, g.player.pos, 'follow'); g.frame(1 / 30, false);
+        spawns = 0; P.setHeat(4, g.player.pos); P.holdT = 9999;
+        for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
+        res.push({ yaw, spawns, destroyed: !!D.heli?.destroyed });
+        P.clear(); for (let i = 0; i < 5; i++) g.frame(1 / 30, false);
+      }
+      D.hooks.spawnHeli = wrapped;
+      return res;
+    });
+    for (const x of r) { expect(x.spawns, JSON.stringify(x)).toBe(1); expect(x.destroyed, JSON.stringify(x)).toBe(false); }
+    clean(p);
+  });
+
   test('shoot-out: the crew returns fire within 2.5 s and uses the car as cover', async ({ page }) => {
     const p = watch(page);
     await scene(page, 15);
