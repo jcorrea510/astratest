@@ -31,8 +31,8 @@ export function holdOnHuman(h: Human, m: THREE.Object3D, yaw: number, aim: THREE
   solveHold({ shR: _sr, shL: _sl, armLen: _sr.distanceTo(_a1) + _a1.distanceTo(_a2), dir: _dir, anchors: an, supportHand: raise > 0.4, raise }, out);
   m.position.copy(out.pos); m.quaternion.copy(out.quat); m.updateMatrixWorld(true);
   _a1.copy(an.grip).add(_a2.set(-0.017, 0, 0)).applyMatrix4(m.matrixWorld);
-  h.gripSolve('R', _a1, out.rQuat, 1);
-  if (out.hasLeft) h.gripSolve('L', out.lPalm, out.lQuat, supportGripWeight(long, raise));
+  h.gripSolve('R', _a1, out.rQuat, 1, true); // world matrices were refreshed at the top; the left arm chain is independent of the right one
+  if (out.hasLeft) h.gripSolve('L', out.lPalm, out.lQuat, supportGripWeight(long, raise), true);
   void _q; void _qr;
   return true;
 }

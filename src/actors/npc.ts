@@ -56,7 +56,7 @@ export class Npc {
   /** seconds an officer keeps firing from the cover point they were ordered to (no flanking/strafing) */
   holdCoverT = 0;
   far = false;
-  animAcc = 0;
+  animAcc = Math.random() * 0.016; // random phase: people on the 30 Hz skeleton rate do not all land on the same frames
   /** Round 12 animation LOD: on screen last frame, frames since the last gun-hold solve, and the body position at that solve */
   inView = true; holdWasInView = true; holdTick = 0; holdPos = new THREE.Vector3(); holdValid = false;
   /** Makes the next updateModel solve the gun hold immediately (hit tests that need current arm bones call this, then updateModel). */

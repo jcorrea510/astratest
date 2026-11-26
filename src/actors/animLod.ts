@@ -15,3 +15,12 @@ export function holdEvery(distSq: number, inView: boolean): number {
 export function holdNow(tick: number, id: number, every: number): boolean {
   return every <= 1 || (tick + id) % every === 0;
 }
+
+/**
+ * Seconds of accumulated time before a person's skeleton is evaluated again (0 = every frame). Off screen: 2.5 Hz. On screen: every
+ * frame within 12 m, 30 Hz to 65 m, then 20 Hz / 10 Hz with distance. Positions and heading still follow every frame; only the pose steps.
+ */
+export function animEvery(dist: number, inView: boolean, ragdoll: boolean): number {
+  if (!inView && !ragdoll) return 0.4;
+  return dist > 90 ? 0.1 : dist > 65 ? 0.05 : dist > 12 ? 0.025 : 0;
+}

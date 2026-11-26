@@ -462,10 +462,10 @@ export class Human {
    * on the arm, then the hand bone is turned to `quat`). Hand-local axes: y = fingers, rim (+z) = thumb side.
    * w blends from the animated pose (0) to the full hold (1). Call every frame; the mixer resets the bones next frame.
    */
-  gripSolve(side: 'L' | 'R', palm: THREE.Vector3, quat: THREE.Quaternion, w: number) {
+  gripSolve(side: 'L' | 'R', palm: THREE.Vector3, quat: THREE.Quaternion, w: number, fresh = false) {
     const hand = side === 'L' ? this.leftHand : this.rightHand;
     if (w <= 0.001 || !hand.parent) return;
-    this.root.updateMatrixWorld(true);
+    if (!fresh) this.root.updateMatrixWorld(true); // `fresh`: the caller just updated the world matrices and has not moved a bone of this arm since (saves a full skeleton pass)
     const sc = hand.getWorldScale(_gt).y || 1;
     _gt.set(0, GRIP_PALM * sc, 0).applyQuaternion(quat); _gt.negate().add(palm); // wrist target (kept apart from solveArm's scratch vectors)
     this.solveArm(side, _gt, w);

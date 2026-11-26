@@ -11,6 +11,7 @@ import type { Character } from '../actors/character';
 import type { RagdollSystem } from '../actors/ragdoll';
 import type { Vehicle } from '../vehicles/vehicle';
 import { spawnHidden } from './crowd';
+import { animEvery } from '../actors/animLod';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
 
@@ -333,7 +334,7 @@ export class Population {
       const inView = d < 8 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
       // Round 7 perf: people out of view only tick their skeleton 4x a second (their shadows are budgeted to the nearest anyway)
       n.inView = inView;
-      const every = !inView && !c.ragdoll ? 0.4 : d > 90 ? 0.1 : d > 65 ? 0.05 : d > 35 ? 0.033 : 0; // Round 12: half rate from 35 m
+      const every = animEvery(d, inView, !!c.ragdoll); // Round 12 perf: src/actors/animLod.ts
       if (n.animAcc >= every || !c.alive || c.ragdoll) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
       h.mesh.castShadow = d < 32;
