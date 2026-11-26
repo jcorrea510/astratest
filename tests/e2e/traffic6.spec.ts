@@ -45,7 +45,9 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
           const L = c.lane, I = g.city.intersections[L.intersection], dS = L.length - c.s - 5.4;
           const atLine = !L.connector && dS < 12 && (sig(I, L, g.time) !== 'green' || !I.signalized);
           const ahead = (o: any, rs: number, ln: any) => (ln === L ? rs > c.s && rs - c.s < 45 : L.next.includes(ln.id) && rs < 45 - (L.length - c.s));
-          const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane));
+          const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane))
+            // a real car standing in its path (a bus at its stop, pulled in to the kerb): the far car queues behind it, as the game says
+            || g.traffic.cars.some((o: any) => { const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), dx = o.v.position.x - c.x, dz = o.v.position.z - c.z, al = dx * fx + dz * fz; return al > 0 && al < 18 && Math.abs(dx * fz - dz * fx) < 1.5 && !L.connector; });
           if (atLine || queued || c.dwell > 0) farIdle[id] = 0; else { farIdle[id] = (farIdle[id] ?? 0) + 1; if (farIdle[id] > 10 && !farWorst.some(w => w.id === id)) farWorst.push({ id, lane: L.id, dS }); }
         }
         samples++;
