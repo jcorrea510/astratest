@@ -23,11 +23,11 @@ export function holdOnHuman(h: Human, m: THREE.Object3D, yaw: number, aim: THREE
   if (!s) return false;
   h.root.updateMatrixWorld(true); m.updateMatrixWorld(true);
   const an = weaponAnchors(m), long = !!an.butt;
-  s[0].getWorldPosition(_sr); s[1].getWorldPosition(_sl);
+  _sr.setFromMatrixPosition(s[0].matrixWorld); _sl.setFromMatrixPosition(s[1].matrixWorld); // (matrices were just refreshed above)
   const lp = long ? 0.85 : 0.3;
   _lo.set(Math.sin(yaw) * Math.cos(lp), -Math.sin(lp), Math.cos(yaw) * Math.cos(lp));
   if (aim) { _dir.copy(aim).sub(_sr); if (_dir.lengthSq() < 0.5) _dir.copy(_lo); _dir.normalize(); _dir.lerp(_lo, 1 - raise).normalize(); } else _dir.copy(_lo);
-  h.rightHand.parent!.getWorldPosition(_a1); h.rightHand.getWorldPosition(_a2);
+  _a1.setFromMatrixPosition(h.rightHand.parent!.matrixWorld); _a2.setFromMatrixPosition(h.rightHand.matrixWorld);
   solveHold({ shR: _sr, shL: _sl, armLen: _sr.distanceTo(_a1) + _a1.distanceTo(_a2), dir: _dir, anchors: an, supportHand: raise > 0.4, raise }, out);
   m.position.copy(out.pos); m.quaternion.copy(out.quat); m.updateMatrixWorld(true);
   _a1.copy(an.grip).add(_a2.set(-0.017, 0, 0)).applyMatrix4(m.matrixWorld);
