@@ -20,7 +20,7 @@ export class Kit {
   prof(pts: [number, number][], w: number, mat: Mat, bevel = 0.003, x0 = 0) {
     const s = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y)));
     const b = Math.min(bevel, w * 0.3);
-    const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.001, w - 2 * b), bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelSegments: 1, curveSegments: 4 });
+    const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.001, w - 2 * b), bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 4 });
     g.rotateY(-Math.PI / 2); g.translate(x0 + (w - 2 * b) / 2, 0, 0);
     this.push(g, mat); return this;
   }
