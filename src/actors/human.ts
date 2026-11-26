@@ -9,6 +9,7 @@
  * action (punches with a 'strike' event, knockdown/get-up, cower, hands up, handcuffed, open door, enter/exit car,
  * pulled out, smash window, hotwire, ...).
  */
+import { bodyLodFor, extrasLodFor, BODY_LOD_TRIS } from './animLod';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -143,7 +144,7 @@ export function warmLookExtras(tpl: HumanTemplate, look: Look): number {
   return performance.now() - t0;
 }
 /** Round 7 perf: the mid / far body LODs (decimated once per sex, ~0.6 s each) are built at load, not on first sight. */
-export function warmBodies(tpl: HumanTemplate) { for (const b of Object.values(tpl.assets.bodies)) for (const n of [4500, 1800]) lowBody(b.geo, n); }
+export function warmBodies(tpl: HumanTemplate) { for (const b of Object.values(tpl.assets.bodies)) for (const n of [3000, 1200, 600]) lowBody(b.geo, n); }
 export class Human {
   root = new THREE.Group();
   model: THREE.Object3D;
@@ -248,16 +249,24 @@ export class Human {
       this.mesh.parent!.add(ex);
       this.extras.push(ex);
     }
-    this.lodFar = false; this.lodT = 0; this.showExtras();
+    this.lodFar = false; this.lodT = 0; this.extrasLod = 0; this.showExtras();
   }
   /** Camera position used to swap hair shells for their cheap LOD beyond HAIR_LOD_DIST (set once by the game). */
   static lodFrom: THREE.Vector3 | null = null;
-  private lodFar = false; private lodT = 0; private detail = true;
+  private lodFar = false; private lodT = 0; private detail = true; private lodDriven = false; private extrasLod: 0 | 1 | 2 = 0;
   private showExtras() {
     for (const e of this.extras) { const k = e.userData.lod; e.visible = this.detail && (k === 'hair' ? !this.lodFar : k === 'hairFar' ? this.lodFar : true); }
   }
+  /** Round 14: one call drives body LOD, extras LOD and hair swap from the camera distance (with hysteresis). Replaces setBodyLod/setDetail calls. */
+  setLodDistance(dist: number, inView: boolean) {
+    this.lodDriven = true;
+    this.setBodyLod(bodyLodFor(dist, this.bodyLod));
+    const x = extrasLodFor(dist, inView, this.extrasLod);
+    if (x === this.extrasLod) return; this.extrasLod = x;
+    this.detail = x < 2; this.lodFar = x === 1; this.showExtras();
+  }
   private updateHairLod(dt: number) {
-    if (!Human.lodFrom) return;
+    if (!Human.lodFrom || this.lodDriven) return;
     this.lodT -= dt; if (this.lodT > 0) return; this.lodT = 0.3 + Math.random() * 0.2;
     const far = this.root.position.distanceToSquared(Human.lodFrom) > HAIR_LOD_DIST * HAIR_LOD_DIST;
     if (far === this.lodFar) return; this.lodFar = far; this.showExtras();
@@ -574,11 +583,11 @@ export class Human {
   }
   /** Shows/hides hair and garment extras (far LOD). The hair near/far swap stays in effect. */
   setDetail(full: boolean) { if (full === this.detail) return; this.detail = full; this.showExtras(); }
-  private bodyLod = 0;
-  /** Body detail by distance: 0 = full (~14k tris), 1 = ~4.5k, 2 = ~1.8k clustered copies of the shared body; same skeleton, so animation and the swap are seamless. */
-  setBodyLod(l: 0 | 1 | 2) {
+  private bodyLod: 0 | 1 | 2 | 3 = 0;
+  /** Body detail by distance: 0 = full (~14k tris), 1 = ~3k, 2 = ~1.2k, 3 = ~600 clustered copies of the shared body; same skeleton, so animation and the swap are seamless. */
+  setBodyLod(l: 0 | 1 | 2 | 3) {
     if (l === this.bodyLod) return; this.bodyLod = l;
-    this.mesh.geometry = l === 0 ? this.base.geo : lowBody(this.base.geo, l === 1 ? 4500 : 1800);
+    this.mesh.geometry = l === 0 ? this.base.geo : lowBody(this.base.geo, BODY_LOD_TRIS[l]);
   }
   dispose() {
     this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); /* Round 9: material not disposed (keeps its shader program alive: no recompile hitch) */ this.root.removeFromParent(); this.mesh.skeleton.dispose();

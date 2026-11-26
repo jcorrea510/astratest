@@ -15,7 +15,7 @@ import type { FullLook, Sex } from './look';
 
 /** Walk frames baked per cycle (+ 1 idle frame after them). */
 export const VAT_FRAMES = 16;
-const LOW_TRIS = 1800; // = real lod 2 (same geometry: the hand-over at the promote radius is seamless)
+const LOW_TRIS = 600; // = real lod 3 (same geometry: the hand-over at the promote radius is seamless)
 
 /** Per-person instance data: 6 x vec4 (see the shader). */
 export type CrowdLook = Float32Array;
