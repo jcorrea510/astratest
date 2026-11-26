@@ -34,6 +34,15 @@ describe('car materials', () => {
     expect(far).toContain('vKind - 60.0');
     expect(balanced(far)).toBe(true);
   });
+  it('has edge wear, arch dirt, sidewall and brake-disc looks, lamp emissive capped', () => {
+    const f = compile(carMaterial()).fragmentShader;
+    for (const k of ['gEdge', 'float arch', 'toward the bead', 'brake disc', 'inner reflector']) expect(f).toContain(k);
+    expect(balanced(f)).toBe(true);
+  });
+  it('materials share programs across instances', () => {
+    expect(carMaterial().customProgramCacheKey!()).toBe(carMaterial().customProgramCacheKey!());
+    expect(glassMaterial().customProgramCacheKey!()).toBe(glassMaterial().customProgramCacheKey!());
+  });
   it('glass keeps cracks and gains fresnel + rear tint', () => {
     const f = compile(glassMaterial()).fragmentShader;
     for (const k of ['uCrack', 'web', 'rear', 'pow(1.0 - ndv, 4.0)']) expect(f).toContain(k);

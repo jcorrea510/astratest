@@ -67,7 +67,7 @@ export interface CarUniforms {
 const hdr = (k: Record<string, number>) => Object.entries(k).map(([n, v]) => `#define K_${n} ${v}.0`).join('\n');
 /** Body material (one per vehicle; the program is shared). */
 export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: CarUniforms } } {
-  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, side: THREE.DoubleSide, shadowSide: THREE.FrontSide, envMapIntensity: 1.15 });
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.025, side: THREE.DoubleSide, shadowSide: THREE.FrontSide, envMapIntensity: 1.3 });
   const u: CarUniforms = {
     uPaint: { value: new THREE.Color(0.5, 0.5, 0.5) }, uPaint2: { value: new THREE.Color(1, 1, 1) }, uMetal: { value: 0.5 }, uLivery: { value: 0 },
     uBurn: { value: 0 }, uFlash: { value: 0 }, uDirt: { value: 0 },
@@ -102,9 +102,11 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
         vec3 col = vCol.rgb;
         float side = step(uBody.x - 0.32, abs(vObj.x)) * step(0.5, abs(vObjN.x));
         float hy = vObj.y - (${GROUND.toFixed(3)});
+        float gEdge = smoothstep(0.35, 1.2, length(fwidth(vObjN)) * 6.0) * (1.0 - smoothstep(0.02, 0.08, length(fwidth(vObj)) * 30.0)); // creases, near only
         if (isK(K_PAINT) || isK(K_PAINT2)) {
           col = isK(K_PAINT2) ? uPaint2 : uPaint; gRough = 0.3; gMetal = uMetal * 0.55; gCoat = 1.0;
-          gFlake = smoothstep(0.25, 0.6, uMetal); gPeel = 1.0;
+          gFlake = smoothstep(0.35, 0.65, uMetal); gPeel = 1.0;
+          col = mix(col, col * 0.6 + vec3(0.1), gEdge * 0.25); // subtle edge wear
           // darker paint in the crevices: rocker panels, wheel-arch lips and downward facing surfaces
           col *= mix(0.72, 1.0, smoothstep(0.0, 0.3, hy)) * mix(0.8, 1.0, smoothstep(-0.6, 0.1, vObjN.y));
           float liv = uLivery;
@@ -159,6 +161,8 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
             float seg = step(0.06, fract(vDec.x * 1.0)) * step(fract(vDec.x * 1.0), 0.34) + step(0.56, fract(vDec.x * 1.0)) * step(fract(vDec.x * 1.0), 0.7);
             col += vec3(0.03) * letter * min(seg, 1.0) * step(2.5, vDec.y);
             col *= 0.85 + 0.3 * vnoise(vec2(vDec.x * 300.0, vDec.y * 9.0));
+            col *= 0.75 + 0.25 * smoothstep(1.0, 3.0, vDec.y); // darker, slightly dusty toward the bead
+            col += vec3(0.012, 0.011, 0.01) * smoothstep(0.3, 0.9, vnoise(vec2(vDec.x * 40.0, vDec.y * 3.0)));
           }
         }
         else if (isK(K_RIM)) {
@@ -167,14 +171,14 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
           float brush = vnoise(vec2(vObj.y * 260.0 + vObj.z * 180.0, vObj.z * 12.0));
           col *= 0.9 + 0.2 * brush;
           if (fin > 0.72) { col = mix(col, vec3(0.8, 0.82, 0.85), 0.55); gRough = 0.14; gMetal = 1.0; gCoat = 0.0; }
-          else { gRough = 0.26 + 0.12 * brush; gMetal = 0.9; gCoat = fin > 0.35 ? 0.6 : 0.0; }
+          else { gRough = 0.2 + 0.12 * brush; gMetal = 0.9; gCoat = fin > 0.35 ? 0.6 : 0.0; }
         }
         else if (isK(K_INTERIOR)) { gRough = 0.88; col *= 0.9 + 0.1 * vnoise(vObj.xz * 40.0); }
         else if (isK(K_HEAD)) {
           col = vec3(0.62, 0.64, 0.68); gRough = 0.07; gMetal = 1.0; gCoat = 1.0; // clear lens (clearcoat) over a faceted reflector
           float cell = fract(vObj.x * 9.0); col *= 0.62 + 0.38 * smoothstep(0.05, 0.25, cell) * smoothstep(0.95, 0.75, cell);
           col *= 0.8 + 0.2 * vnoise(vObj.xy * 70.0);
-          gEmis = vec3(1.0, 0.93, 0.8) * uHead;
+          col *= 0.9; gEmis = vec3(1.0, 0.93, 0.8) * uHead; gEmis *= 0.75 + 0.25 * smoothstep(0.0, 0.5, cell); // inner reflector glows, lens rim dimmer
         }
         else if (isK(K_TAIL)) { col = vec3(0.32, 0.015, 0.02); gRough = 0.08; gCoat = 1.0; float b = step(0.5, fract(vObj.y * 30.0)); col *= 0.8 + 0.2 * b; gEmis = vec3(1.0, 0.04, 0.03) * uTail * (0.85 + 0.15 * b); }
         else if (isK(K_IND)) { col = vec3(0.55, 0.28, 0.04); gRough = 0.08; gCoat = 1.0; gEmis = vec3(1.0, 0.45, 0.04) * (vObj.x > 0.0 ? uInd.x : uInd.y); }
@@ -204,7 +208,7 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
           if (vDec.y > 1.5) col *= 0.6;
         }
         else if (isK(K_CANVAS)) { gRough = 0.97; col *= 0.85 + 0.15 * vnoise(vObj.zy * 6.0); }
-        else if (isK(K_METAL)) { gRough = 0.42; gMetal = 0.75; }
+        else if (isK(K_METAL)) { gRough = 0.42; gMetal = 0.75; float rs = length(vObj.yz); col = mix(col, vec3(0.3, 0.25, 0.22), 0.35 * vnoise(vec2(rs * 90.0, 1.0))); } // brake disc / rotor: rusty rings
         else if (isK(K_LIGHT)) { gRough = 0.3; gEmis = vCol.rgb * uLight; }
         // grime low on the body (more with damage), burn, damage flash
         float paintLike = (isK(K_PAINT) || isK(K_PAINT2) || isK(K_PLASTIC) || isK(K_RIM) || isK(K_CHROME)) ? 1.0 : 0.0;
@@ -213,6 +217,8 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
         col = mix(col, vec3(0.17, 0.14, 0.11), grime * 0.8);
         // always a light film of road dust low on the body, patchy
         col = mix(col, vec3(0.2, 0.17, 0.14), 0.16 * smoothstep(0.5, 0.05, hy) * paintLike * gn * streak);
+        float arch = smoothstep(0.75, 0.35, hy) * smoothstep(0.15, 0.6, abs(vObj.x)) * (1.0 - step(0.3, vObjN.y)); // wheel-arch / sill splash
+        col = mix(col, vec3(0.13, 0.11, 0.09), 0.3 * arch * paintLike * (0.4 + 0.6 * gn));
         col = mix(col, vec3(0.05, 0.045, 0.04), uBurn * (1.0 - step(abs(vKind - K_RUBBER), 0.5) * 0.5));
         col += uFlash * 0.3;
         if (!gl_FrontFacing) { col = isK(K_INTERIOR) ? col * 0.6 : vec3(0.02); gEmis = vec3(0.0); gCoat = 0.0; }
@@ -246,7 +252,7 @@ export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: Car
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += gEmis * (1.0 - uBurn);`);
   };
-  m.customProgramCacheKey = () => 'car-v4';
+  m.customProgramCacheKey = () => 'car-v5';
   return m as THREE.MeshPhysicalMaterial & { userData: { u: CarUniforms } };
 }
 
@@ -268,7 +274,7 @@ export function farCarMaterial(): ReturnType<typeof carMaterial> {
       .replace('        // grime low on the body', `        if (abs(vKind - 60.0) < 0.5) { col = vec3(0.022, 0.026, 0.03); gRough = 0.04; gMetal = 0.0; gCoat = 1.0; gEmis = vec3(0.0); }
         // grime low on the body`);
   };
-  m.customProgramCacheKey = () => 'car-far-v2';
+  m.customProgramCacheKey = () => 'car-far-v3';
   return m;
 }
 
@@ -292,9 +298,9 @@ export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassU
         float fres = 0.05 + 0.95 * pow(1.0 - ndv, 4.0); // Schlick-like: faint head-on, strongly reflective at grazing
         float dark = 1.0 - clamp(length(vTint) * 6.0, 0.0, 1.0);
         float rear = (1.0 - smoothstep(-1.3, 0.1, vObj.z)) * 0.22; // privacy tint on the rear panes
-        outgoingLight *= 1.0 - rear;
+        outgoingLight *= (1.0 - rear) * 0.82; // dark cabin behind the tint
         outgoingLight += vec3(0.55, 0.66, 0.75) * fres * 0.6 * (1.0 - uNight * 0.75);
-        diffuseColor.a = clamp(0.3 + dark * 0.5 + rear + fres * 0.55, 0.0, 0.96);
+        diffuseColor.a = clamp(0.4 + dark * 0.45 + rear + fres * 0.5, 0.0, 0.96);
         // spiderweb cracks: radial fractures + wobbly rings around the impact, denser and wider at level 2
         vec4 ck = uCrack[int(clamp(vPane, 0.0, 7.0))];
         if (ck.w > 0.5) {
@@ -318,6 +324,6 @@ export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassU
         }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'car-glass-v5';
+  m.customProgramCacheKey = () => 'car-glass-v6';
   return m as THREE.MeshStandardMaterial & { userData: GlassUniforms };
 }
