@@ -119,10 +119,15 @@ const _gt = new THREE.Vector3(), _gz = new THREE.Vector3(0, 0, 1), _gq = new THR
 const _ia = new THREE.Vector3(), _ib = new THREE.Vector3(), _ic = new THREE.Vector3(), _iu = new THREE.Vector3(), _iv = new THREE.Vector3(), _ia2 = new THREE.Vector3();
 const _iq1 = new THREE.Quaternion(), _iq2 = new THREE.Quaternion(), _iqw = new THREE.Quaternion(), _sqA = new THREE.Quaternion(), _sqB = new THREE.Quaternion(), _sqN = new THREE.Quaternion();
 const _dp = new THREE.Vector3(), _ds = new THREE.Vector3(), _dq = new THREE.Quaternion(); // matrixWorld decompose scratch (IK)
-/** Applies a world-space rotation to a bone's local quaternion (its and its parent's world matrices must be current) and refreshes its subtree. */
-function rotBone(bone: THREE.Object3D, q: THREE.Quaternion) {
+/**
+ * Applies a world-space rotation to a bone's local quaternion (its and its parent's world matrices must be current) and refreshes the bone
+ * plus the IK chain below it (`chain`, parent first). Not the whole subtree: the fingers hang off the hand and nothing reads them until the
+ * renderer's own matrix pass (Round 12 fight perf: a recursive refresh walked ~20 bones per arm per solve). updateWorldMatrix(false, false) is used because updateMatrixWorld(false) still recurses into every child.
+ */
+function rotBone(bone: THREE.Object3D, q: THREE.Quaternion, chain?: THREE.Object3D, chain2?: THREE.Object3D) {
   bone.parent!.matrixWorld.decompose(_dp, _iq1, _ds); bone.matrixWorld.decompose(_dp, _iq2, _ds);
-  bone.quaternion.copy(_iq1.invert().multiply(_iq2.premultiply(q))); bone.updateMatrixWorld(true);
+  bone.quaternion.copy(_iq1.invert().multiply(_iq2.premultiply(q))); bone.updateWorldMatrix(false, false);
+  if (chain) { chain.updateWorldMatrix(false, false); if (chain2) chain2.updateWorldMatrix(false, false); }
 }
 /** Round 11: culling sphere for a person's skinned meshes (body space, metres; bind-pose sphere r 1.08 m at hip height). */
 export const PERSON_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);
@@ -475,15 +480,16 @@ export class Human {
     hand.matrixWorld.decompose(_dp, _dq, _gt); const sc = _gt.y || 1; // (matrixWorld is fresh here: read it directly, getWorldScale would re-walk every ancestor)
     _gt.set(0, GRIP_PALM * sc, 0).applyQuaternion(quat); _gt.negate().add(palm); // wrist target (kept apart from solveArm's scratch vectors)
     this.solveArm(side, _gt, w);
-    hand.updateMatrixWorld(true);
+    hand.updateWorldMatrix(false, false);
     hand.parent.matrixWorld.decompose(_dp, _iq1, _ds); _iq1.invert();
     _iq2.copy(_iq1).multiply(quat);
-    hand.quaternion.slerp(_iq2, w); hand.updateMatrixWorld(true);
+    hand.quaternion.slerp(_iq2, w); hand.updateWorldMatrix(false, false);
     this.curlFingers(side, w);
   }
   /** 0..1: the firing hand's trigger finger curls in only while shooting (otherwise it lies along the frame). */
   trigger = 0;
-  private curlSets: Record<'L' | 'R', { bone: THREE.Object3D; rest: THREE.Quaternion; amt: number; trig: boolean }[] | null> = { L: null, R: null };
+  private curlSets: Record<'L' | 'R', { bone: THREE.Object3D; rest: THREE.Quaternion; amt: number; trig: boolean; q: THREE.Quaternion }[] | null> = { L: null, R: null };
+  private curlKey: Record<'L' | 'R', number> = { L: -1, R: -1 }; private curlTrig = -1;
   /** Static grip curl on the finger bones (absolute from the rest pose, so it never accumulates). */
   private curlFingers(side: 'L' | 'R', w: number) {
     let set = this.curlSets[side];
@@ -491,15 +497,20 @@ export class Human {
       set = []; const AMT: Record<string, number> = { '1': 0.85, '2': 1.05, '3': 0.8 };
       for (const f of this.fingers) {
         const m = /^DEF-f_(index|middle|ring|pinky)0([123])([LR])$/.exec(f.bone.name);
-        if (m && m[3] === side) set.push({ bone: f.bone, rest: f.rest, amt: AMT[m[2]], trig: m[1] === 'index' });
+        if (m && m[3] === side) set.push({ bone: f.bone, rest: f.rest, amt: AMT[m[2]], trig: m[1] === 'index', q: new THREE.Quaternion() });
       }
       this.curlSets[side] = set;
     }
     const sign = side === 'R' ? 1 : -1;
-    for (const f of set) {
-      const a = f.trig && side === 'R' ? 0.1 + 0.6 * this.trigger : f.amt;
-      _gq.setFromAxisAngle(_gz, sign * a * w); f.bone.quaternion.copy(f.rest).multiply(_gq);
+    // the curl is a constant grip pose: the finished quaternions are cached per (weight, trigger) and only copied on the frames in between
+    if (this.curlKey[side] !== w || (side === 'R' && this.curlTrig !== this.trigger)) {
+      this.curlKey[side] = w; if (side === 'R') this.curlTrig = this.trigger;
+      for (const f of set) {
+        const a = f.trig && side === 'R' ? 0.1 + 0.6 * this.trigger : f.amt;
+        _gq.setFromAxisAngle(_gz, sign * a * w); f.q.copy(f.rest).multiply(_gq);
+      }
     }
+    for (const f of set) f.bone.quaternion.copy(f.q);
   }
   /** Two-bone IK: bends the forearm to the target distance, then swings the whole arm onto it. */
   private solveArm(side: 'L' | 'R', target: THREE.Vector3, w: number) {
@@ -534,12 +545,12 @@ export class Human {
     _ia2.crossVectors(_iu, _iv); if (_ia2.lengthSq() < 1e-8) _ia2.set(1, 0, 0).applyQuaternion(this.root.quaternion); _ia2.normalize();
     _iqw.setFromAxisAngle(_ia2, want - cur);
     _sqA.copy(A.quaternion); _sqB.copy(B.quaternion);
-    rotBone(B, _iqw);
+    rotBone(B, _iqw, C);
     _ic.setFromMatrixPosition(C.matrixWorld);
     _iu.subVectors(_ic, a).normalize(); _iv.subVectors(target, a).normalize();
     _iqw.setFromUnitVectors(_iu, _iv);
-    rotBone(A, _iqw);
-    if (w < 0.999) { _sqN.copy(A.quaternion); A.quaternion.slerpQuaternions(_sqA, _sqN, w); _sqN.copy(B.quaternion); B.quaternion.slerpQuaternions(_sqB, _sqN, w); A.updateMatrixWorld(true); }
+    rotBone(A, _iqw, B, C);
+    if (w < 0.999) { _sqN.copy(A.quaternion); A.quaternion.slerpQuaternions(_sqA, _sqN, w); _sqN.copy(B.quaternion); B.quaternion.slerpQuaternions(_sqB, _sqN, w); A.updateWorldMatrix(false, false); B.updateWorldMatrix(false, false); C.updateWorldMatrix(false, false); }
   }
   private holdClip(name: string, dt: number) {
     for (const l of [this.lower, this.upper]) {
