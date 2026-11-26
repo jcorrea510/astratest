@@ -117,4 +117,18 @@ test('touch controls: the CAR button gets in, the layout switches to pedals, EXI
   await ptr(page, '[data-touch-btn=brake]', 'pointerup', 8, 900, 700);
 });
 
+test('touch controls fit an iPhone in landscape (844x390): targets >= 44 px, inside the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.addInitScript(() => { try { localStorage.setItem('meridian-afterglow.mobileOk', '1'); } catch { /* ignore */ } }); // past the phone page ("Continue")
+  await boot(page, '&touch=1');
+  await step(page, 0.3);
+  await page.evaluate(() => (window as any).__game.frame(1 / 30, true));
+  const btns = await page.evaluate(() => [...document.querySelectorAll('.ma-touch-btn')].map(b => { const r = b.getBoundingClientRect(); return { id: (b as HTMLElement).dataset.touchBtn, w: r.width, h: r.height, x: r.x, y: r.y, r: r.right, b: r.bottom }; }));
+  expect(btns.length).toBeGreaterThanOrEqual(10);
+  for (const b of btns) { expect(b.w, b.id).toBeGreaterThanOrEqual(44); expect(b.h, b.id).toBeGreaterThanOrEqual(44); expect(b.x).toBeGreaterThanOrEqual(0); expect(b.y).toBeGreaterThanOrEqual(0); expect(b.r).toBeLessThanOrEqual(844); expect(b.b).toBeLessThanOrEqual(390); }
+  const hudTr = await rect(page, '.ma-hud-tr');
+  for (const b of btns.filter(b => !['pause', 'map'].includes(b.id!))) expect(b.y >= hudTr.b - 2 || b.r <= hudTr.x, `${b.id} vs top-right HUD`).toBe(true);
+  await page.screenshot({ path: 'test-results/touch-phone.png' });
+});
+
 async function centre(page: Page, sel: string): Promise<[number, number]> { const r = await rect(page, sel); return [r.x + r.w / 2, r.y + r.h / 2]; }
