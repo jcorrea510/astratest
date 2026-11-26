@@ -155,15 +155,18 @@ test('the sea is water: walk in and swim, a car driven in floods, swim back out 
   expect(back.grounded).toBe(true);
   expect(back.z).toBeLessThan(962);
   const car = await page.evaluate(() => {
-    const g = (window as any).__game; g.player.place(0, 0.3, 925, 0);
-    const v = g.vehicles.spawn('sedan', 0, 925, 0); v.persistent = true; g.seatPlayer(v);
+    // (x 10, on the line the swimmer walked: x 0, z 925 is the foot of the Promenade hop jump ramp, which hung the car up on
+    // its edge in 2 of 3 runs once the ramp moved there - CI shard 5)
+    const g = (window as any).__game; g.player.place(10, 0.3, 928, 0);
+    const v = g.vehicles.spawn('sedan', 10, 928, 0); v.persistent = true; g.seatPlayer(v);
     g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
     // the car floods where the beach shelves off, so the driver surfaces wading: a few strokes out and they swim
     g.input.press('KeyW'); for (let i = 0; i < 90; i++) { g.cam.yaw = Math.PI + 1.0; g.frame(1 / 30, false); } g.input.release('KeyW');
-    return { flooded: v.flooded, inCar: !!g.playerVehicle, swimming: g.player.swimming, alive: g.player.alive };
+    return { flooded: v.flooded, inCar: !!g.playerVehicle, swimming: g.player.swimming, alive: g.player.alive, at: [+v.position.x.toFixed(1), +v.position.z.toFixed(1)], hits: (g.vehicles.list as any[]).filter((o) => o !== v && Math.hypot(o.position.x - v.position.x, o.position.z - v.position.z) < 8).map((o) => o.kind), peds: (g.pop.npcs as any[]).filter((n) => Math.hypot(n.pos.x - v.position.x, n.pos.z - v.position.z) < 6).length };
   });
-  expect(car).toEqual({ flooded: true, inCar: false, swimming: true, alive: true });
+  console.log('sea car', JSON.stringify(car));
+  expect(car).toMatchObject({ flooded: true, inCar: false, swimming: true, alive: true });
   clean(p);
 });
 
