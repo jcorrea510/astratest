@@ -87,7 +87,7 @@ export class Game {
   camOverride: ((raw: number) => boolean) | null = null;
   dayLength = 24 * 60;
   private acc = 0;
-  private rafEma = 16.7;
+  private rafEma = 16.7; private lastRaf = 0;
   private camDirTmp = new THREE.Vector3();
   private lampPick: { i: number; d: number }[] = [];
   private last = 0;
@@ -361,7 +361,8 @@ export class Game {
       requestAnimationFrame(loop);
       if (fullscreenSettling()) { this.last = now; return; } // the browser is switching fullscreen: leave the main thread free for it (core/fullscreen)
       // ProMotion (120 Hz rAF): render every other callback so the GPU draws 60 fps; the skipped callback's time folds into the next dt
-      const gap = now - this.last; this.rafEma = this.rafEma * 0.9 + Math.min(50, gap) * 0.1;
+      // the display rate comes from callback-to-callback gaps (a skipped callback still counts), the skip from the time since the last drawn frame
+      const gap = now - this.last; this.rafEma = this.rafEma * 0.9 + Math.min(50, Math.max(0, now - this.lastRaf)) * 0.1; this.lastRaf = now;
       if (shouldSkipRaf(gap, this.rafEma)) return;
       const raw = Math.max(0, Math.min(0.1, gap / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
