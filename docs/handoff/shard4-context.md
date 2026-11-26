@@ -1,0 +1,5 @@
+# shard4 "browser.newContext" timeouts (player4:4, popout:43)
+- Shard 4 order: player4:4 is the FIRST test of the shard (no predecessor); popout:43 follows popout:7 (before that policerealism perf). Neither predecessor leaks pages/contexts/dialogs; context setup runs under the 240 s config timeout (in-body test.setTimeout does not cover it).
+- Local repro under load: boot renderer RSS peaks 2.2-3.5 GB (JS heap 2.0-2.9 GB, live only ~0.47 GB after gc); ~25 GB of short-lived garbage from boot procedural geometry (car templates: Soup.split/decimate ~10 GB; buildCity box geo ~3 GB). Seen: "Target crashed" at boot, boot 110 s+, newContext hang after a heavy boot (popout:43 reproduced once, then passed after the fix but took 5 min under load 14-20).
+- Done: Soup.decimate numeric keys + decimateTo builds only the winning size (-2 GB churn); Soup.split no per-triangle rest-args/slice(). Peak heap did NOT drop measurably (V8 lazy GC), so the CI cause is not proven fixed.
+- Next if it recurs: pre-size / typed-array Soup.d, build car templates lazily or in chunks, or a fresh browser per spec file on that shard.
