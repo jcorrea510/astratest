@@ -53,3 +53,17 @@ describe('police helicopter arrival', () => {
 describe('brandishing a gun at an officer', () => {
   it('is worth two stars straight away', () => { const h = new HeatState(); h.add('brandish'); expect(h.heat).toBe(2); });
 });
+
+describe('arrest scene with a dead officer (CI: dead officers kept forever)', () => {
+  it('ends the scene and releases the officer instead of keeping the corpse persistent', () => {
+    const stops: string[] = [];
+    const cop = { alive: false, persistent: true, brain: 'arrest', char: { isDisposed: false, human: { stopAction: (n: string) => stops.push(n) } } };
+    const d = Object.create(Dispatch.prototype) as Dispatch;
+    Object.assign(d, { arrest: { cop, t: 1, tase: false, pre: 2, yaw: 0, base: new THREE.Vector3() }, pendingArrest: null, dragT: 0 });
+    const player = { health: 10, maxHealth: 100 } as never;
+    d.updateArrest(1 / 30, player);
+    expect(d.arrest).toBeNull();
+    expect(cop.persistent).toBe(false);
+    expect((player as { health: number }).health).toBe(10); // the dead officer's scene no longer touches the suspect
+  });
+});

@@ -407,6 +407,8 @@ export class Dispatch {
   get arrestStage(): 'none' | 'tase' | 'approach' | 'cuff' { const a = this.arrest; if (!a) return 'none'; return a.t < (a.tase ? TASE_T : 0) ? 'tase' : a.t < a.pre ? 'approach' : 'cuff'; }
   updateArrest(dt: number, player: Character) {
     const a = this.arrest; if (!a) return;
+    // the officer was killed (or freed) mid-scene: the scene ends and the body is released like any other dead officer
+    if (!a.cop.alive || a.cop.char.isDisposed) { a.cop.persistent = false; this.endArrest(); return; }
     a.t += dt;
     player.health = player.maxHealth; // nobody shoots a suspect who is being cuffed
     const cop = a.cop, ph = player.human, ch = cop.char.human;
