@@ -321,7 +321,7 @@ export function tower(ctx: BuildCtx, t: TowerSpec) {
   for (let i = 0; i < 4; i++) {
     const ang = yaw + i * Math.PI / 2; const len = i % 2 === 0 ? t.w : t.d, off = i % 2 === 0 ? t.d / 2 : t.w / 2;
     const p = { x: t.cx + Math.sin(ang) * (off + 1.4), z: t.cz + Math.cos(ang) * (off + 1.4) };
-    tb.box(p.x, t.base + 5.4, p.z, Math.min(len * 0.45, 12), 0.3, 2.8, ang, C('#2e3134'), T_METAL);
+    tb.box(p.x, t.base + 5.4, p.z, Math.min(len * 0.45, 12), 0.3, 2.8, ang, C('#7a7d80'), T_METAL); // Round 13: lighter metal (the dark soffit read as a black slab by day)
     if (i === 0) ctx.signs.push({ x: t.cx + Math.sin(ang) * (off + 0.08), y: t.base + 6.4, z: t.cz + Math.cos(ang) * (off + 0.08), yaw: ang, w: 6, h: 0.9, idx: [7, 11, 8, 2][seed % 4] });
   }
   // shaft with setbacks

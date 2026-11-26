@@ -29,3 +29,10 @@ describe('facade shader source', () => {
     expect(FACADE_FRAG_COLOR).toContain('fEmis');
   });
 });
+
+// Round 13 (CI shot signal-day): the lobby canopy's near-black metal read as a floating black slab by day
+import { readFileSync } from 'node:fs';
+it('lobby canopies use a mid-grey metal, not near-black', () => {
+  const src = readFileSync(new URL('./buildings.ts', import.meta.url), 'utf8');
+  expect(src).not.toContain("0.3, 2.8, ang, C('#2e3134')");
+});
