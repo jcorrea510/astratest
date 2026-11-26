@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Soup, type Paint } from './soup';
 import { K } from './kinds';
 import { bodyKit, cutLower, greenhouse, ghGeom, type BodyKit } from './body';
-import { wheelSoup, blob, rbox, cyl, tube, plate, decalQuad, interiorSoup, at } from './parts';
+import { wheelSoup, caliperSoup, mirrorSoup, handleSoup, wiperSoup, exhaustTip, antennaSoup, blob, rbox, cyl, tube, plate, decalQuad, interiorSoup, at } from './parts';
 import { SHAPES, GROUND, axlesOf, layoutFor, seatsFor, type CarShape, type SeatDef } from '../shapes';
 import type { VehicleKind } from '../specs';
 import type { VehicleLayout } from '../vehiclePhysics';
@@ -92,10 +92,11 @@ function buildTemplate(kind: VehicleKind): CarTemplate {
     for (const d of lower.doors) { body.append(d.soup).append(d.inner); const extra = gh?.doorParts.get(d.bone); if (extra) body.append(extra); }
     body.append(details(kit, lod, seats, doorBone));
     // wheels stay out of the clustering below (it squashed far wheels into slivers, so far cars looked like they floated)
-    const w = wheelSoup(s, lod), wheels = new Soup();
+    const w = wheelSoup(s, lod), cal = caliperSoup(s), wheels = new Soup();
     if (s.type !== 'tank') bl.wheelBones.forEach(b => {
       const p = bl.bones[b].pos, left = p[0] > 0;
       wheels.append((left ? w.clone() : w.mirrorX()).translate(p[0], s.R, p[2]).paint({ bone: b }));
+      if (!lod) wheels.append((left ? cal.clone() : cal.mirrorX()).translate(p[0], s.R, p[2]).paint({ bone: 0 })); // brake caliper rides the axle, not the rolling wheel
     });
     if (s.type === 'tank') trackLen = tankParts(kit, body, lod, bl);
     body.translate(0, GROUND, 0); glass?.translate(0, GROUND, 0); wheels.translate(0, GROUND, 0);
@@ -179,14 +180,11 @@ function details(kit: BodyKit, lod: number, seats: SeatDef[], doorBone: (row: nu
       const bone = doorBone(row, sg);
       if (row === 0) {
         const mz = z1 - 0.13, my = yT(mz) + 0.1, mx = kit.sideX(mz, yT(mz) - 0.06);
-        const housing = blob(0.1, 0.065, 0.055, 2.6, s.type === 'car' && kind(s) !== 'fbi' ? paint : trim, at(sg * (mx + 0.11), my, mz), 12, 8);
-        const arm = rbox(0.12, 0.035, 0.05, 0.012, trim, at(sg * (mx + 0.03), my - 0.03, mz + 0.01));
-        const glassM = blob(0.085, 0.052, 0.01, 3, { kind: K.MIRROR, color: '#ffffff' }, at(sg * (mx + 0.11), my, mz - 0.048), 10, 6);
-        out.append(housing.paint({ bone })).append(arm.paint({ bone })).append(glassM.paint({ bone }));
+        out.append(mirrorSoup(sg, mx, my, mz, s.type === 'car' && kind(s) !== 'fbi' ? paint : trim, trim).paint({ bone }));
       }
       if (ex('handles')) {
         const hz = z0 + 0.2, hy = yT(hz) - 0.12, hx = kit.sideX(hz, hy);
-        out.append(rbox(0.035, 0.032, 0.17, 0.012, s.bumper === 'chrome' || ex('chromebelt') ? chrome : s.type === 'car' ? paint : trim, at(sg * (hx + 0.005), hy, hz)).paint({ bone }));
+        out.append(handleSoup(sg, hx, hy, hz, s.bumper === 'chrome' || ex('chromebelt') ? chrome : s.type === 'car' ? paint : trim).paint({ bone }));
       }
     }
   });
@@ -195,7 +193,7 @@ function details(kit: BodyKit, lod: number, seats: SeatDef[], doorBone: (row: nu
     const G = ghGeom(kit);
     const sg = seats.map(st => ({ x: st.x, y: st.y - GROUND, z: st.z }));
     out.append(interiorSoup(s, sg, { zA: gh.zA, zC: Math.max(gh.zC, sg[sg.length - 1].z - 0.6), hw: G.hwB, floor: s.clear + 0.12, dashY: yT(gh.zA) + 0.02 }, lod));
-    if (!lod && ex('wipers')) for (const x of [0.32, -0.18]) out.append(rbox(0.5, 0.012, 0.02, 0.005, trim, at(x, yT(gh.zA) + 0.025, gh.zA + 0.04, 0, 0.12, 0.05)));
+    if (!lod && ex('wipers')) for (const x of [0.32, -0.18]) out.append(wiperSoup(x, yT(gh.zA) + 0.025, gh.zA + 0.04, 0.12, 0.05, trim));
   }
   return out.append(extras(kit, seats, lod));
 }
@@ -234,14 +232,14 @@ function extras(kit: BodyKit, seats: SeatDef[], lod: number): Soup {
     out.append(tube([V(0.42, y0 + 0.2, z + 0.01), V(-0.42, y0 + 0.2, z + 0.01)], 0.026, metal));
     out.append(tube([V(0.42, y1 - 0.03, z + 0.01), V(-0.42, y1 - 0.03, z + 0.01)], 0.026, metal));
   }
-  if (ex('antenna')) { const z = zr + 0.45, y = kit.topY(-0.45, z); out.append(cyl(0.004, 0.006, 0.7, trim, at(-0.45, y + 0.35, z), 5)); }
+  if (ex('antenna')) { const z = zr + 0.45, y = kit.topY(-0.45, z); out.append(antennaSoup(-0.45, y, z)); }
   if (ex('spot') && gh) out.append(blob(0.06, 0.06, 0.08, 2, chrome, at(kitHW(kit) + 0.06, yT(gh.zA) + 0.18, gh.zA - 0.15), 10, 6));
   if (ex('rails') && gh) for (const x of [gh.roofW - 0.16, -(gh.roofW - 0.16)]) out.append(tube([V(x, roofY - 0.04, gh.zR1 - 0.12), V(x, roofY + 0.015, gh.zR1 - 0.25), V(x, roofY + 0.015, gh.zR2 + 0.25), V(x, roofY - 0.04, gh.zR2 + 0.12)], 0.018, plastic, 6));
   if (ex('steps')) {
     const a = axlesOf(s), z0 = a[a.length - 1] + s.R + 0.15, z1 = a[0] - s.R - 0.15;
     for (const sg of [1, -1]) out.append(rbox(0.16, 0.05, z1 - z0, 0.02, plastic, at(sg * (W2 - 0.02), s.clear + 0.02, (z0 + z1) / 2)));
   }
-  if (ex('exhaust2')) for (const x of [0.42, 0.28]) out.append(cyl(0.035, 0.035, 0.18, chrome, at(-x, s.bumperR[0] + 0.02, zr + 0.06, Math.PI / 2), 12, true));
+  if (ex('exhaust2')) for (const x of [0.42, 0.28]) out.append(exhaustTip(-x, s.bumperR[0] + 0.02, zr + 0.015));
   if (ex('diffuser')) out.append(rbox(s.W * 0.7, 0.06, 0.45, 0.02, plastic, at(0, s.clear + 0.03, zr + 0.25)));
   if (ex('splitter')) out.append(rbox(s.W * 0.8, 0.02, 0.16, 0.01, plastic, at(0, s.clear - 0.01, zf - 0.12)));
   if (ex('lip') && gh) { const z = zr + 0.22, y = kit.topY(0, z); out.append(rbox(s.W * 0.66, 0.03, 0.14, 0.012, paint, at(0, y + 0.02, z, -0.25))); }
