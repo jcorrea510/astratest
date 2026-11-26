@@ -379,7 +379,18 @@ export class NpcBrainRunner {
     } else n.mspeed = speed;
     // Movement with simple stuck recovery
     if (speed > 0) {
-      if (n.sideT > 0) { n.sideT -= dt; const s = n.sideDir; desired.set(desired.x * 0.3 - desired.z * s, 0, desired.z * 0.3 + desired.x * s).normalize(); }
+      if (n.sideT > 0) {
+        n.sideT -= dt;
+        // A walker on the footpath never side-steps (stuck recovery) onto the carriageway: use the other side, else just wait it out
+        if (n.brain === 'wander' && !n.onCross && !n.pend?.crossing) {
+          const d0 = desired, k = 1.3, px = c.pos.x, pz = c.pos.z, city = this.env.city;
+          if (surfaceAt(city, px - d0.z * n.sideDir * k, pz + d0.x * n.sideDir * k) === 'road' && surfaceAt(city, px, pz) !== 'road') {
+            n.sideDir = -n.sideDir;
+            if (surfaceAt(city, px - d0.z * n.sideDir * k, pz + d0.x * n.sideDir * k) === 'road') n.sideT = 0;
+          }
+        }
+        if (n.sideT > 0) { const s = n.sideDir; desired.set(desired.x * 0.3 - desired.z * s, 0, desired.z * 0.3 + desired.x * s).normalize(); }
+      }
       tv.copy(desired).multiplyScalar(speed);
     } else tv.set(0, 0, 0);
     if (n.far) { // cheap movement without collision when far from the player
@@ -390,6 +401,15 @@ export class NpcBrainRunner {
       // Round 12 perf: officers / gang members far away or off screen batch their collision sweep (src/actors/sweepLod.ts)
       c.sweepEvery = n.role !== 'civilian' && c.knockT <= 0 && c.downT <= 0 ? sweepEvery(c.pos.distanceToSquared(env.player.pos), n.inView) : 1;
       c.move(tv, dt, false);
+    }
+    // Kerbs are not colliders: a calm walker shoved sideways (a jostling group, a stuck side-step, a buddy offset) must never end up
+    // on the carriageway away from a crossing. Undo the step and re-anchor onto the footpath graph from there.
+    if (n.brain === 'wander' && n.role === 'civilian' && !n.far && !n.onCross && !n.pend?.crossing && c.grounded) {
+      const ddx = c.pos.x - n.lastPos.x, ddz = c.pos.z - n.lastPos.z, still = ddx * ddx + ddz * ddz <= 1e-6;
+      if ((!still || n.stuckT > 0.3) && this.onRoad(c.pos.x, c.pos.z, 0.05)) {
+        if (!still && !this.onRoad(n.lastPos.x, n.lastPos.z, 0.05)) { c.setPosition(n.lastPos.x, c.pos.y, n.lastPos.z); c.vel.x = 0; c.vel.z = 0; n.sideT = 0; n.pend = null; n.node = -1; n.nextNode = -1; }
+        else if (still) { n.sideT = 0; n.pend = null; n.node = -1; n.nextNode = -1; n.stuckT = 0; } // stuck in the road: head for the nearest kerb
+      }
     }
     if (speed > 0 && c.swept) {
       const moved = c.pos.distanceTo(n.lastPos);
@@ -538,10 +558,10 @@ export class NpcBrainRunner {
     n.char.place(p.x, n.pos.y, p.z, n.destYaw); n.char.setCollision(true);
     n.activity = ''; n.actOn = false; n.destPt = null; n.brain = 'wander'; n.node = -1; n.stateT = 0;
   }
-  private onRoad(x: number, z: number): boolean {
+  private onRoad(x: number, z: number, margin = 0.3): boolean {
     for (const r of this.env.city.roads) {
       const along = r.axis === 'x' ? x : z, across = Math.abs((r.axis === 'x' ? z : x) - r.coord);
-      if (across < r.half + 0.3 && along > r.from && along < r.to) return true;
+      if (across < r.half + margin && along > r.from && along < r.to) return true;
     }
     return false;
   }
@@ -636,8 +656,11 @@ export class NpcBrainRunner {
         // wait at the kerb on the right-hand half of the crosswalk (not all on one spot, walking into the people coming over)
         const wo = keepRight(n.laneOffset) / L, wx = -(there.z - here.z) * wo, wz = (there.x - here.x) * wo;
         tv.set(here.x + (there.x - here.x) * k + wx - n.pos.x, 0, here.z + (there.z - here.z) * k + wz - n.pos.z);
-        if (tv.length() > 0.35) { dir.copy(tv.normalize()); return 1.3; } // step up to the kerb first
-        if (pedSignal(inter, e.crossing.axis, this.env.time()) !== 'walk') { n.waitT += dt; n.idleFace = Math.atan2(there.x - here.x, there.z - here.z); this.faceIdle(n, dt); return 0; }
+        // step up to the kerb first. A crowded kerb (several people sharing the one waiting spot) never lets everyone get within 0.35 m
+        // of it, so being at the kerb (within 1.6 m) and bumped into someone, or the sign already showing WALK, counts as arrived
+        const dk = tv.length(), sig = pedSignal(inter, e.crossing.axis, this.env.time());
+        if (dk > 0.35 && !(dk < 1.6 && (sig === 'walk' || n.stuckT > 0.15))) { dir.copy(tv.normalize()); return 1.3; }
+        if (sig !== 'walk') { n.waitT += dt; n.idleFace = Math.atan2(there.x - here.x, there.z - here.z); this.faceIdle(n, dt); return 0; }
       }
       n.pend = null; n.waitT = 0; n.nextNode = e.to; n.onCross = !!e.crossing;
       return 0;
