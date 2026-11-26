@@ -238,7 +238,7 @@
 .ma-root .ma-shop-item.is-selected:not(:focus):not(:hover) { background: rgba(255, 255, 255, 0.07); box-shadow: none; }
 .ma-shop-icon { width: calc(64 * var(--u)); height: calc(32 * var(--u)); color: rgba(255, 255, 255, 0.85); }
 .ma-shop-name { font-size: calc(22 * var(--u)); font-weight: 700; letter-spacing: 0.06em; color: #fff; }
-.ma-shop-desc { color: var(--dim); font-size: calc(13.5 * var(--u)); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.ma-shop-desc { color: var(--dim); font-size: calc(13.5 * var(--u)); display: block; overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.3; }
 .ma-shop.is-readonly .ma-shop-desc { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .ma-shop-price { font-size: calc(24 * var(--u)); font-weight: 700; color: var(--money); }
 .ma-shop-tag { font-size: calc(13 * var(--u)); letter-spacing: 0.1em; }
@@ -248,9 +248,10 @@
 .ma-shop-item.is-disabled { opacity: 0.5; }
 .ma-shop-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: calc(20 * var(--u)) calc(24 * var(--u)); gap: calc(12 * var(--u)); overflow-y: auto; background: rgba(0, 0, 0, 0.18); }
 .ma-shop-preview {
-  display: flex; align-items: center; justify-content: center; height: calc(150 * var(--u)); border-radius: var(--r); color: rgba(255, 255, 255, 0.9);
+  display: flex; align-items: center; justify-content: center; height: calc(170 * var(--u)); border-radius: var(--r); color: rgba(255, 255, 255, 0.9);
   background: radial-gradient(ellipse at 50% 55%, rgba(255, 195, 126, 0.16), rgba(255, 255, 255, 0.02) 70%); border: 1px solid var(--hair); flex: none;
 }
+.ma-shop-preview .ma-wpreview { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 calc(8 * var(--u)) calc(12 * var(--u)) rgba(0, 0, 0, 0.55)); animation: ma-pop 0.25s var(--ease) both; }
 .ma-shop-preview .ma-icon-lg { width: 78%; height: 86%; object-fit: contain; filter: drop-shadow(0 calc(6 * var(--u)) calc(10 * var(--u)) rgba(0, 0, 0, 0.5)); animation: ma-pop 0.25s var(--ease) both; }
 .ma-shop-dname { font-family: var(--sign); font-weight: 800; font-size: calc(36 * var(--u)); letter-spacing: 0.05em; line-height: 1.05; text-transform: uppercase; color: #fff; text-shadow: var(--tshadow); }
 .ma-shop-ddesc { font-size: calc(15 * var(--u)); line-height: 1.45; color: var(--dim); }

@@ -3,6 +3,7 @@ import type { ShopItem } from './contracts';
 import { formatMoney } from './geometry';
 import { h } from './dom';
 import { CHECK_SVG, LOCK_SVG, guessIcon, weaponSvg } from './icons';
+import { shopItemWeapon, weaponPreviewUrl } from './weaponPreview';
 
 const CAR_SVG = '<svg class="ma-icon ma-icon-lg" viewBox="0 0 120 48" aria-hidden="true"><path fill="currentColor" d="M5 35c0-5 2-8 7-9l16-3 12-12c2-2 5-3 8-3h25c4 0 7 1 10 4l10 11 14 3c5 1 8 4 8 8v4H5z"/><path fill="rgba(8,10,12,0.55)" d="M43 22h19l-1-9H50zM67 22h22l-8-9h-14z"/><g fill="#0b0d10" stroke="currentColor" stroke-width="2.5"><circle cx="31" cy="37" r="8.5"/><circle cx="90" cy="37" r="8.5"/></g><g fill="currentColor"><circle cx="31" cy="37" r="3"/><circle cx="90" cy="37" r="3"/></g></svg>';
 
@@ -137,7 +138,9 @@ export class Shop {
     const money = this.money;
     const ic = guessIcon(`${it.id} ${it.label}`);
     const pv = h('div', 'ma-shop-preview');
-    pv.innerHTML = ic ? weaponSvg(ic, 'ma-icon ma-icon-lg') : it.id.startsWith('car:') ? CAR_SVG : '';
+    const wid = shopItemWeapon(it.id), wurl = wid ? weaponPreviewUrl(wid) : null;
+    if (wurl) { const img = document.createElement('img'); img.className = 'ma-wpreview'; img.src = wurl; img.alt = `${it.label} model`; img.draggable = false; pv.appendChild(img); pv.dataset.preview = 'model'; }
+    else pv.innerHTML = ic ? weaponSvg(ic, 'ma-icon ma-icon-lg') : it.id.startsWith('car:') ? CAR_SVG : '';
     this.detail.appendChild(pv);
     this.detail.appendChild(h('div', 'ma-shop-dname', it.label));
     this.detail.appendChild(h('div', 'ma-shop-ddesc', it.description));
