@@ -4,7 +4,7 @@ name: Screenshots
 on:
   push:
     branches: ['claude/**']
-    paths: ['docs/shots/request.json']
+    paths: ['docs/shots/request.json', 'docs/shots/perf.json']
 permissions:
   contents: write
 concurrency:
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   shots:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +27,7 @@ jobs:
           npx vite --port 5199 --strictPort > /tmp/vite.log 2>&1 &
           sleep 5
           node scripts/shots.mjs
+          if [ -f docs/shots/perf.json ]; then node scripts/perf.mjs || true; fi
       - name: Commit pictures
         run: |
           git config user.name "shots-bot"; git config user.email "shots-bot@users.noreply.github.com"
