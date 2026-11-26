@@ -23,10 +23,12 @@ export function streetLightGeo(): THREE.BufferGeometry {
   t.box(0, LAMP.height - 0.04, LAMP.reach + 0.18, 0.26, 0.03, 0.5, 0, C('#fff2d8'), T_NIGHTGLOW(7));
   return t.build();
 }
-/** Lens radius of the signal lamps (12-inch-plus lenses, readable from far away). */
-export const SIGNAL_LENS_R = 0.25;
+/** Lens radius of the signal lamps: a real 12-inch lens (Round 13: the old 0.5 m lenses in a 2 m head read as a toy). */
+export const SIGNAL_LENS_R = 0.155;
 /** Vertical spacing of the three lenses (red, amber, green from the top). */
-export const SIGNAL_LENS_DY = 0.6;
+export const SIGNAL_LENS_DY = 0.38;
+/** How far in front of the head's anchor the lens discs sit (just proud of the housing face, inside the visors). */
+export const SIGNAL_LENS_Z = 0.1;
 /** Mast-arm traffic signal: pole at origin, arm along local -x of length `arm`, heads facing local +z (one per approach lane). */
 export function signalGeo(arm: number): { geo: THREE.BufferGeometry; heads: THREE.Vector3[] } {
   const t = new TrimBuilder(); const pole = C('#8c9094'), dark = C('#101112'), yellow = C('#e8c21a');
@@ -38,16 +40,19 @@ export function signalGeo(arm: number): { geo: THREE.BufferGeometry; heads: THRE
   const hy = 5.65; // head centre; bottom of backplate stays above 4.3 m
   const xs = arm >= 6 ? [-arm + 0.8, -arm + 0.8 + 3.6] : [-arm + 0.8];
   for (const hx of xs) {
-    // signal housing (three sections), black backplate with a yellow retroreflective border
-    t.box(hx, hy, 0, 0.68, 2.0, 0.3, 0, dark, T_PLASTIC);
-    t.box(hx, hy, -0.17, 1.22, 2.6, 0.04, 0, yellow, T_PAINT);
-    t.box(hx, hy, -0.15, 1.1, 2.48, 0.04, 0, dark, T_PLASTIC);
-    t.box(hx, hy, -0.2, 1.24, 2.62, 0.03, 0, dark, T_PLASTIC);
+    // signal housing (three 12-inch sections, real proportions), black backplate with a thin yellow retroreflective border
+    t.box(hx, hy, 0, 0.44, 1.2, 0.26, 0, dark, T_PLASTIC);
+    t.box(hx, hy, -0.16, 0.84, 1.56, 0.02, 0, yellow, T_PAINT);
+    t.box(hx, hy, -0.145, 0.78, 1.5, 0.03, 0, dark, T_PLASTIC);
     for (let k = 0; k < 3; k++) {
-      t.box(hx, hy + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY + 0.27, 0.24, 0.6, 0.05, 0.26, 0, dark, T_PLASTIC, -0.45); // visor hood
+      const ly = hy + SIGNAL_LENS_DY - k * SIGNAL_LENS_DY;
+      // tunnel visor: a hood over the top and down both sides of each lens, sloping forward
+      t.box(hx, ly + 0.175, 0.24, 0.4, 0.02, 0.24, 0, dark, T_PLASTIC, -0.18);
+      for (const sx of [-1, 1]) t.box(hx + sx * 0.19, ly + 0.07, 0.24, 0.02, 0.22, 0.22, 0, dark, T_PLASTIC);
+      t.cyl(hx, ly, 0.125, 0.18, 0.18, 0.012, 14, dark, T_PLASTIC, 0, Math.PI / 2); // lens bezel ring (behind the lens disc)
     }
-    t.beam(hx, hy + 1.0, 0, hx, 7.0, 0, 0.05, 0.05, dark, T_METAL);
-    heads.push(new THREE.Vector3(hx, hy, 0.16));
+    t.beam(hx, hy + 0.6, 0, hx, 7.0, 0, 0.05, 0.05, dark, T_METAL);
+    heads.push(new THREE.Vector3(hx, hy, 0.14 - SIGNAL_LENS_Z)); // lens discs land at z 0.14, just proud of the bezel
   }
   // pedestrian head and push button on the pole
   t.box(-0.26, 2.8, 0, 0.34, 0.36, 0.28, Math.PI / 2, dark, T_PLASTIC);
