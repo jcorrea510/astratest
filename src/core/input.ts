@@ -1,6 +1,6 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-import { padHeld, setPadContext, type PadContext, readPad, padActive, radialDeadzone, lookStick, EMPTY_PAD, type PadState } from './gamepad';
+import { padHeld, setPadContext, type PadContext, readPad, padActive, radialDeadzone, lookStick, EMPTY_PAD, type PadState, setPadOverrides, setPadFamilyFromId } from './gamepad';
 import { publishRuntime } from './runtime';
 import { pointerLockSupported, isIPad } from './platform';
 export type { PadState };
@@ -133,6 +133,8 @@ export class Input {
     publishRuntime(this.settings);
     this.padPrev = this.pad;
     this.pad = readPad();
+    setPadOverrides(this.settings.padBindings);
+    if (this.pad.connected) setPadFamilyFromId(this.pad.id);
     if (padActive(this.pad)) this.lastSource = 'pad';
   }
   /** Call at the end of every frame. */

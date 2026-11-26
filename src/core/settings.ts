@@ -1,4 +1,5 @@
 /** Player settings with presets and persistence. */
+import { sanitizePadBindings, type PadOverrides } from './padBindings';
 export type QualityName = 'low' | 'medium' | 'high';
 export interface QualityPreset {
   pixelRatio: number; /** Round 11: re-render the sun's shadow map every Nth frame */ shadowEvery: number; shadowMap: number; shadowRange: number; bloom: boolean; msaa: number;
@@ -46,6 +47,7 @@ export interface Settings {
   /** gamepad stick look speed multiplier 0.3-3 */ padSensitivity: number;
   /** gamepad stick deadzone 0-0.3 */ padDeadzone: number;
   padInvertY: boolean;
+  /** player's controller button rebinds per context (see core/padBindings.ts); {} = defaults */ padBindings: PadOverrides;
   /** controller rumble on/off */ vibration: boolean;
   /** look-speed multiplier while aiming down sights 0.3-1.5 */ adsSensitivity: number;
   /** radial speed blur when driving fast */ speedBlur: boolean;
@@ -62,7 +64,7 @@ export const COLORBLIND_MODES: ColorblindMode[] = ['off', 'deuteranopia', 'prota
 export function isMacLike(): boolean { try { return typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent) && !(navigator.maxTouchPoints > 1); } catch { return false; } }
 export function prefersReducedMotion(): boolean { try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } }
 export const DEFAULT_SETTINGS: Settings = { quality: 'medium', sensitivity: 1, invertY: false, fov: 62, master: 0.8, music: 0.55, sfx: 0.9, bindings: structuredClone(DEFAULT_BINDINGS), showFps: false, cameraShake: 1, look: 'natural', driving: 'arcade', blood: true, aimToggle: isMacLike(),
-  padSensitivity: 1, padDeadzone: 0.12, padInvertY: false, vibration: true, adsSensitivity: 0.8, speedBlur: true, reduceMotion: prefersReducedMotion(), colorblind: 'off',
+  padSensitivity: 1, padDeadzone: 0.12, padInvertY: false, padBindings: {}, vibration: true, adsSensitivity: 0.8, speedBlur: true, reduceMotion: prefersReducedMotion(), colorblind: 'off',
   uiScale: 1, resolutionScale: 1, fpsCap: 0, ambienceVolume: 0.8, voiceVolume: 0.9, uiVolume: 0.8 };
 export const SETTINGS_KEY = 'meridian-afterglow.settings.v1';
 
@@ -84,6 +86,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null = safeStor
     merged.adsSensitivity = clampNum(merged.adsSensitivity, 0.3, 1.5, 0.8); merged.uiScale = clampNum(merged.uiScale, 0.8, 1.4, 1); merged.resolutionScale = clampNum(merged.resolutionScale, 0.5, 1, 1);
     merged.ambienceVolume = clampNum(merged.ambienceVolume, 0, 1, 0.8); merged.voiceVolume = clampNum(merged.voiceVolume, 0, 1, 0.9); merged.uiVolume = clampNum(merged.uiVolume, 0, 1, 0.8);
     if (typeof merged.padInvertY !== 'boolean') merged.padInvertY = false;
+    merged.padBindings = sanitizePadBindings(merged.padBindings);
     if (typeof merged.vibration !== 'boolean') merged.vibration = true;
     if (typeof merged.speedBlur !== 'boolean') merged.speedBlur = true;
     if (typeof merged.reduceMotion !== 'boolean') merged.reduceMotion = prefersReducedMotion();
