@@ -741,6 +741,7 @@ export class Game {
     this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
     this.vehicles.setHeadlightCount(this.renderer.quality.headlights ?? 1);
     this.vehicles.setBarLightCount(this.renderer.quality.bloom ? 1 : 0); // Round 9: real red/blue light on Medium+ (fixed count: no recompiles)
+    this.vehicles.lodFov = this.renderer.camera.fov; // Round 14: LOD by screen size (zoomed aim keeps detail)
     this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
