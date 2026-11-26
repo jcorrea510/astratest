@@ -22,5 +22,21 @@
    "frames": 60,
    "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 13, 1.7, I.z + 18], look: [I.x + 12, 1.2, I.z + 4] };"
   }
+ },
+ {
+  "name": "night-street",
+  "game": {
+   "hour": 22,
+   "frames": 40,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 2, 2.2, I.z + 30], look: [I.x + 14, 1.5, I.z - 10] };"
+  }
+ },
+ {
+  "name": "skyline-day",
+  "game": {
+   "hour": 10,
+   "frames": 30,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 12, 30, I.z + 60], look: [I.x - 120, 10, I.z - 200] };"
+  }
  }
 ]

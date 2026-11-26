@@ -27,8 +27,9 @@ jobs:
           npx vite --port 5199 --strictPort > /tmp/vite.log 2>&1 &
           sleep 5
           node scripts/shots.mjs
-          if [ -f docs/shots/perf.json ]; then node scripts/perf.mjs || true; fi
+          if [ -f docs/shots/perf.json ]; then timeout 30m node scripts/perf.mjs || true; fi
       - name: Commit pictures
+        if: always()
         run: |
           git config user.name "shots-bot"; git config user.email "shots-bot@users.noreply.github.com"
           git add docs/shots/out

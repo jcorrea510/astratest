@@ -1,6 +1,5 @@
-{ "quality": ["medium", "high"],
+{ "quality": ["medium"],
   "scenes": [
     { "name": "street-day", "hour": 15, "at": 3 },
-    { "name": "street-night", "hour": 22, "at": 3 },
-    { "name": "downtown-day", "hour": 12, "at": 20, "yaw": 1.2 }
+    { "name": "street-night", "hour": 22, "at": 3, "hideTop": 0 }
   ] }
