@@ -1,0 +1,9 @@
+guns-all ok {"calls":123,"tris":20080}
+gun-rifle ok {"calls":5,"tris":1526}
+gun-pistol ok {"calls":8,"tris":578}
+people-body ok {"calls":15,"tris":122068}
+people-face ok {"calls":13,"tris":88742}
+signal-day ok {"calls":188,"triangles":1069037,"textures":81,"geometries":2067,"programs":132}
+signal-day-far ok {"calls":244,"triangles":1187277,"textures":87,"geometries":2073,"programs":132}
+night-headlights ok {"calls":228,"triangles":1113955,"textures":96,"geometries":2073,"programs":140}
+street-people-day ok {"calls":208,"triangles":1233719,"textures":95,"geometries":2078,"programs":140}
