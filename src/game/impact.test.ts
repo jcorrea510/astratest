@@ -13,6 +13,7 @@ describe('pedestrian vehicle impacts', () => {
     expect(pedImpact(5.5).outcome).toBe('aside');
     expect(pedImpact(10).outcome).toBe('hood');
     expect(pedImpact(16).outcome).toBe('over');
+    expect(pedImpact(30 * MPH).outcome).toBe('hood'); // a 30 mph hit rides the hood, it does not vault the roof
     expect(pedImpact(16).up).toBeGreaterThan(pedImpact(10).up);
     expect(pedImpact(10, 0.9).outcome).toBe('aside'); // clipped by the corner: knocked aside
     expect(pedImpact(10, -0.9).side).toBeLessThan(0);

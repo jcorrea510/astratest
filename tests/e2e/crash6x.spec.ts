@@ -40,7 +40,7 @@ test('car at 30 mph hits a pedestrian: body rides the hood (>=0.3 s) and is neve
     const deck = (z: number) => { let y = top[top.length - 1][1]; if (z <= top[0][0]) y = top[0][1]; else for (let i = 1; i < top.length; i++) if (z <= top[i][0]) { const a = top[i - 1], b = top[i], k = (z - a[0]) / (b[0] - a[0]); y = a[1] + (b[1] - a[1]) * k; break; } return -0.35 + y * 0.97; };
     const L = car.tpl.layout; let above = 0, worst = 9, hit = -1, sp0 = 0;
     for (let f = 0; f < 300; f++) {
-      const lv = car.phys.body.linvel(); if (f < 190) car.phys.body.setLinvel({ x: 13.4, y: lv.y, z: 0 }, true);
+      const lv = car.phys.body.linvel(); if (hit < 0) car.phys.body.setLinvel({ x: 13.4, y: lv.y, z: 0 }, true); // held at 30 mph until the hit (a slow CI frame left it coasting at 26 mph)
       g.frame(1 / 60, false);
       const rd = ped.char.ragdoll; if (!rd) continue;
       if (hit < 0) { hit = f; sp0 = car.speed; }

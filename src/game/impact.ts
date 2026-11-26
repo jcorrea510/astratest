@@ -19,7 +19,7 @@ export function pedImpact(speed: number, lateral = 0, roll = 0.5): PedImpact {
   const sp = Math.max(0, speed);
   const damage = Math.round(sp * sp * (0.85 + 0.3 * roll));
   const edge = Math.abs(lateral) > 0.75;
-  let outcome: ImpactOutcome = sp < 4.5 ? 'brush' : sp < 7 || edge ? 'aside' : sp < 13 ? 'hood' : 'over';
+  let outcome: ImpactOutcome = sp < 4.5 ? 'brush' : sp < 7 || edge ? 'aside' : sp < 14.5 ? 'hood' : 'over';
   if (sp < 3) outcome = 'brush';
   const carry = outcome === 'brush' ? sp * 0.6 : outcome === 'aside' ? sp * 0.55 : outcome === 'hood' ? sp * 0.85 : sp * 0.95;
   const up = outcome === 'brush' ? 0 : outcome === 'aside' ? 1.5 : outcome === 'hood' ? 3.5 + sp * 0.1 : 5 + sp * 0.12;
