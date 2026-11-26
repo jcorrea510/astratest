@@ -3,6 +3,9 @@ import { ACTION_LABELS, DEFAULT_SETTINGS, keyLabel, type Action, type QualityNam
 import { ACTION_GROUPS, conflictSlots, defaultBindings, findConflicts, withBinding } from './bindings';
 import { backButton, button, h } from './dom';
 import { BUILD } from '../build';
+import { PAD_LAYOUTS, readPad, currentPadFamily, type PadContext } from '../core/gamepad';
+import { FAMILY_NAME, buttonLabel } from '../core/padGlyphs';
+import { PAD_BINDABLE, PAD_CONTEXTS, PAD_CONTEXT_LABEL, mergedButtons, resetPadContext, withPadBinding } from '../core/padBindings';
 
 export type SettingsTab = 'display' | 'access' | 'input' | 'audio' | 'keys';
 const TABS: { id: SettingsTab; label: string }[] = [
@@ -33,6 +36,9 @@ export class SettingsPanel {
   private resetAllTimer = 0;
   private captureToken = 0;
   private captureTimer = 0;
+  private padCapTimer = 0;
+  private padCapCleanup: (() => void) | null = null;
+  private padCtx: PadContext = 'foot';
   private note: HTMLDivElement | null = null;
   private desc: HTMLDivElement;
 
@@ -128,7 +134,7 @@ export class SettingsPanel {
     const d = DEFAULT_SETTINGS;
     if (this.tab === 'display') this.update(s => { s.fov = d.fov; s.cameraShake = d.cameraShake; s.showFps = d.showFps; s.look = d.look; s.quality = d.quality; s.blood = d.blood; s.resolutionScale = d.resolutionScale; s.fpsCap = d.fpsCap; }, this.deps.get().quality !== d.quality);
     else if (this.tab === 'access') this.update(s => { s.uiScale = d.uiScale; s.reduceMotion = d.reduceMotion; s.speedBlur = d.speedBlur; s.colorblind = d.colorblind; });
-    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.vibration = d.vibration; });
+    else if (this.tab === 'input') this.update(s => { s.sensitivity = d.sensitivity; s.adsSensitivity = d.adsSensitivity; s.invertY = d.invertY; s.driving = d.driving; s.aimToggle = d.aimToggle; s.padSensitivity = d.padSensitivity; s.padDeadzone = d.padDeadzone; s.padInvertY = d.padInvertY; s.padBindings = {}; s.vibration = d.vibration; });
     else if (this.tab === 'audio') this.update(s => { s.master = d.master; s.music = d.music; s.sfx = d.sfx; s.ambienceVolume = d.ambienceVolume; s.voiceVolume = d.voiceVolume; s.uiVolume = d.uiVolume; });
     else this.update(s => { s.bindings = defaultBindings(); });
     this.render();
@@ -182,6 +188,7 @@ export class SettingsPanel {
       this.body.appendChild(this.slider('Stick Deadzone', 'Ignores small stick movements. Raise it if the camera drifts.', 0, 0.3, 0.01, s.padDeadzone, pct, v => this.update(x => { x.padDeadzone = v; })));
       this.body.appendChild(this.toggle('Invert Controller Look', 'Push the right stick up to look down.', s.padInvertY, v => this.update(x => { x.padInvertY = v; })));
       this.body.appendChild(this.toggle('Vibration', 'Controller rumble for gunfire, crashes and damage.', s.vibration, v => this.update(x => { x.vibration = v; })));
+      this.renderPadButtons(s);
       const link = h('div', 'ma-row');
       const lt = h('div', 'ma-row-text');
       lt.appendChild(h('div', 'ma-row-label', 'Keyboard & Mouse Bindings'));
@@ -364,10 +371,83 @@ export class SettingsPanel {
     }
   }
 
-  private flashNote(text: string) {
+  /** Controller button rebinding: pick a context, select a slot, press the new button on the pad. */
+  private renderPadButtons(s: Settings) {
+    const connected = readPad().connected;
+    const fam = FAMILY_NAME[currentPadFamily()];
+    const sec = h('div', 'ma-keys-group ma-pad-group');
+    sec.appendChild(h('div', 'ma-keys-title', 'Controller Buttons'));
+    const info = h('div', 'ma-keys-info ma-pad-info', connected ? `${fam}: select a slot, then press the new button. A button used elsewhere in the same mode moves.` : 'No controller detected. Standard button names are shown; connect a pad and press any button.');
+    sec.appendChild(info);
+    this.note = info;
+    sec.appendChild(this.segRow('Controller Mode', 'Buttons are set separately on foot, in vehicles and in the helicopter. Sticks and triggers are fixed.', PAD_CONTEXTS.map(c => [c, PAD_CONTEXT_LABEL[c]] as [string, string]), this.padCtx, v => { this.padCtx = v as PadContext; }));
+    const ctx = this.padCtx;
+    const cur = mergedButtons(PAD_LAYOUTS[ctx].buttons, s.padBindings?.[ctx]);
+    for (const a of PAD_BINDABLE[ctx]) {
+      const row = h('div', 'ma-keyrow');
+      row.dataset.navRow = '';
+      row.appendChild(h('div', 'ma-keyrow-label', ACTION_LABELS[a]));
+      const g = cur[a]?.length ? buttonLabel(cur[a]![0], currentPadFamily()) : null;
+      const b = button('ma-keyslot ma-padslot', g ?? '—');
+      if (!g) b.classList.add('is-empty');
+      b.dataset.padAction = a;
+      b.setAttribute('aria-label', `${ACTION_LABELS[a]} controller button: ${g ?? 'unbound'}`);
+      b.addEventListener('click', () => this.beginPadCapture(ctx, a, b));
+      row.appendChild(b);
+      sec.appendChild(row);
+    }
+    const reset = h('div', 'ma-row');
+    const rt = h('div', 'ma-row-text');
+    rt.appendChild(h('div', 'ma-row-label', `Reset ${PAD_CONTEXT_LABEL[ctx]} Buttons`));
+    rt.appendChild(h('div', 'ma-row-desc', 'Back to the default layout for this mode.'));
+    reset.appendChild(rt);
+    reset.appendChild(button('ma-btn ma-btn-ghost', 'Reset', { onClick: () => { this.deps.sound('click'); this.update(x => { x.padBindings = resetPadContext(x.padBindings ?? {}, ctx); }); this.render(); } }));
+    sec.appendChild(reset);
+    this.body.appendChild(sec);
+  }
+
+  private beginPadCapture(ctx: PadContext, action: Action, b: HTMLButtonElement) {
+    this.cancelCapture();
+    this.deps.sound('click');
+    const token = ++this.captureToken;
+    b.classList.add('is-capturing');
+    b.textContent = 'Press a button…';
+    this.deps.setCapturing(true);
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape' && token === this.captureToken) { this.finishCapture(); this.deps.sound('back'); this.render(); this.refocusPad(action); } };
+    window.addEventListener('keydown', onKey, true);
+    this.padCapCleanup = () => window.removeEventListener('keydown', onKey, true);
+    this.captureTimer = window.setTimeout(() => { if (token === this.captureToken) { this.finishCapture(); this.render(); this.refocusPad(action); } }, 8000);
+    // buttons already down when the capture opens (the A that selected the slot) are ignored until released
+    const heldAtStart = new Set<number>(); readPad().buttons.slice(0, 16).forEach((v, i) => { if (v) heldAtStart.add(i); });
+    const poll = () => {
+      if (token !== this.captureToken) return;
+      const p = readPad();
+      if (p.connected) {
+        for (const i of [...heldAtStart]) if (!p.buttons[i]) heldAtStart.delete(i);
+        const down = p.buttons.slice(0, 16).findIndex((v, i) => v && !heldAtStart.has(i));
+        if (down >= 0) {
+          this.finishCapture();
+          const res = withPadBinding(PAD_LAYOUTS[ctx].buttons, this.deps.get().padBindings ?? {}, ctx, action, down);
+          this.deps.sound('click');
+          if (res) { this.update(x => { x.padBindings = res.overrides; }); this.render(); this.flashNote(res.displaced.length ? `${buttonLabel(down, currentPadFamily())} now ${ACTION_LABELS[action]}. ${res.displaced.map(d => ACTION_LABELS[d]).join(', ')} unbound: pick a new button.` : `${ACTION_LABELS[action]} set to ${buttonLabel(down, currentPadFamily())}.`, !!res.displaced.length); }
+          else { this.render(); this.flashNote('Pause needs a button.', true); }
+          this.refocusPad(action);
+          return;
+        }
+      }
+      this.padCapTimer = window.setTimeout(poll, 30);
+    };
+    this.padCapTimer = window.setTimeout(poll, 30);
+  }
+
+  private refocusPad(action: Action) {
+    this.body.querySelector<HTMLButtonElement>(`.ma-padslot[data-pad-action="${action}"]`)?.focus({ preventScroll: true });
+  }
+
+  private flashNote(text: string, warn = true) {
     if (!this.note) return;
     this.note.textContent = text;
-    this.note.classList.add('is-conflict');
+    this.note.classList.toggle('is-conflict', warn);
   }
 
   private refocus(action: Action, slot: number) {
@@ -379,13 +459,14 @@ export class SettingsPanel {
   }
 
   private finishCapture() {
-    window.clearTimeout(this.captureTimer);
+    window.clearTimeout(this.captureTimer); window.clearTimeout(this.padCapTimer);
+    this.padCapCleanup?.(); this.padCapCleanup = null;
     this.captureToken++;
     this.deps.setCapturing(false);
   }
   private cancelCapture() {
     if (this.body?.querySelector('.is-capturing')) this.finishCapture();
-    else { window.clearTimeout(this.captureTimer); this.captureToken++; }
+    else { window.clearTimeout(this.captureTimer); window.clearTimeout(this.padCapTimer); this.padCapCleanup?.(); this.padCapCleanup = null; this.captureToken++; }
   }
   isCapturing() { return !!this.body.querySelector('.is-capturing'); }
 }

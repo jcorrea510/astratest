@@ -30,7 +30,8 @@ import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut } from './core/fullscreen';
 import { TouchControls } from './ui/touch';
 import { touchContext, touchPromptFor } from './ui/touchLayout';
-import { setPromptSource, promptFor } from './core/gamepad';
+import { setPromptSource, promptFor, readPad } from './core/gamepad';
+import { PadWatcher } from './core/padGlyphs';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
 import { probeWebgl2 } from './core/webglProbe';
 import { LOOK } from './render/renderer';
@@ -362,6 +363,24 @@ function installAudioUnlock() {
     if (!hinted && a && a.running === false && game && game.input.lastSource === 'pad' && started) { hinted = true; ui.toast?.('Tap the screen once to turn the sound on'); }
   }, 2000);
 }
+/** Controller connect / disconnect: a short toast; a pad player who loses the pad mid-game gets the pause menu instead of a runaway character. */
+function installPadWatch() {
+  const watch = new PadWatcher();
+  setInterval(() => {
+    const p = readPad();
+    const ev = watch.update(p.connected, p.id);
+    if (!ev) return;
+    if (ev.kind === 'connected') { ui.toast(`${ev.name} connected`, 'info'); return; }
+    let paused = false;
+    if (game) {
+      if (game.input.lastSource === 'pad') {
+        game.input.lastSource = 'kbm'; // prompts go back to keys
+        if (started && !game.paused && !ui.isMenuOpen()) { pause(); paused = true; }
+      }
+    }
+    ui.toast(paused ? `${ev.name} disconnected. Game paused: reconnect it or use the keyboard.` : `${ev.name} disconnected`, 'warning');
+  }, 250);
+}
 function setGrade(g: Game, k: number) {
   const u = g.renderer.grade?.uniforms; if (!u) return;
   u.uSat.value = (LOOK[g.renderer.look]?.sat ?? DEFAULT_SAT) * (1 - k * 0.92);
@@ -515,7 +534,7 @@ function exposeApi() {
 
 // ---------------- Boot ----------------
 function startBoot() {
-  installErrorToast();
+  installErrorToast(); installPadWatch();
   if (params.get('autostart') === '1') {
     void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
     return;

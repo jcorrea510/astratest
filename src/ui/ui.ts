@@ -37,7 +37,7 @@ import { buildCard, buildCredits, buildDeath, buildLoading, buildMobileGate, log
 import { formatMoney } from './geometry';
 import { fmtDistance, MPS_TO_MPH } from '../core/units';
 import { createFullscreenButton } from '../core/fullscreen';
-import { padGlyph } from '../core/gamepad';
+import { padGlyph, setPadOverrides } from '../core/gamepad';
 
 type NavAction = 'up' | 'down' | 'left' | 'right' | 'select' | 'back' | 'tabPrev' | 'tabNext' | 'zoomIn' | 'zoomOut';
 type LayerId = 'title' | 'confirm' | 'pause' | 'settings' | 'controls' | 'map' | 'shop' | 'groom' | 'garage' | 'sandbox' | 'credits';
@@ -264,6 +264,7 @@ export class UI implements GameUI {
 
   private applySettings(s: Settings, qualityChanged: boolean) {
     this.settings = s;
+    setPadOverrides(s.padBindings); // glyphs and prompts follow a rebind at once, even while paused
     this.applyPageSettings(s);
     this.callbacks.onSettingsChanged(structuredClone(s));
     if (qualityChanged) this.callbacks.onQualityChanged(s.quality);
@@ -965,6 +966,7 @@ export class UI implements GameUI {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
+    this.setInputSource('kbm');
     if (this.capturing) return; // the game's input routes this key to the rebinding capture
     const layer = this.top();
     if (!layer) return;
@@ -1102,7 +1104,8 @@ export class UI implements GameUI {
       const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
       const prev = this.padPrev;
       this.padPrev = btn;
-      if (prev) {
+      if (prev && this.capturing) { /* the settings panel is reading the next button for a rebind */ }
+      else if (prev) {
         const edge = (i: number) => !!btn[i] && !prev[i];
         const onMap = this.top()?.id === 'map';
         if (edge(0)) this.nav('select');
@@ -1126,6 +1129,7 @@ export class UI implements GameUI {
           ['left', !!btn[14] || (stick && ax < -0.55)], ['right', !!btn[15] || (stick && ax > 0.55)],
         ];
         for (const [a, held] of dirs) if (this.repeat(a, held, t)) this.nav(a);
+        if (btn.some((v, i) => v && !prev[i]) || dirs.some(d => d[1])) this.setInputSource('pad');
       }
     } else this.padPrev = null;
     this.padRaf = requestAnimationFrame(this.padLoop);
