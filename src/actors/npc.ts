@@ -22,6 +22,8 @@ export type OrderKind = '' | 'kneel' | 'hands' | 'come' | 'car' | 'board';
 
 /** Street-life activities of civilians (stand still doing something, walk to a shop, board a cab). */
 export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi' | 'sit' | 'sitting' | 'board' | 'queue';
+/** A rider walking to a bus / taxi door: that door is on the carriageway, so the kerb guard must let them step onto it. */
+export function walksToVehicle(n: { activity: Activity; destPt: unknown }): boolean { return !!n.destPt && (n.activity === 'board' || n.activity === 'taxi'); }
 const ACT_ANIM: Partial<Record<Activity, string>> = { phone: 'phone', smoke: 'smoke', film: 'film', hail: 'hail', wait: 'talk', sitting: 'sit', queue: 'phone' };
 /** Seated pose: how far behind the bench centre the hips sit, and the root height offset above the seat (tuned against the Sitting_Idle_Loop clip). */
 const SIT_BACK = 0.12, SIT_DY = 0.02;
@@ -382,7 +384,7 @@ export class NpcBrainRunner {
       if (n.sideT > 0) {
         n.sideT -= dt;
         // A walker on the footpath never side-steps (stuck recovery) onto the carriageway: use the other side, else just wait it out
-        if (n.brain === 'wander' && !n.onCross && !n.pend?.crossing) {
+        if (n.brain === 'wander' && !n.onCross && !n.pend?.crossing && !walksToVehicle(n)) {
           const d0 = desired, k = 1.3, px = c.pos.x, pz = c.pos.z, city = this.env.city;
           if (surfaceAt(city, px - d0.z * n.sideDir * k, pz + d0.x * n.sideDir * k) === 'road' && surfaceAt(city, px, pz) !== 'road') {
             n.sideDir = -n.sideDir;
@@ -404,7 +406,7 @@ export class NpcBrainRunner {
     }
     // Kerbs are not colliders: a calm walker shoved sideways (a jostling group, a stuck side-step, a buddy offset) must never end up
     // on the carriageway away from a crossing. Undo the step and re-anchor onto the footpath graph from there.
-    if (n.brain === 'wander' && n.role === 'civilian' && !n.far && !n.onCross && !n.pend?.crossing && c.grounded) {
+    if (n.brain === 'wander' && n.role === 'civilian' && !n.far && !n.onCross && !n.pend?.crossing && !walksToVehicle(n) && c.grounded) {
       const ddx = c.pos.x - n.lastPos.x, ddz = c.pos.z - n.lastPos.z, still = ddx * ddx + ddz * ddz <= 1e-6;
       if ((!still || n.stuckT > 0.3) && this.onRoad(c.pos.x, c.pos.z, 0.05)) {
         if (!still && !this.onRoad(n.lastPos.x, n.lastPos.z, 0.05)) { c.setPosition(n.lastPos.x, c.pos.y, n.lastPos.z); c.vel.x = 0; c.vel.z = 0; n.sideT = 0; n.pend = null; n.node = -1; n.nextNode = -1; }
