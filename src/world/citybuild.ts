@@ -8,7 +8,7 @@ import { buildIsland } from './islandbuild';
 import { buildFlatiron } from './flatiron';
 import { diagTriangles } from './broadway';
 import { RAPIER, groups, G_STATIC, ALL } from '../core/physics';
-import { buildTerrain, makeTerrainHeight, NORTH_EDGE } from './terrain';
+import { buildTerrain, buildUnderlay, makeTerrainHeight, NORTH_EDGE } from './terrain';
 import { buildExpansion, expansionPads } from './expansion';
 import { buildWest } from './westbuild';
 import { buildEast } from './eastbuild';
@@ -285,6 +285,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const terrainH = makeTerrainHeight(city, expansionPads(city));
   const terrainMat = surfaceMat(grassSurface(), 1, { vertexColors: true }, 0.3, 'terrain');
   buildTerrain(root, physics, terrainH, terrainMat);
+  buildUnderlay(root, terrainH); // closes the world edge and the space under the ground (no clear-colour void)
   // channel quay walls south of the freeway
   { const tb0 = new TrimBuilder(); for (const x of [CHANNEL.x0, CHANNEL.x1]) for (let z = -62; z > NORTH_EDGE - 4; z -= 40) tb0.box(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, z - 20, 0.8, 7, 40, 0, C('#7d7870'), T_STONE); const qm = new THREE.Mesh(tb0.build(), trimMaterial()); qm.receiveShadow = true; root.add(qm); for (const x of [CHANNEL.x0, CHANNEL.x1]) physics.addStaticBox(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, (-62 + NORTH_EDGE) / 2, 0.4, 3.5, (NORTH_EDGE + 62) / -2); }
   physics.addStaticBox(HARBOR_X + 1, 0.6, (-62 + maxZ + 7) / 2, 1, 0.8, (maxZ + 69) / 2);

@@ -89,3 +89,42 @@ export function buildTerrain(root: THREE.Object3D, physics: Physics, height: (x:
   physics.tag(physics.world.createCollider(desc), { kind: 'static' });
   return mesh;
 }
+
+/** Depth of the underlay plane and skirts (below the seabed at SEABED_Y). */
+export const UNDERLAY_Y = -9.5;
+/**
+ * One merged mesh that closes the world's edge: skirts hang from the terrain's west, east and north rims down to a huge
+ * ground-coloured plane under everything. A camera that dips under the surface, or looks past the rim, sees earth
+ * instead of the clear colour. Lit and fogged like the rest of the ground; one draw call, a few hundred triangles.
+ */
+export function buildUnderlayGeometry(height: (x: number, z: number) => number): THREE.BufferGeometry {
+  const { x0, x1, z0, z1, step } = TERRAIN;
+  const pos: number[] = [], idx: number[] = [];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => { const k = pos.length / 3; pos.push(...a, ...b, ...c, ...d); idx.push(k, k + 1, k + 2, k, k + 2, k + 3); };
+  const R = 9000;
+  quad([-R, UNDERLAY_Y, -R], [-R, UNDERLAY_Y, R], [R, UNDERLAY_Y, R], [R, UNDERLAY_Y, -R]);
+  const strip = (pt: (t: number) => [number, number], n: number) => {
+    for (let i = 0; i < n; i++) {
+      const [ax, az] = pt(i / n), [bx, bz] = pt((i + 1) / n);
+      quad([ax, height(ax, az), az], [bx, height(bx, bz), bz], [bx, UNDERLAY_Y, bz], [ax, UNDERLAY_Y, az]);
+    }
+  };
+  const nz = Math.round((z1 - z0) / step), nx = Math.round((x1 - x0) / step);
+  strip(t => [x0, z0 + (z1 - z0) * t], nz);
+  strip(t => [x1, z0 + (z1 - z0) * t], nz);
+  strip(t => [x0 + (x1 - x0) * t, z0], nx);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+export function buildUnderlay(root: THREE.Object3D, height: (x: number, z: number) => number): THREE.Mesh {
+  const mat = new THREE.MeshLambertMaterial({ color: '#4a5236', side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(buildUnderlayGeometry(height), mat);
+  mesh.name = 'worldUnderlay'; mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false;
+  root.add(mesh);
+  return mesh;
+}
