@@ -342,15 +342,33 @@ export function paintWearTexture(): THREE.Texture {
 }
 /** Leaf cluster card (alpha) for trees. */
 export function leafTexture(kind: 'broad' | 'palm' = 'broad'): THREE.Texture {
-  const S = 256, r = new Rng(kind === 'broad' ? 23 : 29); const { c, g } = canvas(S, S);
+  const S = kind === 'broad' ? 512 : 256, r = new Rng(kind === 'broad' ? 23 : 29); const { c, g } = canvas(S, S);
   if (kind === 'broad') {
-    for (let k = 0; k < 420; k++) {
-      const a = r.range(0, Math.PI * 2), rad = Math.sqrt(r.next()) * 112;
-      const x = 128 + Math.cos(a) * rad, y = 128 + Math.sin(a) * rad * 0.9;
-      const l = r.range(0.55, 1.05), hue = r.range(0.22, 0.3);
-      const col = new THREE.Color().setHSL(hue, r.range(0.35, 0.6), 0.16 + l * 0.18 * (1 - rad / 200));
-      g.fillStyle = `#${col.getHexString()}`;
-      g.save(); g.translate(x, y); g.rotate(r.range(0, Math.PI * 2)); g.beginPath(); g.ellipse(0, 0, r.range(5, 10), r.range(3, 5), 0, 0, Math.PI * 2); g.fill(); g.restore();
+    // a leafy sprig: ~70 individual pointed leaves on short stalks, back (dark, small) to front (bright), with gaps between
+    // twigs so the alpha-tested card shows sky holes. Canvas edges are antialiased -> soft alpha edge before the alphaTest cut.
+    const cx = S / 2, cy = S / 2;
+    const leaf = (x: number, y: number, ang: number, len: number, wid: number, col: string, vein: string) => {
+      g.save(); g.translate(x, y); g.rotate(ang);
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, 0);
+      g.bezierCurveTo(len * 0.25, -wid, len * 0.7, -wid * 0.8, len, 0);
+      g.bezierCurveTo(len * 0.7, wid * 0.8, len * 0.25, wid, 0, 0); g.fill();
+      g.strokeStyle = vein; g.lineWidth = 1.4; g.beginPath(); g.moveTo(0, 0); g.lineTo(len * 0.92, 0); g.stroke();
+      g.restore();
+    };
+    for (let layer = 0; layer < 3; layer++) {
+      const n = layer === 0 ? 34 : layer === 1 ? 30 : 22;
+      for (let k = 0; k < n; k++) {
+        const a = r.range(0, Math.PI * 2), rad = Math.pow(r.next(), 0.7) * S * 0.3;
+        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad * 0.92;
+        if (rad < S * 0.07 && r.next() < 0.6) continue; // open centre: sky shows through
+        const edge = rad / (S * 0.3);
+        const light = (layer === 0 ? 0.2 : layer === 1 ? 0.3 : 0.4) + r.range(-0.03, 0.05) + edge * 0.04;
+        const hue = r.range(0.2, 0.31) + (r.next() < 0.18 ? 0.04 : 0);
+        const col = new THREE.Color().setHSL(hue, r.range(0.4, 0.62), light);
+        const vein = new THREE.Color().setHSL(hue + 0.02, 0.4, light + 0.1);
+        const len = S * r.range(0.14, 0.21) * (layer === 0 ? 0.9 : 1), wid = len * r.range(0.26, 0.38);
+        leaf(x, y, a + r.range(-0.9, 0.9), len, wid, `#${col.getHexString()}`, `#${vein.getHexString()}`);
+      }
     }
   } else {
     // a single frond: central rib with leaflets
