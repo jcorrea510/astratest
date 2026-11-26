@@ -677,10 +677,11 @@ export class NpcBrainRunner {
     // Round 7: follow the path line, not a beeline to the far node: someone off the line (dodged, spawned, handed over
     // from the far crowd) steps back onto it within a few metres instead of slanting across the roadway for 40 m
     if (from !== target && !n.onCross) {
-      // in the carriageway mid-block (shoved off the kerb, or a buddy pair walking abreast): back up onto the footpath first
-      if (kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z, 0)) return 1.35;
       const ax = from.x + ox, az = from.z + oz, ux = ex / el, uz = ez / el;
       const along = (n.pos.x - ax) * ux + (n.pos.z - az) * uz, lat = (n.pos.x - ax) * -uz + (n.pos.z - az) * ux;
+      // off the path line in the carriageway mid-block (shoved off the kerb): back up onto the footpath first. (On the line is
+      // fine: a few links, like the bridge approach over Harbor Way, run across a road without a signalled crossing.)
+      if (Math.abs(lat) > 0.6 && kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z, 0)) return 1.35;
       if (Math.abs(lat) > 6 || along < -4 || along > el + 4) { n.node = -1; n.nextNode = -1; n.pend = null; return 0.6; } // lost the path: re-anchor from here (nearest kerb / own block)
       if (Math.abs(lat) > 0.6 && along > 0 && along < el) {
         const ahead = Math.min(el, along + 2.5); tv.set(ax + ux * ahead - n.pos.x, 0, az + uz * ahead - n.pos.z); dir.copy(tv.normalize());
