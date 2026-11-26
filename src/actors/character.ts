@@ -227,6 +227,7 @@ export class Character {
   }
   /** Teleports the body (no collision). */
   place(x: number, y: number, z: number, yaw?: number) {
+    if (this.disposed) return; // a freed Rapier body traps on any call (an arrest scene outliving its officer)
     this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0; this.restSweeps = 0;
     this.body.setTranslation({ x, y: y + CENTER, z }, true); this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
     if (yaw !== undefined) this.yaw = yaw;
@@ -234,6 +235,7 @@ export class Character {
   }
   /** Moves the body to a point without collision or resetting velocity (scripted motion such as a ledge climb). */
   setPosition(x: number, y: number, z: number) {
+    if (this.disposed) return;
     this.pos.set(x, y, z); this.restSweeps = 0;
     this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
   }

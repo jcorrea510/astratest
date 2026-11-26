@@ -410,6 +410,7 @@ export class Dispatch {
     a.t += dt;
     player.health = player.maxHealth; // nobody shoots a suspect who is being cuffed
     const cop = a.cop, ph = player.human, ch = cop.char.human;
+    cop.persistent = true; // population / police clean-up must not free the officer mid-scene (its body is moved every frame)
     player.yaw = a.yaw; ph.root.rotation.y = a.yaw;
     const behind = a.base.clone().addScaledVector(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw)), -0.8);
     if (a.tase && a.t < a.pre) {
