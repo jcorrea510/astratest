@@ -108,7 +108,7 @@ test('rounds break car glass and kill the driver inside; the car coasts', async 
   const r = await page.evaluate(() => {
     const g = (window as any).__game; const T = g.renderer.camera.position.constructor;
     const yaw = g.player.yaw, x = g.player.pos.x + Math.sin(yaw) * 8, z = g.player.pos.z + Math.cos(yaw) * 8;
-    const v = g.vehicles.spawn(g.vehicles.list[0]?.kind ?? 'sedan', x, z, yaw + Math.PI / 2);
+    const v = g.vehicles.spawn('sedan', x, z, yaw + Math.PI / 2); // a closed car: a random traffic car could be the open-top convertible (no side glass to break)
     const n = g.pop.spawn('civilian', x, z, 0.5); n.persistent = true; v.persistent = true;
     g.traffic.seat(n, v);
     for (let i = 0; i < 20; i++) g.frame(1 / 60, false);
@@ -121,8 +121,9 @@ test('rounds break car glass and kill the driver inside; the car coasts', async 
     const shots: any[] = []; const prev = g.combat.onShot; g.combat.onShot = (e: any) => { shots.push(e); prev?.(e); };
     g.input.tap('Mouse0'); g.frame(1 / 60, false); g.combat.onShot = prev;
     const h = shots[0]?.hits[0];
-    return { kind: h?.kind, glass: h?.throughGlass, zone: h?.zone, alive: n.char.alive, handbrake: v.input.handbrake, broken: (v as any).brokenMask ?? -1 };
+    return { car: v.kind, kind: h?.kind, glass: h?.throughGlass, zone: h?.zone, alive: n.char.alive, handbrake: v.input.handbrake, broken: (v as any).brokenMask ?? -1 };
   });
+  console.log('glass', JSON.stringify(r));
   expect(r).toMatchObject({ kind: 'character', glass: true, alive: false, handbrake: false });
   clean(p);
 });

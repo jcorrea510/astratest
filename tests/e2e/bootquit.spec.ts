@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 /** Quit to title resets in place: no navigation, the same Game object, and Continue starts again (twice in a row). */
 test('quit to title does not reload and you can start again', async ({ page }) => {
   test.setTimeout(500_000);
+  // count document loads (a reload or a cross-document navigation); dropping ?autostart from the URL with history.replaceState is not one
   let navs = 0;
-  page.on('framenavigated', f => { if (f === page.mainFrame()) navs++; });
+  page.on('load', () => navs++);
   await page.goto('./?autostart=1');
   await page.waitForFunction(() => !!(window as any).__meridian?.game, null, { timeout: 280_000, polling: 1000 });
   await page.waitForFunction(() => !document.querySelector('.ma-loading.is-open'), null, { timeout: 120_000, polling: 1000 });
