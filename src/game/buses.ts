@@ -83,6 +83,8 @@ export class BusService {
   routes: BusRoute[]; runs: BusRun[] = []; private scene: THREE.Scene; private meshes: THREE.Mesh[] = []; private spawnT = 0;
   /** stats for tests */
   stats = { stops: 0, spawned: 0, boarded: 0, queued: 0 };
+  /** No new buses (scripted scenes and tests that clear the streets: a bus kept arriving and ran over the bodies there). */
+  spawnOff = false;
   private waiting = new Map<BusStop, Npc[]>(); private boarding: Npc[] = []; private waitT = 0;
   constructor(scene: THREE.Scene, private city: CityMap, private traffic: Traffic, private pop: Population, private time: () => number, count = 3) {
     this.scene = scene;
@@ -165,7 +167,7 @@ export class BusService {
         if (run.waiting) { if (Math.abs(car.v.speed) < 1.5) { const di = car.v.doorIndex('right', 0); if (di >= 0 && car.v.doors[di].open < 1) car.v.setDoor(di, 1); } run.dwell -= dt; if (run.dwell <= 0) this.depart(run, car); }
         continue;
       }
-      if (this.spawnT > 0) continue;
+      if (this.spawnT > 0 || this.spawnOff) continue;
       this.spawnT = 1.5;
       // appear at a stop's approach, unseen and not too close
       const n = run.route.stops.length;

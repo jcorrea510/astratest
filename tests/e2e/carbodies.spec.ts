@@ -9,6 +9,7 @@ test('dented cars can be removed without emptying the shared body buffers', asyn
   await quietStreets(page);
   const r = await page.evaluate(() => {
     const g = (window as any).__game;
+    g.renderer.setQuality('low'); // 11 drawn frames in software GL: on high they ran past the 4 min limit on CI (the buffer bug does not depend on the preset)
     const gl: WebGL2RenderingContext = g.renderer.renderer.getContext();
     let empty = 0, armed = false;
     const orig = gl.bufferData.bind(gl) as (...a: unknown[]) => void;

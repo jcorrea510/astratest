@@ -31,7 +31,7 @@ export async function step(page: Page, seconds: number, opts: { hold?: string[];
 export async function quietStreets(page: Page) {
   await page.evaluate(() => {
     const g = (window as any).__game;
-    g.trafficCap = 0; g.pedCap = 0;
+    g.trafficCap = 0; g.pedCap = 0; g.buses.spawnOff = true; // buses are traffic too (one ran over the bodies in the deaths test on CI)
     for (const c of [...g.traffic.cars]) if (!c.persistent) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     for (const v of [...g.vehicles.list]) if (!v.persistent && !v.driver) g.vehicles.remove(v);
     // passengers of the cars removed above would otherwise stay behind as invisible witnesses sitting in a deleted car
