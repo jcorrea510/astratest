@@ -264,6 +264,7 @@ export class Population {
       }
     }
   }
+  private scBuf: { n: Npc; d: number }[] = [];
   fixedUpdate(dt: number, focus: THREE.Vector3) {
     this.reactToPlayer(dt); this.reactToSiren(dt);
     this.runner.beginTick();
@@ -344,18 +345,19 @@ export class Population {
       h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }
     // shadow caster budget: only the nearest people are drawn into the shadow map (the rest keep their lit body)
-    const sc: { n: Npc; d: number }[] = [];
-    for (const n of this.npcs) if (n.char.human.mesh.castShadow && n.brain !== 'inside' && !n.char.inVehicle) sc.push({ n, d: n.char.pos.distanceToSquared(focus) });
-    if (sc.length > this.shadowBudget) { sc.sort((x, y) => x.d - y.d); for (let i = this.shadowBudget; i < sc.length; i++) { const h = sc[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; } }
+    const sc = this.scBuf; let scn = 0;
+    for (const n of this.npcs) if (n.char.human.mesh.castShadow && n.brain !== 'inside' && !n.char.inVehicle) { const e = sc[scn] ?? (sc[scn] = { n, d: 0 }); e.n = n; e.d = n.char.pos.distanceToSquared(focus); scn++; }
+    if (scn > this.shadowBudget) { const sl = sc.slice(0, scn).sort((x, y) => x.d - y.d); for (let i = this.shadowBudget; i < sl.length; i++) { const h = sl[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; } }
     // Despawn
-    for (const n of [...this.npcs]) {
+    for (let ni = this.npcs.length - 1; ni >= 0; ni--) {
+      const n = this.npcs[ni]; if (!n) continue;
       if (n.persistent || n.char.inVehicle) continue;
       const d = n.pos.distanceTo(focus);
       if (d > 170 || (!n.alive && n.char.deadTime > 25 && d > 25) || (!n.alive && n.char.deadTime > 60)) { this.remove(n); }
     }
     // Spawn civilians off-screen on sidewalks
     this.spawnT -= dt;
-    const civ = this.npcs.filter(n => n.role === 'civilian' && !n.persistent).length;
+    let civ = 0; for (const n of this.npcs) if (n.role === 'civilian' && !n.persistent) civ++;
     if (this.spawnT <= 0 && civ < this.maxCivilians - this.reserve) {
       this.spawnT = 0.05;
       this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
