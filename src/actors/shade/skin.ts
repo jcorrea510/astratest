@@ -18,9 +18,16 @@ export const SKIN_PARS = /* glsl */ ``;
 export const SKIN_LIGHT_PARS = /* glsl */ `bool gSkin = false;
 float gSkinSss = 1.0;
 float gSkinShine = 1.0;
+float gSheen = 0.0; // cloth sheen strength (0 matte cotton .. 0.4 satin/suit lining); grazing-angle rim lobe, one pow
 void RE_Direct_Person( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
   if ( !gSkin ) {
     RE_Direct_Physical( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+    if ( gSheen > 0.0 ) {
+      float sNv = saturate( dot( geometryNormal, geometryViewDir ) );
+      float sNl = saturate( dot( geometryNormal, directLight.direction ) );
+      float sRim = pow( 1.0 - sNv, 3.0 );
+      reflectedLight.directSpecular += directLight.color * ( material.diffuseContribution * 0.7 + vec3( 0.1 ) ) * ( gSheen * sRim * ( 0.25 + 0.75 * sNl ) );
+    }
     return;
   }
   vec3 L = directLight.direction;
@@ -42,7 +49,7 @@ void RE_Direct_Person( const in IncidentLight directLight, const in vec3 geometr
   float aB = rB * rB;
   float lobeS = D_GGX( aS, dotNH ) * V_GGX_SmithCorrelated( aS, dotNL, dotNV );
   float lobeB = D_GGX( aB, dotNH ) * V_GGX_SmithCorrelated( aB, dotNL, dotNV );
-  float spec = F * ( 0.3 * gSkinShine * lobeS + 0.7 * lobeB );
+  float spec = F * ( 0.22 * gSkinShine * lobeS + 0.6 * lobeB ); // lower than before: less plastic sheen
   reflectedLight.directSpecular += directLight.color * dotNL * spec;
 }
 #undef RE_Direct
@@ -69,9 +76,14 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
     float skCheek = smoothstep(0.25, 0.45, abs(vHn.x)) * (1.0 - smoothstep(0.6, 0.85, abs(vHn.x))) * smoothstep(-0.45, -0.25, vHn.y) * (1.0 - smoothstep(-0.05, 0.15, vHn.y)) * smoothstep(0.35, 0.7, vHn.z);
     skFlush = skEar * 0.14 + skCheek * 0.07;
   } else if (ri == 2) skFlush = smoothstep(0.93, 1.0, vCloth) * 0.1;
+  // redness around the nose (tip and wings) and a broader, patchier cheek flush
+  if (ri == 0) {
+    float skNose = (1.0 - smoothstep(0.1, 0.3, abs(vHn.x))) * smoothstep(-0.7, -0.5, vHn.y) * (1.0 - smoothstep(-0.4, -0.22, vHn.y)) * smoothstep(0.75, 0.92, vHn.z);
+    skFlush += skNose * 0.1 * (0.6 + 0.8 * vnoise(vBind * 24.0));
+  }
   col *= vec3(1.0 + 0.5 * skFlush, 1.0 - 0.9 * skFlush, 1.0 - 1.1 * skFlush);
   // roughness: slight variation, T-zone (forehead centre, chin) shinier
-  rough = 0.58 + 0.1 * (vnoise(vBind * 14.0) - 0.5);
+  rough = 0.58 + 0.16 * (vnoise(vBind * 14.0) - 0.5) + 0.06 * (vnoise(vBind * 3.0) - 0.5); // oily and dry patches
   gSkin = true; gSkinSss = 1.0; gSkinShine = 1.0;
   if (ri == 0) {
     float skTz = (1.0 - smoothstep(0.15, 0.4, abs(vHn.x))) * smoothstep(0.2, 0.6, vHn.z) * (smoothstep(0.0, 0.2, vHn.y) * (1.0 - smoothstep(0.5, 0.8, vHn.y)) + 0.6 * smoothstep(-0.7, -0.85, vHn.y));
@@ -85,7 +97,8 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
   float skW = vnoise(vBind * vec3(160.0, 60.0, 160.0) + vec3(vnoise(vBind * 37.0) * 3.0));
   float skRidge = 1.0 - smoothstep(0.0, 0.07, abs(skW - 0.5));
   bumpH = -0.00011 * smoothstep(0.55, 0.85, skPn) * skPoreF - 0.00025 * skRidge * skFineF;
-  col *= 1.0 - 0.05 * skRidge * skFineF;
+  col *= 1.0 - 0.09 * skRidge * skFineF - 0.04 * smoothstep(0.55, 0.85, skPn) * skPoreF; // creases and pores read darker
+  rough += 0.08 * skRidge * skFineF;
   // contact shade where skin meets the neckline: soft, hides the pale fringe next to the collar
   if (ri == 1) {
     float skNd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2)) - uNeck.z;

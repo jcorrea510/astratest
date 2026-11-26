@@ -116,9 +116,11 @@ float front = smoothstep(0.1, 0.5, bn.z);
 float grain = vnoise(vBind * 420.0);
 float topId = uTop.w;
 int part = 0;
+float nEdge = 9.0; // signed distance (m) to the skin/cloth boundary at the neckline, for an anti-aliased contact seam
 if (ri == 1) {
   float nd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2));
   float vdeep = (topId > 0.5 && topId < 1.5) || (topId > 7.5 && topId < 8.5) || topId > 9.5 ? smoothstep(0.3, 0.9, bn.z) * 0.06 : 0.0;
+  nEdge = min((vCloth - (uTop.z - vdeep)) * 0.6, uNeck.z + vdeep * 0.5 - nd);
   if (vCloth > uTop.z - vdeep && nd < uNeck.z + vdeep * 0.5) part = 0;
   else if (vCloth >= uTop.y) part = 1;
   else if (vCloth < uBottom.w) part = (vCloth > uBottom.w - 0.035 && uBottom.y < 2.5) ? 8 : 3;
@@ -137,6 +139,9 @@ else if (part == 6) { col = uC[6] * (0.38 + 2.4 * lum); rough = 0.5; flatN = ri 
 else if (part == 7) { col = uC[7] * (0.9 + 0.15 * vnoise(vBind * 300.0)); rough = 0.85; }
 else if (part == 8) { col = uC[8]; rough = 0.45; }
 else if (part == 9) {${EYES_GLSL}}
+// the skin/cloth switch is a hard per-pixel cut: a soft ~2 px contact shadow along it hides the stair-stepping on low-poly collars and hoods
+float nEw = max(fwidth(nEdge), 0.0001);
+col *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 2.5 * nEw, abs(nEdge))) * step(abs(nEdge), 0.02);
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = rough;')

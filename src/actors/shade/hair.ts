@@ -36,10 +36,11 @@ void RE_Direct_Hair(const in IncidentLight directLight, const in vec3 geometryPo
   vec3 T = normalize(vHairT), H = normalize(directLight.direction + geometryViewDir);
   float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.2), H);
   float s1 = pow(max(0.0, 1.0 - d1 * d1), 110.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 14.0);
+  float d3 = dot(normalize(T + geometryNormal * 0.45), H), s3 = pow(max(0.0, 1.0 - d3 * d3), 4.0); // broad soft anisotropic sheen
   vec3 tint = material.diffuseColor / max(max(material.diffuseColor.r, material.diffuseColor.g), max(material.diffuseColor.b, 0.03));
   tint = mix(tint, vec3(1.0, 0.9, 0.8), 0.25);
   float spark = mix(0.55, 1.6, hairSpark);
-  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.1 * s1 * spark + 0.07 * s2 * tint * (0.7 + 0.6 * hairSpark));
+  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.1 * s1 * spark + 0.07 * s2 * tint * (0.7 + 0.6 * hairSpark) + 0.02 * s3 * tint);
 }
 #undef RE_Direct
 #define RE_Direct RE_Direct_Hair`)
@@ -121,12 +122,15 @@ hairSpec = mix(0.6, 1.3, r1) * mix(0.4, 1.0, ao) * (mode > 0.5 && mode < 1.5 ? 0
 hairSpec *= 1.0 - 0.6 * farK; // solid (far) layers: no crisp band where the strands would have broken the highlight up
 hairDepth = ao;
 hairSpark = mix(h21(vec2(floor(u), floor(v / 0.004)) + r1 * 13.1), 0.5, farK);
+hairSpec *= mix(0.65 + 0.7 * h21(floor(vec2(u / 18.0, v / 0.025)) + 5.5), 1.0, farK); // highlight breaks up into bands along the head, not one helmet-wide gloss
 vec3 hc = uC[6];
 float hl = dot(hc, vec3(0.299, 0.587, 0.114)), hmx = max(max(hc.r, hc.g), hc.b), hsat = (hmx - min(min(hc.r, hc.g), hc.b)) / max(hmx, 1e-3);
 hairLight = smoothstep(0.04, 0.3, hl);
 float pk = h11(r1 * 91.7 + 3.0);
 // per-strand melanin: some strands warmer (pheomelanin), some ashier; outer strand ends lightened (sun, age)
 hc *= mix(vec3(0.93, 0.98, 1.05), vec3(1.1, 1.0, 0.88), r1);
+// root-to-tip: roots darker and richer, tips lighter, plus a slow patchy variation so the head is not one flat tone
+hc *= mix(0.8, 1.08, smoothstep(0.0, 1.0, lay)) * mix(0.93, 1.07, h21(floor(vec2(u / 14.0, v / 0.03))));
 hc = mix(hc, hc * vec3(1.3, 1.12, 0.9), smoothstep(0.55, 1.0, lay) * step(0.5, pk) * 0.6 * (1.0 - farK));
 // grey hair (low saturation, not dark): a mix of white and darker strands
 float greyK = (1.0 - smoothstep(0.08, 0.3, hsat)) * smoothstep(0.1, 0.22, hl);

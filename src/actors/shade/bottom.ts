@@ -165,6 +165,7 @@ export const BOTTOM_GLSL = /* glsl */ `  col = uC[3];
   col = mix(col, vec3(0.42, 0.2, 0.09), rv);
   rough = clamp(ro - 0.1 * wear + 0.08 * dirt - 0.12 * crease, 0.2, 1.0);
   rough = mix(rough, 0.38, rv);
+  gSheen = uBottom.y < 0.5 ? 0.04 : uBottom.y < 1.5 ? 0.24 : uBottom.y < 2.5 ? 0.2 : uBottom.y < 3.5 ? 0.2 : 0.06; // denim twill barely, wool trousers and skirts more
 `;
 
 export const SHOE_GLSL = /* glsl */ `  col = uC[4];
