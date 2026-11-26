@@ -42,7 +42,7 @@ describe('police siren and light bar', () => {
     press('lightBar'); expect(v.barOn).toBe(false);
     const civ = new Vehicle(phys, 'sedan', null, 30, 1, 0, 0);
     mgr.sirenKeys(civ, () => true); expect(civ.sirenOn).toBe(false);
-  });
+  }, 30_000); // builds two full vehicle models: ~2 s alone, past the 5 s default on a loaded CI box
   it('strobe alternates red then blue in bursts of three', () => {
     let reds = 0, blues = 0, both = 0;
     for (let t = 0; t < 2; t += 1 / 90) { const [r, b] = barStrobe(t); reds += r; blues += b; if (r && b) both++; }

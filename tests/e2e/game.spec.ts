@@ -28,7 +28,7 @@ test('title: live city flyover, press any key, menu, credits, Play starts the sa
   await page.keyboard.press('Escape');
   await expect(page.getByText('Open assets (CC0)')).toBeHidden();
   await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByRole('button', { name: 'Sandbox' }).click({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Free Roam' }).click({ timeout: 120_000 });
   await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
   await page.evaluate(() => (window as any).__game.stop());
   await step(page, 1, { render: true });
@@ -133,7 +133,7 @@ test('WASTED: slow motion, grey, card, hospital bill, respawn at the clinic; ARR
   await step(page, 0.5);
   expect(await state<number>(page, 'window.__game.targetTimeScale')).toBeLessThan(0.5);
   await step(page, 1.2, { render: true });
-  await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
+  await expect(page.locator('.ma-death-word')).toHaveText('Flatlined');
   await expect(page.locator('.ma-death.is-card')).toBeVisible();
   expect(await state<number>(page, 'window.__game.renderer.grade.uniforms.uSat.value')).toBeLessThan(0.3);
   expect(await state<number>(page, 'window.__game.money')).toBe(1000); // sandbox: patched up, no charge (modes.ts medicalBill; the regular-mode bill is unit tested)

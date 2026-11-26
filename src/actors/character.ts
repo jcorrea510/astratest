@@ -5,6 +5,8 @@ import { RAPIER, type Physics, G_STATIC, G_VEHICLE, G_CHAR, groups } from '../co
 import { Human, type HumanTemplate, type Look } from './human';
 import { damp, dampAngle, wrapAngle } from '../core/rng';
 import { WATER_LEVEL } from '../world/citymap';
+import { sweepNow, sweepSubsteps } from './sweepLod';
+let sweepIds = 0;
 
 export type Team = 'player' | 'civilian' | 'gang' | 'police';
 /** Melee move kinds: the fist combo (jab, cross, hook) and weapon swings. */
@@ -110,18 +112,41 @@ export class Character {
       if (this.grounded) { this.vel.y = jump ? 6.4 : -2; }
       else this.vel.y = Math.max(-30, this.vel.y - 20 * dt);
     }
+    // Round 12 perf (sweep LOD): far / off-screen fighters sweep every 2nd-4th call with the accumulated dt, split so no sub-sweep
+    // travels more than a fraction of the capsule radius (no tunnelling). Velocity above is still updated every call.
+    this.swept = true;
+    if (this.sweepEvery > 1 && this.grounded && !this.swimming && this.vel.y <= 0) {
+      this.sweepAcc += dt;
+      if (!sweepNow(++this.sweepTick, this.sweepId, this.sweepEvery)) { this.swept = false; return; }
+      const step = Math.min(this.sweepAcc, 0.25); this.sweepAcc = 0;
+      const n = sweepSubsteps(step, Math.hypot(this.vel.x, this.vel.z), 1.2);
+      for (let i = 0; i < n; i++) this.sweep(step / n);
+      return;
+    }
+    this.sweepAcc = 0;
     this.sweep(dt);
   }
+  /** Sweep LOD (set by the NPC brain each tick): frames between sweeps, and the dt waiting for the next one. */
+  sweepEvery = 1; sweepAcc = 0; private sweepTick = 0; private sweepId = sweepIds++;
+  /** false when the last move() call only updated velocity (its sweep is batched into a later call) */
+  swept = true;
   /**
    * Moves by the current velocity as set by the caller (who owns acceleration, gravity and jumping; used by the player).
    * Collision, ground detection and blocked-velocity correction are the same as move().
    */
   integrate(dt: number) {
     if (!this.physicsEnabled) return;
-    this.swimming = false;
+    this.swimming = false; this.swept = true; this.sweepAcc = 0;
     this.sweep(dt);
   }
+  /** consecutive sweeps that went nowhere (standing still on the ground) */
+  private restSweeps = 0; private restSkip = 0;
   private sweep(dt: number) {
+    // Round 12 perf: someone standing still on the ground (the player waiting, queueing / talking pedestrians) re-checks the
+    // ground only every 4th step; any movement, jump or knock puts them back on the every-step path at once
+    if (this.restSweeps >= 3 && this.grounded && this.vel.x * this.vel.x + this.vel.z * this.vel.z < 1e-6 && this.vel.y <= 0 && (++this.restSkip & 3) !== 0) return;
+    // Round 12 perf (sweep LOD): an NPC pinned against the player / a wall / a crowd (3+ sweeps that went nowhere) tries again every 4th step only
+    if (this.restSweeps >= 3 && this.grounded && !this.isPlayer && this.vel.y <= 0 && (++this.restSkip & 3) !== 0) return;
     const vyBefore = this.vel.y;
     const delta = { x: this.vel.x * dt, y: this.vel.y * dt, z: this.vel.z * dt };
     // Step up curbs and low steps before the round capsule bottom starts riding up the edge (which stalls a run):
@@ -184,6 +209,7 @@ export class Character {
     if (!this.grounded && this.vel.y > 0 && m.y < delta.y - 0.001) this.vel.y = 0; // bonk
     // Visual smoothing of instant height changes while walking (steps up and down).
     if (wasGrounded && this.grounded && Math.abs(m.y) > 0.04 && Math.abs(m.y) < 0.6) this.stepOffset = Math.max(-0.5, Math.min(0.5, this.stepOffset - m.y));
+    this.restSweeps = this.grounded && m.x * m.x + m.z * m.z < 1e-8 && Math.abs(m.y) < 1e-3 ? this.restSweeps + 1 : 0;
     this.pos.x += m.x; this.pos.y += m.y; this.pos.z += m.z;
     // horizontal velocity follows actual movement so blocked characters do not run on the spot
     if (dt > 0) { const ax = m.x / dt, az = m.z / dt; if (Math.hypot(ax, az) < Math.hypot(this.vel.x, this.vel.z) - 0.5) { this.vel.x = damp(this.vel.x, ax, 20, dt); this.vel.z = damp(this.vel.z, az, 20, dt); } }
@@ -221,14 +247,16 @@ export class Character {
   }
   /** Teleports the body (no collision). */
   place(x: number, y: number, z: number, yaw?: number) {
-    this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0;
+    if (this.disposed) return; // a freed Rapier body traps on any call (an arrest scene outliving its officer)
+    this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.stepOffset = 0; this.restSweeps = 0;
     this.body.setTranslation({ x, y: y + CENTER, z }, true); this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
     if (yaw !== undefined) this.yaw = yaw;
     this.human.root.position.copy(this.pos); this.human.root.rotation.y = this.yaw;
   }
   /** Moves the body to a point without collision or resetting velocity (scripted motion such as a ledge climb). */
   setPosition(x: number, y: number, z: number) {
-    this.pos.set(x, y, z);
+    if (this.disposed) return;
+    this.pos.set(x, y, z); this.restSweeps = 0;
     this.body.setNextKinematicTranslation({ x, y: y + CENTER, z });
   }
   /**

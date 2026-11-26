@@ -28,7 +28,7 @@ describe('dispatch origins', () => {
   });
 });
 
-import { HELI_MIN_DIST, REINFORCE_MIN } from './dispatch';
+import { HELI_MIN_DIST, REINFORCE_MIN, reinforceHidden, heliSpawnY } from './dispatch';
 import { HeatState } from './police';
 describe('police helicopter arrival', () => {
   it('enters far from the player, never inside the camera view, heading in from the precinct side', () => {
@@ -42,8 +42,33 @@ describe('police helicopter arrival', () => {
       expect(f.containsPoint(sp)).toBe(false);
     }
   });
+  it('a convoy gate 1 km away may sit inside the camera frustum (beyond the draw distance): it is still hidden, so the army really starts at Fort Calder', () => {
+    expect(reinforceHidden(1100, 1100, true)).toBe(true);
+    expect(reinforceHidden(300, 300, true)).toBe(false); // on screen at street range
+    expect(reinforceHidden(300, 300, false)).toBe(true);
+    expect(reinforceHidden(60, 60, false)).toBe(false); // too near
+  });
+  it('enters above any tower under its spawn point (it was wrecked inside a 130 m block on the first step and respawned every frame)', () => {
+    expect(heliSpawnY(56, [0, 0, 0, 0, 0])).toBe(56); // open ground: the default altitude
+    expect(heliSpawnY(56, [20, 137, 90, 0, 40])).toBe(137 + 14); // clears the tallest rooftop under the rotor disc
+    expect(heliSpawnY(56, [])).toBe(56);
+  });
   it('reinforcements keep a minimum distance bigger than the street view', () => { expect(REINFORCE_MIN).toBeGreaterThanOrEqual(120); });
 });
 describe('brandishing a gun at an officer', () => {
   it('is worth two stars straight away', () => { const h = new HeatState(); h.add('brandish'); expect(h.heat).toBe(2); });
+});
+
+describe('arrest scene with a dead officer (CI: dead officers kept forever)', () => {
+  it('ends the scene and releases the officer instead of keeping the corpse persistent', () => {
+    const stops: string[] = [];
+    const cop = { alive: false, persistent: true, brain: 'arrest', char: { isDisposed: false, human: { stopAction: (n: string) => stops.push(n) } } };
+    const d = Object.create(Dispatch.prototype) as Dispatch;
+    Object.assign(d, { arrest: { cop, t: 1, tase: false, pre: 2, yaw: 0, base: new THREE.Vector3() }, pendingArrest: null, dragT: 0 });
+    const player = { health: 10, maxHealth: 100 } as never;
+    d.updateArrest(1 / 30, player);
+    expect(d.arrest).toBeNull();
+    expect(cop.persistent).toBe(false);
+    expect((player as { health: number }).health).toBe(10); // the dead officer's scene no longer touches the suspect
+  });
 });

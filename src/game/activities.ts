@@ -219,7 +219,7 @@ export class Activities {
       repair: { price: rep, enabled: rep > 0 && g.money >= rep, note: !rep ? 'Nothing to fix.' : g.money < rep ? need(rep) : 'Engine, body panels, glass and lights back to new.' },
       paints: GARAGE_PAINTS.map(([hex, name]) => ({ hex, name })), paintPrice: RESPRAY,
       paintEnabled: !seen && g.money >= RESPRAY,
-      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New colour, and the heat is off.' : 'Hover a colour to see it on the car.',
+      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New color, and the heat is off.' : 'Hover a color to see it on the car.',
       sell: { price: q.price, ok: q.ok, note: q.reason },
     };
   }
@@ -329,7 +329,7 @@ export class Activities {
       else if (!this.robberies.robbing && this.guns.facing(p, g.player.yaw)) { const f = this.guns.facing(p, g.player.yaw)!; this.shopOpen = 'arms'; this.buy(`${f.ammo ? 'a' : 'w'}:${f.id}:${WEAPONS[f.id].icon}`); this.shopOpen = null; }
       else if (this.snackMk.inside(p, 2.5)) this.openShop('snack');
       else if (this.dealerMk.inside(p, 2.5)) this.openShop('dealer');
-      else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Sandbox games are not saved.)', 'info'); g.audio.play('uiClick'); }
+      else if (this.safeMk.inside(p, 2.5)) { const saved = this.onSaveRequested?.() ?? false; g.player.health = g.player.maxHealth; this.ui.toast(saved ? 'Game saved. Rested to full health.' : 'Rested to full health. (Free Roam games are not saved.)', 'info'); g.audio.play('uiClick'); }
       else if (!this.robberies.robbing && !this.missionActive()) g.taxi?.interact(); // hail a cab
     }
     // Garage halls: stop inside and the visit starts (door, camera, pause: see garageBay.ts)

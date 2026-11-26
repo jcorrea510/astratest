@@ -1,6 +1,7 @@
 /** NPC brains: civilians wander and react, gang members and police fight intelligently. */
 import { type Bench, nearestFreeBench } from '../world/benches';
 import { holdOnHuman } from '../combat/gunRig';
+import { sweepEvery } from './sweepLod';
 import * as THREE from 'three';
 import { Character } from './character';
 import type { HumanTemplate, Look } from './human';
@@ -20,6 +21,8 @@ export type OrderKind = '' | 'kneel' | 'hands' | 'come' | 'car' | 'board';
 
 /** Street-life activities of civilians (stand still doing something, walk to a shop, board a cab). */
 export type Activity = '' | 'phone' | 'smoke' | 'window' | 'film' | 'hail' | 'wait' | 'shop' | 'taxi' | 'sit' | 'sitting' | 'board' | 'queue';
+/** A rider walking to a bus / taxi door: that door is on the carriageway, so the kerb guard must let them step onto it. */
+export function walksToVehicle(n: { activity: Activity; destPt: unknown }): boolean { return !!n.destPt && (n.activity === 'board' || n.activity === 'taxi'); }
 const ACT_ANIM: Partial<Record<Activity, string>> = { phone: 'phone', smoke: 'smoke', film: 'film', hail: 'hail', wait: 'talk', sitting: 'sit', queue: 'phone' };
 /** Seated pose: how far behind the bench centre the hips sit, and the root height offset above the seat (tuned against the Sitting_Idle_Loop clip). */
 const SIT_BACK = 0.12, SIT_DY = 0.02;
@@ -54,7 +57,11 @@ export class Npc {
   /** seconds an officer keeps firing from the cover point they were ordered to (no flanking/strafing) */
   holdCoverT = 0;
   far = false;
-  animAcc = 0;
+  animAcc = Math.random() * 0.016; // random phase: people on the 30 Hz skeleton rate do not all land on the same frames
+  /** Round 12 animation LOD: on screen last frame, frames since the last gun-hold solve, and the body position at that solve */
+  inView = true; holdWasInView = true; /** the skeleton was re-posed this frame (set by Population.update) */ posed = true; holdPos = new THREE.Vector3(); holdValid = false;
+  /** Makes the next updateModel solve the gun hold immediately (hit tests that need current arm bones call this, then updateModel). */
+  forcePose() { this.holdValid = false; }
   /** dt accumulated while this fighter's AI tick was skipped (distance LOD) */
   accDt = 0;
   arrestT = 0;
@@ -106,6 +113,7 @@ export interface NpcEnv {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+const _qGunFix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3(), tvS = new THREE.Vector3();
 export class NpcBrainRunner {
   private rng = new Rng(99);
@@ -373,20 +381,44 @@ export class NpcBrainRunner {
     } else n.mspeed = speed;
     // Movement with simple stuck recovery
     if (speed > 0) {
-      if (n.sideT > 0) { n.sideT -= dt; const s = n.sideDir; desired.set(desired.x * 0.3 - desired.z * s, 0, desired.z * 0.3 + desired.x * s).normalize(); }
+      if (n.sideT > 0) {
+        n.sideT -= dt;
+        // A walker on the footpath never side-steps (stuck recovery) onto the carriageway: use the other side, else just wait it out
+        if (n.brain === 'wander' && !n.onCross && !n.pend?.crossing && !walksToVehicle(n)) {
+          const d0 = desired, k = 1.3, px = c.pos.x, pz = c.pos.z, city = this.env.city;
+          if (surfaceAt(city, px - d0.z * n.sideDir * k, pz + d0.x * n.sideDir * k) === 'road' && surfaceAt(city, px, pz) !== 'road') {
+            n.sideDir = -n.sideDir;
+            if (surfaceAt(city, px - d0.z * n.sideDir * k, pz + d0.x * n.sideDir * k) === 'road') n.sideT = 0;
+          }
+        }
+        if (n.sideT > 0) { const s = n.sideDir; desired.set(desired.x * 0.3 - desired.z * s, 0, desired.z * 0.3 + desired.x * s).normalize(); }
+      }
       tv.copy(desired).multiplyScalar(speed);
     } else tv.set(0, 0, 0);
     if (n.far) { // cheap movement without collision when far from the player
       c.pos.addScaledVector(tv, dt); c.vel.copy(tv);
       { const nd = n.nextNode >= 0 ? this.env.city.pedNodes[n.nextNode] : undefined; if (nd && (nd.y !== undefined || c.pos.y > 0.6)) { const ty = (nd.y ?? 0) + 0.2; c.pos.y += THREE.MathUtils.clamp(ty - c.pos.y, -dt * 1.2, dt * 1.2); } } // bridge walkways: follow the deck height
       c.body.setNextKinematicTranslation({ x: c.pos.x, y: c.pos.y + 0.87, z: c.pos.z });
-    } else c.move(tv, dt, false);
-    if (speed > 0) {
+    } else {
+      // Round 12 perf: officers / gang members far away or off screen batch their collision sweep (src/actors/sweepLod.ts)
+      c.sweepEvery = n.role !== 'civilian' && c.knockT <= 0 && c.downT <= 0 ? sweepEvery(c.pos.distanceToSquared(env.player.pos), n.inView) : 1;
+      c.move(tv, dt, false);
+    }
+    // Kerbs are not colliders: a calm walker shoved sideways (a jostling group, a stuck side-step, a buddy offset) must never end up
+    // on the carriageway away from a crossing. Undo the step and re-anchor onto the footpath graph from there.
+    if (n.brain === 'wander' && n.role === 'civilian' && !n.far && !n.onCross && !n.pend?.crossing && !walksToVehicle(n) && c.grounded) {
+      const ddx = c.pos.x - n.lastPos.x, ddz = c.pos.z - n.lastPos.z, still = ddx * ddx + ddz * ddz <= 1e-6;
+      if ((!still || n.stuckT > 0.3) && this.onRoad(c.pos.x, c.pos.z, 0.05)) {
+        if (!still && !this.onRoad(n.lastPos.x, n.lastPos.z, 0.05)) { c.setPosition(n.lastPos.x, c.pos.y, n.lastPos.z); c.vel.x = 0; c.vel.z = 0; n.sideT = 0; n.pend = null; n.node = -1; n.nextNode = -1; }
+        else if (still) { n.sideT = 0; n.pend = null; n.node = -1; n.nextNode = -1; n.stuckT = 0; } // stuck in the road: head for the nearest kerb
+      }
+    }
+    if (speed > 0 && c.swept) {
       const moved = c.pos.distanceTo(n.lastPos);
       if (moved < speed * dt * 0.25) { n.stuckT += dt; if (n.stuckT > 0.6) { n.stuckT = 0; n.sideT = 0.8; n.sideDir = Math.random() < 0.5 ? 1 : -1; if (n.brain === 'combat') n.goal = null; } }
       else n.stuckT = Math.max(0, n.stuckT - dt);
     }
-    n.lastPos.copy(c.pos);
+    if (c.swept) n.lastPos.copy(c.pos);
     const yaw = faceYaw ?? (speed > 0.2 && c.speed > 0.3 ? Math.atan2(c.vel.x, c.vel.z) : null);
     if (yaw !== null) c.faceTowards(yaw, aiming ? 10 : 7, dt);
     c.twist = 0;
@@ -480,11 +512,21 @@ export class NpcBrainRunner {
       const fighting = n.brain === 'combat' && !!tgt;
       if (fighting) tvA.set(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z);
       c.human.trigger = fighting && n.cooldown > 0 ? 1 : 0;
+      // Round 12 perf: the two-hand IK is the costliest per-person pose work. It only has to run when the skeleton was just
+      // re-posed (the mixer overwrote the arms): the animation rate policy (src/actors/animLod.ts) already thins that by distance and
+      // visibility. On a frame the skeleton kept its last pose (arms still solved), the gun is just carried along with the body.
+      if (n.inView && !n.holdWasInView) n.holdValid = false; // just came on screen: re-solve the grip now
+      n.holdWasInView = n.inView;
+      if (n.holdValid && !n.posed) {
+        n.model.position.x += c.pos.x - n.holdPos.x; n.model.position.y += c.pos.y - n.holdPos.y; n.model.position.z += c.pos.z - n.holdPos.z;
+        n.holdPos.copy(c.pos); n.model.updateMatrixWorld(true); return;
+      }
+      n.holdPos.copy(c.pos); n.holdValid = true;
       if (holdOnHuman(c.human, n.model, c.yaw, fighting ? tvA : null, fighting ? 1 : 0)) return;
     }
     c.human.rightHand.getWorldPosition(n.model.position);
     if (n.brain === 'combat' && tgt) { n.model.lookAt(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z); }
-    else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)); }
+    else { c.human.rightHand.getWorldQuaternion(n.model.quaternion); n.model.quaternion.multiply(_qGunFix); }
     n.model.updateMatrixWorld(true);
   }
   /** Starts a standing activity (phone, smoke, filming...). */
@@ -519,10 +561,10 @@ export class NpcBrainRunner {
     n.char.place(p.x, n.pos.y, p.z, n.destYaw); n.char.setCollision(true);
     n.activity = ''; n.actOn = false; n.destPt = null; n.brain = 'wander'; n.node = -1; n.stateT = 0;
   }
-  private onRoad(x: number, z: number): boolean {
+  private onRoad(x: number, z: number, margin = 0.3): boolean {
     for (const r of this.env.city.roads) {
       const along = r.axis === 'x' ? x : z, across = Math.abs((r.axis === 'x' ? z : x) - r.coord);
-      if (across < r.half + 0.3 && along > r.from && along < r.to) return true;
+      if (across < r.half + margin && along > r.from && along < r.to) return true;
     }
     return false;
   }
@@ -599,6 +641,11 @@ export class NpcBrainRunner {
     const off = keepRight(n.laneOffset), ox = (-ez / el) * off, oz = (ex / el) * off; // Round 8: everyone keeps to their right, so the two directions pass
     tv.set(target.x + ox - n.pos.x, 0, target.z + oz - n.pos.z);
     const d = tv.length();
+    // Re-anchored while standing in the carriageway (dodged a car, shoved, handed over from the far crowd): the nearest corner
+    // node can be 30 m off, and a crossing picked from here walked a diagonal through the traffic to it. Step up onto the
+    // nearest kerb first (and a step past it, not along the gutter); the walk to the node then follows the footpath. (Within 3 m
+    // of the node is the kerb queue for a crossing, left alone.)
+    if (n.node === n.nextNode && d > 3 && !n.onCross && kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z)) return 1.35;
     if (d < 0.9 || (n.node === n.nextNode)) {
       const arrived = n.node !== n.nextNode;
       n.node = n.nextNode; n.onCross = false;
@@ -617,8 +664,11 @@ export class NpcBrainRunner {
         // wait at the kerb on the right-hand half of the crosswalk (not all on one spot, walking into the people coming over)
         const wo = keepRight(n.laneOffset) / L, wx = -(there.z - here.z) * wo, wz = (there.x - here.x) * wo;
         tv.set(here.x + (there.x - here.x) * k + wx - n.pos.x, 0, here.z + (there.z - here.z) * k + wz - n.pos.z);
-        if (tv.length() > 0.35) { dir.copy(tv.normalize()); return 1.3; } // step up to the kerb first
-        if (pedSignal(inter, e.crossing.axis, this.env.time()) !== 'walk') { n.waitT += dt; n.idleFace = Math.atan2(there.x - here.x, there.z - here.z); this.faceIdle(n, dt); return 0; }
+        // step up to the kerb first. A crowded kerb (several people sharing the one waiting spot) never lets everyone get within 0.35 m
+        // of it, so being at the kerb (within 1.6 m) and bumped into someone, or the sign already showing WALK, counts as arrived
+        const dk = tv.length(), sig = pedSignal(inter, e.crossing.axis, this.env.time());
+        if (dk > 0.35 && !(dk < 1.6 && (sig === 'walk' || n.stuckT > 0.15))) { dir.copy(tv.normalize()); return 1.3; }
+        if (sig !== 'walk') { n.waitT += dt; n.idleFace = Math.atan2(there.x - here.x, there.z - here.z); this.faceIdle(n, dt); return 0; }
       }
       n.pend = null; n.waitT = 0; n.nextNode = e.to; n.onCross = !!e.crossing;
       return 0;
@@ -629,6 +679,9 @@ export class NpcBrainRunner {
     if (from !== target && !n.onCross) {
       const ax = from.x + ox, az = from.z + oz, ux = ex / el, uz = ez / el;
       const along = (n.pos.x - ax) * ux + (n.pos.z - az) * uz, lat = (n.pos.x - ax) * -uz + (n.pos.z - az) * ux;
+      // off the path line in the carriageway mid-block (shoved off the kerb): back up onto the footpath first. (On the line is
+      // fine: a few links, like the bridge approach over Harbor Way, run across a road without a signalled crossing.)
+      if (Math.abs(lat) > 0.6 && kerbEscape(city.roads, n.pos.x, n.pos.z, dir, target.x, target.z, 0)) return 1.35;
       if (Math.abs(lat) > 6 || along < -4 || along > el + 4) { n.node = -1; n.nextNode = -1; n.pend = null; return 0.6; } // lost the path: re-anchor from here (nearest kerb / own block)
       if (Math.abs(lat) > 0.6 && along > 0 && along < el) {
         const ahead = Math.min(el, along + 2.5); tv.set(ax + ux * ahead - n.pos.x, 0, az + uz * ahead - n.pos.z); dir.copy(tv.normalize());
@@ -699,6 +752,25 @@ export class NpcBrainRunner {
 export function npcFireTiming(police: boolean, auto: boolean, interval: number, burstLeft: number, r: number): { burst: number; between: number; pause: number } {
   if (police) return { burst: burstLeft > 0 ? burstLeft : auto ? 4 + Math.floor(r * 4) : 2 + Math.floor(r * 3), between: Math.max(interval * 1.3, auto ? 0.09 : 0.24), pause: 0.35 + r * 0.5 };
   return { burst: burstLeft > 0 ? burstLeft : auto ? 3 + Math.floor(r * 4) : 1, between: interval * 1.4, pause: interval + 0.8 + r * 1.2 };
+}
+
+/**
+ * Round 12: a walker in a mid-block carriageway (or within `margin` m of its kerb) gets `dir` set towards its nearer kerb (leaning towards the
+ * target point tx, tz along the road), and true. Off the road (or inside a junction, which the road segments leave out) it returns false. Pure (tests).
+ */
+export function kerbEscape(roads: readonly { axis: 'x' | 'z'; coord: number; half: number; from: number; to: number }[], x: number, z: number, dir: { x: number; z: number }, tx = x, tz = z, margin = 0.3): boolean {
+  for (const r of roads) {
+    const along = r.axis === 'x' ? x : z, off = (r.axis === 'x' ? z : x) - r.coord;
+    if (Math.abs(off) >= r.half + margin || along <= r.from || along >= r.to) continue;
+    // square to the kerb, leaning 40 degrees towards where they are headed: against a row of parked cars they slide along it to a gap
+    // (within 1.5 m of the kerb: straight at it, since a walker meeting the kerb face at an angle slides along the gutter
+    // instead of stepping up)
+    const s = off >= 0 ? 1 : -1, ta = (r.axis === 'x' ? tx : tz) - along, a = Math.abs(ta) > 1 && Math.abs(off) < r.half - 1.5 ? Math.sign(ta) * 0.84 : 0;
+    const k = 1 / Math.hypot(1, a);
+    if (r.axis === 'x') { dir.x = a * k; dir.z = s * k; } else { dir.x = s * k; dir.z = a * k; }
+    return true;
+  }
+  return false;
 }
 
 /** Round 8: sideways place on a footpath / crosswalk for a walker (negative = right of the walking direction): always on

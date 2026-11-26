@@ -4,10 +4,12 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { runtime, speedBlurAmount, frameDue } from '../core/runtime';
 import { QUALITY, type QualityName, type QualityPreset } from '../core/settings';
 import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
 import { LightPool } from './lightPool';
+import { AOPass, FXAA_GLSL, WHITE_TEX } from './post';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
@@ -25,7 +27,7 @@ const GradeShader = {
       col *= mix(vec3(1.0), mix(shadowTint, highTint, smoothstep(0.15, 0.75, l)), uSplit);
       // gentle S-curve and saturation
       col = mix(vec3(l), col, uSat);
-      col = col * (1.0 + 0.08 * (col - 0.5));
+      col = mix(col, col * col * (3.0 - 2.0 * col), 0.32); // filmic S-curve on the display-referred image (AgX is flat by design)
       // slow-motion desaturation for the inventory wheel
       col = mix(col, vec3(dot(col, vec3(0.299,0.587,0.114))) * vec3(0.9,1.0,1.05), uSlow * 0.55);
       vec2 d = vUv - 0.5;
@@ -44,20 +46,35 @@ const GradeShader = {
  */
 const OUTPUT_GRADE_FRAG = `
   precision highp float;
-  uniform sampler2D tDiffuse; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit; uniform vec3 uFlashColor; varying vec2 vUv;
+  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
+  ${FXAA_GLSL}
   ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
-      c.rgb = ACESFilmicToneMapping(c.rgb);
+      if (uFxaa > 0.5) c.rgb = fxaa(vUv, c.rgb);
+      // Round 12: speed blur at high speed, radial from just above the centre (5 taps, skipped when still)
+      if (uSpeed > 0.01) {
+        vec2 rd = (vUv - vec2(0.5, 0.55)) * uSpeed * 0.035 * smoothstep(0.12, 0.6, length(vUv - vec2(0.5, 0.55)));
+        vec3 acc = c.rgb;
+        for (int i = 1; i <= 4; i++) acc += texture2D(tDiffuse, vUv - rd * float(i)).rgb;
+        c.rgb = acc / 5.0;
+      }
+      // Round 12: ambient occlusion (half-res, blurred) darkens creases and contact areas before tone mapping
+      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
+      if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
+      c.rgb = TONE_MAP(c.rgb);
       c = sRGBTransferOETF(c);`)}`;
+/** Round 12: the tone curve (three's GLSL function name). AgX rolls highlights off like film: headlights and lamps keep their colour instead of clipping to flat white. */
+export const TONE_MAP_FN = 'AgXToneMapping';
 export class OutputGradePass extends Pass {
   uniforms: Record<string, THREE.IUniform>;
   private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
   constructor() {
     super();
-    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 } }]);
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
+    this.uniforms.tAO = { value: WHITE_TEX };
     this.material = new THREE.RawShaderMaterial({
-      name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', ACES_FILMIC_TONE_MAPPING: '' },
+      name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', TONE_MAP: TONE_MAP_FN },
       vertexShader: `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix; attribute vec3 position; attribute vec2 uv; varying vec2 vUv;
         void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: OUTPUT_GRADE_FRAG,
@@ -66,6 +83,7 @@ export class OutputGradePass extends Pass {
   }
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
     this.uniforms.tDiffuse.value = readBuffer.texture;
+    (this.uniforms.uRes.value as THREE.Vector2).set(1 / Math.max(1, readBuffer.width), 1 / Math.max(1, readBuffer.height));
     this.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
@@ -75,7 +93,7 @@ export class OutputGradePass extends Pass {
 
 /** Grade parameters per look; exposed so tests can assert the default is neutral. */
 export const LOOK = {
-  natural: { sat: 0.95, split: 0.2, vignette: 0.14, nightExposure: 0.84, shadowDesat: 0.35 },
+  natural: { sat: 1.1, split: 0.2, vignette: 0.16, nightExposure: 0.84, shadowDesat: 0.35 },
   stylised: { sat: 1.08, split: 1, vignette: 0.32, nightExposure: 1, shadowDesat: 0 },
 };
 
@@ -107,6 +125,14 @@ export function viewportSize(): { w: number; h: number; full: boolean } {
   }
   return { w, h, full: standalone };
 }
+/** Composer target options. Round 12: Low (no AO) must leave depthTexture out entirely: r182's RenderTarget setter
+ *  dereferences an explicit `undefined` and the game never finished loading on Low. */
+export function composerTargetOptions(w: number, h: number, samples: number, ao: boolean): THREE.RenderTargetOptions {
+  const o: THREE.RenderTargetOptions = { type: THREE.HalfFloatType, samples };
+  if (ao) o.depthTexture = new THREE.DepthTexture(w, h, THREE.FloatType);
+  return o;
+}
+
 export class Renderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -117,6 +143,7 @@ export class Renderer {
   skyState: SkyState = sampleSky(18);
   composer!: EffectComposer;
   bloom!: UnrealBloomPass;
+  ao: AOPass | null = null;
   grade!: OutputGradePass;
   quality!: QualityPreset;
   qualityName: QualityName = 'medium';
@@ -147,12 +174,13 @@ export class Renderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // Round 12: r182 dropped PCFSoft (it fell back to hard 1-texel PCF: stair-stepped, dithered edges)
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.15, 1600);
     this.scene.fog = new THREE.Fog(0x88aabb, 120, 420);
     this.hemi = new THREE.HemisphereLight(0xa7d3ee, 0x7a6656, 0.9);
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
+    this.sun.shadow.radius = 2.6; // Vogel-disk PCF footprint in texels: a soft ~12 cm penumbra on Medium instead of pixel stairs
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
     skipHiddenMatrices(this.scene);
     this.lightPool = new LightPool(this.scene); this.scene.userData.lightPool = this.lightPool;
@@ -192,7 +220,7 @@ export class Renderer {
   private applyPixelRatio() { this.renderer.setPixelRatio(this.effectivePixelRatio()); }
   /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames are fine. */
   effectivePixelRatio() {
-    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio), r = cap * this.dyn.scale;
+    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio) * runtime.resolutionScale, r = cap * this.dyn.scale;
     return this.dyn.floor ? Math.max(r, Math.min(1, cap)) : r;
   }
   /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
@@ -211,13 +239,21 @@ export class Renderer {
   private buildComposer() {
     this.composer?.dispose();
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: safeMsaa(this.quality.msaa) });
+    const w = Math.max(1, size.x), h = Math.max(1, size.y);
+    const ao = this.quality.ao > 0;
+    // Round 12: the frame keeps its depth as a texture so the AO pass can read it
+    const rt = new THREE.WebGLRenderTarget(w, h, composerTargetOptions(w, h, safeMsaa(this.quality.msaa), ao));
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.ao?.dispose(); this.ao = null;
+    if (ao) { this.ao = new AOPass(this.camera, { samples: this.quality.ao }); this.composer.addPass(this.ao); }
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
     this.grade = new OutputGradePass();
+    this.grade.uniforms.uFxaa.value = safeMsaa(this.quality.msaa) > 0 ? 0 : 1; // FXAA wherever MSAA is off
+    this.grade.uniforms.uAO.value = this.ao ? 1 : 0;
+    this.grade.uniforms.tAO.value = this.ao ? this.ao.texture : WHITE_TEX;
     this.composer.addPass(this.grade);
   }
   resize() {
@@ -269,13 +305,22 @@ export class Renderer {
   lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
   private frameNo = 0;
+  private lastDrawn = 0; private appliedRes = 1;
+  /** Frame-rate cap from Settings (0 = off): true when it is time to draw the next frame. */
+  frameDue(now = performance.now()): boolean { return frameDue(now, this.lastDrawn, runtime.fpsCap); }
   render() {
-    this.adapt(performance.now());
+    const t0 = performance.now();
+    if (!this.frameDue(t0)) return;
+    this.lastDrawn = t0;
+    if (this.appliedRes !== runtime.resolutionScale) { this.appliedRes = runtime.resolutionScale; this.applyPixelRatio(); this.resize(); }
+    if (runtime.fpsCap > 0) this.lastRender = t0; // a capped frame time is not load: the adaptive resolution stays put
+    else this.adapt(t0);
     // Round 11 perf: on Medium the sun's shadow map (half a million triangles) is redrawn every other frame
     this.renderer.shadowMap.autoUpdate = false;
     if (this.quality.shadowMap > 0 && this.frameNo++ % Math.max(1, this.quality.shadowEvery) === 0) this.renderer.shadowMap.needsUpdate = true;
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
+    this.grade.uniforms.uSpeed.value = speedBlurAmount((this.camera.userData.speedFx as number | undefined) ?? 0);
     this.composer.render();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }

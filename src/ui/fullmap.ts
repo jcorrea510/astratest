@@ -374,7 +374,7 @@ export class FullMap {
       if (this.layer.width !== lw || this.layer.height !== lh) { this.layer.width = lw; this.layer.height = lh; }
       const lc = this.layer.getContext('2d')!;
       lc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      lc.fillStyle = '#071f2b'; lc.fillRect(0, 0, W, H);
+      lc.fillStyle = '#06111a'; lc.fillRect(0, 0, W, H);
       lc.save();
       lc.translate(W / 2, H / 2); lc.scale(1, pitch); lc.rotate(tilt); lc.scale(v.scale, v.scale); lc.translate(-v.cx, -v.cz);
       this.painter.paintGround(lc, v.scale);
@@ -390,7 +390,7 @@ export class FullMap {
       if (fastLayer && rotating) this.dirty = true;
     }
     const L = this.layerView;
-    ctx.fillStyle = '#071f2b'; ctx.fillRect(0, 0, v.w, v.h);
+    ctx.fillStyle = '#06111a'; ctx.fillRect(0, 0, v.w, v.h);
     if (L) {
       // layer pixel -> world (as rendered) -> current screen, an exact affine map for the ground plane
       const lvw: MapView = { cx: L.cx, cz: L.cz, scale: L.scale, w: L.W, h: L.H, tilt: L.tilt, pitch: L.pitch };
@@ -411,10 +411,10 @@ export class FullMap {
     }
     // haze at the far edge of the pitched plane
     const hz = ctx.createLinearGradient(0, 0, 0, v.h * 0.3);
-    hz.addColorStop(0, 'rgba(7,31,43,0.9)'); hz.addColorStop(1, 'rgba(7,31,43,0)');
+    hz.addColorStop(0, 'rgba(6,17,26,0.9)'); hz.addColorStop(1, 'rgba(6,17,26,0)');
     ctx.globalAlpha = Math.max(0, Math.min(1, (1 - pitch) / 0.36)); ctx.fillStyle = hz; ctx.fillRect(0, 0, v.w, v.h * 0.3); ctx.globalAlpha = 1;
     const vg = ctx.createRadialGradient(v.w / 2, v.h / 2, v.h * 0.45, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
-    vg.addColorStop(0, 'rgba(3,12,16,0)'); vg.addColorStop(1, 'rgba(3,12,16,0.5)');
+    vg.addColorStop(0, 'rgba(2,6,10,0)'); vg.addColorStop(1, 'rgba(2,6,10,0.5)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, v.w, v.h);
 
     const zoomK = v.scale / this.fitScale;

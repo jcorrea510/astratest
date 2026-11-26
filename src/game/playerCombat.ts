@@ -13,6 +13,7 @@
  *  - The weapon model slides back and flips its muzzle, slides / pumps / bolts cycle, magazines drop out and go back in
  *    during reloads, and the torso leans back, all springing back within ~0.15 s.
  */
+import { rumble } from '../core/haptics';
 import * as THREE from 'three';
 import { Inventory, WEAPONS, weaponMesh, weaponParts, type WeaponId, type WeaponDef, type WeaponParts } from '../combat/weapons';
 import { muzzleWorld, weaponAnchors } from '../combat/weaponModels';
@@ -124,7 +125,7 @@ export class PlayerCombat {
     const root = this.player.human.root, dl = this.lean - this.leanApplied;
     if (Math.abs(dl) > 1e-5 && root.parent) { root.position.x += dl; this.leanApplied = this.lean; }
   }
-  private lean = 0; private leanApplied = 0;
+  private lean = 0; private leanApplied = 0; private bodyHidden = false;
   /** Drive-by hold: moves the gun so its grip sits in the open window (barrel out), within reach of the shoulder. */
   private driveHold(H: ReturnType<typeof makeHoldOut>, an: ReturnType<typeof weaponAnchors>, shoulder: THREE.Vector3, armLen: number) {
     const v = this.player.inVehicle as Vehicle; const side = this.driveSide(v);
@@ -187,6 +188,9 @@ export class PlayerCombat {
     if (!blocked && !inv.def.melee && inv.def.cat !== 'throw' && (this.input.held('fire') || inv.reloading) && c.alive && !c.inVehicle) this.hipAimT = Math.max(this.hipAimT, HIP_HOLD);
     this.hipAimT = Math.max(0, this.hipAimT - dt);
     const onFoot = c.alive && !c.inVehicle;
+    // camera jammed against the head (tight alley, wall behind): hide the body rather than show the inside of the head
+    if (this.cam.hideBody && onFoot) { if (!this.bodyHidden) { this.bodyHidden = true; h.root.visible = false; } }
+    else if (this.bodyHidden) { this.bodyHidden = false; h.root.visible = true; }
     const veh = c.inVehicle as Vehicle | null;
     const inCar = c.alive && !!veh && typeof veh.kind === 'string' && veh.kind !== 'tank';
     // Round 7: aiming in a car with fists or a heavy weapon out draws the last gun you used (that works from a seat)
@@ -221,7 +225,7 @@ export class PlayerCombat {
     if (onFoot) h.setUpperMode(onFootUpperMode(this.armed, this.aiming, def.twoHanded));
     this.updateSpread(dt, def);
     this.updateRecoil(dt, def);
-    this.updateAim(onFoot);
+    if (needsAimTrace(!!c.inVehicle, this.driveAim, c.alive)) this.updateAim(onFoot); else this.aimTarget = null; // seated without drive-by aim: nothing reads the aim ray
     // Fire
     if (!blocked && (onFoot || this.driveAim)) {
       if (def.cat === 'throw') this.updateThrow(dt, def);
@@ -294,7 +298,8 @@ export class PlayerCombat {
     const ky = ((Math.random() * 2 - 1) * def.kickYaw + def.kickDrift * Math.min(1, this.burst / 4)) * scopeK;
     this.pendingPitch += kp; this.pitchDebt += kp * def.recoverFrac;
     this.pendingYaw += ky; this.yawDebt += ky * 0.5;
-    this.cam.addShake(def.shake);
+    this.cam.addShake(def.shake, true);
+    rumble(Math.min(0.6, 0.16 + def.shake * 0.9), 55); // light tap per shot; the cooldown keeps full-auto from buzzing
     // weapon / body kick
     this.kickDef = def; this.kick = Math.min(1.4, this.kick + 1);
   }
@@ -534,6 +539,9 @@ function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, 
 }
 
 /** Pure (tests): see PlayerCombat.threatening. */
+/** The per-frame dry aim trace is only needed on foot or while aiming from a car window; skipping it saves the vehicle glass ray tests. */
+export function needsAimTrace(inVehicle: boolean, driveAim: boolean, alive: boolean): boolean { return !alive || !inVehicle || driveAim; }
+
 export function isThreatening(aimHeld: boolean, driveAim: boolean, sinceShot: number): boolean { return aimHeld || driveAim || sinceShot < 1.5; }
 
 /** Round 8: how far (m, car-local x, + = left) the driver leans for a drive-by: well into the near window, or across the seat. Pure. */

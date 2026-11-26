@@ -12,13 +12,14 @@
 import type { Vec3Like } from '../ui/contracts';
 import { type BankSpec, type Kit, makeKit, bq, gain, impulseResponse, ceilingCurve, openAirResponse, growBank } from './dsp';
 import { gunSampleCount } from './gunSamples';
-import { ALL_META, type Acoustics, type SfxKey, allBanks, renderSfx } from './sfx';
+import { ALL_META, type Acoustics, type SfxKey, allBanks, renderSfx, tone } from './sfx';
 import { VoicePool } from './voicepool';
 import { CULL_DISTANCE, MAX_DISTANCE, REF_DISTANCE, ROLLOFF, SPEED_OF_SOUND, airCutoff, distance, echoSend, inverseGain, isFiniteVec } from './spatial';
 import { Ambience, type AmbienceState } from './ambience';
 import { MoodLayer, MusicFx, Radio } from './music';
 import { safe } from './theory';
 import { fadeOutParam } from './declick';
+import { type Channel, type ChannelVolumes, DUCK_ATTACK_TC, DUCK_HOLD, DUCK_RELEASE_TC, DuckState, UI_SOUNDS, type UiSoundName, busGains, defaultChannels, duckDepthDb } from './mixer';
 
 export const CEILING = 0.95; // absolute output ceiling (-0.45 dBFS)
 const CEIL_RANGE = 4;
@@ -57,7 +58,7 @@ export class AudioCore {
   readonly master: GainNode; readonly comp: DynamicsCompressorNode;
   readonly world: GainNode; readonly pauseLp: BiquadFilterNode; readonly pauseGain: GainNode;
   readonly sfxIn: GainNode; readonly slowLp: BiquadFilterNode; readonly slowGain: GainNode; readonly echoIn: GainNode;
-  readonly uiIn: GainNode; readonly ambIn: GainNode; readonly musicIn: GainNode; readonly musicDuck: GainNode;
+  readonly uiIn: GainNode; readonly voiceIn: GainNode; readonly hideGain: GainNode; readonly duckMusic: GainNode; readonly duckAmb: GainNode; readonly ambIn: GainNode; readonly musicIn: GainNode; readonly musicDuck: GainNode;
   /** gunshot environment: slapback taps tuned to the walls around the listener, and an open-air rolling tail */
   readonly slapIn: GainNode; readonly openIn: GainNode; private taps: Tap[] = []; private openAmt = 0.4; private indoors = 0;
   private fwd = { x: 0, z: -1 };
@@ -75,6 +76,9 @@ export class AudioCore {
   pitchMul = 1; slowMo = 0; paused = false;
   private laterQ: { at: number; fn: () => void }[] = [];
   private vols = { master: 1, music: 0.7, sfx: 1 };
+  private channels: ChannelVolumes = defaultChannels();
+  private readonly duck = new DuckState();
+  private lastUi = new Map<string, number>();
 
   constructor(readonly ctx: BaseAudioContext, rand: () => number = Math.random) {
     const k = this.kit = makeKit(ctx, rand);
@@ -83,7 +87,7 @@ export class AudioCore {
     this.comp = ctx.createDynamicsCompressor();
     this.comp.threshold.value = -9; this.comp.knee.value = 6; this.comp.ratio.value = 10; this.comp.attack.value = 0.002; this.comp.release.value = 0.2;
     const pre = gain(ctx, 1 / CEIL_RANGE); const clip = ctx.createWaveShaper(); clip.curve = ceilingCurve(0.72, CEILING, CEIL_RANGE); clip.oversample = 'none';
-    this.master.connect(this.comp); this.comp.connect(pre); pre.connect(clip); clip.connect(ctx.destination); this.out = clip;
+    this.hideGain = gain(ctx, 1); this.master.connect(this.hideGain); this.hideGain.connect(this.comp); this.comp.connect(pre); pre.connect(clip); clip.connect(ctx.destination); this.out = clip;
     // world (everything except UI) with pause muffle
     this.world = gain(ctx, 1); this.pauseLp = bq(ctx, 'lowpass', 20000, 0.6); this.pauseGain = gain(ctx, 1);
     this.world.connect(this.pauseLp); this.pauseLp.connect(this.pauseGain); this.pauseGain.connect(this.master);
@@ -108,11 +112,13 @@ export class AudioCore {
     const openOut = gain(ctx, 0.24); this.openIn.connect(open); open.connect(openOut); openOut.connect(this.sfxIn);
     // UI (unaffected by slow-mo / pause)
     this.uiIn = gain(ctx, 1); this.uiIn.connect(this.master);
+    this.voiceIn = gain(ctx, 1); this.voiceIn.connect(this.world);
+    this.duckMusic = gain(ctx, 1); this.duckAmb = gain(ctx, 1); this.duckMusic.connect(this.world); this.duckAmb.connect(this.world);
     // ambience
-    this.ambIn = gain(ctx, AMB_TRIM); this.ambIn.connect(this.world);
+    this.ambIn = gain(ctx, AMB_TRIM); this.ambIn.connect(this.duckAmb);
     this.ambience = new Ambience(k, this.ambIn, (at, fn) => this.later(at, fn));
     // music
-    this.musicIn = gain(ctx, 0.7); this.musicDuck = gain(ctx, 1); this.musicIn.connect(this.musicDuck); this.musicDuck.connect(this.world);
+    this.musicIn = gain(ctx, 0.7); this.musicDuck = gain(ctx, 1); this.musicIn.connect(this.musicDuck); this.musicDuck.connect(this.duckMusic);
     const fx = new MusicFx(k, this.musicIn);
     const host = { kit: k, later: (at: number, fn: () => void) => this.later(at, fn) };
     this.radio = new Radio(host, this.musicIn, fx, rand);
@@ -194,14 +200,45 @@ export class AudioCore {
 
   // ---------------- volumes / global state ----------------
   setVolumes(master: number, music: number, sfx: number): void {
-    const v = (x: number) => { const c = safe(x, 0, 1, 1); return c * c; };
+    const v = (x: number) => safe(x, 0, 1, 1);
     this.vols = { master: v(master), music: v(music), sfx: v(sfx) };
+    this.applyBus();
+  }
+  /** Per-channel slider (0..1): 'music' | 'sfx' | 'ambience' | 'voice' | 'ui'. Multiplies the legacy master/music/sfx sliders. */
+  setChannelVolume(ch: Channel, v: number): void { if (!(ch in this.channels)) return; this.channels[ch] = safe(v, 0, 1, 1); this.applyBus(); }
+  private applyBus(): void {
+    const b = busGains(this.vols, this.channels);
     const now = this.ctx.currentTime, tc = 0.05;
-    this.master.gain.setTargetAtTime(0.8 * this.vols.master, now, tc);
-    this.musicIn.gain.setTargetAtTime(0.7 * this.vols.music, now, tc);
-    this.sfxIn.gain.setTargetAtTime(this.vols.sfx, now, tc);
-    this.uiIn.gain.setTargetAtTime(this.vols.sfx, now, tc);
-    this.ambIn.gain.setTargetAtTime(AMB_TRIM * this.vols.sfx, now, tc);
+    this.master.gain.setTargetAtTime(0.8 * b.master, now, tc);
+    this.musicIn.gain.setTargetAtTime(0.7 * b.music, now, tc);
+    this.sfxIn.gain.setTargetAtTime(b.sfx, now, tc);
+    this.uiIn.gain.setTargetAtTime(b.ui, now, tc);
+    this.voiceIn.gain.setTargetAtTime(b.voice, now, tc);
+    this.ambIn.gain.setTargetAtTime(AMB_TRIM * b.ambience, now, tc);
+  }
+
+  /** Tab hidden / shown: fade the whole mix (caller suspends the context after the fade). */
+  setHidden(hidden: boolean): void {
+    const now = this.ctx.currentTime, p = this.hideGain.gain;
+    p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); p.linearRampToValueAtTime(hidden ? 0 : 1, now + (hidden ? 0.2 : 0.5));
+  }
+
+  /** Subtle synthesized UI sound (hover / select / back / purchase / error / notification). Rate-limited, 2D, ignores pause muffle. */
+  playUi(name: UiSoundName): boolean {
+    const def = UI_SOUNDS[name]; if (!def) return false;
+    const now = this.ctx.currentTime, last = this.lastUi.get(name);
+    if (last !== undefined && now >= last && now - last < def.minInterval) return false;
+    this.lastUi.set(name, now);
+    for (const n of def.notes) tone(this.kit, this.uiIn, now + 0.005 + n.at, { type: n.type, f: n.f, f2: n.f2, a: 0.004, peak: n.peak, dec: n.dec });
+    return true;
+  }
+
+  /** Briefly lowers music + ambience (smooth attack, slow release) under loud events. */
+  private duckFor(depthDb: number, now: number): void {
+    const target = this.duck.hit(now, depthDb); if (target <= 0) return;
+    for (const p of [this.duckMusic.gain, this.duckAmb.gain]) {
+      p.cancelScheduledValues(now); p.setTargetAtTime(target, now, DUCK_ATTACK_TC); p.setTargetAtTime(1, now + DUCK_HOLD, DUCK_RELEASE_TC);
+    }
   }
 
   setSlowMo(amount: number): void {
@@ -281,6 +318,7 @@ export class AudioCore {
     const adm = this.pool.admit(name, prio, t);
     if (!adm.ok) { this.diag.rejected++; return false; }
     this.diag.started++;
+    if (world) this.duckFor(duckDepthDb(name, meta.priority, meta.env), now);
     for (const s of adm.steal) this.stealVoice(s, now);
 
     // far gunfire arrives late: you see the flash, then hear the report (speed of sound), capped for gameplay

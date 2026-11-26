@@ -47,15 +47,23 @@
   transition: opacity 0.2s, transform 0.2s; visibility: hidden;
 }
 .ma-root .ma-heat.is-visible { opacity: 1; transform: none; visibility: visible; }
-.ma-root .ma-star { width: calc(27 * var(--u)); height: calc(27 * var(--u)); color: rgba(255, 255, 255, 0.16); }
-.ma-root .ma-star-fill { fill: currentColor; stroke: rgba(0, 0, 0, 0.55); stroke-width: 1.2; stroke-linejoin: round; paint-order: stroke; }
-.ma-root .ma-star.is-on { color: #ffe27a; }
-.ma-root .ma-star.is-on .ma-star-fill { stroke: rgba(40, 20, 0, 0.9); stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
-.ma-root .ma-star.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
-.ma-root .ma-heat.is-flash .ma-star.is-on { animation: ma-star-siren 0.8s steps(1) infinite; }
-.ma-root .ma-heat.is-flash .ma-star.is-on:nth-child(even) { animation-delay: -0.4s; }
-@keyframes ma-star-siren { 0% { color: var(--heat-red); } 50% { color: var(--heat-blue); } }
-.ma-root .ma-heat.is-flash { border-color: rgba(255, 77, 94, 0.5); }
+.ma-root .ma-heat { align-items: center; }
+.ma-root .ma-heat-seg {
+  width: calc(22 * var(--u)); height: calc(9 * var(--u)); border-radius: calc(2 * var(--u)); box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.14); border: calc(1 * var(--u)) solid rgba(0, 0, 0, 0.55);
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.ma-root .ma-heat-seg.is-on { background: #ffe27a; box-shadow: 0 0 calc(6 * var(--u)) rgba(255, 226, 122, 0.45); }
+.ma-root .ma-heat-seg.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
+.ma-root .ma-heat.is-rising .ma-heat-seg.is-on { animation: ma-heat-flash 0.5s steps(1) infinite; }
+.ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: ma-heat-pulse 2s ease-in-out infinite; }
+@keyframes ma-heat-flash { 0% { background: var(--heat-red); } 50% { background: var(--heat-blue); } }
+@keyframes ma-heat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on, .ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: none; }
+  .ma-root .ma-heat.is-rising .ma-heat-seg.is-on { background: var(--heat-red); }
+}
+.ma-root .ma-heat.is-rising, .ma-root .ma-heat.is-search { border-color: rgba(255, 77, 94, 0.5); }
 
 /* ---------------------------------------------------------------- top left: gear, fps */
 .ma-root .ma-gear { left: var(--edge-x); top: calc(16 * var(--u)); width: calc(30 * var(--u)); height: calc(30 * var(--u)); font-size: calc(17 * var(--u)); background: var(--glass); border: 1px solid var(--hair); opacity: 0.8; }
@@ -94,11 +102,11 @@
 }
 .ma-root .ma-hint::before {
   content: 'Tip'; display: inline-block; margin-right: calc(10 * var(--u)); padding: 0 calc(7 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); vertical-align: calc(1 * var(--u));
-  border-radius: calc(3 * var(--u)); background: var(--apricot); color: #1a1208; text-shadow: none; font-family: var(--display); font-weight: 800; font-size: calc(12 * var(--u)); letter-spacing: 0.14em; text-transform: uppercase;
+  border-radius: calc(3 * var(--u)); background: var(--apricot); color: #1a1208; text-shadow: none; font-family: var(--display); font-weight: 800; font-size: max(12px, calc(12 * var(--u))); letter-spacing: 0.14em; text-transform: uppercase;
 }
 .ma-root .ma-hint.is-visible { display: block; animation: ma-hint-in 0.22s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes ma-hint-in { from { opacity: 0; transform: translate(-50%, calc(-8 * var(--u))); } to { opacity: 1; transform: translateX(-50%); } }
-.ma-root .ma-hint .ma-key { height: calc(20 * var(--u)); min-width: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); margin: 0 calc(1 * var(--u)); font-size: calc(12 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.92); color: #14161a; text-shadow: none; box-shadow: 0 calc(1.5 * var(--u)) 0 rgba(255, 255, 255, 0.3); top: 0; }
+.ma-root .ma-hint .ma-key { height: calc(20 * var(--u)); min-width: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); margin: 0 calc(1 * var(--u)); font-size: max(12px, calc(12 * var(--u))); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.92); color: #14161a; text-shadow: none; box-shadow: 0 calc(1.5 * var(--u)) 0 rgba(255, 255, 255, 0.3); top: 0; }
 .ma-root .ma-hint-timer { height: calc(2 * var(--u)); background: var(--apricot); opacity: 0.85; }
 
 /* ---------------------------------------------------------------- top centre: radio */
@@ -127,7 +135,7 @@
 .ma-root .ma-stamina { height: calc(3 * var(--u)); margin: calc(5 * var(--u)) calc(1 * var(--u)) 0; border-radius: calc(2 * var(--u)); }
 .ma-root .ma-stamina-fill { border-radius: calc(2 * var(--u)); }
 .ma-root .ma-mode-badge {
-  left: var(--edge-x); bottom: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u)); font-size: calc(11 * var(--u)); letter-spacing: 0.2em; font-weight: 700; color: rgba(255, 255, 255, 0.72);
+  left: var(--edge-x); bottom: calc(10 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u)); font-size: max(12px, calc(11 * var(--u))); letter-spacing: 0.2em; font-weight: 700; color: rgba(255, 255, 255, 0.72);
   background: rgba(12, 14, 18, 0.5); border: 1px solid var(--hair); border-radius: var(--r);
 }
 .ma-root .ma-mode-badge::before { content: ''; display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); margin-right: calc(7 * var(--u)); border-radius: 50%; background: var(--apricot); vertical-align: calc(1 * var(--u)); }
@@ -234,3 +242,102 @@
 .ma-root .ma-wheel-hint { fill: rgba(255, 255, 255, 0.5); }
 /* Round 11: a mission card owns the top-centre while it shows; the controls tip steps aside (they overlapped on small screens) */
 .ma-root.is-card .ma-hint { visibility: hidden; } /* (opacity loses to the hint's fill-mode animation) */
+
+/* ================================================================ Round 12: premium open-world HUD pass
+ * Minimal chrome: the radar is a bare circle with a hairline ring, money / weapon / stars are type with soft shadows
+ * instead of boxes. Everything animates opacity/transform/box-shadow only; no new blur layers. */
+.ma-root {
+  --ink-shadow: 0 1px 1px rgba(0, 0, 0, 0.7), 0 0 calc(10 * var(--u)) rgba(0, 0, 0, 0.55);
+  --ring: rgba(255, 255, 255, 0.16);
+}
+.ma-root .ma-money, .ma-root .ma-weapon, .ma-root .ma-heat {
+  background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0;
+}
+/* top right */
+.ma-root .ma-hud-tr { top: calc(22 * var(--u)); gap: calc(2 * var(--u)); }
+.ma-root .ma-money { min-width: 0; padding: 0; }
+.ma-root .ma-money-value {
+  font-size: calc(40 * var(--u)); font-weight: 700; letter-spacing: 0.02em; color: #f4f7f5; font-variant-numeric: tabular-nums;
+  text-shadow: var(--ink-shadow);
+}
+.ma-root .ma-money-value::before { content: ''; }
+.ma-root .ma-money-delta { top: calc(8 * var(--u)); right: calc(100% + 14 * var(--u)); font-size: calc(20 * var(--u)); white-space: nowrap; text-shadow: var(--ink-shadow); }
+.ma-root .ma-weapon { position: relative; width: auto; min-width: calc(150 * var(--u)); padding: calc(5 * var(--u)) 0 0; align-items: flex-end; }
+.ma-root .ma-weapon::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(1 * var(--u));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.35)); pointer-events: none;
+}
+.ma-root .ma-weapon-row { gap: calc(14 * var(--u)); align-items: center; }
+.ma-root .ma-weapon-icon { width: calc(84 * var(--u)); height: calc(38 * var(--u)); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 calc(6 * var(--u)) rgba(0, 0, 0, 0.5)); }
+.ma-root .ma-ammo { display: flex; align-items: baseline; text-shadow: var(--ink-shadow); }
+.ma-root .ma-ammo-clip { font-size: calc(34 * var(--u)); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ma-root .ma-ammo-sep, .ma-root .ma-ammo-reserve { font-size: calc(19 * var(--u)); color: rgba(255, 255, 255, 0.5); }
+.ma-root .ma-weapon-name { margin: calc(1 * var(--u)) 0 0; text-align: right; font-size: max(12px, calc(12 * var(--u))); letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.66); font-weight: 600; text-shadow: var(--ink-shadow); }
+.ma-root .ma-heat { padding: calc(4 * var(--u)) 0 0; gap: calc(2 * var(--u)); }
+.ma-root .ma-heat.is-flash { border-color: transparent; }
+
+/* bottom left: circular radar */
+.ma-root .ma-hud-bl { bottom: calc(36 * var(--u)); }
+.ma-root .ma-radar { width: calc(204 * var(--u)); padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ma-root .ma-radar.is-wanted, .ma-root .ma-radar.is-searching, .ma-root .ma-radar.is-low { box-shadow: none; animation: none; border: 0; }
+.ma-root .ma-minimap {
+  width: calc(204 * var(--u)); height: calc(204 * var(--u)); border-radius: 50%; overflow: hidden; background: #0a1016;
+  box-shadow: 0 0 0 calc(2 * var(--u)) var(--ring), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 calc(8 * var(--u)) calc(22 * var(--u)) rgba(0, 0, 0, 0.5);
+}
+.ma-root .ma-minimap::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 calc(16 * var(--u)) rgba(0, 0, 0, 0.55); pointer-events: none; }
+.ma-root .ma-radar.is-wanted .ma-minimap { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.85), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 calc(8 * var(--u)) calc(22 * var(--u)) rgba(0, 0, 0, 0.5); }
+.ma-root .ma-radar.is-searching .ma-minimap { animation: ma-ring-siren 0.9s steps(1) infinite; }
+.ma-root .ma-radar.is-low .ma-minimap { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.85), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(18 * var(--u)) rgba(255, 77, 94, 0.35); }
+@keyframes ma-ring-siren {
+  0% { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(255, 77, 94, 0.95), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(16 * var(--u)) rgba(255, 77, 94, 0.4); }
+  50% { box-shadow: 0 0 0 calc(2 * var(--u)) rgba(77, 141, 255, 0.95), 0 0 0 calc(5 * var(--u)) rgba(6, 8, 12, 0.55), 0 0 calc(16 * var(--u)) rgba(77, 141, 255, 0.4); }
+}
+.ma-root .ma-radar-meta { display: flex; align-items: baseline; justify-content: space-between; gap: calc(8 * var(--u)); margin: calc(10 * var(--u)) calc(6 * var(--u)) 0; text-shadow: var(--ink-shadow); }
+.ma-root .ma-radar-zone { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--display); font-weight: 700; font-size: calc(13 * var(--u)); letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 255, 255, 0.78); }
+.ma-root .ma-radar-clock {
+  position: static; height: auto; padding: 0; border: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border-radius: 0;
+  font-size: calc(14 * var(--u)); letter-spacing: 0.08em; color: var(--apricot); font-weight: 700; flex: none;
+}
+.ma-root .ma-vitals { margin: calc(6 * var(--u)) calc(6 * var(--u)) 0; grid-template-columns: 1fr 0.55fr; gap: calc(5 * var(--u)); }
+.ma-root .ma-vbar { height: calc(4 * var(--u)); border-radius: calc(2 * var(--u)); background: rgba(255, 255, 255, 0.14); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-vbar-fill { border-radius: calc(2 * var(--u)); }
+.ma-root .ma-stamina { margin: calc(4 * var(--u)) calc(6 * var(--u)) 0; }
+.ma-root .ma-mode-badge { bottom: calc(12 * var(--u)); background: none; border: 0; padding: 0; color: rgba(255, 255, 255, 0.5); text-shadow: var(--ink-shadow); }
+
+/* bottom right: type over the scene, same language as the top right */
+.ma-root .ma-speedo, .ma-root .ma-vehpop, .ma-root .ma-loc {
+  background: none; border-top: 0; border-bottom: 0; border-left: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0;
+}
+.ma-root .ma-speedo { width: calc(196 * var(--u)); padding: 0; }
+.ma-root .ma-speed-value { font-size: calc(64 * var(--u)); text-shadow: var(--ink-shadow); font-variant-numeric: tabular-nums; }
+.ma-root .ma-speed-unit { color: rgba(255, 255, 255, 0.62); text-shadow: var(--ink-shadow); }
+.ma-root .ma-speed-bar { height: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.16); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-body-track { height: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.16); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+.ma-root .ma-body-icon { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)); }
+.ma-root .ma-vehpop, .ma-root .ma-loc { padding: 0 calc(12 * var(--u)) 0 0; border-right: calc(2 * var(--u)) solid var(--apricot); }
+.ma-root .ma-vehpop-model, .ma-root .ma-loc-district { text-shadow: var(--ink-shadow); }
+.ma-root .ma-vehpop-make, .ma-root .ma-loc-street { text-shadow: var(--ink-shadow); }
+
+/* ---------------------------------------------------------------- heat: steady / colour-blind variants, save indicator */
+:root[data-colorblind='deuteranopia'] .ma-root, :root[data-colorblind='protanopia'] .ma-root { --heat-red: #ffb000; --heat-blue: #4aa8ff; }
+:root[data-colorblind='tritanopia'] .ma-root { --heat-red: #ff4d6a; --heat-blue: #5ff0ff; }
+/* colour-blind modes: the siren alternates solid and outlined segments (pattern), and the count is written out */
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: ma-heat-flash 0.8s steps(1) infinite; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(even) { animation-delay: -0.4s; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(odd) { border: calc(2 * var(--u)) dashed #fff; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-visible::after { content: attr(data-n) '/5'; margin-left: calc(4 * var(--u)); align-self: center; font-size: max(12px, calc(13 * var(--u))); font-weight: 800; color: #fff; letter-spacing: 0.04em; text-shadow: var(--txt-shadow); }
+/* Reduce Motion: no flashing at all, a steady siren colour */
+:root[data-reduce-motion='true'] .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: none !important; background: var(--heat-red); }
+.ma-root .ma-save {
+  position: absolute; right: var(--edge-x); bottom: calc(8 * var(--u)); display: flex; align-items: center; gap: calc(7 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u));
+  font-size: max(12px, calc(12 * var(--u))); font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.85); background: rgba(12, 14, 18, 0.55);
+  border: 1px solid var(--hair); border-radius: var(--r); opacity: 0; transform: translateY(calc(4 * var(--u))); transition: opacity 0.25s, transform 0.25s; pointer-events: none;
+}
+.ma-root .ma-save.is-visible { opacity: 1; transform: none; }
+.ma-root .ma-save-icon { width: calc(10 * var(--u)); height: calc(10 * var(--u)); min-width: 8px; min-height: 8px; border-radius: 50%; border: 2px solid var(--apricot); border-top-color: transparent; }
+.ma-root .ma-save[data-phase='saving'] .ma-save-icon { animation: ma-save-spin 0.7s linear infinite; }
+.ma-root .ma-save[data-phase='saved'] .ma-save-icon { border-color: var(--money); background: var(--money); }
+.ma-root .ma-save[data-phase='failed'] .ma-save-icon { border-color: var(--heat-red); background: var(--heat-red); }
+@keyframes ma-save-spin { to { transform: rotate(360deg); } }
+:root[data-reduce-motion='true'] .ma-root .ma-save { transition: none; transform: none; }
+:root[data-reduce-motion='true'] .ma-root .ma-save[data-phase='saving'] .ma-save-icon { animation: none; }

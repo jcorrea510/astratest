@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 test-results/
 playwright-report/
@@ -14,3 +14,4 @@ ios/MeridianAfterglow/game/*
 !ios/MeridianAfterglow/game/README.md
 build/
 xcuserdata/
+.claude/worktrees/

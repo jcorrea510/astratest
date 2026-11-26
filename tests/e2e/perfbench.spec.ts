@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { watch, clean } from './helpers';
+import config from '../../playwright.config';
 
 /**
  * Deterministic render benchmark: seeded Math.random, fixed downtown camera path, 300 frames per preset.
@@ -8,6 +9,11 @@ import { watch, clean } from './helpers';
  * must not cost more than 15 % on top of it.
  */
 test.describe.configure({ mode: 'serial' });
+// Own browser: 300 scripted software-GL frames leave the GPU process busy for minutes after the test, and the next file's
+// browser.newContext then timed out on CI (player4, 240 s). A distinct launch option gives this file a worker of its own,
+// which Playwright shuts down (browser and all) before the next file starts.
+const base = config.use?.launchOptions ?? {};
+test.use({ launchOptions: { ...base, args: [...(base.args ?? []), '--perfbench-own-browser'] } });
 const BASE_HIGH_TRIS = Number(process.env.BASE_HIGH_TRIS ?? 0);
 
 test('benchmark: triangles and draw calls on low / medium / high along a fixed downtown path', async ({ page }) => {

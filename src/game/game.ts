@@ -32,7 +32,7 @@ import { Traffic } from './traffic';
 import { Crowd } from './crowd';
 import { BusService } from './buses';
 import { BENCHES } from '../world/benches';
-import { Police, type Crime } from './police';
+import { Police, policeSeesArmed, type Crime } from './police';
 import type { Npc } from '../actors/npc';
 import { WEAPONS } from '../combat/weapons';
 import { downPenalty, type GameMode } from './modes';
@@ -44,6 +44,8 @@ import { HeliManager } from '../vehicles/helicopterManager';
 import { ArmyAir, HeliArms, armyAirWanted, inArmyBase } from './armyAir'; // R5-A: army base gunships
 import { armyLayout, buildArmyBaseLod, armyLodVisible } from '../world/armybase';
 import { ArmyGuards, guardsHostile } from './armyGuards';
+import { farIdleVehicle } from './farLod';
+import { fullscreenSettling } from '../core/fullscreen';
 import { Helicopter } from '../vehicles/helicopter';
 import { fmtClock12 } from '../core/units';
 import type { HeliVariant } from '../vehicles/helicopterModel';
@@ -53,6 +55,7 @@ import { Orders } from './orders';
 import { signalLampColors } from '../render/signalColors';
 import { TaxiRide } from './taxiRide';
 import { TaxiJob } from './taxiJob';
+import { LoopGuard } from './loopGuard';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -341,16 +344,22 @@ export class Game {
     if (by === this.player) this.police.report('vehicleWreck', at);
     this.events.onExplosion(at);
   }
+  /** Frame-loop guard: one thrown error is logged and the loop carries on; repeated every frame it stops and calls onCrash. */
+  readonly guard: LoopGuard = new LoopGuard({ onFatal: e => { this.running = false; this.onCrash?.(e); } });
+  onCrash: ((e: unknown) => void) | null = null;
+  get isRunning(): boolean { return this.running; }
   start() {
     if (this.running) return;
+    this.guard.reset();
     this.running = true; this.last = performance.now();
     const loop = (now: number) => {
       if (!this.running) return;
       requestAnimationFrame(loop);
+      if (fullscreenSettling()) { this.last = now; return; } // the browser is switching fullscreen: leave the main thread free for it (core/fullscreen)
       const raw = Math.max(0, Math.min(0.1, (now - this.last) / 1000)); this.last = Math.max(this.last, now);
       this.frameMs = this.frameMs * 0.92 + raw * 1000 * 0.08;
       this.fps = 1000 / Math.max(1, this.frameMs);
-      const c0 = performance.now(); this.frame(raw); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
+      const c0 = performance.now(); this.guard.run(() => this.frame(raw)); this.cpuMs = this.cpuMs * 0.92 + (performance.now() - c0) * 0.08;
     };
     requestAnimationFrame(loop);
   }
@@ -396,12 +405,19 @@ export class Game {
     else this.playerCtl.fixedUpdate(dt, { canAim: this.pcombat.armed, blocked: this.carEntry.active || blocked });
     if (this.player.knockT > 0) this.player.knockT -= dt;
     this.traffic.fixedUpdate(dt, this.player, pv);
+    const pp = this.player.pos;
+    this.physics.streamStatics(pp.x, pp.z); // only static props near the player stay in the physics world (Round 12 perf)
     for (const v of this.vehicles.list) {
-      if (!v.driver && v !== pv) { v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true; }
+      if (!v.driver && v !== pv) {
+        v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true;
+        // Round 12 perf: an abandoned / base vehicle far from the player and at rest sleeps (it was running tyre rays every step)
+        const b = v.phys.body;
+        if (!b.isSleeping()) { const lv = b.linvel(), dx = v.position.x - pp.x, dz = v.position.z - pp.z; if (farIdleVehicle(dx * dx + dz * dz, lv.x * lv.x + lv.y * lv.y + lv.z * lv.z)) b.sleep(); }
+      }
       v.phys.fixedUpdate(dt, v.input);
     }
     this.pop.fixedUpdate(dt, this.player.pos);
-    this.helis.fixedUpdate(dt);
+    this.helis.fixedUpdate(dt, this.player.pos);
     this.physics.step(dt);
     this.ragdolls.update(dt);
     this.vehicles.postStep(this.time);
@@ -727,7 +743,7 @@ export class Game {
     this.taxi.update(dt); this.taxiJob.update(dt);
     this.crowd.update(dt, this.player.pos, this.crowdCaps());
     this.pop.warmStep(2);
-    this.police.playerArmed = this.player.alive && this.pcombat.armed;
+    this.police.playerArmed = policeSeesArmed(this.player.alive, this.pcombat.armed, !!ph);
     this.police.armedThreat = !pv && !ph && this.player.alive && this.deathT < 0 && this.pcombat.armed && this.pcombat.aiming && !this.carEntry.active;
     this.police.update(dt, this.player, !!pv || !!ph, this.renderer.camera);
     this.updateArmyAir(dt, ph, pv, blocked);

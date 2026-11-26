@@ -1,0 +1,7 @@
+# pkgC HUD / a11y / input / camera (done)
+- core/runtime.ts: Input.pollGamepad publishes Settings (speedBlur, reduceMotion, vibration, resolutionScale, fpsCap) each frame; renderer + camera + haptics read it, so no wiring in game.ts/main.ts is needed.
+- Renderer: blur gated (speedBlurAmount), resolutionScale multiplies pixel ratio (re-applied on change), fpsCap skips draws inside render() (adaptive resolution paused while capped).
+- core/haptics.ts rumble(strength,ms) with cooldown; fires from gunfire (playerCombat) and any cam.addShake >= 0.14 (explosions, crashes, damage, landings). Pad: radial deadzone, padSensitivity, adsSensitivity, padInvertY in Input.lookDelta/moveAxes. Pad rebinding NOT done (PAD_LAYOUTS is a constant; needs a settings field + capture UI in controlsPanel).
+- Camera: MIN_BOOM 0.55, snap on focus jump > 2.5 m or snapBehind; `cam.hideBody` hides player root in PlayerCombat when camera < 0.7 m from head; reduceMotion scales shake/FOV kick/bob by 0.25.
+- ui/blipStyle.ts (colour-blind shapes: police triangle, gang square, siren solid/hollow; steady under reduce motion), ui/saveIndicator.ts (onSaved pill, bottom right), hud.css min 12 px text, colour-blind heat palette + "n/5" text.
+- Not in my files: UI scale slider copy lives in settingsPanel; game.ts passes settings.invertY AND pad invert stacks (both set = cancel); "Wanted level" strings already gone from src. Heat bar is still 5 stars (flash pattern + count in CB mode), not a segmented bar.

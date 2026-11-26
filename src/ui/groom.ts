@@ -67,7 +67,7 @@ export class GroomPanel {
       b.addEventListener('click', () => { this.sound('click'); cfg.onPick(tab.id, o.id); });
       this.bodyEl.appendChild(b);
     }
-    this.totalEl.textContent = st.total > 0 ? (st.free ? 'Free (sandbox)' : formatMoney(st.total)) : 'No changes';
+    this.totalEl.textContent = st.total > 0 ? (st.free ? 'Free' : formatMoney(st.total)) : 'No changes';
     const poor = !st.free && st.total > st.money;
     this.note.textContent = poor ? `Need ${formatMoney(st.total - st.money)} more` : '';
     this.pay.disabled = st.total <= 0 || poor; this.pay.classList.toggle('is-disabled', this.pay.disabled);

@@ -22,7 +22,7 @@ test('hud: mission card + death title are visible with text; toasts do not overl
     await page.evaluate(() => {
       const u = (window as any).__meridian.ui;
       u.showControlsHint('WASD to move, mouse to look, Shift to sprint, Space to jump. Esc opens the pause menu: map, sandbox tools and saving.', 30);
-      for (const [t, k] of [['Deposit box: $640 in jewellery and cash', 'money'], ['The guard drew on you!', 'warning'], ['Heat 3', 'heat'], ['Postcard 3 / 12 found', 'mission'], ['Saved', 'info']]) u.toast(t, k);
+      for (const [t, k] of [['Deposit box: $640 in jewelry and cash', 'money'], ['The guard drew on you!', 'warning'], ['Heat 3', 'heat'], ['Postcard 3 / 12 found', 'mission'], ['Saved', 'info']]) u.toast(t, k);
     });
     await page.waitForTimeout(500);
     const ov = await page.evaluate(() => {
@@ -36,7 +36,7 @@ test('hud: mission card + death title are visible with text; toasts do not overl
     expect(ov.hintW).toBeGreaterThan(100);
     expect(ov.toastHint).toBe(false); expect(ov.hintMoney).toBe(false); expect(ov.toastMoney).toBe(false);
     // death title
-    for (const [kind, word] of [['down', 'Wasted'], ['busted', 'Arrested']] as const) {
+    for (const [kind, word] of [['down', 'Flatlined'], ['busted', 'Arrested']] as const) {
       await page.evaluate(([k]) => {
         const u = (window as any).__meridian.ui;
         u.showDeath(k, 'Medical bill -$250');

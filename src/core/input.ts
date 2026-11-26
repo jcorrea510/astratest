@@ -1,6 +1,7 @@
 /** Keyboard, mouse and gamepad input mapped to rebindable actions. */
 import type { Action, Settings } from './settings';
-import { padHeld, setPadContext, type PadContext, readPad, padActive, deadzone, EMPTY_PAD, type PadState } from './gamepad';
+import { padHeld, setPadContext, type PadContext, readPad, padActive, radialDeadzone, lookStick, EMPTY_PAD, type PadState } from './gamepad';
+import { publishRuntime } from './runtime';
 import { pointerLockSupported, isIPad } from './platform';
 export type { PadState };
 export type ActionSource = 'kbm' | 'pad';
@@ -102,7 +103,10 @@ export class Input {
     if (!this.enabled) return { x: 0, y: 0 };
     let x = (this.held('right') ? 1 : 0) - (this.held('left') ? 1 : 0);
     let y = (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0);
-    if (this.pad.connected && (Math.abs(this.pad.lx) > 0.15 || Math.abs(this.pad.ly) > 0.15)) { x = this.pad.lx; y = -this.pad.ly; }
+    if (this.pad.connected) {
+      const m = radialDeadzone(this.pad.lx, this.pad.ly, this.padDz(), this._mv);
+      if (m.x !== 0 || m.y !== 0) { x = m.x; y = -m.y; }
+    }
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
     return { x, y };
   }
@@ -110,8 +114,9 @@ export class Input {
   lookDelta(dt: number): { x: number; y: number } {
     let x = this.mouseDX, y = this.mouseDY;
     if (this.pad.connected) {
-      const dz = (v: number) => Math.sign(v) * Math.abs(deadzone(v)) ** 1.6;
-      x += dz(this.pad.rx) * 900 * dt; y += dz(this.pad.ry) * 600 * dt;
+      const st = lookStick(this.pad.rx, this.pad.ry, this.padDz(), this._mv);
+      const k = (this.settings.padSensitivity ?? 1) * (this.held('aim') ? (this.settings.adsSensitivity ?? 0.8) / 0.8 : 1);
+      x += st.x * 900 * dt * k; y += st.y * 600 * dt * k * padYSign(this.settings);
     }
     if (!this.enabled) return { x: 0, y: 0 };
     return { x, y };
@@ -122,7 +127,10 @@ export class Input {
     if (this.pad.connected && (this.pad.rt > 0.05 || this.pad.lt > 0.05)) return this.pad.rt - this.pad.lt;
     return (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0);
   }
+  private _mv = { x: 0, y: 0 };
+  private padDz() { return this.settings.padDeadzone ?? 0.12; }
   pollGamepad() {
+    publishRuntime(this.settings);
     this.padPrev = this.pad;
     this.pad = readPad();
     if (padActive(this.pad)) this.lastSource = 'pad';
@@ -135,3 +143,6 @@ export class Input {
   tap(code: string) { this.pressed.add(code); }
   clearAll() { this.down.clear(); this.scripted.clear(); }
 }
+
+/** Pad-only Y invert. The global invertY already flips mouse and pad together (game.ts), so padInvertY only adds an invert when the global one is off; ticking both never cancels out. */
+export function padYSign(s: { invertY?: boolean; padInvertY?: boolean }): number { return s.padInvertY && !s.invertY ? -1 : 1; }

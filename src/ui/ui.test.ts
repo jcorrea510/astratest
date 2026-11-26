@@ -109,7 +109,7 @@ import { DEATH_TIMING, deathGrade } from './screens';
 import { splitVehicleName } from './hud';
 import { ATTRACT_SHOTS, shotCamera } from './attract';
 
-describe('WASTED / ARRESTED pacing', () => {
+describe('FLATLINED / ARRESTED pacing', () => {
   it('greys out over the first second, card before black, black before the respawn', () => {
     expect(deathGrade(0)).toBe(0);
     expect(deathGrade(0.65)).toBeGreaterThan(0.3);

@@ -157,7 +157,7 @@ test('civilians react to the player: brushing past, aiming a gun, gunfire', asyn
     g.input.release('Mouse2');
     // gunfire nearby sends them running (or cowering)
     g.pop.danger(c.pos, 30, c);
-    for (let k = 0; k < 10; k++) g.frame(1 / 30, false);
+    for (let k = 0; k < 30; k++) g.frame(1 / 30, false); // a surrendering person bolts a beat after the shots (alertT 0.15-0.6 s)
     return { surrendered, after: n.brain };
   });
   expect(r.surrendered).toBe(true);

@@ -15,7 +15,9 @@ test('pedestrians walk across the bridge walkway at deck height', async () => {
     const g = window.__game; const N = g.city.pedNodes; g.pedCap = 20;
     const start = N.filter(n => n.y !== undefined && n.x > 560 && n.x < 580 && n.z < 200)[0];
     const peds = [];
-    for (let k = 0; k < 3; k++) { const n = g.pop.spawn('civilian', start.x + k, start.z, start.y + 0.3); n.node = start.id; n.nextNode = start.id; peds.push(n); }
+    // head east onto the span: each walker picks its own next node at random, and all three turning back west (seen on CI) never reaches x 600
+    const east = start.edges.map(e => N[e.to]).filter(m => m && m.y !== undefined).sort((a, b) => b.x - a.x)[0];
+    for (let k = 0; k < 3; k++) { const n = g.pop.spawn('civilian', start.x + k, start.z, start.y + 0.3); n.node = start.id; n.nextNode = east ? east.id : start.id; n.persistent = true; /* far-crowd hand-over would swap walkers out beyond ~110 m */ peds.push(n); }
     g.player.place(start.x + 8, start.y + 0.3, start.z, 0);
     let minY = 99, maxY = -99, maxX = 0, alive = 0;
     for (let i = 0; i < 90 * 30; i++) { g.frame(1 / 30, i === 90 * 30 - 1); for (const n of peds) { if (!n.alive || n.disposed) continue; if (n.pos.x > 560 && n.pos.x < 710) minY = Math.min(minY, n.pos.y); maxY = Math.max(maxY, n.pos.y); maxX = Math.max(maxX, n.pos.x); } }
@@ -62,7 +64,7 @@ test('a pedestrian walks to a bench, sits for a while, then gets up and walks on
   // a scare gets a sitter up straight away and frees the bench
   const up = await page.evaluate(`(() => {
     const g = window.__game; const { b } = window.__bench; b.occupied = true;
-    const m = g.pop.spawn('civilian', b.x, 0.2, b.z); m.bench = b; m.activity = 'sit'; m.destPt = m.pos.clone(); m.brain = 'wander';
+    const m = g.pop.spawn('civilian', b.x, b.z, 0.2); m.bench = b; m.activity = 'sit'; m.destPt = m.pos.clone(); m.brain = 'wander';
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
     const sitting = m.activity === 'sitting';
     g.pop.danger(g.player.pos, 40, g.player);
@@ -127,7 +129,7 @@ test('a pedestrian routed from the west sidewalk crosses Harbor Way and reaches 
     const path = []; for (let c = goal.id; c !== -1; c = prev.get(c)) path.unshift(c);
     const cross = path.some((id, i) => i && N[id].edges.some(e => e.to === path[i - 1] && e.crossing));
     g.player.place(start.x + 6, 0.4, start.z + 8, 0);
-    const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6;
+    const n = g.pop.spawn('civilian', start.x, start.z, 0.2); n.node = start.id; n.nextNode = start.id; n.speedMul = 1.6; n.persistent = true; // the far-crowd hand-over (crowd.demotePed) would otherwise swap a walker out beyond ~110 m
     let reached = false, frames = 0; const trace = [];
     for (let i = 0; i < 300 * 30 && !reached; i++) {
       g.frame(1 / 30, false); frames++;

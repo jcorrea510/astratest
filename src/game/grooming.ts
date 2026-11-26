@@ -33,36 +33,36 @@ const HAT_PRICE: Record<Exclude<HatStyle, 'police'>, number> = { none: 0, cap: 3
 const PATTERN_LABEL: Record<Pattern, string> = { plain: 'Plain', stripes: 'Breton stripes', plaid: 'Flannel plaid', graphic: 'Graphic print', twotone: 'Two-tone sleeves', pinstripe: 'Pinstripe', camo: 'Woodland camo', houndstooth: 'Houndstooth' };
 
 export const CLOTH_COLOURS: [string, string][] = [
-  ['Black', '#1c1d21'], ['Charcoal', '#3d3f45'], ['Grey', '#8a8d91'], ['Cream', '#ecebe6'], ['White', '#f6f4ee'], ['Navy', '#1f3a5f'], ['Denim blue', '#3f6e9a'], ['Sky', '#8fb3c9'],
+  ['Black', '#1c1d21'], ['Charcoal', '#3d3f45'], ['Gray', '#8a8d91'], ['Cream', '#ecebe6'], ['White', '#f6f4ee'], ['Navy', '#1f3a5f'], ['Denim blue', '#3f6e9a'], ['Sky', '#8fb3c9'],
   ['Wine', '#7a1f2b'], ['Red', '#b3202c'], ['Rust', '#b5523b'], ['Orange', '#d07a3a'], ['Mustard', '#d9a441'], ['Olive', '#66764a'], ['Forest', '#2f6b4f'], ['Teal', '#3b7f6e'],
   ['Purple', '#5c3f73'], ['Pink', '#e3a3a8'], ['Tan', '#a08560'], ['Brown', '#5a4636'],
   // Round 9: more shades
-  ['Ivory', '#e9e1cf'], ['Heather grey', '#9b9a96'], ['Slate', '#4f5b66'], ['Royal blue', '#2c4fa3'], ['Burgundy', '#5e1a24'], ['Camel', '#b08a5a'], ['Sage', '#8fa088'], ['Lilac', '#a893c4'],
+  ['Ivory', '#e9e1cf'], ['Heather gray', '#9b9a96'], ['Slate', '#4f5b66'], ['Royal blue', '#2c4fa3'], ['Burgundy', '#5e1a24'], ['Camel', '#b08a5a'], ['Sage', '#8fa088'], ['Lilac', '#a893c4'],
 ];
 const DENIM_COLOURS: [string, string][] = [['Raw denim', '#2a3b5c'], ['Indigo', '#33497a'], ['Mid wash', '#4a6492'], ['Light wash', '#8aa0c0'], ['Black', '#1c1d21'], ['Charcoal', '#3a3f4a'], ['Khaki', '#b4a07c'], ['Stone', '#c9b993'], ['Olive', '#4b5131'], ['Brown', '#5a4636']];
-const SHOE_COLOURS: [string, string][] = [['White', '#f2f0ea'], ['Black', '#1c1d21'], ['Grey', '#8a8d91'], ['Red', '#9c2f35'], ['Blue', '#2d4f7c'], ['Tan', '#7a5a3a'], ['Brown', '#3a2a1e']];
+const SHOE_COLOURS: [string, string][] = [['White', '#f2f0ea'], ['Black', '#1c1d21'], ['Gray', '#8a8d91'], ['Red', '#9c2f35'], ['Blue', '#2d4f7c'], ['Tan', '#7a5a3a'], ['Brown', '#3a2a1e']];
 
 const swatches = (cs: [string, string][], price: number): GroomOption[] => cs.map(([label, hex]) => ({ id: hex, label, price, swatch: hex }));
 
 export function barberTabs(sex: 'm' | 'f'): GroomTab[] {
   return [
     { id: 'hairStyle', label: 'Haircut', kind: 'list', options: (sex === 'f' ? HAIR_F : HAIR_M).map(id => ({ id, label: HAIR_LABEL[id], price: id === 'bald' || id === 'buzz' ? 15 : id === 'braids' || id === 'cornrows' ? 55 : 30 })) },
-    { id: 'hair', label: 'Hair colour', kind: 'colour', options: swatches(HAIR_COLOURS, 35) },
+    { id: 'hair', label: 'Hair color', kind: 'colour', options: swatches(HAIR_COLOURS, 35) },
     { id: 'facial', label: 'Facial hair', kind: 'list', options: (sex === 'f' ? ['none'] as FacialHair[] : ['none', 'stubble', 'moustache', 'goatee', 'beard'] as FacialHair[]).map(id => ({ id, label: FACIAL_LABEL[id], price: id === 'none' ? 10 : 18 })) },
   ];
 }
 export function clothingTabs(sex: 'm' | 'f'): GroomTab[] {
   return [
     { id: 'topStyle', label: 'Tops', kind: 'list', options: (sex === 'f' ? TOPS_F : TOPS_M).map(id => ({ id, label: TOP_LABEL[id], price: TOP_PRICE[id] ?? 40 })) },
-    { id: 'top', label: 'Top colour', kind: 'colour', options: swatches(CLOTH_COLOURS, 12) },
+    { id: 'top', label: 'Top color', kind: 'colour', options: swatches(CLOTH_COLOURS, 12) },
     { id: 'pattern', label: 'Pattern', kind: 'list', options: (Object.keys(PATTERN_LABEL) as Pattern[]).map(id => ({ id, label: PATTERN_LABEL[id], price: id === 'plain' ? 0 : id === 'pinstripe' || id === 'houndstooth' ? 35 : 15 })) },
-    { id: 'accent', label: 'Accent colour', kind: 'colour', options: swatches(CLOTH_COLOURS, 8) },
+    { id: 'accent', label: 'Accent color', kind: 'colour', options: swatches(CLOTH_COLOURS, 8) },
     { id: 'bottomStyle', label: 'Pants', kind: 'list', options: (Object.keys(BOTTOM_LABEL) as BottomStyle[]).filter(b => sex === 'f' || b !== 'skirt').map(id => ({ id, label: BOTTOM_LABEL[id], price: BOTTOM_PRICE[id] })) },
-    { id: 'bottom', label: 'Pants colour', kind: 'colour', options: swatches(DENIM_COLOURS, 10) },
+    { id: 'bottom', label: 'Pants color', kind: 'colour', options: swatches(DENIM_COLOURS, 10) },
     { id: 'shoeStyle', label: 'Shoes', kind: 'list', options: (Object.keys(SHOE_LABEL) as ShoeStyle[]).map(id => ({ id, label: SHOE_LABEL[id], price: SHOE_PRICE[id] })) },
-    { id: 'shoes', label: 'Shoe colour', kind: 'colour', options: swatches(SHOE_COLOURS, 8) },
+    { id: 'shoes', label: 'Shoe color', kind: 'colour', options: swatches(SHOE_COLOURS, 8) },
     { id: 'hatStyle', label: 'Hats', kind: 'list', options: (Object.keys(HAT_LABEL) as (keyof typeof HAT_LABEL)[]).map(id => ({ id, label: HAT_LABEL[id], price: HAT_PRICE[id] })) },
-    { id: 'hat', label: 'Hat colour', kind: 'colour', options: swatches(CLOTH_COLOURS, 6) },
+    { id: 'hat', label: 'Hat color', kind: 'colour', options: swatches(CLOTH_COLOURS, 6) },
   ];
 }
 export const tabsFor = (type: ShopType, sex: 'm' | 'f') => type === 'barber' ? barberTabs(sex) : clothingTabs(sex);

@@ -90,7 +90,7 @@ test('settings: colour look defaults to natural; realistic driving toggle lowers
     return { natural, styl };
   });
   expect(r.natural.look).toBe('natural'); expect(r.natural.driving).toBe('arcade');
-  expect(r.natural.sat).toBeLessThan(1); expect(r.natural.vig).toBeLessThan(0.2);
+  expect(r.natural.sat).toBeLessThan(1.2); expect(r.natural.split).toBeLessThan(0.5); expect(r.natural.vig).toBeLessThan(0.2); // sat 1.1 compensates the AgX tone curve (Round 12)
   expect(r.styl.split).toBe(1); expect(r.styl.sat).toBeGreaterThan(1);
   clean(p);
 });

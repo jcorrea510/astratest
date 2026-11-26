@@ -9,7 +9,7 @@ import { generateCity, surfaceAt, signalState, laneSigAxis } from './world/citym
 import { UI } from './ui/ui';
 import { renderWeaponIcons } from './ui/icons';
 import { Audio } from './audio/audio';
-import type { GameAudio, WheelSlot } from './ui/contracts';
+import type { WheelSlot } from './ui/contracts';
 import { wheelSlots as combatWheelSlots, currentSlot, selectSlot, scrollSlot } from './combat/wheelSlots';
 // Story missions are switched off: the game is a sandbox. missions.ts stays in the repo (unused) so it can return later;
 // only its MissionCtx helper (markers, ground height, dialogue) is used by the activities.
@@ -18,14 +18,20 @@ import { Activities } from './game/activities';
 import { Sandbox } from './game/sandbox';
 import { dressed, appearanceDiff } from './game/grooming';
 import { PLAYER_DEFAULT_LOOK } from './actors/look';
-import { readSave, writeSave, safeSavePos, saveSummary, type SaveData } from './game/save';
+import { readSave, writeSave, safeSavePos, saveSummary, vehicleSpawn, type SaveData } from './game/save';
+import { paintIndexFor } from './game/saveVehicle';
+import { registerUiAudio } from './audio/uiSounds';
+import { showBootError, hideBootError, type BootErrorKind } from './ui/bootError';
+import { VEHICLES } from './vehicles/specs';
 import type { GameMode } from './game/modes';
 import { PLACES } from './game/places';
 import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
-import { installFullscreenShortcut, rememberFullscreen } from './core/fullscreen';
+import { installFullscreenShortcut } from './core/fullscreen';
 import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
+import { probeWebgl2 } from './core/webglProbe';
+import { LOOK } from './render/renderer';
 
 installFullscreenShortcut();
 
@@ -50,9 +56,11 @@ let game: Game | null = null;
 let ctx: MissionCtx | null = null;
 let activities: Activities | null = null;
 let sandbox: Sandbox | null = null;
-let audio: GameAudio | null = null;
+let audio: Audio | null = null;
 let worldPromise: Promise<Game> | null = null;
 let started = false;
+let wired = false;
+let playSecs = 0; // seconds played across sessions (saved)
 let autosaveT = 0;
 let ourUnlock = false;
 let mapByKey = false;
@@ -60,15 +68,16 @@ let attract: { shot: number; t: number; dipped: boolean } | null = null;
 const DEFAULT_SAT = 1.08;
 
 /** Phones get the "bigger screen" page. iPad (keyboard + mouse or a controller) plays the real game; iPadOS reports a coarse pointer, so it is excluded explicitly. */
+const MOBILE_OK_KEY = 'meridian-afterglow.mobileOk';
+function mobileOk(): boolean { try { return storage?.getItem(MOBILE_OK_KEY) === '1'; } catch { return false; } }
 function isMobile(): boolean {
+  if (mobileOk()) return false; // the player chose "Continue anyway"
   if (params.get('mobile') === '1') return true;
   const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
   const small = Math.min(screen.width, screen.height) < 600;
   return coarse && (small || 'ontouchstart' in window) && isPhoneLike(navigator, Math.min(screen.width, screen.height));
 }
-function webglOk(): boolean {
-  try { const c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch { return false; }
-}
+const webglOk = probeWebgl2;
 
 ui.init({
   city, settings, callbacks: {
@@ -81,7 +90,7 @@ ui.init({
     onSettingsChanged: s => applySettings(s),
     onQualityChanged: q => { settings.quality = q; saveSettings(settings); game?.renderer.setQuality(q); },
     onSetWaypoint: (x, z) => { if (game) { game.waypoint = new THREE.Vector3(x, 0, z); ui.toast('Waypoint set', 'info'); } },
-    onUiSound: k => audio?.play(k === 'click' ? 'uiClick' : k === 'hover' ? 'uiHover' : 'uiBack'),
+    onUiSound: () => { }, // menu sounds go through registerUiAudio (uiSounds.ts)
     captureKey: cb => { if (game && started) game.input.captureNext(cb); else captureOnce(cb); },
   },
 });
@@ -97,7 +106,43 @@ function applySettings(s: Settings) {
   Object.assign(settings, s);
   saveSettings(settings);
   audio?.setVolumes(settings.master, settings.music, settings.sfx);
+  audio?.applyChannelSettings(settings);
   if (game) { game.cam.shakeScale = settings.cameraShake; game.renderer.setLook(settings.look); setRealisticDriving(settings.driving === 'realistic'); if (game.renderer.qualityName !== settings.quality) game.renderer.setQuality(settings.quality); }
+}
+
+/** Context loss and frame-loop crashes: pause with a clear message instead of leaving a dead canvas. */
+function installResilience(g: Game) {
+  let wasRunning = false;
+  canvas.addEventListener('webglcontextlost', e => {
+    e.preventDefault(); // lets the browser restore the context
+    wasRunning = g.isRunning; g.stop();
+    showBootError('context-lost');
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    hideBootError();
+    if (wasRunning) g.start();
+  });
+  g.onCrash = e => {
+    console.error('game loop stopped after repeated errors', e);
+    try { g.input.exitLock(); } catch { /* ignore */ }
+    showBootError('crashed', { error: e });
+  };
+}
+/** Maps a boot failure to its screen: a missing WebGL 2 context is a graphics problem, anything else a failed load. */
+function failureKind(e: unknown): BootErrorKind {
+  return /webgl|rendering context|context lost/i.test(e instanceof Error ? e.message : String(e)) ? 'no-webgl' : 'load-failed';
+}
+function failBoot(e: unknown) {
+  console.error(e);
+  try { ui.hideLoading(); } catch { /* ignore */ }
+  showBootError(failureKind(e), { error: e });
+}
+let reportedError = false;
+/** One unobtrusive toast for stray errors outside the frame loop; details stay in the console. */
+function installErrorToast() {
+  const once = () => { if (reportedError) return; reportedError = true; try { ui.toast('Something went wrong. The game is still running.', 'warning'); } catch { /* ignore */ } };
+  window.addEventListener('error', once);
+  window.addEventListener('unhandledrejection', once);
 }
 
 /** Loads assets and builds the whole city once; the title screen then flies a camera over it. */
@@ -106,9 +151,10 @@ function bootWorld(onProgress: (f: number, label: string) => void): Promise<Game
   worldPromise = (async () => {
     await initPhysics();
     const assets: Assets = await loadAssets((f, l) => onProgress(f * 0.6, l));
-    if (!audio) { audio = new Audio(assets.audio); audio.setVolumes(settings.master, settings.music, settings.sfx); }
+    if (!audio) { audio = new Audio(assets.audio); audio.setVolumes(settings.master, settings.music, settings.sfx); audio.applyChannelSettings(settings); registerUiAudio(audio); }
     const g = new Game(canvas, settings, assets, audio);
     game = g; window.__game = g;
+    installResilience(g);
     await g.init((f, l) => onProgress(0.6 + f * 0.38, l));
     ctx = new MissionCtx(g, ui);
     return g;
@@ -166,12 +212,13 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     g.stop();
     stopAttract(g);
     ui.showLoading(0.6, 'Waking up the city');
-    activities = new Activities(g, ui, ctx!);
-    activities.onSaveRequested = () => saveGame();
-    activities.missionActive = () => false;
-    sandbox = new Sandbox(g, ui);
-
-    wireGame(g);
+    if (!activities) { // built once: a second play (after quit to title) reuses the same systems
+      activities = new Activities(g, ui, ctx!);
+      activities.onSaveRequested = () => saveGame();
+      activities.missionActive = () => false;
+    }
+    sandbox ??= new Sandbox(g, ui);
+    if (!wired) { wired = true; wireGame(g); }
     const save = cont ? readSave(storage) : null;
     g.police.clear();
     let loaded = false;
@@ -179,6 +226,7 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     if (!loaded) newGameSetup(save ? save.mode : newMode); // a broken save falls back to a fresh start instead of a dead game
     ui.setMode(g.mode);
     activities.parkOwned();
+    if (loaded && save?.vehicle) restoreVehicle(save);
     activities.spawnCards();
     g.cam.update(0.016, g.player.pos, 'foot');
     ui.showLoading(0.85, 'Waking up the city');
@@ -198,8 +246,7 @@ async function play(cont: boolean, newMode: GameMode = 'sandbox') {
     } else ui.toast('Welcome back to Port Meridian', 'info');
     exposeApi();
   } catch (e) {
-    console.error(e);
-    ui.showLoading(1, 'Something went wrong while loading. Please reload the page.');
+    failBoot(e);
   }
 }
 
@@ -219,6 +266,7 @@ function applySave(s: SaveData) {
   for (const c of s.collectibles) a.found.add(c);
   for (const j of s.jumps) a.jumpsDone.add(j);
   g.stats = { ...s.stats };
+  playSecs = s.playSeconds ?? 0;
   if (s.appearance) g.player.human.applyLook(dressed(PLAYER_DEFAULT_LOOK, s.appearance));
   sandbox!.applyCaps();
   sandbox!.loadTools(s.tools);
@@ -232,6 +280,30 @@ function deckAwareSurface(x: number, z: number) {
   const s = surfaceAt(city, x, z);
   return s === 'water' && (ctx?.groundY(x, z, 0) ?? 0) > 0.8 ? 'sidewalk' : s;
 }
+/** Puts the saved car back beside the player (reusing an owned car of the same kind and paint instead of duplicating it). */
+function restoreVehicle(s: SaveData) {
+  const g = game!, sv = s.vehicle!;
+  try {
+    const spot = vehicleSpawn(sv, s.pos, deckAwareSurface);
+    const y = ctx!.groundY(spot.x, spot.z, 0.2) + 0.4;
+    const paints = VEHICLES[sv.kind].paints;
+    const same = (v: { kind: string; paint: { r: number; g: number; b: number } }) => v.kind === sv.kind && paintIndexFor(paints, v.paint) === sv.paint % paints.length;
+    const owned = activities!.ownedCars.some(c => c.kind === sv.kind && c.paint === sv.paint);
+    const existing = owned ? g.vehicles.list.find(v => !v.destroyed && v.persistent && v.playerUsed && same(v)) : undefined;
+    if (existing) { existing.phys.teleport(spot.x, y, spot.z, spot.yaw); return; }
+    const nv = g.vehicles.spawn(sv.kind, spot.x, spot.z, spot.yaw, sv.paint, y);
+    nv.persistent = true; nv.playerUsed = true;
+    if (sv.health) nv.health = Math.min(nv.spec.health, sv.health);
+  } catch (e) { console.error('saved vehicle could not be restored', e); }
+}
+/** The car the player is in, or the one they last drove while it still exists. */
+function savedVehicle(g: Game): SaveData['vehicle'] {
+  const v = g.playerVehicle ?? (g.lastPlayerVehicle && !g.lastPlayerVehicle.destroyed && g.vehicles.list.includes(g.lastPlayerVehicle) ? g.lastPlayerVehicle : null);
+  if (!v) return undefined;
+  const p = v.position;
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) return undefined;
+  return { kind: v.kind, paint: paintIndexFor(v.spec.paints, v.paint), x: p.x, z: p.z, yaw: v.yaw, health: Math.max(1, Math.round(v.health)) };
+}
 function saveGame(): boolean {
   if (!game || !activities || !sandbox || !started || game.deathT >= 0) return false;
   const g = game;
@@ -240,11 +312,12 @@ function saveGame(): boolean {
   // Never save a roof, a lot or the water: store the nearest street / pavement / park spot (or the safehouse).
   const pos = onFoot && !g.player.swimming ? safeSavePos({ x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw }, deckAwareSurface, home) : home;
   return writeSave(storage, {
-    version: 2, savedAt: Date.now(), mode: g.mode, cars: activities.ownedCars, milestones: [...activities.milestones], robberies: activities.robberiesTotal, money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
+    version: 3, savedAt: Date.now(), mode: g.mode, cars: activities.ownedCars, milestones: [...activities.milestones], robberies: activities.robberiesTotal, money: g.money, health: Math.max(1, g.player.health), armor: g.player.armor,
     weapons: g.pcombat.inv.weapons, current: g.pcombat.inv.current, medkits: g.pcombat.inv.medkits,
     missions: [], collectibles: [...activities.found], jumps: [...activities.jumpsDone],
     pos, hour: g.hour, stats: g.stats, tools: sandbox.tools(),
     garage: activities.salesState(),
+    playSeconds: Math.round(playSecs), ...(savedVehicle(g) ? { vehicle: savedVehicle(g) } : {}),
     ...(Object.keys(appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook())).length ? { appearance: appearanceDiff(PLAYER_DEFAULT_LOOK, activities.salon.ownedLook()) } : {}),
   });
 }
@@ -287,7 +360,7 @@ function installAudioUnlock() {
 }
 function setGrade(g: Game, k: number) {
   const u = g.renderer.grade?.uniforms; if (!u) return;
-  u.uSat.value = DEFAULT_SAT * (1 - k * 0.92);
+  u.uSat.value = (LOOK[g.renderer.look]?.sat ?? DEFAULT_SAT) * (1 - k * 0.92);
   u.uSlow.value = k;
 }
 function pause() {
@@ -305,10 +378,40 @@ function resume() {
 }
 /** Title menu: the Continue button describes the save (mode, cash, when). */
 function showTitle() { const s = readSave(storage); ui.showTitle(!!s, s ? saveSummary(s) : undefined); }
+/**
+ * Back to the title without reloading the page: the world stays built, the session state is reset through existing APIs
+ * (player, vehicles, heat, shops, owned cars, progress), and the flyover restarts. Falls back to a reload only if the reset throws.
+ * Not reset (stays as the city left it): ambient pedestrians / traffic positions, parked cars you left, store loot already taken.
+ */
 function quitToTitle() {
   saveGame();
-  rememberFullscreen(); // the reload drops fullscreen; the next key press / click on the title puts it back
-  location.href = location.pathname; // the title screen (drop debug query flags such as ?autostart)
+  const g = game, a = activities;
+  if (!g || !a || !sandbox) { location.href = location.pathname; return; }
+  try {
+    started = false; // first, so the pointer-lock / blur handlers do not pause a game that is leaving
+    // a debug / autostart URL must not start a game again on the next refresh: drop its query (no reload)
+    if (location.search) history.replaceState(history.state, '', location.pathname + location.hash);
+    if (g.wheelOpen) closeWheel(true);
+    a.closeShop(); a.robberies.reset();
+    g.exitVehicle(true);
+    g.paused = false; g.menuOpen = false; g.deathT = -1;
+    g.timeScale = 1; g.targetTimeScale = 1; audio?.setSlowMo(0); audio?.setPausedMuffle(false); setGrade(g, 0);
+    ui.setPaused(false); ui.setHudVisible(false);
+    try { g.input.exitLock(); } catch { /* ignore */ }
+    g.input.clearAll();
+    g.police.clear(); g.waypoint = null;
+    // session progress back to a blank slate (the next Continue / New game fills it in again)
+    a.loadOwned([], [], 0); a.loadSales(undefined); a.found.clear(); a.jumpsDone.clear(); a.robberies.completed = 0;
+    g.stats = { kills: 0, distance: 0, crashes: 0 }; playSecs = 0; autosaveT = 0;
+    g.player.human.applyLook(PLAYER_DEFAULT_LOOK);
+    sandbox.loadTools({ god: false, ammo: false, never: false, clock: true });
+    startAttract(g);
+    ui.setBackdropLive(true);
+    showTitle();
+  } catch (e) {
+    console.error('in-place quit failed, reloading', e);
+    location.href = location.pathname;
+  }
 }
 
 // ---------------- Inventory wheel ----------------
@@ -364,14 +467,14 @@ function frame(raw: number) {
     ctx!.tickDialogue(raw * g.timeScale);
     sandbox?.update();
     a.update(raw * g.timeScale);
-    autosaveT += raw;
+    autosaveT += raw; playSecs += raw;
     if (autosaveT > 60 && g.deathT < 0 && !g.playerVehicle) { autosaveT = 0; saveGame(); }
   }
   // HUD
   const hud = g.hudState(null, null);
   hud.interactPrompt = promptFor(a.prompt() ?? hud.interactPrompt, g.settings.bindings);
   ui.updateHud(hud);
-  ui.updateMinimap(minimapState());
+  if (ui.minimapWanted()) ui.updateMinimap(minimapState());
 }
 let gps: GpsRouter | null = null;
 function minimapState() {
@@ -405,13 +508,12 @@ function exposeApi() {
 }
 
 // ---------------- Boot ----------------
-if (!webglOk()) {
-  ui.showMobileGate();
-} else if (isMobile()) {
-  ui.showMobileGate();
-} else if (params.get('autostart') === '1') {
-  void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
-} else {
+function startBoot() {
+  installErrorToast();
+  if (params.get('autostart') === '1') {
+    void play(params.get('continue') === '1', params.get('mode') === 'regular' ? 'regular' : 'sandbox'); // tests default to the sandbox (cheats on)
+    return;
+  }
   // loading screen -> live city flyover behind the title menu
   ui.showLoading(0, 'Preparing the city');
   installAudioUnlock();
@@ -426,6 +528,11 @@ if (!webglOk()) {
       const shot = (i: number, t = 0) => { if (attract) { attract.shot = i % ATTRACT_SHOTS.length; attract.t = t; attract.dipped = false; enterShot(g, attract.shot); } };
       (window as unknown as { __title?: unknown }).__title = { game: g, ui, settings, shot };
     })
-    .catch(e => { console.error(e); ui.showLoading(1, 'Something went wrong while loading. Please reload the page.'); });
+    .catch(failBoot);
 }
+try {
+  if (!webglOk()) showBootError('no-webgl');
+  else if (isMobile()) ui.showMobileGate(() => { try { storage?.setItem(MOBILE_OK_KEY, '1'); } catch { /* ignore */ } startBoot(); });
+  else startBoot();
+} catch (e) { failBoot(e); }
 document.title = 'Meridian Afterglow';

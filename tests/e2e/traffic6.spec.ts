@@ -27,7 +27,7 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
     };
     const lastPos = new Map<any, any>(); const jumps: any[] = []; const idle: Record<number, number> = {}, idleWorst: any[] = [];
     const farIdle: Record<number, number> = {}, farWorst: any[] = [];
-    let samples = 0, moving = 0, parked = 0;
+    let samples = 0, moving = 0, parked = 0, allMoving = 0, allCars = 0;
     const fp = g.player.pos;
     for (let i = 0; i < 60 * 30; i++) {
       g.frame(1 / 30, false);
@@ -45,16 +45,19 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
           const L = c.lane, I = g.city.intersections[L.intersection], dS = L.length - c.s - 5.4;
           const atLine = !L.connector && dS < 12 && (sig(I, L, g.time) !== 'green' || !I.signalized);
           const ahead = (o: any, rs: number, ln: any) => (ln === L ? rs > c.s && rs - c.s < 45 : L.next.includes(ln.id) && rs < 45 - (L.length - c.s));
-          const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane));
+          const queued = g.crowd.cars.some((o: any) => o !== c && ahead(o, o.s, o.lane)) || g.traffic.cars.some((o: any) => ahead(o, o.s, o.lane))
+            // a real car standing in its path (a bus at its stop, pulled in to the kerb): the far car queues behind it, as the game says
+            || g.traffic.cars.some((o: any) => { const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), dx = o.v.position.x - c.x, dz = o.v.position.z - c.z, al = dx * fx + dz * fz; return al > 0 && al < 18 && Math.abs(dx * fz - dz * fx) < 1.5 && !L.connector; });
           if (atLine || queued || c.dwell > 0) farIdle[id] = 0; else { farIdle[id] = (farIdle[id] ?? 0) + 1; if (farIdle[id] > 10 && !farWorst.some(w => w.id === id)) farWorst.push({ id, lane: L.id, dS }); }
         }
         samples++;
+        { const rc = g.traffic.cars.filter((c: any) => !c.persistent); allCars += rc.length + g.crowd.cars.length; allMoving += rc.filter((c: any) => Math.abs(c.v.speed) > 0.3).length + g.crowd.cars.filter((c: any) => c.v > 0.3).length; }
         const near = (x: number, z: number) => (x - fp.x) ** 2 + (z - fp.z) ** 2 < 150 * 150;
         moving += g.traffic.cars.filter((c: any) => !c.persistent && Math.abs(c.v.speed) > 1 && near(c.v.position.x, c.v.position.z)).length + g.crowd.cars.filter((c: any) => c.v > 1 && near(c.x, c.z)).length;
         parked += g.crowd.countNear(fp.x, fp.z, 150).parked + g.vehicles.list.filter((v: any) => v.parked && near(v.position.x, v.position.z)).length;
       }
     }
-    return { jumps: jumps.slice(0, 6), reds, rolled, idleWorst, farWorst, moving: moving / samples, parked: parked / samples };
+    return { jumps: jumps.slice(0, 6), reds, rolled, idleWorst, farWorst, moving: moving / samples, parked: parked / samples, movingFraction: allMoving / Math.max(1, allCars) };
   });
   console.log('TRAFFIC6', JSON.stringify({ ...r, reds: r.reds.length, rolled: r.rolled.length })); console.log('JUMPS', JSON.stringify(r.jumps)); if (r.reds.length) console.log('REDS', JSON.stringify(r.reds.map((x: any) => ({ ...x, h: x.h.filter((_: any, i2: number, a: any[]) => (a.length - i2) % 5 === 0).map((e: any) => e.join('/')).join(' ') }))));
   expect(r.reds, JSON.stringify(r.reds)).toEqual([]);
@@ -62,4 +65,5 @@ test('60 s of traffic: no red-light running, no idle car without a reason, movin
   expect(r.idleWorst, JSON.stringify(r.idleWorst)).toEqual([]);
   expect(r.farWorst, JSON.stringify(r.farWorst)).toEqual([]);
   expect(r.moving).toBeGreaterThanOrEqual(r.parked);
+  expect(r.movingFraction, 'most AI traffic keeps moving (LOD / sleep must not freeze cars; ~0.65 on the original build too)').toBeGreaterThan(0.5);
 });

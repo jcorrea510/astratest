@@ -26,6 +26,18 @@ export const DISPATCH_HOLD = 14;
 export type ViolationKind = 'red_light' | 'speeding' | 'wrong_way' | 'collision' | 'reckless';
 const COP_KINDS = ['police', 'fbi', 'swat', 'army', 'tank'];
 /** Speeding counts when the player is more than 15 mph (6.7 m/s) over the lane's limit. Pure, unit tested. */
+/** Metres within which a police helicopter's spotlight can find the player; further out it is still flying in. */
+export const HELI_SIGHT_RANGE = 200;
+/** Longest a helicopter counts as "still flying in" (it spawns 380-700 m out and climbs over the towers on the way). */
+export const HELI_INBOUND_MAX = 90;
+/** Still on its first approach: never yet within sight range, not flying in for too long, and closing in (not this far behind its best approach: the player has outrun it). Pure. */
+export const heliInbound = (arrived: boolean, inT: number, hd: number, bestD: number) => !arrived && inT < HELI_INBOUND_MAX && hd < bestD + 40;
+/**
+ * Seconds the search timer stays held after a scan: 2.5 with the spotlight on the player; 0.5 while the helicopter is still on its
+ * first approach (`inbound`: it has never been within sight range and has flown in for under HELI_INBOUND_MAX s); else 0.
+ * A helicopter the player has since outrun (beyond sight range after arriving, or never catching up) no longer holds the heat.
+ */
+export const heliHold = (hd: number, los: boolean, inbound = true) => hd < HELI_SIGHT_RANGE ? (los ? 2.5 : 0) : inbound ? 0.5 : 0;
 export const isSpeeding = (speed: number, limit: number) => Math.abs(speed) > limit + 6.7;
 /** A vehicle moving from (px,pz) to (x,z) enters the box of a signalised junction while its light is red. Pure, unit tested. */
 export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz: number, x: number, z: number, time: number): boolean {
@@ -116,7 +128,7 @@ export class Police {
   clock: () => number = () => (this.traffic as unknown as { time?: () => number }).time?.() ?? 0;
   /** the player's current stolen police vehicle (cops that see the player in it pursue, whatever the heat) */
   stolenCop: object | null = null; private pendingStolen = false;
-  private heliSeeT = 0; private violT = 0; private vPrev = new THREE.Vector3(); private vPrevOk = false; private limitT = 0; private limit = 14;
+  private heliSeeT = 0; private heliRef: object | null = null; private heliInT = 0; private heliArrived = false; private heliBestD = Infinity; private violT = 0; private vPrev = new THREE.Vector3(); private vPrevOk = false; private limitT = 0; private limit = 14;
   private bails: { car: AiCar; t: number }[] = [];
   private violCool = 0; private strictSeen = false; private eyeC = new THREE.Vector3(); private speedT = 0; private violKind: ViolationKind | null = null; private playerFast = false;
   private extDetector = false;
@@ -377,12 +389,14 @@ export class Police {
       const hl = this.dispatch.heli;
       if (hl && !hl.destroyed) {
         const hp = hl.position, hd = Math.hypot(hp.x - pp.x, hp.z - pp.z);
-        if (hd < 200) {
+        if (hl !== this.heliRef) { this.heliRef = hl; this.heliInT = 0; this.heliArrived = false; this.heliBestD = Infinity; }
+        this.heliInT += 0.25; this.heliBestD = Math.min(this.heliBestD, hd); if (hd < HELI_SIGHT_RANGE) this.heliArrived = true; // one scan every 0.25 s
+        if (hd < HELI_SIGHT_RANGE) {
           this.eyeA.set(hp.x, hp.y - 2.5, hp.z);
           const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
           if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
-          if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = 2.5; strict = true; }
-        }
+          if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = heliHold(hd, true); strict = true; }
+        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false, heliInbound(this.heliArrived, this.heliInT, hd, this.heliBestD))); // still flying in from the precinct: the search is not called off while it is on its way (but an outrun helicopter does not hold it)
       }
       if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
@@ -400,15 +414,15 @@ export class Police {
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
     // Clean dead/removed units
     for (const u of this.units) if (!this.traffic.cars.includes(u)) { u.persistent = false; u.v.persistent = false; u.v.siren = false; }
-    this.units = this.units.filter(u => this.traffic.cars.includes(u));
+    { const us = this.units; let k = 0; for (let i = 0; i < us.length; i++) if (this.traffic.cars.includes(us[i])) us[k++] = us[i]; us.length = k; } // in place: no per-frame array
     for (const n of this.foot) if (!n.alive) n.persistent = false;
-    this.foot = this.foot.filter(n => this.pop.npcs.includes(n) && n.alive);
+    { const ft = this.foot; let k = 0; for (let i = 0; i < ft.length; i++) if (ft[i].alive && this.pop.npcs.includes(ft[i])) ft[k++] = ft[i]; ft.length = k; }
     this.violentT = Math.max(0, this.violentT - dt);
     const D = this.dispatch;
     if (D.arrest) D.updateArrest(dt, player);
     // officers that left their unit on their own (shot up, wrecked) still fight
     for (const n of D.collectCrew()) if (!this.foot.includes(n)) { D.arm(n, D.footKind.get(n) ?? 'police', st.heat, this.lethal); this.foot.push(n); }
-    for (const [car] of [...D.kinds]) if (!this.traffic.cars.includes(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
+    for (const car of D.kinds.keys()) if (!this.traffic.cars.includes(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
     if (st.heat > 0) {
       const target = seen ? pp : st.lastSeen;
       const lethal = this.lethal, pv = player.inVehicle as { position: THREE.Vector3; speed: number; yaw: number; doorPoint(side: 1 | -1): THREE.Vector3 } | null;
@@ -501,6 +515,9 @@ export { wantedUnits };
  * Round 9 (owner: "cops shoot you even if you're unarmed"): officers use their guns only against a suspect with a firearm
  * out, at 3+ stars (or 2 once violent); an unarmed suspect is chased, tased and cuffed. At 5 stars (army) anything goes. Pure.
  */
+/** Whether the police treat the player as armed: a gun out, or flying a helicopter (an aircraft cannot be tased and cuffed, it is shot down). Pure. */
+export function policeSeesArmed(alive: boolean, gunOut: boolean, inHeli: boolean): boolean { return alive && (gunOut || inHeli); }
+
 export function copsMayShoot(heat: number, violent: boolean, playerArmed: boolean): boolean {
   if (heat >= 5) return true;
   return playerArmed && (heat >= 3 || (heat === 2 && violent));

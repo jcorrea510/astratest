@@ -13,7 +13,7 @@ import { Rng } from '../core/rng';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -141,7 +141,7 @@ export class Traffic {
     n.char.setCollision(true); n.char.human.setState('loco');
     n.brain = 'flee'; n.stateT = 0; n.fleeFrom.copy(v.position);
   }
-  carOf(v: Vehicle) { return this.cars.find(c => c.v === v) ?? null; }
+  carOf(v: Vehicle) { const cs = this.cars; for (let i = 0; i < cs.length; i++) if (cs[i].v === v) return cs[i]; return null; } // (no closure: it is called per car x per vehicle each step)
   /**
    * Takes a car out of AI control without moving anyone (scripted carjacks animate the occupants themselves).
    * Returns the driver and passengers that were in it.
@@ -252,6 +252,7 @@ export class Traffic {
   /** Round 9 (owner: cars stopped on the crosswalk): the stop point keeps the nose behind the zebra (3 m) whatever the car's length. */
   private distToStop(car: AiCar): number { return car.lane.connector ? Infinity : car.lane.length - car.s - stopBack(car.v.phys.layout.half[2]); }
 
+  private aimBuf = new THREE.Vector3();
   fixedUpdate(dt: number, player: Character, playerVehicle: Vehicle | null) {
     const t = this.time();
     this.monitorPlayer(dt, t, playerVehicle);
@@ -333,7 +334,7 @@ export class Traffic {
         }
         car.shift = (car.shift ?? 0) + (want - (car.shift ?? 0)) * Math.min(1, dt * 2.5);
       }
-      const aim = new THREE.Vector3();
+      const aim = this.aimBuf;
       const look = THREE.MathUtils.clamp(Math.abs(speed) * 0.55 + 4, 5, 16);
       if ((car.mode === 'pursuit' || car.mode === 'goto') && car.target && pos.distanceTo(car.target) < 40) {
         aim.copy(car.target);
@@ -358,7 +359,7 @@ export class Traffic {
         if (nl.connector && nl.speed < 10) targetSpeed = Math.min(targetSpeed, Math.sqrt(nl.speed * nl.speed + 2 * (car.mode === 'pursuit' ? 6 : 2.6) * Math.max(0, car.lane.length - car.s - 3))); // Round 9: brake gently into a turn
       }
       // Signals
-      if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20)))) {
+      if ((car.mode === 'cruise' || car.mode === 'goto') && !car.lane.connector && !(car.mode === 'goto' && (car.driver.role !== 'civilian' || (car.target && pos.distanceTo(car.target) < 20 && skipSignalNearTarget(this.distToStop(car)))))) {
         const inter = this.city.intersections[car.lane.intersection];
         const st = signalState(inter, laneSigAxis(car.lane), t);
         const dStop = this.distToStop(car);
@@ -483,7 +484,7 @@ export class Traffic {
       if (car.mode === 'flee' && !car.persistent && blockDist < 7 && Math.abs(speed) < 1.5) { car.boxedT = (car.boxedT ?? 0) + dt; if (car.boxedT > 2) { for (const p of car.passengers ?? []) if (p.alive && p.char.inVehicle === v) this.ejectPassenger(p, v); this.eject(car, v, 1); continue; } } else car.boxedT = 0;
       this.laneChange(car, dt, pos, f, speed, blockDist, blocker, blockerV);
       // Pure-pursuit steering
-      const pp = v.phys.body.translation();
+      v.phys.refreshPose(); const pp = v.phys.cPos;
       const adx = aim.x - pp.x, adz = aim.z - pp.z;
       const local = { x: adx * f.z - adz * f.x, z: adx * f.x + adz * f.z };
       let steer = THREE.MathUtils.clamp(Math.atan2(local.x, Math.max(0.5, local.z)) * 2.0, -1, 1);

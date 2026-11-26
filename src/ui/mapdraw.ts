@@ -4,9 +4,11 @@ import type { MinimapBlip } from './contracts';
 import { WEAPON_PATHS } from './icons';
 import { WEST, WEST_PLAZAS } from '../world/westside';
 import { Buildings3D } from './map3d';
+import { BLIP_BASE_COLORS, blipStyle, pageA11y } from './blipStyle';
 
-const BASE = '#173a3e';
-const BLOCK_BASE = '#21474b';
+const BASE = '#0e1317';
+const BLOCK_BASE = '#1b2128';
+const LOT_BASE = '#262d35';
 
 function hexToRgb(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16);
@@ -52,18 +54,18 @@ export class CityPainter {
     beach.rect(tipX, STREETS[STREETS.length - 1] + 9, HARBOR_X - tipX, COAST_Z - STREETS[STREETS.length - 1] - 9);
     const quay = new Path2D();
     quay.rect(AVENUES[AVENUES.length - 1] + 9, STREETS[0] - 30, HARBOR_X - AVENUES[AVENUES.length - 1] - 9, COAST_Z - STREETS[0] + 30);
-    this.base.push({ color: '#1d4436', path: land });
-    this.base.push({ color: mixColor('#d9b380', BASE, 0.45), path: beach });
-    this.base.push({ color: mixColor('#7a7268', BASE, 0.45), path: quay });
+    this.base.push({ color: '#12181d', path: land });
+    this.base.push({ color: mixColor('#9a917f', BASE, 0.55), path: beach });
+    this.base.push({ color: mixColor('#6b6d70', BASE, 0.6), path: quay });
     const tarmac = new Path2D(); // CITY: airfield runway/apron and Fort Calder
     tarmac.rect(AIRFIELD.runwayX - 22, AIRFIELD.z0 + 20, 45, AIRFIELD.z1 - AIRFIELD.z0 - 30); tarmac.rect(AIRFIELD.apronX - 40, AIRFIELD.z0 + 80, 80, AIRFIELD.z1 - AIRFIELD.z0 - 100);
-    this.base.push({ color: mixColor('#8a8a86', BASE, 0.4), path: tarmac });
+    this.base.push({ color: mixColor('#7c7f84', BASE, 0.55), path: tarmac });
     const fort = new Path2D(); fort.rect(ARMY_BASE.x0, ARMY_BASE.z0, ARMY_BASE.x1 - ARMY_BASE.x0, ARMY_BASE.z1 - ARMY_BASE.z0);
-    this.base.push({ color: mixColor('#5b6b45', BASE, 0.35), path: fort });
-    this.base.push({ color: '#0b2630', path: water });
+    this.base.push({ color: mixColor('#4c5846', BASE, 0.55), path: fort });
+    this.base.push({ color: '#08141d', path: water });
     for (const pl of WEST_PLAZAS) { // plazas, park and roundabout island of the west extension
       const d = new Path2D(); d.arc(pl.x, pl.z, pl.r, 0, Math.PI * 2);
-      this.base.push({ color: pl.kind === 'plaza' ? mixColor('#cdbf9e', BASE, 0.45) : mixColor('#4f8a52', BASE, 0.35), path: d });
+      this.base.push({ color: pl.kind === 'plaza' ? mixColor('#a69f90', BASE, 0.6) : mixColor('#3c6a45', BASE, 0.5), path: d });
     }
 
     this.coastline = new Path2D();
@@ -78,8 +80,8 @@ export class CityPainter {
     const lotPaths = new Map<string, Path2D>();
     const dsum = new Map<District, { x: number; z: number; n: number }>();
     for (const b of city.blocks) {
-      const tint = b.kind === 'park' ? '#4f8a52' : DISTRICT_INFO[b.district].color;
-      const color = mixColor(BLOCK_BASE, tint, b.kind === 'park' ? 0.62 : 0.26);
+      const tint = b.kind === 'park' ? '#3c6a45' : DISTRICT_INFO[b.district].color;
+      const color = mixColor(BLOCK_BASE, tint, b.kind === 'park' ? 0.55 : 0.1);
       let p = blockPaths.get(color);
       if (!p) { p = new Path2D(); blockPaths.set(color, p); }
       p.rect(b.x0, b.z0, b.x1 - b.x0, b.z1 - b.z0);
@@ -92,7 +94,7 @@ export class CityPainter {
     for (const l of city.lots) {
       const b = blockById.get(l.blockId);
       const tint = b ? DISTRICT_INFO[b.district].color : l.district ? DISTRICT_INFO[l.district].color : '#888888';
-      const color = mixColor(BLOCK_BASE, tint, 0.45);
+      const color = mixColor(LOT_BASE, tint, 0.14);
       let p = lotPaths.get(color);
       if (!p) { p = new Path2D(); lotPaths.set(color, p); }
       if (l.blockId < 0) { // free-standing (rotated) lot of the west extension
@@ -136,24 +138,24 @@ export class CityPainter {
   paintGround(ctx: CanvasRenderingContext2D, scale: number) {
     const b = this.bounds, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2, r = Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5;
     const wg = ctx.createRadialGradient(cx, cz, r * 0.1, cx, cz, r);
-    wg.addColorStop(0, '#15566a'); wg.addColorStop(0.55, '#0f3f52'); wg.addColorStop(1, '#071f2b');
+    wg.addColorStop(0, '#10293a'); wg.addColorStop(0.55, '#0b1f2d'); wg.addColorStop(1, '#06111a');
     for (const g of this.base) {
       ctx.fillStyle = g.path === this.water ? wg : g.color; ctx.fill(g.path);
     }
     // shallows and shoreline
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 16; ctx.strokeStyle = 'rgba(110,205,205,0.10)'; ctx.stroke(this.coastline);
-    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(140,225,215,0.16)'; ctx.stroke(this.coastline);
-    ctx.lineWidth = 1.4 / Math.max(scale, 0.2); ctx.strokeStyle = 'rgba(255,225,170,0.55)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 16; ctx.strokeStyle = 'rgba(120,170,200,0.07)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(140,185,210,0.11)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 1.4 / Math.max(scale, 0.2); ctx.strokeStyle = 'rgba(170,200,220,0.4)'; ctx.stroke(this.coastline);
     for (const g of this.blocks) { ctx.fillStyle = g.color; ctx.fill(g.path); }
     // road hierarchy: streets, avenues (wider, brighter, cased), freeway (distinct, with an elevated shadow)
-    ctx.fillStyle = 'rgba(206,196,170,0.5)'; ctx.fill(this.roads);
+    ctx.fillStyle = '#4a4f57'; ctx.fill(this.roads);
     const cw = 1.6 / Math.max(scale, 0.2);
-    ctx.lineWidth = cw; ctx.strokeStyle = 'rgba(8,22,26,0.55)'; ctx.stroke(this.majorRoads);
-    ctx.fillStyle = '#ffd08e'; ctx.fill(this.majorRoads);
+    ctx.lineWidth = cw; ctx.strokeStyle = 'rgba(6,8,11,0.6)'; ctx.stroke(this.majorRoads);
+    ctx.fillStyle = '#7d838d'; ctx.fill(this.majorRoads);
     ctx.save(); ctx.translate(3, 5); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill(this.freeway); ctx.restore();
-    ctx.lineWidth = cw * 1.6; ctx.strokeStyle = 'rgba(70,24,10,0.8)'; ctx.stroke(this.freeway);
-    ctx.fillStyle = '#ff9a5c'; ctx.fill(this.freeway);
+    ctx.lineWidth = cw * 1.6; ctx.strokeStyle = 'rgba(8,8,10,0.8)'; ctx.stroke(this.freeway);
+    ctx.fillStyle = '#b09a76'; ctx.fill(this.freeway);
   }
 
   /** Top-down shaded city rendered once into a canvas for the minimap (about 1 px per metre). */
@@ -193,7 +195,7 @@ function glyph(name: string): Path2D {
   return glyphs[name];
 }
 
-function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string, stroke = 'rgba(8,24,27,0.9)') {
+function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string, stroke = 'rgba(7,9,13,0.92)') {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = fill; ctx.fill();
   ctx.lineWidth = Math.max(1, r * 0.22); ctx.strokeStyle = stroke; ctx.stroke();
@@ -207,86 +209,83 @@ function drawGlyph(ctx: CanvasRenderingContext2D, name: string, x: number, y: nu
   ctx.restore();
 }
 
-export const BLIP_COLORS: Record<MinimapBlip['kind'], string> = {
-  mission: '#ffc37e', target: '#ff6f5e', checkpoint: '#ffe08a', waypoint: '#ffb066', safehouse: '#fcf2d9', shop: '#7fcf9a',
-  arms: '#f08a5d', bank: '#ffd45e', barber: '#e8a3c9', clothing: '#b7a4ee', garage: '#8fb8d8', vehicle: '#e8dcc0', collectible: '#f7d5a1', enemy: '#ff5a4e', police: '#6fb6ff',
-};
+export const BLIP_COLORS: Record<MinimapBlip['kind'], string> = BLIP_BASE_COLORS;
+const INK = 'rgba(7,9,13,0.92)';
+
+/** POI badge: a dark disc with a hairline ring and a thin coloured glyph (reads as a map symbol, not a sticker). */
+function badge(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, r: number, col: string, gs = 1.05, gw = 24, gh = 24) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(10,13,18,0.86)'; ctx.fill();
+  ctx.lineWidth = Math.max(1, r * 0.13); ctx.strokeStyle = col; ctx.stroke();
+  drawGlyph(ctx, name, x, y, r * gs, col, gw, gh);
+}
+
+/** Colour-blind friendly marks: a triangle (police) or square (gang), solid or hollow, with a dark outline. */
+function shapeMark(ctx: CanvasRenderingContext2D, shape: 'triangle' | 'square', x: number, y: number, r: number, col: string, hollow: boolean) {
+  ctx.beginPath();
+  if (shape === 'triangle') { ctx.moveTo(x, y - r * 1.1); ctx.lineTo(x + r * 1.0, y + r * 0.8); ctx.lineTo(x - r * 1.0, y + r * 0.8); ctx.closePath(); }
+  else ctx.rect(x - r, y - r, r * 2, r * 2);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.5, r * 0.55); ctx.strokeStyle = INK; ctx.stroke();
+  if (hollow) { ctx.lineWidth = Math.max(1, r * 0.3); ctx.strokeStyle = col; ctx.stroke(); }
+  else { ctx.fillStyle = col; ctx.fill(); }
+}
 
 /** Draws a blip glyph centred at (x, y) in pixel space. r is the base radius in pixels, t is time in seconds. */
 export function drawBlip(ctx: CanvasRenderingContext2D, kind: MinimapBlip['kind'], x: number, y: number, r: number, t: number, pulse = false, edge = false) {
-  const col = BLIP_COLORS[kind];
+  const pa = pageA11y(), st = blipStyle(kind, pa.mode, pa.reduceMotion, t), col = st.color;
   if (pulse && !edge) {
     const k = (t * 1.1) % 1;
     ctx.beginPath(); ctx.arc(x, y, r * (1.1 + k * 1.6), 0, Math.PI * 2);
-    ctx.strokeStyle = col; ctx.globalAlpha = 0.85 * (1 - k); ctx.lineWidth = Math.max(1.2, r * 0.22); ctx.stroke();
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.85 * (1 - k); ctx.lineWidth = Math.max(1.2, r * 0.2); ctx.stroke();
     ctx.globalAlpha = 1;
   }
   if (edge) r *= 0.82;
   switch (kind) {
     case 'mission':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'diamond', x, y, r * 0.95, '#173a3e');
+      disc(ctx, x, y, r, col, INK);
+      drawGlyph(ctx, 'diamond', x, y, r * 0.95, '#14181e');
       break;
     case 'target':
       ctx.beginPath(); ctx.arc(x, y, r * 0.95, 0, Math.PI * 2);
-      ctx.lineWidth = r * 0.42; ctx.strokeStyle = 'rgba(8,24,27,0.9)'; ctx.stroke();
-      ctx.lineWidth = r * 0.24; ctx.strokeStyle = col; ctx.stroke();
-      disc(ctx, x, y, r * 0.36, col, 'rgba(8,24,27,0.6)');
+      ctx.lineWidth = r * 0.42; ctx.strokeStyle = INK; ctx.stroke();
+      ctx.lineWidth = r * 0.22; ctx.strokeStyle = col; ctx.stroke();
+      disc(ctx, x, y, r * 0.34, col, INK);
       break;
     case 'checkpoint':
       ctx.beginPath(); ctx.arc(x, y, r * 0.9, 0, Math.PI * 2);
-      ctx.lineWidth = r * 0.55; ctx.strokeStyle = 'rgba(8,24,27,0.85)'; ctx.stroke();
-      ctx.lineWidth = r * 0.32; ctx.strokeStyle = col; ctx.stroke();
+      ctx.lineWidth = r * 0.5; ctx.strokeStyle = INK; ctx.stroke();
+      ctx.lineWidth = r * 0.28; ctx.strokeStyle = col; ctx.stroke();
       break;
     case 'waypoint':
-      drawGlyph(ctx, 'pin', x, y - r * 0.6, r * 2.5, 'rgba(8,24,27,0.9)');
+      drawGlyph(ctx, 'pin', x, y - r * 0.6, r * 2.5, INK);
       drawGlyph(ctx, 'pin', x, y - r * 0.6, r * 2.1, col);
-      disc(ctx, x, y - r * 0.9, r * 0.32, '#173a3e', '#173a3e');
+      disc(ctx, x, y - r * 0.9, r * 0.32, '#14181e', '#14181e');
       break;
-    case 'safehouse':
-      disc(ctx, x, y, r, '#27545a', col);
-      drawGlyph(ctx, 'house', x, y, r * 1.25, col);
-      break;
-    case 'shop':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'bag', x, y + r * 0.04, r * 1.15, '#12363a');
-      break;
-    case 'barber':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'scissors', x, y, r * 1.2, '#12363a');
-      break;
-    case 'clothing':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'shirt', x, y + r * 0.04, r * 1.2, '#12363a');
-      break;
-    case 'bank': // Round 8: a big gold pillared-bank badge, so the big score is easy to spot on the map
-      disc(ctx, x, y, r * 1.35, col);
-      drawGlyph(ctx, 'bank', x, y, r * 1.6, '#3a2a06');
-      break;
-    case 'arms':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'pistol', x + r * 0.08, y + r * 0.06, r * 1.55, '#12363a', 64, 32);
-      break;
-    case 'garage':
-      disc(ctx, x, y, r, col);
-      drawGlyph(ctx, 'wrench', x, y, r * 1.1, '#12363a');
-      break;
+    case 'safehouse': badge(ctx, 'house', x, y, r, col, 1.15); break;
+    case 'shop': badge(ctx, 'bag', x, y + r * 0.03, r, col, 1.05); break;
+    case 'barber': badge(ctx, 'scissors', x, y, r, col, 1.1); break;
+    case 'clothing': badge(ctx, 'shirt', x, y + r * 0.03, r, col, 1.1); break;
+    case 'bank': // a gold pillared-bank badge, so the big score is easy to spot on the map
+      badge(ctx, 'bank', x, y, r * 1.25, col, 1.25); break;
+    case 'arms': badge(ctx, 'pistol', x + r * 0.06, y + r * 0.05, r, col, 1.5, 64, 32); break;
+    case 'garage': badge(ctx, 'wrench', x, y, r, col, 1.05); break;
     case 'vehicle':
-      drawGlyph(ctx, 'car', x, y, r * 1.7, 'rgba(8,24,27,0.85)');
-      drawGlyph(ctx, 'car', x, y, r * 1.35, col);
+      drawGlyph(ctx, 'car', x, y, r * 1.7, INK);
+      drawGlyph(ctx, 'car', x, y, r * 1.3, col);
       break;
     case 'collectible':
-      drawGlyph(ctx, 'diamond', x, y, r * 1.6, 'rgba(8,24,27,0.85)');
-      drawGlyph(ctx, 'diamond', x, y, r * 1.15, col);
+      drawGlyph(ctx, 'diamond', x, y, r * 1.5, INK);
+      drawGlyph(ctx, 'diamond', x, y, r * 1.05, col);
       break;
     case 'enemy':
-      disc(ctx, x, y, r * 0.62, col);
+      if (st.shape === 'square') shapeMark(ctx, 'square', x, y, r * 0.72, col, false);
+      else disc(ctx, x, y, r * 0.6, col, INK);
       break;
-    case 'police': {
-      const on = Math.floor(t * 4) % 2 === 0;
-      disc(ctx, x, y, r * 0.66, on ? col : '#ff5a4e');
+    case 'police':
+      if (st.shape === 'triangle') shapeMark(ctx, 'triangle', x, y, r * 0.85, col, st.hollowFlash && st.flashing);
+      else disc(ctx, x, y, r * 0.64, col, INK);
       break;
-    }
   }
 }
 
@@ -297,8 +296,8 @@ export function drawPlayerArrow(ctx: CanvasRenderingContext2D, x: number, y: num
   ctx.beginPath();
   ctx.moveTo(0, -size); ctx.lineTo(size * 0.72, size * 0.78); ctx.lineTo(0, size * 0.38); ctx.lineTo(-size * 0.72, size * 0.78); ctx.closePath();
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(2, size * 0.3); ctx.strokeStyle = 'rgba(8,24,27,0.9)'; ctx.stroke();
-  ctx.fillStyle = '#fcf2d9'; ctx.fill();
+  ctx.lineWidth = Math.max(2, size * 0.3); ctx.strokeStyle = INK; ctx.stroke();
+  ctx.fillStyle = '#f2f5f8'; ctx.fill();
   ctx.restore();
 }
 

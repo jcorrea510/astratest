@@ -1,0 +1,30 @@
+/* Boot-time screens: error / recovery panel and phone-gate fixes. Independent of the game UI css. */
+.ma-boot-error {
+  position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+  padding: 16px; box-sizing: border-box; overflow-y: auto;
+  background: radial-gradient(120% 90% at 50% 100%, #1d4d53 0%, #0c2427 55%, #061416 100%);
+  color: #fff3dc; font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+.ma-boot-error.is-recovering { background: rgba(6, 20, 22, 0.9); }
+.ma-boot-box { width: min(520px, 100%); box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 28px 24px; background: rgba(6, 20, 22, 0.78); border: 1px solid rgba(255, 243, 220, 0.16); border-radius: 10px; }
+.ma-boot-mark { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 800; letter-spacing: 0.32em; font-size: 14px; color: #ffc37e; }
+.ma-boot-title { margin: 0; font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 900; font-size: 34px; line-height: 1.05; text-transform: uppercase; }
+.ma-boot-msg, .ma-boot-hint { margin: 0; font-size: 16px; line-height: 1.5; }
+.ma-boot-hint { color: rgba(255, 243, 220, 0.72); font-size: 14px; }
+.ma-boot-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.ma-boot-btn { height: 44px; padding: 0 22px; border-radius: 6px; border: 1px solid rgba(255, 243, 220, 0.35); background: transparent; color: #fff3dc; font: 800 16px/1 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+.ma-boot-btn.is-primary { background: #ffc37e; border-color: #ffc37e; color: #0c2427; }
+.ma-boot-btn:hover, .ma-boot-btn:focus-visible { filter: brightness(1.1); outline: 2px solid #fff3dc; outline-offset: 2px; }
+.ma-boot-ver { font-size: 12px; letter-spacing: 0.08em; color: rgba(255, 243, 220, 0.5); }
+.ma-boot-spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255, 243, 220, 0.2); border-top-color: #ffc37e; animation: ma-boot-spin 0.9s linear infinite; }
+@keyframes ma-boot-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ma-boot-spinner { animation-duration: 2.4s; } }
+
+/* Phone gate: fit 360 px wide screens, no clipped wordmark, no horizontal scroll */
+.ma-mobile { overflow-x: hidden; }
+.ma-mobile .ma-mobile-box { width: auto; max-width: 460px; box-sizing: border-box; margin: 0 16px 24px; padding: 22px 20px 24px; overflow: hidden; }
+.ma-mobile .ma-logo-mobile { width: min(260px, 100%); max-width: 100%; margin-left: 0; }
+.ma-mobile .ma-mobile-head { font-size: clamp(24px, 7.5vw, 32px); overflow-wrap: anywhere; }
+.ma-mobile .ma-mobile-text { overflow-wrap: anywhere; }
+.ma-mobile .ma-mobile-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ma-mobile .ma-mobile-actions .ma-btn { align-self: auto; }

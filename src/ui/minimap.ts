@@ -1,17 +1,23 @@
-/** Rotating rectangular radar drawn on a canvas, throttled to ~30 fps. */
+/** Rotating circular radar drawn on a canvas, redrawn at ~15 Hz (the static tone + vignette layer is cached). */
 import type { MinimapState } from './contracts';
-import { clampToBox, worldToMinimap, TRUE_NORTH } from './geometry';
+import { worldToMinimap, TRUE_NORTH } from './geometry';
 /** Blip kinds that stay on the rim when off the minimap (Round 7: no more ring of shop icons). */
 export const RIM_KINDS: ReadonlySet<string> = new Set(['waypoint', 'mission', 'target', 'checkpoint', 'enemy', 'police']);
 import { CityPainter, drawBlip, drawPlayerArrow } from './mapdraw';
+import { pageA11y } from './blipStyle';
 import { h } from './dom';
 
 /** Metres from the player to the top/bottom rim at zoom 1 (the radar is wider than it is tall). */
 export const MINIMAP_VIEW_RADIUS = 135;
-/** The player sits below centre so more of the road ahead is visible. */
-const PLAYER_Y = 0.62;
+/** The radar is a circle: the player sits at its centre. */
+const PLAYER_Y = 0.5;
 /** Vertical squash of the radar: a tilted, 3D-style look consistent with the full map. */
-const PITCH = 0.74;
+const PITCH = 0.8;
+
+/** Radar redraw interval (ms). */
+export const MINIMAP_INTERVAL_MS = 66;
+/** True when a throttled redraw is due; pure so it can be unit-tested. */
+export function minimapDue(now: number, last: number, interval = MINIMAP_INTERVAL_MS): boolean { return now - last >= interval; }
 
 export class Minimap {
   readonly el: HTMLDivElement;
@@ -25,6 +31,8 @@ export class Minimap {
   private tmp = { x: 0, y: 0 };
   private t0 = performance.now();
   private sizeDirty = true;
+  /** tone + vignette pre-rendered once per size (was a gradient + two fillRects every draw) */
+  private overlay: HTMLCanvasElement | null = null;
 
   constructor(private painter: CityPainter) {
     this.el = h('div', 'ma-minimap');
@@ -36,10 +44,13 @@ export class Minimap {
     window.addEventListener('resize', () => { this.sizeDirty = true; });
   }
 
+  /** Whether update() would redraw now; callers skip building the state when false. */
+  due(): boolean { return minimapDue(performance.now(), this.lastDraw); }
+
   update(s: MinimapState) {
     this.state = s;
     const now = performance.now();
-    if (now - this.lastDraw < 32) return;
+    if (!minimapDue(now, this.lastDraw)) return;
     this.lastDraw = now;
     this.draw((now - this.t0) / 1000);
   }
@@ -52,6 +63,7 @@ export class Minimap {
     this.cssW = w; this.cssH = hh; this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
     this.canvas.height = Math.max(1, Math.round(hh * dpr));
+    this.overlay = null;
   }
 
   private draw(t: number) {
@@ -73,10 +85,13 @@ export class Minimap {
     if (bk) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low'; ctx.drawImage(bk.canvas, bk.x0, bk.z0, bk.canvas.width / bk.k, bk.canvas.height / bk.k); }
     if (s.heatRadius) {
       const hr = s.heatRadius;
-      const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+      const pa = pageA11y();
+      const pulse = pa.reduceMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 5);
       ctx.beginPath(); ctx.arc(hr.x, hr.z, hr.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 80, 70, ${0.14 + pulse * 0.1})`; ctx.fill();
-      ctx.lineWidth = 2 / scale; ctx.strokeStyle = `rgba(110, 175, 255, ${0.5 + pulse * 0.4})`; ctx.stroke();
+      ctx.lineWidth = 2 / scale; ctx.strokeStyle = `rgba(110, 175, 255, ${0.5 + pulse * 0.4})`;
+      if (pa.mode !== 'off') ctx.setLineDash([6 / scale, 4 / scale]); // pattern, not just colour
+      ctx.stroke(); ctx.setLineDash([]);
     }
     if (s.route && s.route.length > 1) {
       ctx.beginPath();
@@ -88,38 +103,52 @@ export class Minimap {
     }
     ctx.restore();
 
-    // Edge shading so blips on the rim read clearly
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, 'rgba(6,22,28,0.8)'); g.addColorStop(0.22, 'rgba(6,22,28,0)'); g.addColorStop(0.85, 'rgba(6,18,21,0)'); g.addColorStop(1, 'rgba(6,18,21,0.4)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const rad = Math.min(W, H) / 2;
+    if (!this.overlay) {
+      // tone the bake down so glyphs pop + soft vignette toward the rim (blips and the north marker stay legible)
+      const o = document.createElement('canvas');
+      o.width = this.canvas.width; o.height = this.canvas.height;
+      const oc = o.getContext('2d');
+      if (oc) {
+        oc.setTransform(dpr, 0, 0, dpr, 0, 0);
+        oc.fillStyle = 'rgba(4,7,11,0.22)'; oc.fillRect(0, 0, W, H);
+        const g = oc.createRadialGradient(cx, cy, rad * 0.55, cx, cy, rad);
+        g.addColorStop(0, 'rgba(4,7,11,0)'); g.addColorStop(1, 'rgba(4,7,11,0.62)');
+        oc.fillStyle = g; oc.fillRect(0, 0, W, H);
+      }
+      this.overlay = o;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.overlay, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Blips (upright, clamped to the frame)
-    const br = Math.max(4.5, H * 0.042);
-    const m = br * 1.25;
-    const minX = -cx + m, maxX = W - cx - m, minY = -cy + m, maxY = H - cy - m;
+    // Blips (upright, clamped to the circular frame)
+    const br = Math.max(4.5, H * 0.045);
+    const lim = rad - br * 1.35;
     for (const b of s.blips) {
       const p = worldToMinimap(s.x, s.z, s.heading, scale, b.x, b.z, this.tmp);
       p.y *= PITCH;
-      const clamped = clampToBox(p, minX, maxX, minY, maxY);
-      // Round 7: only things that matter right now stay pinned to the rim; shops, stores, garages etc. show only when on the map
+      const d = Math.hypot(p.x, p.y);
+      const clamped = d > lim;
+      // Only things that matter right now stay pinned to the rim; shops, stores, garages etc. show only when on the map
       if (clamped && !RIM_KINDS.has(b.kind)) continue;
+      if (clamped) { p.x *= lim / d; p.y *= lim / d; }
       if (clamped && (b.kind === 'enemy' || b.kind === 'police' || b.kind === 'vehicle')) ctx.globalAlpha = 0.7;
       drawBlip(ctx, b.kind, cx + p.x, cy + p.y, br, t, !!b.pulse, clamped);
       ctx.globalAlpha = 1;
     }
     drawPlayerArrow(ctx, cx, cy, Math.max(6.5, H * 0.06), 0);
 
-    // North marker on the frame
+    // North marker on the rim: a small notch with an N
     const n = worldToMinimap(0, 0, s.heading, 1, TRUE_NORTH.x, TRUE_NORTH.z, this.tmp);
-    n.x *= 1e4; n.y *= 1e4;
-    const nm = 10;
-    clampToBox(n, -cx + nm, W - cx - nm, -cy + nm, H - cy - nm);
-    const nx = cx + n.x, ny = cy + n.y;
-    ctx.beginPath(); ctx.arc(nx, ny, 8.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#081a1d'; ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffc37e'; ctx.stroke();
-    ctx.fillStyle = '#fff3dc';
-    ctx.font = '800 11px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+    const nl = Math.hypot(n.x, n.y * PITCH) || 1;
+    const nr = rad - 9;
+    const nx = cx + (n.x / nl) * nr, ny = cy + ((n.y * PITCH) / nl) * nr;
+    ctx.beginPath(); ctx.arc(nx, ny, 7.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(8,10,14,0.88)'; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+    ctx.fillStyle = '#ff6b5e';
+    ctx.font = '800 10px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('N', nx, ny + 0.5);
   }

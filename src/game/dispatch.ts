@@ -68,7 +68,23 @@ export const TASE_T = 1.6; // Round 8: quicker (the whole arrest took up to ~9 s
 /** A police helicopter appears at least this far from the player (and at most this far; a further pad is reached by flying). */
 /** Reinforcement cars spawn at least this many metres from the player and the camera, outside the view. */
 export const REINFORCE_MIN = 120;
+/** Beyond this the world is not drawn at all (max draw distance 420 m + fog), so being inside the camera frustum no longer means being seen. */
+export const UNSEEN_DIST = 600;
+/** A reinforcement spawn point is fine when far enough from the player and camera and not on screen (a point past UNSEEN_DIST is never on screen). Pure. */
+export function reinforceHidden(distTarget: number, distCam: number, inFrustum: boolean): boolean {
+  return distTarget >= REINFORCE_MIN && distCam >= REINFORCE_MIN && (!inFrustum || Math.min(distTarget, distCam) >= UNSEEN_DIST);
+}
 export const HELI_MIN_DIST = 380, HELI_MAX_DIST = 700;
+/**
+ * Altitude a police helicopter enters at: the default (55 m over the player) unless a rooftop under it is higher. The spawn point is
+ * a bearing and a distance, so it can land inside a 130 m tower: the rotor strike ray then wrecked it on the very first step and
+ * it respawned inside the tower every frame (no helicopter ever reached the player, the spotlight never held the heat). Pure.
+ */
+export function heliSpawnY(baseY: number, roofTops: readonly number[]): number {
+  let y = baseY;
+  for (const t of roofTops) y = Math.max(y, t + 14);
+  return y;
+}
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Dispatch {
@@ -130,8 +146,7 @@ export class Dispatch {
     /** reinforcements never appear where the player can see them or near him: behind the view and at least REINFORCE_MIN away */
     const hidden = (x: number, z: number) => {
       const pt = new THREE.Vector3(x, 1, z);
-      return Math.hypot(x - target.x, z - target.z) >= REINFORCE_MIN && Math.hypot(x - cam.x, z - cam.z) >= REINFORCE_MIN
-        && !frustum.containsPoint(pt) && !frustum.containsPoint(pt.setY(6));
+      return reinforceHidden(Math.hypot(x - target.x, z - target.z), Math.hypot(x - cam.x, z - cam.z), frustum.containsPoint(pt) || frustum.containsPoint(pt.setY(6)));
     };
     for (let tries = 0; tries < 80; tries++) {
       let lane: CityMap['lanes'][number], s: number;
@@ -242,6 +257,12 @@ export class Dispatch {
     }
     return out;
   }
+  /** Height of the highest static surface (ground, rooftop, hillside) at x / z, 0 when there is none. */
+  private terrainTop(x: number, z: number): number {
+    const ph = (this.pop as unknown as { env: { physics: { ray: (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, t: number, g?: number) => { toi: number } | null } } }).env.physics;
+    const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1);
+    return hit ? 400 - hit.toi : 0;
+  }
   updateHeli(dt: number, player: Character, heat: number, active: boolean, vsHeli = false, camera?: THREE.Camera) {
     const h = this.hooks; if (!h) return;
     if (this.heli && (this.heli.destroyed || !this.pop || !active)) {
@@ -252,7 +273,9 @@ export class Dispatch {
       const sp = this.heliSpawnPoint(player.pos, camera), yaw = Math.atan2(player.pos.x - sp.x, player.pos.z - sp.z);
       this.heli = h.spawnHeli(sp.x, sp.z, yaw);
       const b = this.heli; b.engineOn = true; b.rotor = 1; b.persistent = true;
-      b.teleport(sp.x, sp.y, sp.z, yaw);
+      // clear every rooftop under the rotor disc (centre and four points 10 m out), not just the default altitude
+      const tops = [[0, 0], [10, 0], [-10, 0], [0, 10], [0, -10]].map(([ox, oz]) => this.terrainTop(sp.x + ox, sp.z + oz));
+      b.teleport(sp.x, heliSpawnY(sp.y, tops), sp.z, yaw);
       this.ensureLight();
     }
     const b = this.heli; if (!b) return;
@@ -264,8 +287,7 @@ export class Dispatch {
     // Round 11: clear the rooftops and hills around and ahead (at a flat 42 m it hit a 77 m tower every 11 s and respawned)
     const fx = d > 1 ? dx / d : 0, fz = d > 1 ? dz / d : 0;
     // ...and the ground: the hills rise 40 m above the street (it flew into a hillside at 47 m every 11 s, then respawned)
-    const ph = (this.pop as unknown as { env: { physics: { ray: (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, t: number, g?: number) => { toi: number } | null } } }).env.physics;
-    const ground = (x: number, z: number) => { const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1); return hit ? 400 - hit.toi : 0; };
+    const ground = (x: number, z: number) => this.terrainTop(x, z);
     // a fan of downward rays: here and 40 / 90 / 150 m ahead, on the line and 15 m either side (rooftops and hillsides)
     let roofs = 0;
     for (const a of [0, 40, 90, 150]) for (const l of [-15, 0, 15]) roofs = Math.max(roofs, ground(pos.x + fx * a + fz * l, pos.z + fz * a - fx * l));
@@ -402,9 +424,12 @@ export class Dispatch {
   get arrestStage(): 'none' | 'tase' | 'approach' | 'cuff' { const a = this.arrest; if (!a) return 'none'; return a.t < (a.tase ? TASE_T : 0) ? 'tase' : a.t < a.pre ? 'approach' : 'cuff'; }
   updateArrest(dt: number, player: Character) {
     const a = this.arrest; if (!a) return;
+    // the officer was killed (or freed) mid-scene: the scene ends and the body is released like any other dead officer
+    if (!a.cop.alive || a.cop.char.isDisposed) { a.cop.persistent = false; this.endArrest(); return; }
     a.t += dt;
     player.health = player.maxHealth; // nobody shoots a suspect who is being cuffed
     const cop = a.cop, ph = player.human, ch = cop.char.human;
+    cop.persistent = true; // population / police clean-up must not free the officer mid-scene (its body is moved every frame)
     player.yaw = a.yaw; ph.root.rotation.y = a.yaw;
     const behind = a.base.clone().addScaledVector(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw)), -0.8);
     if (a.tase && a.t < a.pre) {

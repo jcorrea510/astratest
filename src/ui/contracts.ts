@@ -41,7 +41,7 @@ export interface GameUI {
   showTitle(hasSave: boolean, saveSummary?: string): void; // saveSummary: e.g. "Regular, $1,200, 5 min ago" for the Continue button
   showLoading(fraction: number, label: string): void; // fraction 0..1, safe to call many times
   hideLoading(): void;
-  showMobileGate(): void;
+  showMobileGate(onContinue?: () => void): void;
   setPaused(paused: boolean): void; // shows/hides pause menu (Resume, Map, Settings, Controls, Save & Quit to title)
   isMenuOpen(): boolean; // true when pause/settings/shop/map/title is visible (game should not take input)
   // HUD
@@ -52,7 +52,7 @@ export interface GameUI {
   missionCard(title: string, subtitle: string, kind: 'start' | 'passed' | 'failed'): void; // big centred title card ~3 s
   subtitle(text: string | null, speaker?: string): void; // dialogue line at bottom centre (no voice acting)
   /**
-   * WASTED / ARRESTED sequence. Grey grade builds, then the title card, then a fade to black; the game respawns when
+   * FLATLINED / ARRESTED sequence. Grey grade builds, then the title card, then a fade to black; the game respawns when
    * advanceDeath() reports `respawn`. With `arrestAnimationDone`, the card waits until that hook calls back (police
    * handcuff animation); without it the sequence starts at once.
    */
@@ -83,7 +83,7 @@ export interface GameUI {
   robberyMeter(s: { label: string; progress: number /*0..1*/; cash: number } | null): void;
   // Sandbox mode: the title offers it (callbacks.onSandbox); in a sandbox game the pause menu gets a
   // "Sandbox tools" entry (callbacks.onOpenSandbox) and the game opens a generic tools panel.
-  setMode(mode: 'story' | 'sandbox' | 'regular'): void; // regular: the pause menu's Sandbox tab becomes Goals; a subtle mode badge shows on the HUD
+  setMode(mode: 'story' | 'sandbox' | 'regular'): void; // regular: the pause menu's Sandbox tab becomes Goals; no HUD badge
   openSandbox(actions: SandboxAction[], onAction: (id: string, value?: number | string | boolean) => void, onClose: () => void): void;
   refreshSandbox(actions: SandboxAction[]): void; // re-render values (e.g. after a toggle)
   closeSandbox(): void;

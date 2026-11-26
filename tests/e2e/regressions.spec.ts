@@ -140,28 +140,33 @@ test('the sea is water: walk in and swim, a car driven in floods, swim back out 
   const p = watch(page);
   await boot(page);
   const walk = await page.evaluate(() => {
-    const g = (window as any).__game; g.player.place(10, 0.3, 430, 0);
+    const g = (window as any).__game; g.player.place(10, 0.3, 930, 0);
     g.input.press('KeyW'); for (let i = 0; i < 25 * 30; i++) { g.cam.yaw = Math.PI; g.frame(1 / 30, false); } g.input.release('KeyW');
     return { z: g.player.pos.z, swimming: g.player.swimming };
   });
-  expect(walk.z).toBeGreaterThan(455);
+  expect(walk.z).toBeGreaterThan(985); // the beach ends at COAST_Z (962)
   expect(walk.swimming).toBe(true);
   const back = await page.evaluate(() => {
-    const g = (window as any).__game; g.player.place(10, -2.4, 520, 0);
+    const g = (window as any).__game; g.player.place(10, -2.4, 1020, 0);
     g.input.press('KeyW'); for (let i = 0; i < 35 * 30; i++) { g.cam.yaw = 0; g.frame(1 / 30, false); } g.input.release('KeyW');
     return { z: g.player.pos.z, swimming: g.player.swimming, grounded: g.player.grounded };
   });
   expect(back.swimming).toBe(false);
   expect(back.grounded).toBe(true);
-  expect(back.z).toBeLessThan(455);
+  expect(back.z).toBeLessThan(962);
   const car = await page.evaluate(() => {
-    const g = (window as any).__game; g.player.place(0, 0.3, 405, 0);
-    const v = g.vehicles.spawn('sedan', 0, 405, 0); v.persistent = true; g.seatPlayer(v);
+    // (x 10, on the line the swimmer walked: x 0, z 925 is the foot of the Promenade hop jump ramp, which hung the car up on
+    // its edge in 2 of 3 runs once the ramp moved there - CI shard 5)
+    const g = (window as any).__game; g.player.place(10, 0.3, 928, 0);
+    const v = g.vehicles.spawn('sedan', 10, 928, 0); v.persistent = true; g.seatPlayer(v);
     g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
-    return { flooded: v.flooded, inCar: !!g.playerVehicle, swimming: g.player.swimming, alive: g.player.alive };
+    // the car floods where the beach shelves off, so the driver surfaces wading: a few strokes out and they swim
+    g.input.press('KeyW'); for (let i = 0; i < 90; i++) { g.cam.yaw = Math.PI + 1.0; g.frame(1 / 30, false); } g.input.release('KeyW');
+    return { flooded: v.flooded, inCar: !!g.playerVehicle, swimming: g.player.swimming, alive: g.player.alive, at: [+v.position.x.toFixed(1), +v.position.z.toFixed(1)], hits: (g.vehicles.list as any[]).filter((o) => o !== v && Math.hypot(o.position.x - v.position.x, o.position.z - v.position.z) < 8).map((o) => o.kind), peds: (g.pop.npcs as any[]).filter((n) => Math.hypot(n.pos.x - v.position.x, n.pos.z - v.position.z) < 6).length };
   });
-  expect(car).toEqual({ flooded: true, inCar: false, swimming: true, alive: true });
+  console.log('sea car', JSON.stringify(car));
+  expect(car).toMatchObject({ flooded: true, inCar: false, swimming: true, alive: true });
   clean(p);
 });
 
@@ -170,8 +175,10 @@ test('getting out next to the pier railing keeps you on the pier', async ({ page
   await boot(page);
   const spots = await page.evaluate(() => {
     const g = (window as any).__game; const out: number[][] = [];
-    for (const [x, z] of [[-43.4, 470], [-43.4, 500], [-56.6, 520]]) {
+    // the pier deck starts at z 925 (maxZ + 7; the map grew south in Round 9); the first spot is the start of the deck
+    for (const [x, z] of [[-43.4, 930], [-43.4, 960], [-56.6, 980]]) {
       if (g.playerVehicle) g.exitVehicle(true);
+      g.player.place(x, 1.3, z, 0); for (let i = 0; i < 6; i++) g.frame(1 / 30, false); // let the static collider stream reach the pier
       const v = g.vehicles.spawn('sedan', x, z, 0, 0, 1.6); v.persistent = true; g.seatPlayer(v);
       for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
       g.input.tap('KeyF'); for (let i = 0; i < 150; i++) g.frame(1 / 30, false);
@@ -211,25 +218,32 @@ test('beach stunt ramps pay when hit from Coastal Drive', async ({ page }) => {
   test.setTimeout(300_000);
   const p = watch(page);
   await boot(page);
+  await quietStreets(page); // a scripted drive: no traffic in the way of the run-up
   const res = await page.evaluate(() => {
     const g = (window as any).__game; const out: number[] = [];
-    for (const rx of [-300, 200]) {
+    const ROAD_Z = 913.5, RAMP_Z = 921.5; // eastbound lane of Coastal Drive (the last street, z 910) and the promenade ramps
+    for (const rx of [0, 200]) { // Promenade hop, Strand flyer
       if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
-      const x0 = rx - 110; g.player.place(x0, 0.3, 403.5, 0);
-      const v = g.vehicles.spawn('sedan', x0, 403.5, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+      const x0 = Math.max(rx - 160, -155); g.player.place(x0, 0.3, ROAD_Z, 0); // full-speed run-up; the drive starts at x -165 (river west of it)
+      const v = g.vehicles.spawn('sedan', x0, ROAD_Z, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
       for (let i = 0; i < 9; i++) g.frame(1 / 30, false);
-      const m0 = g.money; g.input.press('KeyW');
-      for (let s = 0; s < 240; s++) {
+      const m0 = g.money; g.input.press('KeyW'); let flown = false, landed = false;
+      for (let s = 0; s < 600; s++) {
         const q = v.position, f = v.phys.forward();
-        const lead = q.x < rx - 30 ? { x: q.x + 20, z: 403.5 } : { x: rx + Math.sin(1.2) * 10, z: 411.5 + Math.cos(1.2) * 10 };
-        const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
+        if (!v.phys.grounded && q.x > rx - 4) flown = true;
+        if (flown && v.phys.grounded) landed = true;
         g.input.release('KeyA'); g.input.release('KeyD');
-        if (q.x > rx + 4) { g.input.release('KeyW'); if (q.x > rx + 15 && v.phys.grounded) g.input.press('KeyS'); } // jump, land, brake on the sand
-        else if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        if (landed) { g.input.release('KeyW'); g.input.press('KeyS'); if (Math.abs(v.speed) < 0.5) break; } // brake on the sand, short of the sea
+        else if (q.x > rx + 4) g.input.release('KeyW'); // off the lip: coast through the air
+        else {
+          const lead = q.x < rx - 30 ? { x: q.x + 20, z: ROAD_Z } : { x: rx + Math.sin(1.2) * 10, z: RAMP_Z + Math.cos(1.2) * 10 };
+          const lx = (lead.x - q.x) * f.z - (lead.z - q.z) * f.x;
+          if (lx > 0.8) g.input.press('KeyA'); else if (lx < -0.8) g.input.press('KeyD');
+        }
         g.frame(1 / 30, false);
       }
       for (const k of ['KeyW', 'KeyA', 'KeyD', 'KeyS']) g.input.release(k);
-      for (let s = 0; s < 120; s++) g.frame(1 / 30, false);
+      for (let s = 0; s < 60; s++) g.frame(1 / 30, false);
       out.push(g.money - m0, v.flooded || v.destroyed ? 1 : 0);
     }
     return out;
@@ -307,11 +321,11 @@ test('sandbox tools are a pause-menu tab; sliders can be dragged; quitting a deb
   const p = watch(page);
   await boot(page);
   await page.evaluate(() => (window as any).__meridian.pause());
-  await page.locator('.ma-ptab', { hasText: 'Sandbox' }).click();
-  await expect(page.getByLabel('Wanted level')).toBeVisible();
+  await page.locator('.ma-ptab', { hasText: 'Tools' }).click();
+  await expect(page.getByLabel('Heat level')).toBeVisible();
   // a drag is a stream of input events on the same element: the panel must not rebuild (and drop) the slider mid-drag
   const drag = await page.evaluate(() => {
-    const el = document.querySelector('[aria-label="Wanted level"]') as HTMLInputElement; let attached = true;
+    const el = document.querySelector('[aria-label="Heat level"]') as HTMLInputElement; let attached = true;
     for (const v of [1, 2, 3, 4, 5]) { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); attached = attached && el.isConnected; }
     return attached;
   });
@@ -343,21 +357,39 @@ test('saving while swimming at sea loads you at the safehouse, not in the water'
 
 // ---------- Bug-bash D ----------
 test('the respray prompt goes away once the car has been resprayed', async ({ page }) => {
+  // Round 9 moved the garage into drive-in halls (src/game/bays.ts): drive into the Glow Garage, respray from the menu, leave;
+  // the "Stop inside" prompt must not come back while the car is still standing in the hall.
+  test.setTimeout(400_000);
   const p = watch(page);
-  await boot(page);
+  await boot(page); await quietStreets(page);
   const r = await page.evaluate(() => {
-    const g = (window as any).__game, a = (window as any).__meridian.activities;
-    g.money = 1000;
-    const v = g.vehicles.spawn('sedan', -260, 102, Math.PI / 2); v.persistent = true; g.seatPlayer(v);
+    const g = (window as any).__game, A = (window as any).__meridian.activities;
+    g.money = 1000; g.police.clear();
+    const v = g.vehicles.spawn('sedan', -182, 100, 0, -1, 0.4); v.persistent = true; g.seatPlayer(v);
     for (let i = 0; i < 10; i++) g.frame(1 / 30, false);
     v.damage(300, v.position.clone(), null);
-    g.playerVehicle.phys.teleport(-200, 0.6, 102, Math.PI / 2);
-    for (let i = 0; i < 3; i++) g.frame(1 / 30, false);
-    const before = a.prompt();
-    for (let i = 0; i < 90; i++) g.frame(1 / 30, false);
-    return { before, paid: 1000 - g.money, after: a.prompt() };
+    let before: string | null = null, n = 0;
+    while (A.garage.state === 'idle' && n++ < 400) {
+      if (v.position.z > 115 && before === null) before = A.prompt();
+      if (v.position.z < 119) g.input.press('KeyW'); else { g.input.release('KeyW'); g.input.press('KeyS'); }
+      g.frame(1 / 30, false);
+    }
+    g.input.release('KeyW'); g.input.release('KeyS');
+    n = 0; while (A.garage.state !== 'menu' && n++ < 200) g.frame(1 / 30, false);
+    const menu = A.garage.state;
+    (document.querySelectorAll('.ma-garage-sw')[2] as HTMLElement).focus();
+    (document.querySelector('[data-act="paint"]') as HTMLElement).click();
+    const leave = Array.from(document.querySelectorAll('.ma-garage button')).find(b => b.textContent === 'Leave') as HTMLElement;
+    leave.click();
+    n = 0; while (A.garage.state !== 'idle' && n++ < 200) g.frame(1 / 30, false);
+    for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
+    return { before, menu, paid: 1000 - g.money, inHall: A.garageAt(v.position) >= 0, after: A.prompt() };
   });
+  console.log('respray', JSON.stringify(r));
+  expect(r.before).toContain('Stop inside');
+  expect(r.menu).toBe('menu');
   expect(r.paid).toBe(150);
+  expect(r.inHall).toBe(true);
   expect(r.after).toBe(null);
   clean(p);
 });

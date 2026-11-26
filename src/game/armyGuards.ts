@@ -11,12 +11,13 @@ import type { WeaponId } from '../combat/weapons';
 import { ARMY_BASE } from '../world/citymap';
 import { armyLayout } from '../world/armybase';
 import { inArmyBase } from './armyAir';
+import { skipFarTick } from './farLod';
 
 const ARMY: Look = { skin: '#c68c63', hair: '#2a2420', shoes: '#151515', sleeves: 'long', legs: 'pants', hairStyle: 'buzz', height: 1, top: '#5b6340', bottom: '#4e5636', hat: '#454c2f', detail: '#2f3520', hatStyle: 'cap', topStyle: 'jacket', shoeStyle: 'boots', build: 1.1 };
 const SKINS = ['#c68c63', '#8a5a3b', '#f1c9a5', '#a8714c', '#6a4430'];
 
 export interface GuardPop { spawn(role: 'gang', x: number, z: number, y?: number, look?: Look, weapon?: WeaponId): Npc; npcs: Npc[] }
-interface Guard { npc: Npc; post: THREE.Vector3; face: number; route: THREE.Vector3[] | null; wp: number }
+interface Guard { npc: Npc; post: THREE.Vector3; face: number; route: THREE.Vector3[] | null; wp: number; acc?: number }
 
 /** Alert rule: wanted near the base, or trespassing past the warning. */
 export function guardsHostile(heat: number, playerX: number, playerZ: number, trespassSeconds: number) {
@@ -25,7 +26,7 @@ export function guardsHostile(heat: number, playerX: number, playerZ: number, tr
 
 export class ArmyGuards {
   guards: Guard[] = [];
-  alerted = false;
+  alerted = false; private tick = 0;
   constructor(private pop: GuardPop) { }
 
   /** Posts and patrol loops (world coordinates). */
@@ -69,8 +70,16 @@ export class ArmyGuards {
     }
     if (hostile && !this.alerted) this.alerted = true;
     if (!hostile && this.alerted && !this.guards.some(g => g.npc.alive && g.npc.hostile && g.npc.brain === 'combat')) this.alerted = false;
-    for (const g of this.guards) {
+    this.tick++;
+    for (let gi = 0; gi < this.guards.length; gi++) {
+      const g = this.guards[gi];
       const n = g.npc; if (!n.alive) continue;
+      // Round 12 perf: calm sentries and patrols far from the player (the base is ~1 km out) think every 4th frame with the accumulated dt
+      if (!this.alerted && !n.hostile) {
+        const ddx = n.char.pos.x - player.x, ddz = n.char.pos.z - player.z;
+        if (skipFarTick(ddx * ddx + ddz * ddz, 300, 4, this.tick, gi)) { g.acc = (g.acc ?? 0) + dt; continue; }
+        if (g.acc) { dt += g.acc; g.acc = 0; }
+      }
       if (this.alerted) { if (!n.hostile) { n.hostile = true; if (n.brain === 'scripted') n.brain = 'idle'; } continue; }
       if (n.hostile && n.brain === 'idle' && g.route) { n.hostile = false; n.brain = 'scripted'; } // calmed down: back on patrol
       else if (n.hostile && n.brain === 'idle') n.hostile = false;

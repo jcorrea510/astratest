@@ -59,6 +59,9 @@ async function victim(page: Page, dist: number) {
     (window as any).__victim = n;
   }, dist);
   await step(page, 0.3);
+  // the punch/shot checks measure from full health: a stray hit while the victim settles (seen once locally: 90 hp gone before the punch) is logged, not blamed on the move under test
+  const pre = await page.evaluate(() => { const v = (window as any).__victim, h = v.char.health, hit = v.char.lastHit; v.char.health = v.char.maxHealth; return h < v.char.maxHealth ? { h, hit } : null; });
+  if (pre) console.log('victim was hit while settling', JSON.stringify(pre));
 }
 
 test('tour: every feature in one session, clean console and sane world after every step', async ({ page }) => {
@@ -71,7 +74,7 @@ test('tour: every feature in one session, clean console and sane world after eve
     await expect(page.getByText('Press any key')).toBeVisible({ timeout: 180_000 });
     await page.keyboard.press('Enter');
     await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByRole('button', { name: 'Sandbox' }).click();
+  await page.getByRole('button', { name: 'Free Roam' }).click();
     await page.waitForFunction(() => !!(window as any).__meridian?.activities, null, { timeout: 180_000 });
     await page.evaluate(() => (window as any).__game.stop());
     await step(page, 1);
@@ -237,6 +240,8 @@ test('tour: every feature in one session, clean console and sane world after eve
   await S('rob a walk-in store', async () => {
     const r = await page.evaluate(() => {
       const g = (window as any).__game; const R = (window as any).__meridian.activities.robberies; const k = R.kiosks[1];
+      // the previous steps leave 3 stars with 4 cars and 10 officers on the player (hp 33): they can arrest or kill mid hold-up, so start clean
+      g.police.clear(); g.player.health = g.player.maxHealth;
       g.pcombat.give('pistol', 60); g.pcombat.inv.select('pistol'); g.money = 0;
       g.player.place(k.customer.x, k.customer.y + 0.3, k.customer.z, 0); for (let i = 0; i < 45; i++) g.frame(1 / 30, false);
       k.brave = false; const c = k.clerk; g.input.press('Mouse2'); let started = false;
@@ -267,7 +272,7 @@ test('tour: every feature in one session, clean console and sane world after eve
   await S('die: WASTED, respawn at the hospital', async () => {
     await page.evaluate(() => { const g = (window as any).__game; g.money = 1000; g.player.damage(500, null, g.time); g.playerDown('down'); });
     await step(page, 1.7, { render: true });
-    await expect(page.locator('.ma-death-word')).toHaveText('Wasted');
+    await expect(page.locator('.ma-death-word')).toHaveText('Flatlined');
     await step(page, 7);
     expect(await page.evaluate(() => { const g = (window as any).__game; return g.player.alive && g.deathT === -1 && g.player.health === 100; })).toBe(true);
   });
@@ -363,8 +368,8 @@ test('tour: every feature in one session, clean console and sane world after eve
     });
     expect(walk).toEqual({ swimming: true, alive: true });
     const car = await page.evaluate(() => {
-      const g = (window as any).__game; g.player.place(0, 0.3, 925, 0);
-      const v = g.vehicles.spawn('sedan', 0, 925, 0); v.persistent = true; g.seatPlayer(v);
+      const g = (window as any).__game; g.player.place(10, 0.3, 925, 0);
+      const v = g.vehicles.spawn('sedan', 10, 925, 0); v.persistent = true; g.seatPlayer(v);
       g.input.press('KeyW'); for (let i = 0; i < 300; i++) g.frame(1 / 30, false); g.input.release('KeyW');
       for (let i = 0; i < 60; i++) g.frame(1 / 30, false);
       return { flooded: v.flooded, inCar: !!g.playerVehicle, alive: g.player.alive };

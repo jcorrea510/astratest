@@ -40,7 +40,7 @@ export interface TraceHit {
  * Optional vehicle glass API (implemented by the vehicles module): which pane is at a world point, and break it.
  * Without it, combat falls back to a height/normal heuristic and remembers broken panes itself.
  */
-export interface GlassApi { glassAt?(worldPoint: THREE.Vector3, tol?: number, includeBroken?: boolean): string | number | null; breakGlass?(paneId: string | number): void; hitGlass?(paneId: number, at?: THREE.Vector3, hits?: number): boolean; isGlassBroken?(paneId: string | number): boolean; isOverlayPane?(paneId: string | number): boolean }
+export interface GlassApi { glassPrepare?(): void; glassAtPrepared?(worldPoint: THREE.Vector3, tol?: number, includeBroken?: boolean): string | number | null; glassAt?(worldPoint: THREE.Vector3, tol?: number, includeBroken?: boolean): string | number | null; breakGlass?(paneId: string | number): void; hitGlass?(paneId: number, at?: THREE.Vector3, hits?: number): boolean; isGlassBroken?(paneId: string | number): boolean; isOverlayPane?(paneId: string | number): boolean }
 
 const TRACER_SPEED = 900; // m/s (visual)
 export const TRACER_LIFE = 0.18; // s: a streak is always gone by then
@@ -221,9 +221,10 @@ export class Combat {
       const q = this.v2, sr = (v as unknown as { surfaceRay?: (o: THREE.Vector3, d: THREE.Vector3, t0: number, t1: number, n: THREE.Vector3) => number }).surfaceRay;
       let reach = 0.9;
       if (d && typeof sr === 'function') { const paint = sr.call(v, this.v4.copy(p).addScaledVector(d, -0.3), d, 0, 3.1, this.v5); reach = paint < 0 ? 2.8 : Math.min(2.8, Math.max(0.9, paint - 0.3 + 0.08)); }
+      const fast = typeof api.glassAtPrepared === 'function' && typeof api.glassPrepare === 'function'; if (fast) api.glassPrepare!();
       for (let s = 0; s <= reach; s += 0.05) {
         q.copy(p); if (d) q.addScaledVector(d, s); else if (s > 0) break;
-        const id = api.glassAt(q); if (id !== null && id !== undefined) return id;
+        const id = fast ? api.glassAtPrepared!(q) : api.glassAt(q); if (id !== null && id !== undefined) return id;
       }
       const zone = this.windowZone(v, p, d && Math.abs(d.y) < 0.5 ? { x: 0, y: 0, z: 0 } : n);
       return zone !== null && this.anyBroken(v) ? 'open' : null;

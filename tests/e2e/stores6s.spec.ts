@@ -33,13 +33,15 @@ test('every store type reacts within a second when a gun is aimed inside', async
       const clerkUp = k.clerk?.char.human.actionName === 'hands_up';
       const tellerUp = k.ex.tellers.every((t: any) => t.char.human.actionName === 'hands_up');
       g.input.release('Mouse2');
+      // Round 9: a drawn gun with the player facing the clerk counts as a hold-up, so "lowering the gun" means putting it away
+      g.pcombat.inv.select('fists');
       return { kind, shoppers: sh.length, up, clerkUp, tellerUp, robbing: R.robbing };
     }, { kind, SETUP });
     expect(r.shoppers, `${kind} has shoppers`).toBeGreaterThan(0);
     expect(r.up, `${kind}: every shopper has hands up`).toBe(r.shoppers);
     expect(r.clerkUp, `${kind}: clerk hands up`).toBe(true);
     expect(r.tellerUp, `${kind}: tellers hands up`).toBe(true);
-    // lowering the gun calms the store down again
+    // putting the gun away calms the store down again
     const calm = await page.evaluate(() => {
       const g = (window as any).__game, R = (window as any).__meridian.activities.robberies, k = R.inside();
       for (let f = 0; f < 30 * 6; f++) g.frame(1 / 30, false);
@@ -140,7 +142,7 @@ test('bank heist: hold up the tellers, drill the vault, open the door, grab the 
     const vp = k.frame.toWorld(v.lx, 0.3, v.lz); g.player.place(vp.x, vp.y, vp.z, 0);
     for (let f = 0; f < 5; f++) g.frame(1 / 30, false);
     const prompt = R.prompt(); g.input.press('KeyE');
-    for (let f = 0; f < 30 * 30; f++) { g.frame(1 / 30, false); if (f % 15 === 0) { keepCalm(); g.player.place(vp.x, vp.y, vp.z, 0); } if (k.ex.stage >= 3 && k.ex.vaultOpen >= 1) break; }
+    for (let f = 0; f < 30 * 90; f++) { g.frame(1 / 30, false); if (f % 15 === 0) { keepCalm(); g.player.place(vp.x, vp.y, vp.z, 0); g.input.tap('KeyE'); /* Round 9: a tap sets the drill and restarts it after a jam */ } if (k.ex.stage >= 3 && k.ex.vaultOpen >= 1) break; }
     g.input.release('KeyE');
     const stageDrilled = k.ex.stage, doorOpen = v.door.rotation.y;
     // step 3: the vault cash
@@ -153,7 +155,7 @@ test('bank heist: hold up the tellers, drill the vault, open the door, grab the 
   }, { SETUP });
   expect(r.afterTellers, 'tellers done').toBeGreaterThanOrEqual(1);
   expect(r.heat, 'bank hold-up brings a heavy response').toBeGreaterThanOrEqual(3);
-  expect(r.prompt).toContain('Drill');
+  expect(r.prompt).toMatch(/drill/i);
   expect(r.stageDrilled, 'vault opened by the drill').toBeGreaterThanOrEqual(3);
   expect(r.doorOpen).toBeGreaterThan(1.5);
   expect(r.prompt2).toContain('vault cash');

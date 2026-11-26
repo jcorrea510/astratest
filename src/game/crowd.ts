@@ -33,7 +33,7 @@ const SKIN = [0xf0c8a0, 0xd9a577, 0xb07a4f, 0x7a4a2f, 0x4f2f20, 0xe8b890];
 interface GCar { lane: Lane; s: number; v: number; paint: number; len: number; x: number; z: number; yaw: number; id: number;
   /** vehicle kind and paint index: drawn with that kind's real far model, and promoted into exactly that car */ kind: VehicleKind; pc: THREE.Color;
   /** lateral blend left over from a lane change (decays) */ ox: number; oz: number; lcCool: number;
-  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; ssLane?: number; ssWait?: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
+  bus: boolean; /** seconds left standing at a stop (buses) */ dwell: number; stopS: number; planLane: number; ssLane?: number; ssWait?: number; /** seconds held up by a real vehicle in its path (deadlock breaker) */ heldT?: number; /** lateral offset held inside the lane (+ left): clears kerbside parked cars, tucks right for sirens */ ks?: number }
 interface GPed { from: number; to: number; t: number; speed: number; wait: number; off: number; look: number; x: number; z: number; /** height on a bridge walkway */ y?: number; yaw: number; tint: number; tint2: number; skin: number; phase: number; leader?: GPed; dead?: boolean;
   /** who this is: the same look is used by the real person it turns into up close */ lk?: FullLook; data?: CrowdLook; seed?: number; road?: boolean }
 interface Slot { x: number; z: number; yaw: number; paint: number; kind: number; taken: boolean; real: Vehicle | null; /** health fraction when last put away: a damaged car stays damaged */ hp?: number }
@@ -313,6 +313,7 @@ export class Crowd {
     }
     return false;
   }
+  private byLaneBuf = new Map<number, GCar[]>(); private realOnBuf = new Map<number, number[]>(); private nearBuf: { x: number; z: number }[] = [];
   private updateCars(dt: number, t: number, focus: THREE.Vector3) {
     const cars = this.cars, cap = Math.min(this.caps.farCars, MAX_FAR_CARS);
     this.nearT -= dt;
@@ -341,14 +342,17 @@ export class Crowd {
     const busCap = Math.min(14, Math.round(cap / 28));
     if (this.busCount < busCap && cars.length < MAX_FAR_CARS - 1 && (this.prewarming || Math.random() < 0.08)) for (let k = 0; k < (this.prewarming ? 6 : 1); k++) if (this.spawnCar(focus, true)) this.busCount++;
     // per-lane ordering for leader lookup
-    const byLane = new Map<number, GCar[]>();
+    // (Round 12 perf: the maps and their arrays are kept between frames; they used to be rebuilt, ~100 KB of garbage a frame)
+    const byLane = this.byLaneBuf;
+    for (const a of byLane.values()) a.length = 0;
     for (const c of cars) { const l = byLane.get(c.lane.id); if (l) l.push(c); else byLane.set(c.lane.id, [c]); }
     // real traffic on the same lanes: far cars queue behind it instead of driving into it (and being culled for it)
-    const realOn = new Map<number, number[]>();
+    const realOn = this.realOnBuf;
+    for (const a of realOn.values()) a.length = 0;
     for (const rc of this.traffic?.cars ?? []) { const l = realOn.get(rc.lane.id); if (l) l.push(rc.s); else realOn.set(rc.lane.id, [rc.s]); }
     if (this.traffic) { const fo = this.traffic.farObs; fo.length = 0; for (const c of cars) if (Math.abs(c.x - focus.x) < 160 && Math.abs(c.z - focus.z) < 160) fo.push(c); }
-    const near: { x: number; z: number }[] = [];
-    for (const v of this.vehicles.list) { if (v.parked) continue; const p = v.position; if (Math.abs(p.x - focus.x) < 240 && Math.abs(p.z - focus.z) < 240) near.push({ x: p.x, z: p.z }); } // kerbside parked cars are passed (lane offset), not queued behind
+    const near = this.nearBuf; let nearN = 0;
+    for (const v of this.vehicles.list) { if (v.parked) continue; const p = v.position; if (Math.abs(p.x - focus.x) < 240 && Math.abs(p.z - focus.z) < 240) { const o = near[nearN] ?? (near[nearN] = { x: 0, z: 0 }); o.x = p.x; o.z = p.z; nearN++; } } // kerbside parked cars are passed (lane offset), not queued behind
     for (const c of cars) {
       const lane = c.lane;
       let target = lane.speed * (c.bus ? 0.7 : 0.85);
@@ -387,15 +391,20 @@ export class Crowd {
         if (gap > -2 && gap < 40) { target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); if (gap < leadGap) { leadGap = gap; lead = o; } }
       }
       // any real vehicle in the path (the player, a car turning in from another lane, a crash): brake behind it
-      if (near.length) {
-        const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
-        for (const o of near) {
+      // Deadlock breaker: real traffic queues behind far cars, so a far car and a real one crossing paths in a junction could
+      // wait on each other for ever (traffic6 saw a bus and a far car frozen on two connectors). Held over 4 s, the far car
+      // (drawn, not physical, out past the hand-over radius) creeps through instead, as the real traffic's own breaker does.
+      if (nearN && !(lane.connector && (c.heldT ?? 0) > 4)) {
+        const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), was = target;
+        for (let ni = 0; ni < nearN; ni++) {
+          const o = near[ni];
           const dx = o.x - c.x, dz = o.z - c.z, along = dx * fx + dz * fz;
           if (along < 0 || along > 18) continue;
           if (Math.abs(dx * fz - dz * fx) > 1.5) continue;
           target = Math.min(target, Math.max(0, along - (c.len * 0.5 + 4)) * 0.9);
         }
-      }
+        c.heldT = target < 0.5 && was > 0.5 ? (c.heldT ?? 0) + dt : 0;
+      } else if (!lane.connector) c.heldT = 0;
       const reals = realOn.get(lane.id);
       if (reals) for (const rs of reals) { const gap = rs - c.s - (4.6 + c.len) * 0.5 - 0.5; if (gap > -2 && gap < 40) target = Math.min(target, Math.max(0, gap - 2.5) * 0.9); }
       // overtake / even out: move to the neighbouring lane when it is free (a stopped bus ahead makes it likely)

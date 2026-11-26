@@ -3,11 +3,14 @@ import type { CityMap } from '../world/citymap';
 import { BUILD } from '../build';
 import { MPS_TO_MPH } from '../core/units';
 import type { HudState, WeaponIcon } from './contracts';
-import { STAR_SVG, WRENCH_SVG, weaponSvg } from './icons';
-import { formatMoney, formatTimer } from './geometry';
+import { WRENCH_SVG, weaponSvg } from './icons';
+import { HEAT_SEGMENTS, heatFilled, heatMode, type HeatMode } from './heatSegments';
+import { formatMoney, formatTimer, MoneyText } from './geometry';
 import { h, setClass, TextSlot, prefersReducedMotion, renderHintText } from './dom';
 import { Minimap } from './minimap';
 import type { CityPainter } from './mapdraw';
+import { SaveIndicator } from './saveIndicator';
+import { pageA11y } from './blipStyle';
 
 /** Small glyph per toast kind (original, drawn here). */
 const TOAST_ICONS: Record<'info' | 'money' | 'heat' | 'mission' | 'warning', string> = {
@@ -30,6 +33,9 @@ class Popup {
   hide() { window.clearTimeout(this.timer); this.el.classList.remove('is-visible'); }
 }
 
+/** One indicator at a time: a rebuilt HUD drops the old subscription. */
+let activeSave: SaveIndicator | null = null;
+
 export class Hud {
   readonly el: HTMLDivElement;
   readonly minimap: Minimap;
@@ -42,9 +48,13 @@ export class Hud {
   private moneyTarget: number | null = null;
   private moneyT0 = 0;
   private moneyText = '';
+  private moneyFmt = new MoneyText();
+  private deltaRaf = 0;
   private heatEl: HTMLDivElement;
   private flares: HTMLSpanElement[] = [];
   private heatShown = -1;
+  private heatRiseAt = -1e9;
+  private heatModeShown: HeatMode = 'idle';
   private weaponEl: HTMLDivElement;
   private weaponIconEl: HTMLDivElement;
   private weaponIcon: WeaponIcon | null = null;
@@ -74,6 +84,7 @@ export class Hud {
   private street: TextSlot;
   private locLast = { district: '', street: '', vehicle: '' as string | null, at: 0 };
   private clock: TextSlot;
+  private zone: TextSlot;
   private radarEl: HTMLDivElement;
   private healthFill: HTMLDivElement;
   private armorFill: HTMLDivElement;
@@ -135,10 +146,9 @@ export class Hud {
     this.weaponEl.append(wrow, wn);
     tr.appendChild(this.weaponEl);
     this.heatEl = h('div', 'ma-heat');
-    this.heatEl.setAttribute('aria-label', 'Heat level');
-    for (let i = 0; i < 5; i++) {
-      const f = h('span', 'ma-flare ma-star');
-      f.innerHTML = STAR_SVG;
+    this.heatEl.setAttribute('aria-label', 'Heat 0 of 5');
+    for (let i = 0; i < HEAT_SEGMENTS; i++) {
+      const f = h('span', 'ma-heat-seg');
       this.heatEl.appendChild(f);
       this.flares.push(f);
     }
@@ -150,9 +160,13 @@ export class Hud {
     this.radarEl = h('div', 'ma-radar');
     const ck = h('div', 'ma-radar-clock');
     this.clock = new TextSlot(ck);
-    this.radarEl.appendChild(ck);
+    const zn = h('div', 'ma-radar-zone');
+    this.zone = new TextSlot(zn);
     this.minimap = new Minimap(painter);
     this.radarEl.appendChild(this.minimap.el);
+    const meta = h('div', 'ma-radar-meta');
+    meta.append(zn, ck);
+    this.radarEl.appendChild(meta);
     this.vitalsEl = h('div', 'ma-vitals');
     const mkBar = (cls: string) => {
       const track = h('div', `ma-vbar ${cls}`);
@@ -258,6 +272,9 @@ export class Hud {
     this.fpsEl = h('div', 'ma-fps');
     this.fps = new TextSlot(this.fpsEl);
     this.el.appendChild(this.fpsEl);
+    activeSave?.dispose();
+    activeSave = new SaveIndicator(() => pageA11y().reduceMotion);
+    this.el.appendChild(activeSave.el);
   }
 
   private changed(key: string, v: number | string | boolean | null): boolean {
@@ -285,33 +302,44 @@ export class Hud {
       this.moneyFrom = this.moneyShown; this.moneyTarget = s.money; this.moneyT0 = now;
       this.moneyDelta.textContent = (delta > 0 ? '+' : '−') + formatMoney(Math.abs(delta));
       setClass(this.moneyDelta, 'is-neg', delta < 0);
+      // restart the CSS animation on the next frame instead of forcing a layout (offsetWidth) here
       this.moneyDelta.classList.remove('is-show');
-      void this.moneyDelta.offsetWidth;
-      this.moneyDelta.classList.add('is-show');
+      cancelAnimationFrame(this.deltaRaf);
+      this.deltaRaf = requestAnimationFrame(() => this.moneyDelta.classList.add('is-show'));
     }
     if (this.moneyShown !== this.moneyTarget) {
       const k = this.reduced ? 1 : Math.min(1, (now - this.moneyT0) / 750);
       const e = 1 - (1 - k) ** 3;
       this.moneyShown = k >= 1 ? this.moneyTarget : this.moneyFrom + (this.moneyTarget - this.moneyFrom) * e;
     }
-    const mt = formatMoney(this.moneyShown);
+    const mt = this.moneyFmt.format(this.moneyShown);
     if (mt !== this.moneyText) { this.moneyText = mt; this.money.set(mt); }
 
     // Heat
-    const filled = Math.max(0, Math.min(5, Math.ceil(s.heat - 0.05)));
+    const filled = heatFilled(s.heat);
+    const nowMs = performance.now();
+    if (filled > this.heatShown && this.heatShown >= 0) this.heatRiseAt = nowMs;
     if (filled !== this.heatShown) {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < HEAT_SEGMENTS; i++) {
         const on = i < filled;
         if (on && i >= this.heatShown && this.heatShown >= 0) { this.flares[i].classList.remove('is-pop'); void this.flares[i].offsetWidth; this.flares[i].classList.add('is-pop'); }
         setClass(this.flares[i], 'is-on', on);
       }
       this.heatShown = filled;
+      this.heatEl.setAttribute('aria-label', `Heat ${filled} of ${HEAT_SEGMENTS}`);
+      this.heatEl.dataset.n = String(filled);
+    }
+    const mode: HeatMode = heatMode(filled, s.heatFlash, nowMs - this.heatRiseAt);
+    if (mode !== this.heatModeShown) {
+      this.heatModeShown = mode;
+      setClass(this.heatEl, 'is-rising', mode === 'rising');
+      setClass(this.heatEl, 'is-search', mode === 'search');
     }
     setClass(this.heatEl, 'is-visible', filled > 0);
-    const flash = s.heatFlash && filled > 0;
+    const flash = mode !== 'idle';
     setClass(this.heatEl, 'is-flash', flash);
     setClass(this.radarEl, 'is-wanted', filled > 0);
-    setClass(this.radarEl, 'is-searching', flash);
+    setClass(this.radarEl, 'is-searching', filled > 0 && s.heatFlash);
 
     // Weapon: the name pops up briefly whenever the weapon changes
     if (s.weaponIcon !== this.weaponIcon) { this.weaponIcon = s.weaponIcon; this.weaponIconEl.innerHTML = weaponSvg(s.weaponIcon); }
@@ -352,6 +380,7 @@ export class Hud {
 
     // Location popup: district changes, entering a vehicle, or a new street (rate-limited)
     this.clock.set(s.clock);
+    this.zone.set(s.district);
     const L = this.locLast;
     const inVeh = s.vehicleSpeedKmh !== null;
     const vname = inVeh ? (s.vehicleName ?? '') : null;

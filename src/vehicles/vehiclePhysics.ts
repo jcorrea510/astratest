@@ -5,7 +5,7 @@
  * countersteer help, a mild yaw-stability assist, a handbrake drift you can hold with throttle and
  * countersteer, downforce, limited air control and a self-righting roll when stuck on the roof.
  */
-import { RAPIER, type Physics, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER, G_VRAG, G_RAG, groups } from '../core/physics';
+import { RAPIER, type Physics, G_VEHICLE, G_STATIC, G_PROP, G_PLAYER, G_VRAG, G_RAG, groups, poseEpoch } from '../core/physics';
 import type { VehicleSpec } from './specs';
 
 export interface WheelDef { x: number; y: number; z: number; front: boolean; left: boolean }
@@ -122,27 +122,36 @@ export class VehiclePhysics {
   }
   get position() { return this.body.translation(); }
   get rotation() { return this.body.rotation(); }
+  private poseE = -1;
+  /** Cached body pose (see refreshPose): shared objects, read only. */
+  readonly cPos = { x: 0, y: 0, z: 0 }; readonly cQuat = { x: 0, y: 0, z: 0, w: 1 };
+  /** Reads position and rotation from Rapier at most once per physics step / teleport into cPos and cQuat. */
+  refreshPose() {
+    if (this.poseE === poseEpoch.n) return;
+    const p = this.body.translation(), q = this.body.rotation(), P = this.cPos, Q = this.cQuat;
+    P.x = p.x; P.y = p.y; P.z = p.z; Q.x = q.x; Q.y = q.y; Q.z = q.z; Q.w = q.w; this.poseE = poseEpoch.n;
+  }
   /** Forward unit vector in world space. */
   forward(out = { x: 0, y: 0, z: 0 }) {
-    const q = this.body.rotation();
+    this.refreshPose(); const q = this.cQuat;
     out.x = 2 * (q.x * q.z + q.w * q.y); out.y = 2 * (q.y * q.z - q.w * q.x); out.z = 1 - 2 * (q.x * q.x + q.y * q.y);
     return out;
   }
   upVec(out = { x: 0, y: 0, z: 0 }) {
-    const q = this.body.rotation();
+    this.refreshPose(); const q = this.cQuat;
     out.x = 2 * (q.x * q.y - q.w * q.z); out.y = 1 - 2 * (q.x * q.x + q.z * q.z); out.z = 2 * (q.y * q.z + q.w * q.x);
     return out;
   }
   /** Left unit vector (local +x) in world space. */
   leftVec(out = { x: 0, y: 0, z: 0 }) {
-    const q = this.body.rotation();
+    this.refreshPose(); const q = this.cQuat;
     out.x = 1 - 2 * (q.y * q.y + q.z * q.z); out.y = 2 * (q.x * q.y + q.w * q.z); out.z = 2 * (q.x * q.z - q.w * q.y);
     return out;
   }
   get yaw() { const f = this.forward(); return Math.atan2(f.x, f.z); }
   /** Remember the pose before the physics step so the renderer can blend between fixed steps. */
   capturePrev() {
-    const p = this.body.translation(), q = this.body.rotation();
+    this.refreshPose(); const p = this.cPos, q = this.cQuat;
     this.prevPos.x = p.x; this.prevPos.y = p.y; this.prevPos.z = p.z;
     this.prevQuat.x = q.x; this.prevQuat.y = q.y; this.prevQuat.z = q.z; this.prevQuat.w = q.w;
   }
@@ -163,7 +172,7 @@ export class VehiclePhysics {
     this.capturePrev();
     // Round 7 perf: a car asleep at rest (parked, abandoned) needs no tyre rays or forces until something wakes it
     if (body.isSleeping()) { this.speed = 0; this.sleptSteps++; return; }
-    const lv = body.linvel(), av = body.angvel(), rot = body.rotation();
+    const lv = body.linvel(), av = body.angvel(); this.refreshPose(); const rot = this.cQuat;
     const f = this.forward(), up = this.upVec(), left = this.leftVec();
     const fwdSpeed = lv.x * f.x + lv.y * f.y + lv.z * f.z;
     const latSpeed = lv.x * left.x + lv.y * left.y + lv.z * left.z;
