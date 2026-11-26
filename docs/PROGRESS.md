@@ -11,6 +11,10 @@ Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLA
   cache. CPU/frame (CDP, SwiftShader A/B): drive 9.8 -> 6.4 ms, foot 8.7 -> ~6.8 ms.
 - CI: lint skips root probe scripts (deploys had failed since Nov 16); e2e in 6 shards. Stale e2e refreshed (sea coast,
   Round 9 hold-up rules). Fixed: Low quality never finished loading (composer depthTexture: undefined). Shots docs/screenshots/r12-*.
+- Gameplay/realism fixes this round: police helicopter stops holding the heat once outrun; firefight IK allocations cut
+  (fight frame ~25 -> ~17 ms headless); walkers stranded in the road step square back onto the kerb (peds7 road share
+  4.5-6 % -> 0-0.2 %); far car vs bus junction deadlock breaker; 30 mph car hits ride the hood.
+- CI: perfbench runs in its own browser (its GPU backlog timed out the next file's context).
 - Headless only: no real GPU here, so GPU cost of AO/FXAA on the M1 is unmeasured (Low turns AO off).
 
 ## Round 11 (owner notes 24 Nov night) — see docs/ROUND11.md
