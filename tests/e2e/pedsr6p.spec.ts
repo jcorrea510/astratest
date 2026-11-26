@@ -155,8 +155,12 @@ test('a punched civilian fights back (brave) or runs (timid); gunfire and hits b
     const punches = { n: 0 }; const H = g.player.human.constructor.prototype, orig = H.playAction;
     H.playAction = function (name, o) { if (name.startsWith('punch_') && this === brave.char.human) punches.n++; return orig.call(this, name, o); };
     const hp0 = g.player.health;
-    g.combat.onHit(brave.char, 5, g.player, false, false, fists, 'torso');
-    g.combat.onHit(timid.char, 5, g.player, false, false, fists, 'torso');
+    // provoke() rolls Math.random (brave 90% fight, timid 12%): pin the roll so the test is deterministic
+    const rnd = Math.random; Math.random = () => 0.5;
+    try {
+      g.combat.onHit(brave.char, 5, g.player, false, false, fists, 'torso');
+      g.combat.onHit(timid.char, 5, g.player, false, false, fists, 'torso');
+    } finally { Math.random = rnd; }
     const out = { braveBrain: brave.brain, timidBrain: timid.brain };
     let guard = false, close = 99;
     for (let i = 0; i < 8 * 30; i++) { g.frame(1 / 30, false); if (brave.char.human.actionName === 'guard') guard = true; if (i > 60) close = Math.min(close, brave.pos.distanceTo(g.player.pos)); }
