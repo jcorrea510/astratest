@@ -2,6 +2,15 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 13 (owner 26 Nov, iPad: "looks like an itch game, make it look like real life") — docs/ROUND13.md
+- Touch controls (mobile). ~20 parallel helpers: people shader split into src/actors/shade (skin, face/eyes, tops, bottoms+shoes,
+  hair) + realistic palettes (look.ts); every gun rebuilt in src/combat/guns (one file each, procedural materials.ts).
+- World: car paint/glass/tyres (carMaterial), wheels/brakes/mirrors (parts), asphalt/sidewalk/grass (materials), facades
+  (real-city palettes, weathering, glass Fresnel), trees, daylight/sky/grade (sky.ts, renderer LOOK.natural).
+- Owner bugs (lead): headlights glare (lower intensity/decay/lens), daytime signals (lens texture, hue-safe colours, visors,
+  smaller heads), left-lane cars stuck (left turners take the amber once oncoming stops: trafficRules mayClearLeft).
+- Visual checks run in CI (.github/workflows/shots.yml: edit docs/shots/request.json, images land in docs/shots/out).
+
 ## Round 12 (owner 25 Nov: "graphics and performance are bad; make it a high quality game, UI included") — PR #1
 - Graphics: half-res SAO ambient occlusion (Medium/High, render/post.ts), FXAA in the grade pass when MSAA is off, AgX tone
   curve + S-curve, more sun / less sky fill by day, darker nights (lamps make the pools), softer PCF sun shadows, speed blur
