@@ -29,7 +29,7 @@ import { GpsRouter } from './world/gps';
 import { ATTRACT_SHOTS, shotCamera } from './ui/attract';
 import { installFullscreenShortcut } from './core/fullscreen';
 import { TouchControls } from './ui/touch';
-import { touchContext } from './ui/touchLayout';
+import { touchContext, touchPromptFor } from './ui/touchLayout';
 import { setPromptSource, promptFor } from './core/gamepad';
 import { defaultQualityFor, isPhoneLike } from './core/platform';
 import { probeWebgl2 } from './core/webglProbe';
@@ -478,6 +478,7 @@ function frame(raw: number) {
   // HUD
   const hud = g.hudState(null, null);
   hud.interactPrompt = promptFor(a.prompt() ?? hud.interactPrompt, g.settings.bindings);
+  if (touch?.isEnabled) hud.interactPrompt = touchPromptFor(hud.interactPrompt ?? null, g.settings.bindings, touchContext({ heli: !!g.playerHeli, vehicle: !!g.playerVehicle || !!g.taxi.riding }));
   ui.updateHud(hud);
   if (ui.minimapWanted()) ui.updateMinimap(minimapState());
 }

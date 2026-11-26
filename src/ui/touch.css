@@ -60,7 +60,7 @@
 /* menus by touch: every control a finger has to hit is >= 44 px, and nothing relies on hover */
 @media (pointer: coarse) {
   .ma-root .ma-btn, .ma-root .ma-tab, .ma-root .ma-back, .ma-root .ma-legend-chip, .ma-root button[data-nav], .ma-root .ma-row, .ma-root .ma-mi { min-height: 44px; }
-  .ma-root input[type='range'] { min-height: 44px; touch-action: pan-y; }
+  .ma-root input[type="range"], .ma-range { min-height: 44px; touch-action: pan-y; }
   .ma-root input[type='checkbox'] { min-width: 28px; min-height: 28px; }
   .ma-root select { min-height: 44px; }
   .ma-root .ma-layer { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
@@ -70,3 +70,11 @@
 
 /* the speedometer / vehicle panel would sit under the pedals: tuck it between the minimap and the buttons */
 .ma-root.has-touch .ma-hud-br { right: calc(env(safe-area-inset-right, 0px) + 350 * var(--u)); bottom: calc(env(safe-area-inset-bottom, 0px) + 34 * var(--u)); }
+.ma-root.has-touch .ma-keyslot:disabled { opacity: 0.55; }
+
+/* Same menu sizing keyed to the touch UI itself (a finger on a hybrid / trackpad iPad, or a coarse screen): every tappable row, tab, swatch and slider is >= 44 px. */
+.ma-root.has-touch :is(.ma-btn, .ma-tab, .ma-back, .ma-menu-item, .ma-ptab, .ma-shop-item, .ma-shop-buy, .ma-garage-row, .ma-garage-sw, .ma-keyslot, .ma-legend-chip, button[data-nav]) { min-height: 44px; }
+.ma-root.has-touch :is(.ma-garage-sw) { min-width: 44px; }
+.ma-root.has-touch :is(input[type="range"], .ma-range) { min-height: 44px; touch-action: pan-y; }
+.ma-root.has-touch :is(.ma-layer, .ma-layer *) { touch-action: manipulation; }
+.ma-root.has-touch .ma-layer input[type='range'] { touch-action: pan-y; }

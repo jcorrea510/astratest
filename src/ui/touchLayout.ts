@@ -87,3 +87,14 @@ export const LOOK_GAIN = 1.5;
 export function axesFor(ctx: TouchContext, a: { x: number; y: number }): { x: number; y: number } {
   return ctx === 'car' ? { x: a.x, y: 0 } : a;
 }
+
+const capOf = (code: string): string => code.replace(/^Key/, '').replace(/^Digit/, '').toUpperCase();
+/** Rewrites a "E  Enter the car" prompt (key cap, two spaces, text) so the cap shows the touch button that does it ("USE  Enter the car"). Unmapped keys are left alone. */
+export function touchPromptFor(prompt: string | null, bindings: Partial<Record<Action, string[]>>, ctx: TouchContext): string | null {
+  if (!prompt) return prompt;
+  const m = /^(\S{1,12})(\s{2,}.+)$/.exec(prompt);
+  if (!m) return prompt;
+  const want = m[1].toUpperCase();
+  for (const b of LAYOUTS[ctx]) if ((bindings[b.action] ?? []).some(c => capOf(c) === want)) return b.label + m[2];
+  return prompt;
+}
