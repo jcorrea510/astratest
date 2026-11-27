@@ -31,7 +31,7 @@ export interface HudState {
   cpuMs?: number;
 }
 export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
-export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank'; label?: string; pulse?: boolean; yaw?: number }
+export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank' | 'ramp' | 'landmark'; label?: string; pulse?: boolean; yaw?: number }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
 export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean; stats?: { label: string; value: number }[] }
 export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean;
@@ -112,6 +112,7 @@ export interface UICallbacks {
   onSettingsChanged(s: Settings): void; // apply + persist (game calls saveSettings)
   onQualityChanged(q: QualityName): void;
   onSetWaypoint(x: number, z: number): void; // clicking the full map
+  onClearWaypoint?(): void; // clearing the active GPS waypoint from the full map
   onUiSound(kind: 'click' | 'hover' | 'back'): void;
   captureKey(cb: (code: string) => void): void; // game routes the next key/mouse press to cb (for rebinding)
 }

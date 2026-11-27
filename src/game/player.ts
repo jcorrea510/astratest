@@ -24,23 +24,23 @@ export function fallDamage(impact: number, rolled = false): number {
 
 /** On-foot tuning in SI units (m, s, rad). */
 export const MOVE = {
-  walk: 1.8, jog: 4.5, sprint: 7.0, aim: 2.4, swim: 3.4,
-  /** acceleration below / above jog speed (sprint builds momentum more slowly) */
-  accelStart: 15, accelSprint: 5,
+  walk: 1.8, jog: 4.7, sprint: 7.3, aim: 2.9, swim: 3.5,
+  /** acceleration below / above jog speed (sprint builds momentum more smoothly) */
+  accelStart: 19, accelSprint: 8.5,
   /** deceleration: stopping from a jog, stopping from a sprint, easing from sprint back to a jog, slowing while still moving */
-  decelStop: 20, decelSprintStop: 13, decelSprintRelease: 6.5, decelMoving: 12,
+  decelStop: 22, decelSprintStop: 15, decelSprintRelease: 7.5, decelMoving: 14,
   /** heading turn: exponential rate, capped by an angular speed that falls with ground speed */
-  turnK: 14, turnRateSlow: 15, turnRateJog: 10, turnRateSprint: 5.5, turnSpeedLoss: 0.45,
+  turnK: 16, turnRateSlow: 16, turnRateJog: 11.5, turnRateSprint: 7.2, turnSpeedLoss: 0.3,
   /** sharp reversals: plant (hard brake) then a quick pivot */
-  pivotAngle: 2.25, pivotMinSpeed: 3.2, pivotDecel: 30, pivotTurnRate: 22,
+  pivotAngle: 2.25, pivotMinSpeed: 3.2, pivotDecel: 36, pivotTurnRate: 24,
   /** jump arc: take-off speed, base gravity, apex hang band/scale, fall and early-release multipliers */
   jumpSpeed: 4.3, gravity: 16, hangBand: 1.5, hangScale: 0.55, fallScale: 1.3, cutScale: 2.6, minHold: 0.07, maxFall: 32,
   coyote: 0.12, buffer: 0.12,
   /** air control: acceleration, minimum steerable speed, drag with no input */
-  airAccel: 7, airMinSpeed: 2.2, airDrag: 0.4,
+  airAccel: 7.5, airMinSpeed: 2.3, airDrag: 0.4,
   /** landing: speed kept after a jump landing, downward speed for a hard landing (~2.5 m drop) */
-  landKeep: 0.88, hardLanding: 12.5,
-  staminaDrain: 0.09, staminaRegen: 0.22, staminaJump: 0.04, regenDelay: 0.5, exhaustedUntil: 0.25,
+  landKeep: 0.9, hardLanding: 12.5,
+  staminaDrain: 0.072, staminaRegen: 0.28, staminaJump: 0.035, regenDelay: 0.35, exhaustedUntil: 0.22,
 };
 
 const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -50,13 +50,18 @@ export class PlayerController {
   onSound: ((s: PlayerSound, volume: number) => void) | null = null;
   /** health lost to a hard landing (the game applies it and handles death) */
   onFallDamage: ((damage: number) => void) | null = null;
+  /** Emitted when starting a tactical combat roll (e.g. for ground dust burst). */
+  onRoll: ((pos: THREE.Vector3) => void) | null = null;
   private wasSwimming = false;
   aiming = false;
   /** Set by PlayerCombat while a ranged gun is raised without the aim button (firing from the hip): body keeps facing the camera line. */
   hipRaised = false;
   get strafing() { return this.aiming || this.hipRaised; }
+  /** True during the active evasion window of a tactical combat roll (reduces incoming gunfire damage). */
+  get evading() { return this.rollT > 0.16; }
   sprinting = false;
   rollT = 0;
+  private rollDur = 0.56;
   private rollDirX = 0; private rollDirZ = 1;
   stamina = 1;
   /** Public read-outs for HUD/tests. */
@@ -100,7 +105,7 @@ export class PlayerController {
     if (jp && !this.jumpLatch) this.jumpBuffer = MOVE.buffer;
     this.jumpLatch = jp;
     const rp = !opts.blocked && this.input.justPressed('crouch');
-    if (rp && !this.rollLatch) this.rollBuffer = 0.1;
+    if (rp && !this.rollLatch) this.rollBuffer = 0.12;
     this.rollLatch = rp;
 
     const mv = opts.blocked ? { x: 0, y: 0 } : this.input.moveAxes();
@@ -121,7 +126,7 @@ export class PlayerController {
     this.sprinting = wantSprint && !this.exhausted && !c.swimming;
     if (this.sprinting && c.speed > 2) { this.stamina -= dt * MOVE.staminaDrain; this.regenWait = MOVE.regenDelay; }
     else if (this.regenWait > 0) this.regenWait -= dt;
-    else this.stamina += dt * MOVE.staminaRegen * (c.speed < 0.5 ? 1.3 : 1);
+    else this.stamina += dt * MOVE.staminaRegen * (c.speed < 0.5 ? 1.35 : 1);
     this.stamina = clamp(this.stamina, 0, 1);
 
     this.jumpBuffer -= dt; this.rollBuffer -= dt; this.jumpLock -= dt; this.sinceJump += dt;
@@ -136,21 +141,32 @@ export class PlayerController {
       this.afterMove();
       return;
     }
-    // Dodge roll (also used for hard landings while moving)
+    // Tactical combat roll (also used for hard landings while moving)
     if (this.rollT > 0) {
       this.rollT -= dt;
-      const sp = 6.2 * Math.min(1, this.rollT / 0.25 + 0.3);
+      const frac = clamp(this.rollT / Math.max(0.2, this.rollDur), 0, 1);
+      // Fast burst into the roll, crisp deceleration into a ready combat stance
+      const sp = 7.4 * (0.28 + 0.72 * Math.sin(frac * Math.PI * 0.65));
       c.vel.y = Math.min(c.vel.y, 0);
       c.move(this.desired.set(this.rollDirX * sp, 0, this.rollDirZ * sp), dt, false);
+      if (this.strafing && this.rollT < 0.14) c.faceTowards(camYaw, 18, dt);
       this.afterMove();
       c.leanRoll = 0; c.leanPitch = 0;
       return;
     }
-    if (this.rollBuffer > 0 && c.grounded && !c.swimming && !h.busy && this.recoverT <= 0 && !opts.blocked) {
+    // Press Crouch anywhere on ground, OR press Jump while aiming (iconic GTA combat roll!)
+    const wantCombatRoll = this.rollBuffer > 0 || (this.aiming && this.jumpBuffer > 0);
+    if (wantCombatRoll && c.grounded && !c.swimming && !h.busy && this.recoverT <= 0 && !opts.blocked && this.stamina > 0.06) {
       this.rollBuffer = 0;
-      const yaw = moving ? wishYaw : c.yaw;
-      this.startRoll(yaw, 0.72);
-      h.playOnce('Roll', 'full', 0.08); this.onSound?.('whoosh', 0.6);
+      if (this.aiming) this.jumpBuffer = 0;
+      const yaw = moving ? wishYaw : this.aiming ? camYaw : c.yaw;
+      const dur = this.aiming ? 0.56 : 0.64;
+      this.startRoll(yaw, dur);
+      this.stamina = Math.max(0, this.stamina - 0.08);
+      this.cam.landDip(0.14);
+      h.playOnce('Roll', 'full', 0.06, { rate: this.aiming ? 1.25 : 1.1 });
+      this.onSound?.('whoosh', 0.65);
+      this.onRoll?.(c.pos);
       return;
     }
 
@@ -244,8 +260,8 @@ export class PlayerController {
       }
       speedNow = Math.hypot(c.vel.x, c.vel.z);
       // Reaching a ledge mid-jump (car roof, bench, low wall): climb onto it.
-      if (!jumpNow && this.jumping && moving && !this.strafing && this.sinceJump > 0.04 && !opts.blocked) {
-        const maxRise = Math.min(1.2, this.takeoffY + 1.8 - c.pos.y);
+      if (!jumpNow && this.jumping && moving && !this.strafing && this.sinceJump > 0.02 && !opts.blocked) {
+        const maxRise = Math.min(1.35, this.takeoffY + 1.9 - c.pos.y);
         const ledge = maxRise > 0.05 ? c.findLedge(wishX, wishZ, maxRise) : null;
         if (ledge) {
           this.mantle = { t: 0, dur: 0.2 + ledge.rise * 0.16, x0: c.pos.x, y0: c.pos.y, z0: c.pos.z, x1: ledge.x, y1: ledge.y, z1: ledge.z, exit: clamp(this.takeoffSpeed * 0.6, 1.5, 4), yaw: wishYaw };
@@ -354,6 +370,7 @@ export class PlayerController {
 
   private startRoll(yaw: number, t: number) {
     this.rollT = t;
+    this.rollDur = t;
     this.rollDirX = Math.sin(yaw); this.rollDirZ = Math.cos(yaw); this.char.yaw = yaw;
     this.pivoting = false; this.fastTurn = false;
   }

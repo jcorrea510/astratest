@@ -243,7 +243,14 @@ export class UI implements GameUI {
     this.hudLayer.appendChild(this.gearBtn);
     this.bottomStack.appendChild(this.hud.objectiveEl);
     if (this.fullmap) this.fullmap.el.remove();
-    this.fullmap = new FullMap(opts.city, painter, (x, z) => this.callbacks.onSetWaypoint(x, z), () => this.popLayer('map'), k => this.sound(k));
+    this.fullmap = new FullMap(
+      opts.city,
+      painter,
+      (x, z) => this.callbacks.onSetWaypoint(x, z),
+      () => this.popLayer('map'),
+      k => this.sound(k),
+      () => this.callbacks.onClearWaypoint?.(),
+    );
     this.pauseEl.after(this.fullmap.el);
   }
 

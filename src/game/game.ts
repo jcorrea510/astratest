@@ -57,6 +57,7 @@ import { signalLampColors, signalOffColors } from '../render/signalColors';
 import { TaxiRide } from './taxiRide';
 import { TaxiJob } from './taxiJob';
 import { LoopGuard } from './loopGuard';
+import { Explosives } from './explosives';
 
 export const PLAYER_LOOK = PLAYER_DEFAULT_LOOK; // [PEOPLE] distinctive default outfit
 export const SPAWN = { x: -300, y: 0.25, z: -107, yaw: Math.PI };
@@ -91,6 +92,9 @@ export class Game {
   private camDirTmp = new THREE.Vector3();
   private _airDir = new THREE.Vector3();
   private _airVel = new THREE.Vector3();
+  private _aimFrom = new THREE.Vector3();
+  private _aimDir = new THREE.Vector3();
+  private _blastDir = new THREE.Vector3();
   private lampPick: { i: number; d: number }[] = [];
   private last = 0;
   private running = false;
@@ -101,6 +105,7 @@ export class Game {
   skids!: SkidMarks;
   vehicles!: VehicleManager;
   combat!: Combat;
+  explosives!: Explosives;
   pcombat!: PlayerCombat;
   pop!: Population;
   ragdolls!: RagdollSystem;
@@ -214,6 +219,10 @@ export class Game {
     this.carEntry = new CarEntry(this);
     this.combat = new Combat(this.physics, this.particles, this.audio, this.renderer.scene);
     this.combat.worldGlass = worldGlass;
+    this.explosives = new Explosives(this.renderer.scene, this.physics, this.combat, this.particles, this.audio, (x, z) => {
+      const hit = this.physics.ray(x, 22, z, 0, -1, 0, 36, groups(ALL, G_STATIC));
+      return hit ? 22 - hit.toi : 0.18;
+    });
     this.blood = new Blood(this.renderer.scene); this.blood.enabled = this.settings.blood; this.combat.blood = this.blood;
     try { this.fx = new CombatFx(this.canvas.parentElement ?? document.body); } catch { this.fx = null; }
     worldGlass.onBreak = pane => { this.particles.decals.clearIn(pane.x, pane.y, pane.z, pane.yaw, pane.w, pane.h, pane.inst >= 0 ? 1.7 : 0.4); }; // shot-out glass loses its bullet holes
@@ -240,7 +249,7 @@ export class Game {
       for (let i = 0; i < Math.round(2 + k * 2); i++) b.splat(ch.pos.x + d.x * (1 + i * 1.3), ch.pos.y + 0.01, ch.pos.z + d.z * (1 + i * 1.3), 0, 1, 0, 0.25 + Math.random() * 0.25);
       if (!ch.alive) b.pool(ch.pos.x, ch.pos.y, ch.pos.z, ch.pos);
     };
-    this.pop.aimProvider = () => { if (!this.pcombat.threatening || !this.pcombat.armed) return null; const from = new THREE.Vector3(), dir = new THREE.Vector3(); this.cam.aimRay(from, dir); return { from, dir }; }; // [PEOPLE] civilians react to being aimed at
+    this.pop.aimProvider = () => { if (!this.pcombat.threatening || !this.pcombat.armed) return null; this.cam.aimRay(this._aimFrom, this._aimDir); return { from: this._aimFrom, dir: this._aimDir }; }; // [PEOPLE] civilians react to being aimed at
     this.traffic = new Traffic(this.city, this.vehicles, this.pop, this.audio, () => this.time);
     this.buses = new BusService(this.renderer.scene, this.city, this.traffic, this.pop, () => this.time);
     this.crowd = new Crowd(this.renderer.scene, this.city, this.vehicles, () => this.time);
@@ -270,6 +279,7 @@ export class Game {
     this.police.onHeatChange = (h, lost) => { if (lost) this.events.onToast('You lost the heat', 'heat'); else this.events.onToast(`Heat ${h}`, 'heat'); };
     this.wireEvents();
     this.playerCtl.onFallDamage = (d) => { if (!this.ghost && this.player.damage(d, null, this.time)) this.playerDown('down'); };
+    this.playerCtl.onRoll = (pos) => this.particles.rollDust(pos.x, pos.y, pos.z);
     this.playerCtl.onSound = (snd, vol) => { if (snd === 'footstep') { this.stepSound(this.player.pos, vol); return; } this.audio.play(snd, { pos: this.player.pos, volume: vol, pitch: 1 }); if (snd === 'splash') this.particles.splash(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z); };
     onProgress(0.85, 'Warming up the city lights');
     this.physics.world.step();
@@ -298,6 +308,10 @@ export class Game {
       else if (from === this.player && npc?.role === 'civilian') this.orders.noteHurt(npc);
     };
     this.combat.onVehicleHit = (v, from) => { if (from === this.player) { this.police.onVehicleShot(v); this.traffic.panic(v); } };
+    this.combat.onStaticHit = (pt, dmg, by) => this.explosives.hit(pt, dmg, by);
+    this.combat.onBulletNear = (o, d, len, by) => { if (by === this.player) this.police.suppressNear(o, d, len); };
+    this.combat.onPlayerNearMiss = (s) => this.fx?.suppress(s);
+    this.combat.playerEvading = () => this.playerCtl.evading;
     this.combat.helis = () => this.helis.list;
     this.combat.onExplosion = (at, by, R) => this.explosion(at, by, R); // COMBAT: grenades / rockets damage people like car explosions
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
@@ -360,16 +374,24 @@ export class Game {
     const prox = Math.max(0, 1 - this.renderer.camera.position.distanceTo(at) / 60);
     this.cam.addShake(prox);
     if (prox > 0.05) this.renderer.pulseImpact(0.32 + prox * 0.68);
-    for (const c of [this.player, ...this.pop.characters()]) {
-      if (!c.alive || c.inVehicle) continue;
+    this.explosives?.blast(at, R, by);
+    const od = this._blastDir;
+    const hitChar = (c: Character, npc: Npc | null) => {
+      if (!c.alive || c.inVehicle) return;
       const d = c.pos.distanceTo(at);
       if (d < R) {
-        const od = c.pos.clone().sub(at).setY(0); if (od.lengthSq() > 1e-4) od.normalize(); c.lastHit = { zone: 'torso', dx: od.x, dz: od.z, power: 6, blast: true };
+        od.subVectors(c.pos, at).setY(0); if (od.lengthSq() > 1e-4) od.normalize();
+        c.lastHit = { zone: 'torso', dx: od.x, dz: od.z, power: 6, blast: true };
         const killed = c.damage((R - d) * 18, by, this.time);
         if (c === this.player && !c.alive) this.playerDown('down');
-        if (c !== this.player) { c.knockT = 1.2; const dir = c.pos.clone().sub(at).setY(0).normalize(); c.vel.set(dir.x * 7, 4, dir.z * 7); }
-        const npc = this.pop.npcs.find(n => n.char === c); if (npc && killed) this.onNpcKilled(npc, by);
+        if (c !== this.player) { c.knockT = 1.2; c.vel.set(od.x * 7, 4, od.z * 7); }
+        if (npc && killed) this.onNpcKilled(npc, by);
       }
+    };
+    hitChar(this.player, null);
+    for (let i = 0; i < this.pop.npcs.length; i++) {
+      const npc = this.pop.npcs[i];
+      hitChar(npc.char, npc);
     }
     if (by === this.player) this.police.report('vehicleWreck', at);
     this.events.onExplosion(at);
@@ -758,12 +780,16 @@ export class Game {
       if ((pv.destroyed && pv.burnTime > 2.5) || pv.flooded) this.exitVehicle(true);
     } else {
       if (!handled) { this.playerCtl.updateAnimation(); this.player.updateVisual(dt); }
-      if (!blocked && this.input.justPressed('camera')) this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
+      if (!blocked && this.input.justPressed('camera')) {
+        if (this.pcombat.aiming && this.pcombat.armed) this.cam.toggleShoulder();
+        else this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
+      }
     }
     this.orders.update(dt, raw, blocked);
     this.updateHurtFx(dt);
     this.pcombat.update(dt, blocked || this.paused || this.carEntry.active || this.taxi.riding, () => this.pop.characters(), () => this.vehicles.list);
     this.combat.update(dt);
+    this.explosives?.update(dt, this.player.pos);
     this.pop.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 26 : 16;
     this.vehicles.shadowBudget = this.renderer.quality.shadowMap >= 3072 ? 14 : 8;
     this.vehicles.setHeadlightCount(this.renderer.quality.headlights ?? 1);

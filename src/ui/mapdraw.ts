@@ -63,6 +63,11 @@ export class CityPainter {
     const fort = new Path2D(); fort.rect(ARMY_BASE.x0, ARMY_BASE.z0, ARMY_BASE.x1 - ARMY_BASE.x0, ARMY_BASE.z1 - ARMY_BASE.z0);
     this.base.push({ color: mixColor('#4c5846', BASE, 0.55), path: fort });
     this.base.push({ color: '#08141d', path: water });
+    // Pier 9 boardwalk & Meridian Lighthouse headland drawn over the coastal water
+    const pierPath = new Path2D();
+    pierPath.rect(-58, COAST_Z - 4, 16, 154);
+    pierPath.arc(546, 950, 9.5, 0, Math.PI * 2);
+    this.base.push({ color: mixColor('#8f7a62', BASE, 0.45), path: pierPath });
     for (const pl of WEST_PLAZAS) { // plazas, park and roundabout island of the west extension
       const d = new Path2D(); d.arc(pl.x, pl.z, pl.r, 0, Math.PI * 2);
       this.base.push({ color: pl.kind === 'plaza' ? mixColor('#a69f90', BASE, 0.6) : mixColor('#3c6a45', BASE, 0.5), path: d });
@@ -142,20 +147,24 @@ export class CityPainter {
     for (const g of this.base) {
       ctx.fillStyle = g.path === this.water ? wg : g.color; ctx.fill(g.path);
     }
-    // shallows and shoreline
+    // multi-band bathymetry shelf & crisp shoreline contour
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 16; ctx.strokeStyle = 'rgba(120,170,200,0.07)'; ctx.stroke(this.coastline);
-    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(140,185,210,0.11)'; ctx.stroke(this.coastline);
-    ctx.lineWidth = 1.4 / Math.max(scale, 0.2); ctx.strokeStyle = 'rgba(170,200,220,0.4)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 30; ctx.strokeStyle = 'rgba(72,135,170,0.05)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 15; ctx.strokeStyle = 'rgba(115,172,202,0.08)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 5.5; ctx.strokeStyle = 'rgba(155,205,228,0.13)'; ctx.stroke(this.coastline);
+    ctx.lineWidth = 1.4 / Math.max(scale, 0.2); ctx.strokeStyle = 'rgba(182,216,236,0.46)'; ctx.stroke(this.coastline);
     for (const g of this.blocks) { ctx.fillStyle = g.color; ctx.fill(g.path); }
-    // road hierarchy: streets, avenues (wider, brighter, cased), freeway (distinct, with an elevated shadow)
+    // road hierarchy: streets, avenues (wider, brighter, cased), freeway (distinct, with an elevated shadow + amber median)
     ctx.fillStyle = '#4a4f57'; ctx.fill(this.roads);
     const cw = 1.6 / Math.max(scale, 0.2);
     ctx.lineWidth = cw; ctx.strokeStyle = 'rgba(6,8,11,0.6)'; ctx.stroke(this.majorRoads);
     ctx.fillStyle = '#7d838d'; ctx.fill(this.majorRoads);
-    ctx.save(); ctx.translate(3, 5); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill(this.freeway); ctx.restore();
-    ctx.lineWidth = cw * 1.6; ctx.strokeStyle = 'rgba(8,8,10,0.8)'; ctx.stroke(this.freeway);
-    ctx.fillStyle = '#b09a76'; ctx.fill(this.freeway);
+    ctx.save(); ctx.translate(3, 5); ctx.fillStyle = 'rgba(0,0,0,0.34)'; ctx.fill(this.freeway); ctx.restore();
+    ctx.lineWidth = cw * 1.65; ctx.strokeStyle = 'rgba(8,8,10,0.85)'; ctx.stroke(this.freeway);
+    ctx.fillStyle = '#b49a72'; ctx.fill(this.freeway);
+    ctx.lineWidth = Math.max(0.7, 0.85 / Math.max(scale, 0.25));
+    ctx.strokeStyle = 'rgba(255,224,160,0.38)';
+    ctx.stroke(this.freeway);
   }
 
   /** Top-down shaded city rendered once into a canvas for the minimap (about 1 px per metre). */
@@ -190,6 +199,8 @@ function glyph(name: string): Path2D {
       // shirt: sleeves, collar notch
       shirt: new Path2D('M8.5 3.5L2.5 6.5L4.8 11.2L7 10.2V20.5H17V10.2L19.2 11.2L21.5 6.5L15.5 3.5Q15 6 12 6Q9 6 8.5 3.5Z'),
       bag: new Path2D('M6 8h12l1.4 13H4.6zM9 8V6.5a3 3 0 0 1 6 0V8h-1.6V6.5a1.4 1.4 0 0 0-2.8 0V8z'),
+      ramp: new Path2D('M3.5 18.5L20.5 7.5V18.5ZM10.5 6.5L15.5 3.5L14 9.5Z'),
+      star: new Path2D('M12 2.2L14.9 8.4L21.7 9.2L16.6 13.8L18 20.5L12 17.1L6 20.5L7.4 13.8L2.3 9.2L9.1 8.4Z'),
     };
   }
   return glyphs[name];
@@ -277,6 +288,12 @@ export function drawBlip(ctx: CanvasRenderingContext2D, kind: MinimapBlip['kind'
     case 'collectible':
       drawGlyph(ctx, 'diamond', x, y, r * 1.5, INK);
       drawGlyph(ctx, 'diamond', x, y, r * 1.05, col);
+      break;
+    case 'ramp':
+      badge(ctx, 'ramp', x, y, r, col, 1.15);
+      break;
+    case 'landmark':
+      badge(ctx, 'star', x, y, r * 1.12, col, 1.18);
       break;
     case 'enemy':
       if (st.shape === 'square') shapeMark(ctx, 'square', x, y, r * 0.72, col, false);

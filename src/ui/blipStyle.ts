@@ -12,14 +12,15 @@ export interface BlipStyle { color: string; alt: string; shape: BlipShape; /** a
 
 const BASE: Record<Kind, string> = {
   mission: '#ffc37e', target: '#ff6f5e', checkpoint: '#ffe08a', waypoint: '#ffb066', safehouse: '#e9edf2', shop: '#8fd0a8',
-  arms: '#ee9a72', bank: '#e8c15a', barber: '#e3a9c8', clothing: '#b4a8ec', garage: '#8fbbdc', vehicle: '#dfe3e8', collectible: '#f3d9ad', enemy: '#ff5a4e', police: '#6fb6ff',
+  arms: '#ee9a72', bank: '#e8c15a', barber: '#e3a9c8', clothing: '#b4a8ec', garage: '#8fbbdc', vehicle: '#dfe3e8', collectible: '#f3d9ad',
+  ramp: '#ffb84d', landmark: '#ffe29a', enemy: '#ff5a4e', police: '#6fb6ff',
 };
 export const BLIP_BASE_COLORS = BASE;
 /** Overrides per mode, picked to stay apart in that kind of colour vision (blue / orange / white axis for red-green types, red / cyan for blue-yellow). */
 const OVERRIDES: Record<Exclude<ColorblindMode, 'off'>, Partial<Record<Kind, string>>> = {
-  deuteranopia: { police: '#4aa8ff', enemy: '#ffb000', target: '#ffb000', shop: '#9fd8ff', mission: '#fff0a8' },
-  protanopia: { police: '#58b0ff', enemy: '#ffc400', target: '#ffc400', shop: '#a8dcff', mission: '#fff0a8' },
-  tritanopia: { police: '#5ff0ff', enemy: '#ff4d6a', target: '#ff4d6a', shop: '#f6f6f6', mission: '#ffd0e0', garage: '#d6e6ff' },
+  deuteranopia: { police: '#4aa8ff', enemy: '#ffb000', target: '#ffb000', shop: '#9fd8ff', mission: '#fff0a8', ramp: '#ffd066', landmark: '#ffffff' },
+  protanopia: { police: '#58b0ff', enemy: '#ffc400', target: '#ffc400', shop: '#a8dcff', mission: '#fff0a8', ramp: '#ffd066', landmark: '#ffffff' },
+  tritanopia: { police: '#5ff0ff', enemy: '#ff4d6a', target: '#ff4d6a', shop: '#f6f6f6', mission: '#ffd0e0', garage: '#d6e6ff', ramp: '#ff96b0', landmark: '#ffffff' },
 };
 
 export function blipColor(kind: Kind, mode: ColorblindMode = 'off'): string {

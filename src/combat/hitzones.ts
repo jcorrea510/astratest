@@ -36,12 +36,12 @@ export function zoneDamage(w: WeaponDef, zone: Zone, dist: number, t: ZoneTarget
  * Ray vs capsule (segment a-b, radius r). Returns the distance along the (unit) ray to the first intersection, or -1.
  * (Inigo Quilez's capsule intersector.)
  */
-export function rayCapsule(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, c: Capsule): number {
+export function rayCapsule(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, c: Capsule, inflate = 0): number {
   const bax = c.bx - c.ax, bay = c.by - c.ay, baz = c.bz - c.az;
   const oax = ox - c.ax, oay = oy - c.ay, oaz = oz - c.az;
   const baba = bax * bax + bay * bay + baz * baz, bard = bax * dx + bay * dy + baz * dz, baoa = bax * oax + bay * oay + baz * oaz;
   const rdoa = dx * oax + dy * oay + dz * oaz, oaoa = oax * oax + oay * oay + oaz * oaz;
-  const r = c.r;
+  const r = c.r + inflate;
   if (baba < 1e-10) { // degenerate: sphere
     const h = rdoa * rdoa - oaoa + r * r; if (h < 0) return -1; return -rdoa - Math.sqrt(h);
   }
@@ -59,10 +59,12 @@ export function rayCapsule(ox: number, oy: number, oz: number, dx: number, dy: n
   } else if (a <= 1e-12) {
     // ray parallel to the axis: test both end spheres
     let best = -1;
-    for (const [px, py, pz] of [[c.ax, c.ay, c.az], [c.bx, c.by, c.bz]]) {
-      const qx = ox - px, qy = oy - py, qz = oz - pz; const bb = dx * qx + dy * qy + dz * qz, c2 = qx * qx + qy * qy + qz * qz - r * r; const hh = bb * bb - c2;
-      if (hh > 0) { const t = -bb - Math.sqrt(hh); if (t >= 0 && (best < 0 || t < best)) best = t; }
-    }
+    let qx = ox - c.ax, qy = oy - c.ay, qz = oz - c.az;
+    let bb = dx * qx + dy * qy + dz * qz, c2 = qx * qx + qy * qy + qz * qz - r * r, hh = bb * bb - c2;
+    if (hh > 0) { const t = -bb - Math.sqrt(hh); if (t >= 0) best = t; }
+    qx = ox - c.bx; qy = oy - c.by; qz = oz - c.bz;
+    bb = dx * qx + dy * qy + dz * qz; c2 = qx * qx + qy * qy + qz * qz - r * r; hh = bb * bb - c2;
+    if (hh > 0) { const t = -bb - Math.sqrt(hh); if (t >= 0 && (best < 0 || t < best)) best = t; }
     return best;
   }
   return -1;
@@ -70,13 +72,14 @@ export function rayCapsule(ox: number, oy: number, oz: number, dx: number, dy: n
 
 /** Closest capsule hit along a ray within [0, maxT]: the hit distance and zone, or null. */
 export function rayBody(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, caps: Capsule[], maxT: number, inflate = 0): { t: number; zone: Zone } | null {
-  let best: { t: number; zone: Zone } | null = null;
-  for (const c0 of caps) {
-    const c = inflate ? { ...c0, r: c0.r + inflate } : c0;
-    const t = rayCapsule(ox, oy, oz, dx, dy, dz, c);
-    if (t >= 0 && t <= maxT && (!best || t < best.t)) best = { t, zone: c.zone };
+  let bestT = maxT + 1;
+  let bestZone: Zone | null = null;
+  for (let i = 0; i < caps.length; i++) {
+    const c = caps[i];
+    const t = rayCapsule(ox, oy, oz, dx, dy, dz, c, inflate);
+    if (t >= 0 && t <= maxT && t < bestT) { bestT = t; bestZone = c.zone; }
   }
-  return best;
+  return bestZone ? { t: bestT, zone: bestZone } : null;
 }
 
 // ---------------------------------------------------------------- live skeleton -> capsules
@@ -108,16 +111,24 @@ const v = (k: string) => (P[k] ??= new THREE.Vector3());
  * `pos` / `yaw` when the rig has no recognisable bones.
  */
 export function bodyCapsules(model: THREE.Object3D, pos: THREE.Vector3, yaw: number, height = 1, build = 1, out: Capsule[] = []): Capsule[] {
-  out.length = 0;
-  const s = height, wsc = Math.sqrt(Math.max(0.6, build));
-  const cap = (a: THREE.Vector3, b: THREE.Vector3, r: number, zone: Zone) => out.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: r * s * wsc, zone });
+  let n = 0;
+  const s = height, wsc = Math.sqrt(Math.max(0.6, build)), rw = s * wsc;
+  const cap = (a: THREE.Vector3, b: THREE.Vector3, r: number, zone: Zone) => {
+    const rad = r * rw;
+    if (n < out.length) {
+      const c = out[n++];
+      c.ax = a.x; c.ay = a.y; c.az = a.z; c.bx = b.x; c.by = b.y; c.bz = b.z; c.r = rad; c.zone = zone;
+    } else {
+      out.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: rad, zone });
+      n++;
+    }
+  };
   const bones = findBones(model);
   if (bones) {
     model.updateMatrixWorld(true);
     const W = (k: BoneKey) => { const o = bones[k]; return o ? o.getWorldPosition(v(k)) : null; };
     const hips = W('hips')!, neck = W('neck')!, head = W('head')!, chest = W('chest') ?? v('chestF').lerpVectors(hips, neck, 0.6);
     const up = v('up').subVectors(head, neck); const ul = up.length() || 0.1; up.multiplyScalar(1 / ul);
-    // the head bone sits at the base of the skull: the skull runs ~0.2 m (scaled) up from there
     const headTop = v('headTop').copy(head).addScaledVector(up, 0.16 * s), headC = v('headC').copy(head).addScaledVector(up, 0.06 * s);
     cap(headC, headTop, 0.1, 'head');
     cap(neck, v('neckT').copy(head).addScaledVector(up, -0.005), 0.065, 'neck');
@@ -132,6 +143,7 @@ export function bodyCapsules(model: THREE.Object3D, pos: THREE.Vector3, yaw: num
       if (kn && an) cap(kn, an, 0.06, 'leg');
       if (an) cap(an, v(`toe${side}`).set(an.x + Math.sin(yaw) * 0.14 * s, an.y - 0.05 * s, an.z + Math.cos(yaw) * 0.14 * s), 0.045, 'leg');
     }
+    out.length = n;
     return out;
   }
   // analytic fallback: standing person facing yaw
@@ -146,6 +158,7 @@ export function bodyCapsules(model: THREE.Object3D, pos: THREE.Vector3, yaw: num
     cap(at(`hp${sd}`, sd * 0.1, 0.92), at(`k${sd}`, sd * 0.11, 0.5), 0.085, 'leg');
     cap(at(`k2${sd}`, sd * 0.11, 0.5), at(`a${sd}`, sd * 0.11, 0.08), 0.06, 'leg');
   }
+  out.length = n;
   return out;
 }
 

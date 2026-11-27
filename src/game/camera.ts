@@ -72,6 +72,9 @@ export class CameraRig {
   preview: { focus: THREE.Vector3; yaw: number; dist: number; pitch: number; fov: number } | null = null;
   /** COMBAT: vertical FOV (degrees) while looking through a weapon scope (set by PlayerCombat), null = none. */
   scopeFov: number | null = null;
+  /** Active over-the-shoulder side (+1 right, -1 left) for corner peeking while aiming. */
+  aimSide: 1 | -1 = 1;
+  toggleShoulder() { this.aimSide = this.aimSide === 1 ? -1 : 1; }
   /** On-foot motion fed by the player controller each step: sprint blend 0..1, ground speed, step phase (cycles), airborne. */
   foot = { sprint: 0, speed: 0, stepPhase: 0, airborne: false, falling: false };
   private sprintBlend = 0;
@@ -118,9 +121,9 @@ export class CameraRig {
     if (this.haveFocus && isTeleport(this.lastFocus, focus)) { this.initialized = false; this.hasClear = false; this.dist = mode === 'vehicle' ? 6.6 * (opts.vehicleSize ?? 1) : mode === 'aim' ? 2.0 : 4.2; this.dynDist = 0; this.dynYaw = 0; this.dynRoll = 0; }
     this.lastFocus.copy(focus); this.haveFocus = true;
     const ms = motionScale();
-    let targetDist = 4.2, height = 1.55, shoulderT = 0.45, fovT = 0;
+    let targetDist = 4.2, height = 1.55, shoulderT = 0.45 * this.aimSide, fovT = 0;
     let wantDynDist = 0, wantDynYaw = 0, wantDynRoll = 0;
-    if (mode === 'aim') { targetDist = 2.0; shoulderT = 0.72; height = 1.6; fovT = -12; }
+    if (mode === 'aim') { targetDist = 1.95; shoulderT = 0.72 * this.aimSide; height = 1.6; fovT = -13; }
     else if (mode === 'vehicle') {
       const size = opts.vehicleSize ?? 1;
       targetDist = (6.6 + this.zoomLevel * 2.5) * size; height = 1.5 * size + 0.4; shoulderT = 0;
@@ -135,7 +138,7 @@ export class CameraRig {
         this.yaw = dampAngle(this.yaw, opts.vehicleYaw, CHASE_YAW_RATE, dt);
         this.pitch = damp(this.pitch, -0.16, 2, dt);
       }
-    } else if (mode === 'dead') { targetDist = 6; height = 1.0; }
+    } else if (mode === 'dead') { targetDist = 6; height = 1.0; shoulderT = 0; }
     else targetDist = 4.2 + this.zoomLevel * 1.4;
     this.dynDist = damp(this.dynDist, wantDynDist, 4.5, dt);
     this.dynYaw = damp(this.dynYaw, wantDynYaw, 4.2, dt);
@@ -143,27 +146,27 @@ export class CameraRig {
     targetDist += this.dynDist;
     // On foot: sprint pulls the camera back a touch, kicks the FOV and adds a subtle step bob; landings dip it.
     const onFoot = mode === 'foot', f = this.foot;
-    this.sprintBlend = damp(this.sprintBlend, onFoot ? f.sprint : 0, f.sprint > this.sprintBlend ? 3 : 4, dt);
-    if (onFoot) { targetDist += this.sprintBlend * 0.35; fovT += this.sprintBlend * 5 * ms; }
-    this.bobAmp = damp(this.bobAmp, onFoot && !f.airborne ? Math.min(1, Math.max(0, (f.speed - 1) / 6)) : 0, 6, dt);
-    this.dipV += (-90 * this.dipY - 13 * this.dipV) * Math.min(dt, 0.05);
+    this.sprintBlend = damp(this.sprintBlend, onFoot ? f.sprint : 0, f.sprint > this.sprintBlend ? 3.8 : 4.6, dt);
+    if (onFoot) { targetDist += this.sprintBlend * 0.42; fovT += this.sprintBlend * 6.5 * ms; }
+    this.bobAmp = damp(this.bobAmp, onFoot && !f.airborne ? Math.min(1, Math.max(0, (f.speed - 1) / 6)) : 0, 7, dt);
+    this.dipV += (-96 * this.dipY - 14 * this.dipV) * Math.min(dt, 0.05);
     this.dipY += this.dipV * Math.min(dt, 0.05);
     if (!onFoot && mode !== 'aim') { this.dipY = 0; this.dipV = 0; }
-    this.dist = damp(this.dist, targetDist, 8, dt);
-    this.shoulder = damp(this.shoulder, shoulderT, 10, dt);
-    this.fovExtra = damp(this.fovExtra, fovT, 6, dt);
+    this.dist = damp(this.dist, targetDist, mode === 'aim' ? 11.5 : 8.5, dt);
+    this.shoulder = damp(this.shoulder, shoulderT, mode === 'aim' ? 13 : 10, dt);
+    this.fovExtra = damp(this.fovExtra, fovT, mode === 'aim' ? 10 : 6.5, dt);
     // Round 12: speed feel for the renderer's radial blur (0 below ~65 km/h, full near 160 km/h)
     this.camera.userData.speedFx = damp((this.camera.userData.speedFx as number) ?? 0, mode === 'vehicle' ? clamp((Math.abs(opts.speed ?? 0) - 18) / 26, 0, 1) : 0, 4, dt);
     const ph = f.stepPhase * Math.PI * 2;
     const bobY = ms * this.bobAmp * (0.022 + 0.018 * this.sprintBlend) * Math.cos(ph * 2);
     this.pivot.set(focus.x, focus.y + height, focus.z);
     if (!this.initialized) { this.smoothPivot.copy(this.pivot); this.initialized = true; }
-    // On foot the follow lags slightly (a weighty, filmic chase); aiming and vehicles stay tight.
-    const pk = mode === 'vehicle' ? 18 : onFoot ? 11 : 22;
+    // Responsive on-foot follow with slight cinematic weight; aiming and vehicles stay razor-tight.
+    const pk = mode === 'vehicle' ? 18 : onFoot ? 14.5 : 24;
     this.smoothPivot.x = damp(this.smoothPivot.x, this.pivot.x, pk, dt);
     this.smoothPivot.z = damp(this.smoothPivot.z, this.pivot.z, pk, dt);
     // Vertical: soft during jumps (the arc reads on screen), quick when falling far or on the ground.
-    const vk = mode === 'vehicle' ? 10 : onFoot && f.airborne ? (f.falling ? 14 : 4.5) : 12;
+    const vk = mode === 'vehicle' ? 10 : onFoot && f.airborne ? (f.falling ? 15 : 5.2) : 14;
     this.smoothPivot.y = damp(this.smoothPivot.y, this.pivot.y, vk, dt);
     if (this.smoothPivot.distanceTo(this.pivot) > 6) this.smoothPivot.copy(this.pivot);
 
@@ -173,15 +176,21 @@ export class CameraRig {
     _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     _origin.copy(this.smoothPivot).addScaledVector(_right, this.shoulder);
     _origin.y += bobY + this.dipY;
-    // keep the shoulder offset itself out of walls
-    const sideHit = this.cast(this.smoothPivot, _right, this.shoulder, opts.exclude);
-    if (sideHit !== null) { _origin.copy(this.smoothPivot).addScaledVector(_right, Math.max(0, sideHit - 0.05)); _origin.y += bobY + this.dipY; }
+    // keep the shoulder offset itself out of walls (works for both right and mirrored left shoulder)
+    const shAbs = Math.abs(this.shoulder);
+    if (shAbs > 0.01) {
+      const shSign = this.shoulder >= 0 ? 1 : -1;
+      if (shSign < 0) _right.negate();
+      const sideHit = this.cast(this.smoothPivot, _right, shAbs, opts.exclude);
+      if (sideHit !== null) { _origin.copy(this.smoothPivot).addScaledVector(_right, Math.max(0, sideHit - 0.05)); _origin.y += bobY + this.dipY; }
+      if (shSign < 0) _right.negate();
+    }
     // Collision distance is smoothed: it tightens fast (never look through a wall) but eases back out slowly, so a rail,
     // hanger or passing car flicking in and out of the ray no longer makes the view pop between two positions.
     const hit = this.cast(_origin, _back, this.dist, opts.exclude);
     const want = mode === 'vehicle' ? (hit !== null ? Math.max(0.35, hit - 0.08) : this.dist) : boomLength(hit, this.dist);
     if (!this.hasClear || mode !== this.lastMode) this.clear = want;
-    else this.clear = want < this.clear ? damp(this.clear, want, 38, dt) : damp(this.clear, want, 2.4, dt);
+    else this.clear = want < this.clear ? damp(this.clear, want, 38, dt) : damp(this.clear, want, 2.6, dt);
     this.hasClear = true; this.lastMode = mode;
     const d = Math.min(this.clear, this.dist);
     _pos.copy(_origin).addScaledVector(_back, d);

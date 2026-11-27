@@ -88,7 +88,8 @@ export class PlayerCombat {
   /** gun-hold IK: blend 0..1 (0 = gun follows the animated hand, e.g. while reloading), raise 0..1 (0 = low ready) */
   private holdW = 0; private raiseT = 0; private holdDt = 1 / 60; private holdOut = makeHoldOut();
   private shR: THREE.Object3D | null = null; private shL: THREE.Object3D | null = null;
-  private tmpO = new THREE.Vector3(); private tmpD = new THREE.Vector3(); private tmpV = new THREE.Vector3();
+  private tmpO = new THREE.Vector3(); private tmpO2 = new THREE.Vector3(); private tmpD = new THREE.Vector3(); private tmpV = new THREE.Vector3();
+  private tmpMuz = new THREE.Vector3(); private tmpShotD = new THREE.Vector3();
   private spine: THREE.Object3D | null = null;
   constructor(private player: Character, private ctl: PlayerController, private input: Input, private cam: CameraRig, private combat: Combat, private physics: Physics, private audio: GameAudio, scene: THREE.Scene) {
     scene.add(this.holder);
@@ -268,12 +269,33 @@ export class PlayerCombat {
     this.cam.aimRay(this.tmpO, this.tmpD);
     const chest = this.tmpV.set(c.pos.x, c.pos.y + 1.35, c.pos.z);
     const start = onFoot ? aimSearchStart(this.tmpO, this.tmpD, chest) : 0;
-    const o = this.tmpO.clone().addScaledVector(this.tmpD, start);
+    const o = this.tmpO2.copy(this.tmpO).addScaledVector(this.tmpD, start);
     const range = 400;
     const tr = this.combat.trace(o, this.tmpD, range, c, { dry: true, excludeVehicle: c.inVehicle as Vehicle | null });
     this.aimPoint.copy(tr.point);
     this.aimDist = start + tr.t;
     this.aimTarget = tr.kind === 'character' && tr.character?.alive && this.aimDist < Math.max(60, this.inv.def.range) ? tr.character : null;
+    // Subtle GTA-style soft magnetism while ADS (non-scoped) so tracking sprinting/flanking cops feels razor-sharp
+    if (!this.aimTarget && this.ctl.aiming && !this.scoped && !this.inv.def.melee && this.inv.def.cat !== 'throw') {
+      const maxRange = Math.min(40, this.inv.def.range);
+      const minCos = 0.9992; // ~2.29 deg cone around the reticle
+      let best: Character | null = null, bestScore = minCos, bestDist = maxRange;
+      for (const t of this.combat.people()) {
+        if (!t.alive || t === c || t.inVehicle || t.team === 'civilian') continue;
+        const tx = t.pos.x - o.x, ty = (t.pos.y + 1.25) - o.y, tz = t.pos.z - o.z;
+        const d2 = tx * tx + ty * ty + tz * tz;
+        if (d2 < 2.25 || d2 > maxRange * maxRange) continue;
+        const dist = Math.sqrt(d2);
+        if (dist > tr.t + 1.0) continue; // occluded behind solid cover
+        const cos = (tx * this.tmpD.x + ty * this.tmpD.y + tz * this.tmpD.z) / dist;
+        if (cos > bestScore) { bestScore = cos; best = t; bestDist = dist; }
+      }
+      if (best) {
+        this.aimPoint.set(best.pos.x, best.pos.y + 1.28, best.pos.z);
+        this.aimDist = start + bestDist;
+        this.aimTarget = best;
+      }
+    }
   }
 
   private fireRanged(def: WeaponDef) {
@@ -281,23 +303,23 @@ export class PlayerCombat {
     if (!this.ctl.aiming && !this.driveAim) { this.hipAimT = HIP_HOLD; c.yaw = this.cam.yaw + Math.PI; }
     if (!this.driveAim) c.human.root.rotation.y = c.yaw; // seated in a car the body keeps its seat pose
     this.updateModel();
-    const o = this.safeMuzzle(new THREE.Vector3());
-    const dir = shotDirection(o, this.aimPoint, this.tmpD, new THREE.Vector3()) as THREE.Vector3;
+    const o = this.safeMuzzle(this.tmpMuz);
+    const dir = shotDirection(o, this.aimPoint, this.tmpD, this.tmpShotD) as THREE.Vector3;
     const veh = this.driveAim ? c.inVehicle as Vehicle : null;
     const hits = this.combat.shoot(c, def, o, dir, this.cone + (veh ? Math.min(0.05, Math.abs(veh.speed) * 0.0015) : 0), veh);
     for (const x of hits) if (x.kind === 'character') { this.hitMarker = 1; if (x.killed) { this.killMarker = 1; this.headshotMarker = !!x.headshot; this.onKill?.(!!x.headshot); } }
     if (def.mode === 'pump' || def.mode === 'bolt') { this.cycleKind = def.mode; setCycle(this, def); }
     // bloom / accuracy
-    const fresh = this.time - this.lastShot > Math.max(0.35, def.interval * 2.5);
+    const fresh = this.time - this.lastShot > Math.max(0.32, def.interval * 2.4);
     this.burst = fresh ? 1 : this.burst + 1;
-    this.bloom = Math.min(def.bloomMax, this.bloom + def.bloom * (this.ctl.aiming ? 1 : 1.35));
-    this.accuracy *= 0.3;
+    this.bloom = Math.min(def.bloomMax, this.bloom + def.bloom * (this.ctl.aiming ? 0.92 : 1.32));
+    this.accuracy *= 0.48;
     this.lastShot = this.time;
     // camera recoil: applied over ~2 frames, most of it recovers once you stop
     if (fresh) { this.anchorPitch = this.cam.pitch; this.pitchDebt = 0; this.yawDebt = 0; }
-    const ramp = def.auto ? Math.min(1.25, 0.85 + this.burst * 0.06) : 1;
+    const ramp = def.auto ? Math.min(1.22, 0.85 + this.burst * 0.055) : 1;
     const scopeK = this.scoped ? 0.6 : 1;
-    const kp = def.kickPitch * (0.85 + Math.random() * 0.3) * ramp * (this.ctl.aiming ? 1 : 1.2) * scopeK;
+    const kp = def.kickPitch * (0.85 + Math.random() * 0.3) * ramp * (this.ctl.aiming ? 0.95 : 1.2) * scopeK;
     const ky = ((Math.random() * 2 - 1) * def.kickYaw + def.kickDrift * Math.min(1, this.burst / 4)) * scopeK;
     this.pendingPitch += kp; this.pitchDebt += kp * def.recoverFrac;
     this.pendingYaw += ky; this.yawDebt += ky * 0.5;
@@ -366,12 +388,12 @@ export class PlayerCombat {
 
   private updateSpread(dt: number, def: WeaponDef) {
     const c = this.player, aimed = this.ctl.aiming || this.driveAim;
-    const still = c.speed < 0.6 && c.grounded;
-    if (aimed && still && this.time - this.lastShot > def.interval * 1.3) this.accuracy = Math.min(1, this.accuracy + dt / 0.3);
-    else if (!still || !this.aiming) this.accuracy = Math.max(0, this.accuracy - dt * 4);
-    if (this.time - this.lastShot > def.bloomDelay) this.bloom *= Math.exp(-def.bloomRecover * dt);
+    const still = c.speed < 0.75 && c.grounded;
+    if (aimed && still && this.time - this.lastShot > def.interval * 1.2) this.accuracy = Math.min(1, this.accuracy + dt / 0.22);
+    else if (!still || !this.aiming) this.accuracy = Math.max(0, this.accuracy - dt * 3.6);
+    if (this.time - this.lastShot > def.bloomDelay) this.bloom *= Math.exp(-def.bloomRecover * (aimed ? 1.25 : 1) * dt);
     if (this.bloom < 1e-4) this.bloom = 0;
-    const move = Math.min(1.4, c.speed / 4.1) * def.movePenalty + (c.grounded ? 0 : def.movePenalty * 1.5 + 0.02 * (def.melee ? 0 : 1));
+    const move = Math.min(1.3, c.speed / 4.3) * def.movePenalty + (c.grounded ? 0 : def.movePenalty * 1.5 + 0.02 * (def.melee ? 0 : 1));
     const base = this.scoped ? def.aimSpread * 0.5 : aimed ? def.aimSpread : def.spread;
     this.cone = def.melee || def.cat === 'throw' ? 0 : base * (1 - this.accuracy * (1 - def.firstShot)) + this.bloom + move;
     this.spread = this.cone - base;
@@ -517,6 +539,9 @@ function setCycle(pc: PlayerCombat, def: WeaponDef) { pc._cycle(cycleDur(def)); 
  * Moves magazine / slide / pump / bolt. `rp` = reload progress (-1 = not reloading), `kick` = firing kick 0..1.4,
  * `cyc` = pump/bolt cycle progress 0..1 (-1 = none), `locked` = slide locked back on empty.
  */
+const _magOffSingle = new THREE.Vector3(0, 0, 0.25);
+const _magOffStd = new THREE.Vector3(0, -0.22, -0.03);
+
 function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, cyc: number, locked: boolean) {
   const reset = (o: THREE.Object3D | null) => { if (!o) return; const r = o.userData.rest as THREE.Vector3 | undefined; const rr = o.userData.restRot as THREE.Euler | undefined; if (r) o.position.copy(r); if (rr) o.rotation.copy(rr); o.visible = true; };
   reset(p.mag); reset(p.slide); reset(p.pump); reset(p.bolt);
@@ -529,7 +554,7 @@ function animateParts(p: WeaponParts, def: WeaponDef, rp: number, kick: number, 
   if (p.mag && rp >= 0 && (def.reloadKind === 'mag' || def.reloadKind === 'belt' || def.reloadKind === 'single')) {
     // out: drop down out of the well; gone while the hand fetches a new one; in: slide back up and seat
     const out = smooth(0.06, 0.3, rp), back = smooth(0.42, 0.58, rp);
-    const off = def.reloadKind === 'single' ? new THREE.Vector3(0, 0, 0.25) : new THREE.Vector3(0, -0.22, -0.03);
+    const off = def.reloadKind === 'single' ? _magOffSingle : _magOffStd;
     const t = back > 0 ? 1 - back : out;
     p.mag.position.addScaledVector(off, t);
     p.mag.visible = !(rp > 0.3 && rp < 0.42);

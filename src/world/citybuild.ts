@@ -21,6 +21,7 @@ import type { BreakableDef, BreakKind } from '../game/breakables';
 import { buildPedSignals, type PedSignals } from './pedsignals';
 import { buildPrecinct, precinctFootprint } from './precinct';
 import { buildGarages } from './garageBuild';
+import { buildLandmarks } from './landmarks';
 import { BAYS, bayRect, nearBayDriveway } from '../game/bays';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
@@ -831,8 +832,10 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   HELIPADS.length = 0; HELIPADS.push(...helipads, ...exp.helipads);
   lampHeads.push(...exp.lampHeads);
 
-  // ---------- Pier and Ferris wheel landmark ----------
-  const ferris = buildPier(root, physics, trim, maxZ + 7);
+  // ---------- Pier, Ferris wheel & city landmarks ----------
+  const pierStartZ = maxZ + 7;
+  const ferris = buildPier(root, physics, trim, pierStartZ);
+  buildLandmarks(trim, physics, pierStartZ, terrainH);
 
   // ---------- Emit meshes ----------
   const bmat = buildingMaterial();

@@ -1,4 +1,4 @@
-/** Full-screen city map: pan (drag / arrows / stick), zoom (wheel / +-), click or Enter to set a waypoint. */
+/** Full-screen city map: pan (drag / arrows / stick), zoom (wheel / +-), POI hover snap & legend filtering, click to set GPS waypoint. */
 import { AVENUE_NAMES, STREET_NAMES, districtAt, DISTRICT_INFO, type CityMap } from '../world/citymap';
 import type { MinimapBlip, MinimapState } from './contracts';
 import { mapScreenToWorld, mapScreenDeltaToWorld, mapWorldToScreen, MAP_TILT, type MapView } from './geometry';
@@ -22,16 +22,22 @@ export class FullMap {
   private ctx: CanvasRenderingContext2D;
   private stage: HTMLDivElement;
   private readout: HTMLDivElement;
+  private tipEl: HTMLDivElement;
+  private tipCat: HTMLDivElement;
+  private tipName: HTMLDivElement;
+  private tipMeta: HTMLDivElement;
   private state: MinimapState | null = null;
   private view: MapView = { cx: 0, cz: 0, scale: 1, w: 1, h: 1, tilt: MAP_TILT, pitch: MAP_PITCH };
   private targetScale = 1;
   private targetTilt = MAP_TILT;
   private targetPitch = MAP_PITCH;
-  private rotDrag: { x: number; y: number; tilt: number; pitch: number } | null = null;
+  private rotDrag: { x: number; y: number; tilt: number; pitch: number; moved: boolean } | null = null;
   private rotating = false;
   private lastLayerAt = 0;
   private layerCost = 6;
   private modeBtn!: HTMLButtonElement;
+  private clearBtn!: HTMLButtonElement;
+  private resetFilterBtn!: HTMLButtonElement;
   private anchor = { x: 0, y: 0 };
   private lastRender = 0;
   private pointers = new Map<number, { x: number; y: number }>();
@@ -51,10 +57,19 @@ export class FullMap {
   private cursor: { x: number; y: number } | null = null;
   private keyboardCursor = false;
   private localWaypoint: { x: number; z: number } | null = null;
+  private hiddenKinds = new Set<MinimapBlip['kind']>();
+  private hovered: { b: MinimapBlip; x: number; y: number } | null = null;
   private t0 = performance.now();
-  private legendCanvases: { kind: MinimapBlip['kind']; c: HTMLCanvasElement; row: HTMLElement }[] = [];
+  private legendCanvases: { kind: MinimapBlip['kind']; c: HTMLCanvasElement; row: HTMLElement; count: HTMLElement }[] = [];
 
-  constructor(private city: CityMap, private painter: CityPainter, private onWaypoint: (x: number, z: number) => void, private onClose: () => void, private sound: (k: 'click' | 'hover' | 'back') => void) {
+  constructor(
+    private city: CityMap,
+    private painter: CityPainter,
+    private onWaypoint: (x: number, z: number) => void,
+    private onClose: () => void,
+    private sound: (k: 'click' | 'hover' | 'back') => void,
+    private onClearWaypoint?: () => void,
+  ) {
     this.el = h('div', 'ma-layer ma-map');
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-label', 'City map');
@@ -64,10 +79,32 @@ export class FullMap {
     head.appendChild(titles);
     this.readout = h('div', 'ma-map-readout');
     head.appendChild(this.readout);
+
+    const tools = h('div', 'ma-map-tools');
+    const centerBtn = h('button', 'ma-btn ma-btn-ghost ma-map-tbtn', 'Center') as HTMLButtonElement;
+    centerBtn.type = 'button'; centerBtn.title = 'Center map on your location (C)';
+    centerBtn.addEventListener('click', () => { this.sound('click'); this.centerOnPlayer(); centerBtn.blur(); });
+    tools.appendChild(centerBtn);
+
+    this.clearBtn = h('button', 'ma-btn ma-btn-ghost ma-map-tbtn ma-map-clear', 'Clear GPS') as HTMLButtonElement;
+    this.clearBtn.type = 'button'; this.clearBtn.title = 'Clear active GPS waypoint (X or right-click)';
+    this.clearBtn.addEventListener('click', () => { this.clearWaypoint(); this.clearBtn.blur(); });
+    tools.appendChild(this.clearBtn);
+
+    const zOut = h('button', 'ma-btn ma-btn-ghost ma-map-tbtn ma-map-zoom', '−') as HTMLButtonElement;
+    zOut.type = 'button'; zOut.title = 'Zoom out (-)'; zOut.setAttribute('aria-label', 'Zoom out');
+    zOut.addEventListener('click', () => { this.sound('click'); this.zoomAt(1 / 1.32, this.view.w / 2, this.view.h / 2); zOut.blur(); });
+    const zIn = h('button', 'ma-btn ma-btn-ghost ma-map-tbtn ma-map-zoom', '+') as HTMLButtonElement;
+    zIn.type = 'button'; zIn.title = 'Zoom in (+)'; zIn.setAttribute('aria-label', 'Zoom in');
+    zIn.addEventListener('click', () => { this.sound('click'); this.zoomAt(1.32, this.view.w / 2, this.view.h / 2); zIn.blur(); });
+    tools.appendChild(zOut);
+    tools.appendChild(zIn);
+
     this.modeBtn = h('button', 'ma-btn ma-btn-ghost ma-map-mode', 'Top-down') as HTMLButtonElement;
     this.modeBtn.type = 'button'; this.modeBtn.id = 'ma-map-pitch'; this.modeBtn.title = 'Switch between the angled 3D view and a straight top-down map (T)';
     this.modeBtn.addEventListener('click', () => { this.sound('click'); this.togglePitch(); this.modeBtn.blur(); });
-    head.appendChild(this.modeBtn);
+    tools.appendChild(this.modeBtn);
+    head.appendChild(tools);
     head.appendChild(backButton(() => { this.sound('back'); this.onClose(); }));
     this.el.appendChild(head);
 
@@ -76,6 +113,15 @@ export class FullMap {
     this.canvas = h('canvas', 'ma-map-canvas');
     this.canvas.tabIndex = -1;
     this.stage.appendChild(this.canvas);
+
+    // Floating obsidian/amber POI inspection card snapped to hovered blips
+    this.tipEl = h('div', 'ma-map-tip');
+    this.tipCat = h('div', 'ma-map-tip-cat');
+    this.tipName = h('div', 'ma-map-tip-name');
+    this.tipMeta = h('div', 'ma-map-tip-meta');
+    this.tipEl.append(this.tipCat, this.tipName, this.tipMeta);
+    this.stage.appendChild(this.tipEl);
+
     body.appendChild(this.stage);
     const legend = h('div', 'ma-map-legend is-collapsed');
     this.legendEl = legend;
@@ -86,16 +132,41 @@ export class FullMap {
     legend.appendChild(chip);
     const lbody = h('div', 'ma-legend-body');
     legend.appendChild(lbody);
-    lbody.appendChild(h('div', 'ma-label', 'Legend'));
+    const lhead = h('div', 'ma-legend-head');
+    lhead.appendChild(h('div', 'ma-label', 'Filters · Click to toggle'));
+    this.resetFilterBtn = h('button', 'ma-legend-reset', 'Show all') as HTMLButtonElement;
+    this.resetFilterBtn.type = 'button';
+    this.resetFilterBtn.addEventListener('click', () => { this.sound('click'); this.hiddenKinds.clear(); this.syncLegendFilterClasses(); this.dirty = true; });
+    lhead.appendChild(this.resetFilterBtn);
+    lbody.appendChild(lhead);
     const list = h('div', 'ma-legend-list');
     for (const kind of BLIP_KINDS) {
-      const row = h('div', 'ma-legend-row');
+      const row = h('button', 'ma-legend-row is-filterable') as HTMLButtonElement;
+      row.type = 'button';
+      row.title = 'Click to show/hide · Double-click to isolate';
       const c = h('canvas', 'ma-legend-icon');
       c.width = 44; c.height = 44;
-      row.appendChild(c);
-      row.appendChild(h('span', '', BLIP_LABELS[kind]));
+      const lbl = h('span', 'ma-legend-name', BLIP_LABELS[kind]);
+      const count = h('span', 'ma-legend-count', '');
+      row.append(c, lbl, count);
+      row.addEventListener('click', () => {
+        this.sound('click');
+        if (this.hiddenKinds.has(kind)) this.hiddenKinds.delete(kind);
+        else this.hiddenKinds.add(kind);
+        this.syncLegendFilterClasses();
+        this.dirty = true;
+      });
+      row.addEventListener('dblclick', e => {
+        e.preventDefault();
+        this.sound('click');
+        const onlyThis = !this.hiddenKinds.has(kind) && this.hiddenKinds.size >= BLIP_KINDS.length - 1;
+        this.hiddenKinds.clear();
+        if (!onlyThis) for (const k2 of BLIP_KINDS) if (k2 !== kind) this.hiddenKinds.add(k2);
+        this.syncLegendFilterClasses();
+        this.dirty = true;
+      });
       list.appendChild(row);
-      this.legendCanvases.push({ kind, c, row });
+      this.legendCanvases.push({ kind, c, row, count });
     }
     lbody.appendChild(list);
     const districts = h('div', 'ma-legend-districts');
@@ -112,7 +183,7 @@ export class FullMap {
     this.el.appendChild(body);
 
     const foot = h('div', 'ma-map-foot');
-    for (const [k, t] of [['Click', 'Set waypoint'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['Q E', 'Rotate'], ['R F', 'Tilt'], ['T', 'Top-down'], ['RMB drag', 'Rotate / tilt'], ['N', 'North'], ['L', 'Legend'], ['Esc', 'Close']]) {
+    for (const [k, t] of [['Click', 'Set GPS'], ['RMB', 'Clear / Rotate'], ['Drag', 'Pan'], ['Wheel', 'Zoom'], ['C', 'Center'], ['X', 'Clear GPS'], ['T', '2D / 3D'], ['L', 'Filters'], ['Esc', 'Close']]) {
       const s = h('span', 'ma-foot-hint');
       s.appendChild(h('kbd', 'ma-key', k)); s.appendChild(document.createTextNode(t));
       foot.appendChild(s);
@@ -125,7 +196,7 @@ export class FullMap {
 
     this.canvas.addEventListener('contextmenu', e => e.preventDefault());
     this.canvas.addEventListener('pointerdown', e => {
-      if (e.button === 2) { this.canvas.setPointerCapture(e.pointerId); this.rotDrag = { x: e.clientX, y: e.clientY, tilt: this.targetTilt, pitch: this.targetPitch }; return; }
+      if (e.button === 2) { this.canvas.setPointerCapture(e.pointerId); this.rotDrag = { x: e.clientX, y: e.clientY, tilt: this.targetTilt, pitch: this.targetPitch, moved: false }; return; }
       if (e.button !== 0) return;
       this.canvas.setPointerCapture(e.pointerId);
       const r0 = this.canvas.getBoundingClientRect();
@@ -138,9 +209,13 @@ export class FullMap {
       this.cursor = { x: e.clientX - r.left, y: e.clientY - r.top };
       this.keyboardCursor = false;
       if (this.rotDrag) {
-        this.targetTilt = this.rotDrag.tilt + (e.clientX - this.rotDrag.x) * 0.006;
-        this.targetPitch = Math.min(MAP_TOPDOWN, Math.max(MAP_PITCH_MIN, this.rotDrag.pitch + (e.clientY - this.rotDrag.y) * 0.003));
-        this.dirty = true; return;
+        if (Math.hypot(e.clientX - this.rotDrag.x, e.clientY - this.rotDrag.y) > 5) this.rotDrag.moved = true;
+        if (this.rotDrag.moved) {
+          this.targetTilt = this.rotDrag.tilt + (e.clientX - this.rotDrag.x) * 0.006;
+          this.targetPitch = Math.min(MAP_TOPDOWN, Math.max(MAP_PITCH_MIN, this.rotDrag.pitch + (e.clientY - this.rotDrag.y) * 0.003));
+          this.dirty = true;
+        }
+        return;
       }
       if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x: this.cursor.x, y: this.cursor.y });
       if (this.pinch && this.pointers.size >= 2) {
@@ -159,7 +234,12 @@ export class FullMap {
       this.dirty = true;
     });
     this.canvas.addEventListener('pointerup', e => {
-      if (e.button === 2) { this.rotDrag = null; return; }
+      if (e.button === 2) {
+        const wasTap = this.rotDrag && !this.rotDrag.moved;
+        this.rotDrag = null;
+        if (wasTap) this.clearWaypoint();
+        return;
+      }
       this.pointers.delete(e.pointerId);
       this.dirty = true;
       if (this.pointers.size < 2) this.pinch = null;
@@ -167,13 +247,17 @@ export class FullMap {
       const moved = this.drag.moved;
       this.drag = null;
       if (!moved) {
-        const r = this.canvas.getBoundingClientRect();
-        const w = mapScreenToWorld(this.view, e.clientX - r.left, e.clientY - r.top);
-        this.setWaypoint(w.x, w.z);
+        if (this.hovered) {
+          this.setWaypoint(this.hovered.b.x, this.hovered.b.z);
+        } else {
+          const r = this.canvas.getBoundingClientRect();
+          const w = mapScreenToWorld(this.view, e.clientX - r.left, e.clientY - r.top);
+          this.setWaypoint(w.x, w.z);
+        }
       }
     });
     this.canvas.addEventListener('pointercancel', e => { this.drag = null; this.rotDrag = null; this.pointers.delete(e.pointerId); this.pinch = null; });
-    this.canvas.addEventListener('pointerleave', () => { this.cursor = null; this.dirty = true; });
+    this.canvas.addEventListener('pointerleave', () => { this.cursor = null; this.hovered = null; this.tipEl.classList.remove('is-visible'); this.dirty = true; });
     this.canvas.addEventListener('wheel', e => {
       e.preventDefault();
       const r = this.canvas.getBoundingClientRect();
@@ -189,10 +273,40 @@ export class FullMap {
       else if (e.code === 'KeyR') this.tilt(0.12);
       else if (e.code === 'KeyF') this.tilt(-0.12);
       else if (e.code === 'KeyT') this.togglePitch();
+      else if (e.code === 'KeyC') this.centerOnPlayer();
+      else if (e.code === 'KeyX') this.clearWaypoint();
+      else if (e.code === 'Equal' || e.code === 'NumpadAdd') this.zoomAt(1.25, this.view.w / 2, this.view.h / 2);
+      else if (e.code === 'Minus' || e.code === 'NumpadSubtract') this.zoomAt(1 / 1.25, this.view.w / 2, this.view.h / 2);
       else if (e.code === 'KeyN') { this.targetTilt = MAP_TILT; this.targetPitch = MAP_PITCH; this.dirty = true; }
       else used = false;
       if (used) { e.preventDefault(); e.stopPropagation(); } // the map owns its keys: nothing else (sandbox panel, tabs, hotkeys) may react to them
     }, true); // capture: the UI layer stops propagation of keys while a menu is open
+  }
+
+  private syncLegendFilterClasses() {
+    for (const l of this.legendCanvases) l.row.classList.toggle('is-filtered', this.hiddenKinds.has(l.kind));
+    this.resetFilterBtn.classList.toggle('is-visible', this.hiddenKinds.size > 0);
+  }
+  private centerOnPlayer() {
+    if (!this.state) return;
+    this.view.cx = this.state.x;
+    this.view.cz = this.state.z;
+    this.targetScale = Math.max(this.targetScale, this.fitScale * 1.9);
+    this.anchor = { x: this.view.w / 2, y: this.view.h / 2 };
+    this.clampView();
+    this.dirty = true;
+  }
+  private clearWaypoint() {
+    if (!this.localWaypoint) return;
+    this.localWaypoint = null;
+    this.sound('back');
+    this.onClearWaypoint?.();
+    this.syncClearButton();
+    this.dirty = true;
+  }
+  private syncClearButton() {
+    this.clearBtn.disabled = !this.localWaypoint;
+    this.clearBtn.classList.toggle('is-active', !!this.localWaypoint);
   }
 
   private toggleLegend() {
@@ -226,6 +340,7 @@ export class FullMap {
     this.localWaypoint = { x, z };
     this.sound('click');
     this.onWaypoint(x, z);
+    this.syncClearButton();
     this.dirty = true;
   }
 
@@ -234,14 +349,19 @@ export class FullMap {
     this.open = true;
     this.el.classList.add('is-open');
     this.localWaypoint = s.blips.find(b => b.kind === 'waypoint') ?? null;
+    this.syncClearButton();
     this.resize(true);
     this.targetScale = this.view.scale; this.targetTilt = MAP_TILT; this.view.tilt = MAP_TILT; this.targetPitch = MAP_PITCH; this.view.pitch = MAP_PITCH; this.layerView = null; this.lastRender = performance.now();
-    const present = new Set(s.blips.map(b => b.kind));
+    const counts = new Map<MinimapBlip['kind'], number>();
+    for (const b of s.blips) counts.set(b.kind, (counts.get(b.kind) ?? 0) + 1);
     for (const l of this.legendCanvases) {
       const ctx = l.c.getContext('2d');
       if (ctx) { ctx.clearRect(0, 0, 44, 44); drawBlip(ctx, l.kind, 22, l.kind === 'waypoint' ? 26 : 22, 11, 0); }
-      l.row.classList.toggle('is-present', present.has(l.kind));
+      const n = counts.get(l.kind) ?? 0;
+      l.row.classList.toggle('is-present', n > 0);
+      l.count.textContent = n > 0 ? String(n) : '';
     }
+    this.syncLegendFilterClasses();
     cancelAnimationFrame(this.raf);
     const loop = () => { if (!this.open) return; this.render(); this.raf = requestAnimationFrame(loop); };
     this.raf = requestAnimationFrame(loop);
@@ -250,6 +370,8 @@ export class FullMap {
   hide() {
     this.open = false;
     this.el.classList.remove('is-open');
+    this.tipEl.classList.remove('is-visible');
+    this.hovered = null;
     cancelAnimationFrame(this.raf);
     this.drag = null;
   }
@@ -315,7 +437,6 @@ export class FullMap {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(hgt * this.dpr);
     const b = this.painter.bounds;
     const prevFit = this.fitScale;
-    void b;
     this.view.w = w; this.view.h = hgt;
     this.fitScale = this.fitFor(MAP_PITCH);
     if (refit) {
@@ -340,7 +461,7 @@ export class FullMap {
     this.rotating = false;
     const moving = this.stepZoom(1 - Math.exp(-dt * 11));
     const rotating = this.rotating || !!this.rotDrag;
-    const animated = moving || !!this.state?.blips.some(b => b.pulse || b.kind === 'police');
+    const animated = moving || !!this.hovered || !!this.localWaypoint || !!this.state?.blips.some(b => b.pulse || b.kind === 'police');
     if (!this.dirty && !animated) return;
     this.dirty = false;
     const ctx = this.ctx, v = this.view, s = this.state;
@@ -401,7 +522,7 @@ export class FullMap {
       ctx.setTransform(d, 0, 0, d, 0, 0);
     }
     // waypoint route, drawn above the buildings in screen space so it keeps a constant width
-    if (s?.route && s.route.length > 1) {
+    if (this.localWaypoint && s?.route && s.route.length > 1) {
       ctx.beginPath();
       for (let i = 0; i < s.route.length; i++) { const q = mapWorldToScreen(v, s.route[i].x, s.route[i].z); if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -421,11 +542,12 @@ export class FullMap {
     const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
     const hit = (x0: number, y0: number, x1: number, y1: number) => placed.some(r => x0 < r.x1 && x1 > r.x0 && y0 < r.y1 && y1 > r.y0);
     const br = 8.5;
-    // blip icons: shops only once zoomed in; key icons (safehouse, arms, garage, mission...) always
+    // blip icons: filtered by legend toggles; shops only once zoomed in; key icons (safehouse, landmark, ramp, arms, garage, mission...) always
     const icons: { b: MinimapBlip; x: number; y: number }[] = [];
     if (s) {
       for (const b of s.blips) {
         if (b.kind === 'waypoint') continue;
+        if (this.hiddenKinds.has(b.kind)) continue;
         if ((b.kind === 'shop' || b.kind === 'collectible') && zoomK < 1.6) continue;
         const p = mapWorldToScreen(v, b.x, b.z);
         if (p.x < -20 || p.y < -20 || p.x > v.w + 20 || p.y > v.h + 20) continue;
@@ -437,6 +559,27 @@ export class FullMap {
         if (i.b.kind !== 'shop') placed.push({ x0: i.x - br, y0: i.y - br * 1.7, x1: i.x + br, y1: i.y + br * 0.3 });
       }
     }
+
+    // Smart POI hover snapping (18px radius around pointer)
+    let snap: { b: MinimapBlip; x: number; y: number } | null = null;
+    if (this.cursor && !this.drag?.moved && !this.rotDrag) {
+      let bestD = 18 * 18;
+      for (const i of icons) {
+        const dx = this.cursor.x - i.x, dy = this.cursor.y - (i.y - br * 0.7);
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD) { bestD = d2; snap = i; }
+      }
+    }
+    this.hovered = snap;
+    if (snap) {
+      const sy = snap.y - br * 0.7;
+      const ring = 12.5 + Math.sin(t * 7) * 1.6;
+      ctx.beginPath(); ctx.arc(snap.x, sy, ring, 0, Math.PI * 2);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#f5a855'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(snap.x, sy, ring + 4, 0, Math.PI * 2);
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(245,168,85,0.4)'; ctx.stroke();
+    }
+
     // text labels, highest priority first; a label that would overlap one already placed is skipped
     ctx.lineJoin = 'round'; ctx.miterLimit = 2;
     type Lab = { text: string; x: number; y: number; prio: number; kind: 'district' | 'blip'; alpha: number };
@@ -454,9 +597,10 @@ export class FullMap {
         const m = /^(.*?)\s+helipad\s+\d+$/i.exec(b.label);
         if (m) { const g = groups.get(m[1]) ?? { x: 0, y: 0, n: 0 }; g.x += i.x; g.y += i.y; g.n++; groups.set(m[1], g); continue; }
         const isPad = b.kind === 'vehicle';
-        if (isPad && zoomK < 1.5) continue; // minor labels hidden when zoomed out
+        if (isPad && zoomK < 1.5) continue;
         if (b.kind === 'shop' && zoomK < 1.9) continue;
-        const prio = b.kind === 'safehouse' || b.kind === 'arms' || b.kind === 'garage' || b.kind === 'mission' || b.kind === 'target' || b.kind === 'checkpoint' ? 0 : isPad ? 3 : 2;
+        if (b.kind === 'ramp' && zoomK < 1.35) continue;
+        const prio = b.kind === 'safehouse' || b.kind === 'landmark' || b.kind === 'arms' || b.kind === 'garage' || b.kind === 'mission' || b.kind === 'target' || b.kind === 'checkpoint' ? 0 : isPad ? 3 : 2;
         labs.push({ text: b.label, x: i.x + br + 5, y: i.y - br * 0.7, prio, kind: 'blip', alpha: 1 });
       }
       if (zoomK >= 1.5) for (const [name, g] of groups) labs.push({ text: `${name} helipads`, x: g.x / g.n + br + 5, y: g.y / g.n - br * 0.7, prio: 3, kind: 'blip', alpha: 1 });
@@ -482,13 +626,29 @@ export class FullMap {
     if (s) {
       ctx.textAlign = 'center';
       const wp = this.localWaypoint;
-      if (wp) { const p = mapWorldToScreen(v, wp.x, wp.z); this.blipShadow(ctx, p.x, p.y, 10); drawBlip(ctx, 'waypoint', p.x, p.y, 10, t); }
+      if (wp && !this.hiddenKinds.has('waypoint')) { const p = mapWorldToScreen(v, wp.x, wp.z); this.blipShadow(ctx, p.x, p.y, 10); drawBlip(ctx, 'waypoint', p.x, p.y, 10, t); }
       const pp = mapWorldToScreen(v, s.x, s.z);
       const pulse = (t * 0.9) % 1;
       ctx.beginPath(); ctx.ellipse(pp.x, pp.y, 11 + pulse * 22, (11 + pulse * 22) * pitch, 0, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(255,243,220,${0.55 * (1 - pulse)})`; ctx.lineWidth = 2; ctx.stroke();
       const hd = mapWorldToScreen(v, s.x + Math.sin(s.heading), s.z - Math.cos(s.heading));
       drawPlayerArrow(ctx, pp.x, pp.y, 11, Math.atan2(hd.x - pp.x, -(hd.y - pp.y)));
+    }
+
+    // Floating POI tooltip positioning & content
+    if (snap && s) {
+      const dist = Math.hypot(snap.b.x - s.x, snap.b.z - s.z);
+      this.tipCat.textContent = BLIP_LABELS[snap.b.kind].toUpperCase();
+      this.tipName.textContent = snap.b.label || BLIP_LABELS[snap.b.kind];
+      this.tipMeta.textContent = `${fmtDistance(dist)} · CLICK TO SET GPS ROUTE`;
+      const tx = Math.min(v.w - 230, Math.max(16, snap.x + 18));
+      const ty = Math.min(v.h - 108, Math.max(74, snap.y - 42));
+      this.tipEl.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+      this.tipEl.classList.add('is-visible');
+      this.canvas.style.cursor = 'pointer';
+    } else {
+      this.tipEl.classList.remove('is-visible');
+      this.canvas.style.cursor = 'crosshair';
     }
 
     // Cursor readout and keyboard reticle
@@ -504,9 +664,12 @@ export class FullMap {
       }
     }
     if (focus) {
-      const w = mapScreenToWorld(v, focus.x, focus.y);
+      const w = snap ? { x: snap.b.x, z: snap.b.z } : mapScreenToWorld(v, focus.x, focus.y);
       const away = s ? Math.hypot(w.x - s.x, w.z - s.z) : 0;
-      this.readout.textContent = `${DISTRICT_INFO[districtAt(this.city, w.x, w.z)].name} · ${nearestStreets(w.x, w.z, AVENUE_NAMES, STREET_NAMES)} · ${fmtDistance(away)}`;
+      const wpTag = this.localWaypoint && s ? ` · GPS ${fmtDistance(Math.hypot(this.localWaypoint.x - s.x, this.localWaypoint.z - s.z))}` : '';
+      this.readout.textContent = `${DISTRICT_INFO[districtAt(this.city, w.x, w.z)].name} · ${nearestStreets(w.x, w.z, AVENUE_NAMES, STREET_NAMES)} · ${fmtDistance(away)}${wpTag}`;
+    } else if (this.localWaypoint && s) {
+      this.readout.textContent = `GPS ROUTE ACTIVE · ${fmtDistance(Math.hypot(this.localWaypoint.x - s.x, this.localWaypoint.z - s.z))}`;
     } else this.readout.textContent = '';
   }
 }

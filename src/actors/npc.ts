@@ -90,11 +90,17 @@ export class Npc {
   bench: Bench | null = null;
   /** delayed reaction to danger: seconds until it registers, and where from */
   alertT = 0; alertFrom = new THREE.Vector3(); alertFar = false;
-  /** tactical cover-peek cadence for officers */
+  /** tactical cover-peek cadence & big-firefight squad role for officers */
   peekT = 0; peeking = false;
+  squadRole: 'flanker' | 'suppressor' | 'breacher' | 'default' = 'default';
+  suppressedT = 0;
+  fragCd = 8 + Math.random() * 6;
   /** organic pedestrian reactivity: cooldown between soft flinches/gestures, lateral yield step, personal-space crowd timer, and gaze target */
   reactCool = 0; yieldX = 0; yieldZ = 0; yieldT = 0; crowdT = 0;
   lookAtPos = new THREE.Vector3(); lookAtT = 0;
+  /** reusable goal vector so combat repositioning avoids per-tick allocations */
+  readonly goalBuf = new THREE.Vector3();
+  setGoal(x: number, y: number, z: number): THREE.Vector3 { this.goalBuf.set(x, y, z); this.goal = this.goalBuf; return this.goalBuf; }
   constructor(physics: Physics, tpl: HumanTemplate, look: Look, public role: Role, x: number, z: number, y = 0.2) {
     this.char = new Character(physics, tpl, look, role === 'police' ? 'police' : role === 'gang' ? 'gang' : 'civilian', x, z, y);
     this.home.set(x, y, z);
@@ -120,15 +126,34 @@ export interface NpcEnv {
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _qGunFix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3(), tvS = new THREE.Vector3();
+const tv = new THREE.Vector3(), tv2 = new THREE.Vector3(), tvDesired = new THREE.Vector3(), tvO = new THREE.Vector3(), tvA = new THREE.Vector3(), tvS = new THREE.Vector3(), tvCand = new THREE.Vector3(), tvBest = new THREE.Vector3();
 export class NpcBrainRunner {
   private rng = new Rng(99);
   private ball = new RAPIER.Ball(0.35);
+  private campPos = new THREE.Vector3();
+  private campT = 0;
+  private campLastT = -1;
+  private squadFragCd = 6;
   constructor(private env: NpcEnv) { }
 
   /** Per-tick budgets shared by all fighters so a big firefight costs a bounded number of physics queries. */
   rays = 8; covers = 1;
-  beginTick(maxRays = 8) { this.rays = maxRays; this.covers = 1; }
+  beginTick(maxRays = 8) {
+    this.rays = maxRays; this.covers = 1;
+    const now = this.env.time();
+    if (this.campLastT >= 0) {
+      const dt = Math.min(0.1, Math.max(0, now - this.campLastT));
+      this.squadFragCd = Math.max(0, this.squadFragCd - dt);
+      const p = this.env.player;
+      if (p.alive && !p.inVehicle && this.env.playerHeat() >= 4) {
+        if (this.campPos.distanceToSquared(p.pos) < 4.5 * 4.5) this.campT += dt;
+        else { this.campPos.copy(p.pos); this.campT = 0; }
+      } else { this.campT = 0; }
+    } else {
+      this.campPos.copy(this.env.player.pos);
+    }
+    this.campLastT = now;
+  }
   private lethal() { return this.env.copsLethal ? this.env.copsLethal() : this.env.playerHeat() >= 2; }
   hasLOS(from: THREE.Vector3, to: THREE.Vector3): boolean {
     const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z; const d = Math.hypot(dx, dy, dz);
@@ -148,23 +173,24 @@ export class NpcBrainRunner {
     this.env.physics.world.intersectionsWithShape({ x: p.x, y: p.y + 0.9, z: p.z }, { x: 0, y: 0, z: 0, w: 1 }, this.ball, () => { blocked = true; return false; }, undefined, groups(0xffff, G_STATIC | G_VEHICLE));
     return !blocked;
   }
-  /** Finds a nearby point that breaks line of sight to the threat. */
+  /** Finds a nearby point that breaks line of sight to the threat (role-aware scoring, zero loop allocations). */
   findCover(n: Npc, threat: THREE.Vector3): THREE.Vector3 | null {
     if (this.covers <= 0) return null;
     this.covers--;
-    let best: THREE.Vector3 | null = null, bestScore = Infinity;
+    let found = false, bestScore = Infinity;
     const te = tv2.copy(threat).setY(threat.y + 1.2);
+    const idealDist = n.squadRole === 'breacher' ? 11 : n.squadRole === 'suppressor' ? 21 : 16;
     for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2 + this.rng.range(0, 0.4), r = this.rng.range(2.5, 9);
-      const p = new THREE.Vector3(n.pos.x + Math.cos(a) * r, n.pos.y, n.pos.z + Math.sin(a) * r);
-      if (!this.pointFree(p)) continue;
-      const chestP = tv.set(p.x, p.y + 1.1, p.z);
+      const a = (i / 12) * Math.PI * 2 + this.rng.range(0, 0.4), r = this.rng.range(2.5, 9.5);
+      tvCand.set(n.pos.x + Math.cos(a) * r, n.pos.y, n.pos.z + Math.sin(a) * r);
+      if (!this.pointFree(tvCand)) continue;
+      const chestP = tv.set(tvCand.x, tvCand.y + 1.1, tvCand.z);
       if (this.hasLOS(te, chestP)) continue;
-      const toThreat = p.distanceTo(threat);
-      const score = r + Math.max(0, toThreat - 30) * 0.6 + (toThreat < 6 ? 20 : 0);
-      if (score < bestScore) { bestScore = score; best = p; }
+      const toThreat = tvCand.distanceTo(threat);
+      const score = r * 0.85 + Math.abs(toThreat - idealDist) * 0.45 + (toThreat < 6 ? 20 : 0);
+      if (score < bestScore) { bestScore = score; tvBest.copy(tvCand); found = true; }
     }
-    return best;
+    return found ? tvBest.clone() : null;
   }
 
   /** AI decision + movement for one NPC (fixed step). */
@@ -326,46 +352,85 @@ export class NpcBrainRunner {
         if (n.role === 'police' && n.weapon === 'fists' && this.lethal()) n.arm('pistol', env.scene);
         const w = WEAPONS[n.weapon];
         const seeing = t - n.seenTime < 0.6;
-        const ideal = w.melee ? 1.2 : w.id === 'shotgun' ? 9 : w.id === 'rifle' ? 22 : 15;
+        if (n.suppressedT > 0) n.suppressedT = Math.max(0, n.suppressedT - dt);
+        if (n.fragCd > 0) n.fragCd = Math.max(0, n.fragCd - dt);
+        const roleIdeal = n.squadRole === 'breacher' ? 10 : n.squadRole === 'suppressor' ? 21 : n.squadRole === 'flanker' ? 14 : 15;
+        const ideal = w.melee ? 1.2 : w.id === 'shotgun' ? 9 : w.id === 'rifle' ? Math.max(roleIdeal, 18) : roleIdeal;
         if (seeing) n.aimT += dt; else n.aimT = Math.max(0, n.aimT - dt * 2);
-        // Tactical repositioning
+        // Suppressive-fire reaction: incoming rounds near an officer force them to duck behind cover or sprint out of the open
+        if (n.suppressedT > 0.3 && n.role === 'police' && !w.melee) {
+          if (n.coverPoint && c.pos.distanceToSquared(n.coverPoint) < 4) {
+            n.crouching = true; n.peeking = false; n.peekT = Math.max(n.peekT, 0.7);
+          } else if (!n.goal) {
+            const cov = this.findCover(n, tgt.pos);
+            if (cov) { n.coverPoint = cov; n.goal = cov; n.holdCoverT = 2.2; }
+            else { n.crouching = true; n.peeking = false; }
+          }
+        }
+        // Tactical repositioning (role-aware flanking, cover bounding, and zero-alloc goal updates)
         n.holdCoverT = Math.max(0, n.holdCoverT - dt);
         if (n.holdCoverT <= 0 && (n.think <= 0.05 || !n.goal)) {
-          const lowHealth = c.health < c.maxHealth * 0.3;
-          if (w.melee) n.goal = tgt.pos.clone();
-          else if (lowHealth && !n.coverPoint) { n.coverPoint = this.findCover(n, tgt.pos); n.goal = n.coverPoint ?? c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(6)); }
-          else if (!seeing) n.goal = n.lastSeen.clone(); // push to last known position (flank)
-          else if (d > ideal * 1.4) { // close to firing range, each officer from a different angle (5-lane flanking spread)
+          const lowHealth = c.health < c.maxHealth * 0.32;
+          if (w.melee) n.setGoal(tgt.pos.x, tgt.pos.y, tgt.pos.z);
+          else if (lowHealth && !n.coverPoint) {
+            n.coverPoint = this.findCover(n, tgt.pos);
+            if (n.coverPoint) n.goal = n.coverPoint;
+            else { tv.copy(c.pos).sub(tgt.pos).setY(0).normalize(); n.setGoal(c.pos.x + tv.x * 6, c.pos.y, c.pos.z + tv.z * 6); }
+          } else if (!seeing) {
+            // Flankers swing wide around last-seen instead of funneling straight into the player's sightline
+            if (n.squadRole === 'flanker') {
+              const side = (n.id % 2 === 0 ? 1 : -1);
+              tv.copy(n.lastSeen).sub(c.pos).setY(0).normalize();
+              n.setGoal(n.lastSeen.x - tv.z * side * 6.5, n.lastSeen.y, n.lastSeen.z + tv.x * side * 6.5);
+            } else n.setGoal(n.lastSeen.x, n.lastSeen.y, n.lastSeen.z);
+          } else if (d > ideal * 1.35) { // close to firing range, spread across wide flanking arcs by squad role
             const away = tv.copy(c.pos).sub(tgt.pos).setY(0).normalize();
-            const flank = (((n.id % 5) - 2) * 0.48);
+            const flank = n.squadRole === 'flanker' ? ((n.id % 2 === 0 ? 1 : -1) * 1.05) : (((n.id % 5) - 2) * 0.48);
             const ca = Math.cos(flank), sa = Math.sin(flank);
-            n.goal = tgt.pos.clone().add(new THREE.Vector3(away.x * ca - away.z * sa, 0, away.x * sa + away.z * ca).multiplyScalar(ideal));
-          }
-          else if (n.stateT > 2.5 && Math.random() < (n.role === 'police' ? 0.55 : 0.35)) { // strafe or take cover between bursts
-            const cover = Math.random() < 0.65 ? this.findCover(n, tgt.pos) : null;
+            n.setGoal(tgt.pos.x + (away.x * ca - away.z * sa) * ideal, tgt.pos.y, tgt.pos.z + (away.x * sa + away.z * ca) * ideal);
+          } else if (n.stateT > (n.squadRole === 'breacher' ? 1.8 : 2.5) && Math.random() < (n.role === 'police' ? 0.62 : 0.35)) { // bound between cover or lateral flank
+            const cover = Math.random() < (n.squadRole === 'suppressor' ? 0.78 : 0.62) ? this.findCover(n, tgt.pos) : null;
             if (cover && cover.distanceTo(tgt.pos) < ideal * 2) { n.coverPoint = cover; n.goal = cover; }
-            else { const side = tv.copy(tgt.pos).sub(c.pos).setY(0).normalize(); n.goal = c.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * this.rng.range(2, 5))); }
+            else {
+              const side = tv.copy(tgt.pos).sub(c.pos).setY(0).normalize();
+              const dirSign = n.squadRole === 'flanker' ? (n.id % 2 === 0 ? 1 : -1) : (Math.random() < 0.5 ? -1 : 1);
+              const step = this.rng.range(2.4, n.squadRole === 'flanker' ? 6.5 : 5);
+              n.setGoal(c.pos.x - side.z * dirSign * step, c.pos.y, c.pos.z + side.x * dirSign * step);
+            }
             n.stateT = 0;
-          } else if (d < ideal * 0.5 && !w.melee) n.goal = c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(3));
-          else n.goal = null;
+          } else if (d < ideal * 0.5 && !w.melee && n.squadRole !== 'breacher') {
+            tv.copy(c.pos).sub(tgt.pos).setY(0).normalize();
+            n.setGoal(c.pos.x + tv.x * 3.5, c.pos.y, c.pos.z + tv.z * 3.5);
+          } else n.goal = null;
         }
         if (n.goal) {
           tv.copy(n.goal).sub(c.pos); tv.y = 0; const gd = tv.length();
-          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : gd > 14 ? 5 : seeing ? (gd > 4 ? 3.6 : 2) : 4.2; } else { if (n.goal === n.coverPoint || (n.role === 'police' && seeing)) { n.crouching = true; n.peeking = false; n.peekT = 0.65 + Math.random() * 0.5; } n.goal = null; }
+          const sprintBound = n.suppressedT > 0.2 || n.squadRole === 'flanker' || n.squadRole === 'breacher';
+          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : gd > 14 ? 5.4 : seeing ? (gd > 4 ? (sprintBound ? 4.4 : 3.6) : 2.2) : 4.5; }
+          else { if (n.goal === n.coverPoint || (n.role === 'police' && seeing)) { n.crouching = true; n.peeking = false; n.peekT = 0.6 + Math.random() * 0.5; } n.goal = null; }
         }
         if (speed > 0) { n.crouching = false; n.peeking = false; }
         else if (n.role === 'police' && !w.melee) {
-          // Tactical cover-peek & crouch-reload: officers duck when reloading and cycle between crouched cover and standing bursts
-          if (n.reloadT > 0) { n.crouching = true; n.peeking = false; }
+          // Tactical cover-peek & crouch-reload: officers duck when reloading or suppressed and cycle between cover and firing bursts
+          if (n.reloadT > 0 || n.suppressedT > 0.4) { n.crouching = true; n.peeking = false; }
           else {
             n.peekT -= dt;
             if (n.peekT <= 0) {
-              if (n.crouching && seeing) { n.crouching = false; n.peeking = true; n.peekT = 1.5 + Math.random() * 1.1; }
-              else if (n.peeking || n.coverPoint) { n.crouching = true; n.peeking = false; n.peekT = 0.8 + Math.random() * 0.7; }
+              if (n.crouching && seeing) { n.crouching = false; n.peeking = true; n.peekT = (n.squadRole === 'suppressor' ? 2.1 : 1.5) + Math.random() * 1.0; }
+              else if (n.peeking || n.coverPoint) { n.crouching = true; n.peeking = false; n.peekT = 0.75 + Math.random() * 0.65; }
             }
           }
         }
         if (w.melee) { if (d < 1.6) this.meleeAttack(n, tgt); faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); break; }
+        // 4-5 star SWAT / Army anti-camping frag grenade flush when the player digs into one spot
+        if (n.role === 'police' && c.maxHealth >= 130 && env.playerHeat() >= 4 && seeing && !tgt.inVehicle && d > 11 && d < 27 && this.campT > 7.5 && this.squadFragCd <= 0 && n.fragCd <= 0 && !(env.copsHoldFire?.(n))) {
+          const hand = tvO.set(c.pos.x, c.pos.y + 1.55, c.pos.z);
+          const dir = tvA.set(tgt.pos.x - hand.x, (tgt.pos.y + 0.8 + d * 0.14) - hand.y, tgt.pos.z - hand.z).normalize();
+          env.combat.launch(c, WEAPONS.grenade, hand, dir, 0.04, Math.min(1.2, 0.72 + d * 0.02));
+          c.human.playOnce('Punch_Cross', 'upper', 0.06, { rate: 1.3 });
+          this.squadFragCd = 15; n.fragCd = 20; this.campT = 0; n.cooldown = 1.2;
+          break;
+        }
         // Shooting (nobody fires while a colleague is arresting the suspect: the bullets would hit the officer)
         const tuckedInCover = n.role === 'police' && n.crouching && !!n.coverPoint && !n.peeking && d > 9;
         if (seeing && d < w.range && !tuckedInCover && !(n.role === 'police' && env.copsHoldFire?.(n))) {
@@ -374,11 +439,11 @@ export class NpcBrainRunner {
           const facingOk = Math.abs(wrapAngle(faceYaw - c.yaw)) < 0.35;
           if (n.clip <= 0 && n.reloadT <= 0) { n.reloadT = w.reload * 1.3; if (n.role === 'police') n.crouching = true; c.human.playOnce('Pistol_Reload', 'upper', 0.1); }
           else if (facingOk && n.cooldown <= 0 && n.reloadT <= 0 && n.aimT > (n.role === 'police' ? 0.42 : 0.8) && tgt.alive) {
-            const t = npcFireTiming(n.role === 'police', w.auto, w.interval, n.burst, Math.random());
-            if (n.burst <= 0) n.burst = t.burst;
+            const tFire = npcFireTiming(n.role === 'police', w.auto, w.interval, n.burst, Math.random());
+            if (n.burst <= 0) n.burst = tFire.burst + (n.squadRole === 'suppressor' && w.auto ? 2 : 0);
             this.fire(n, tgt, d);
             n.burst--;
-            n.cooldown = n.burst > 0 ? t.between : t.pause;
+            n.cooldown = n.burst > 0 ? tFire.between : tFire.pause;
           }
         }
         break;

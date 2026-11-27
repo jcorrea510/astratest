@@ -83,4 +83,21 @@ export const RAMPS = [
   // reached the lip at ~14 m/s and flew 0.47 s / 6 m, so it could never pay with an ordinary car.
   { x: 0, z: 921.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Promenade hop', minDist: 11, minAir: 0.55 },
   { x: 200, z: 921.5, yaw: 1.2, len: 6.5, h: 1.8, w: 6, name: 'Strand flyer', minDist: 11, minAir: 0.55 },
+  { x: -135, z: 938, yaw: Math.PI / 2, len: 7.5, h: 2.0, w: 5.5, name: 'West beach kicker', minDist: 14, minAir: 0.65 },
+  { x: 380, z: 940, yaw: Math.PI / 2, len: 8.5, h: 2.3, w: 5.5, name: 'Lighthouse leap', minDist: 16, minAir: 0.75 },
+  { x: 495, z: 45, yaw: 0, len: 9.0, h: 2.4, w: 4.8, name: 'Harbor deck jump', minDist: 18, minAir: 0.8 },
+  { x: 495, z: 540, yaw: 0, len: 9.5, h: 2.5, w: 5.0, name: 'Cannery freight leap', minDist: 19, minAir: 0.85 },
+  { x: 930, z: -420, yaw: Math.PI, len: 12.0, h: 3.1, w: 7.5, name: 'Runway skyshot', minDist: 28, minAir: 1.1 },
+  { x: 725, z: 220, yaw: 0, len: 8.5, h: 2.2, w: 5.0, name: 'Eastbank river jump', minDist: 16, minAir: 0.75 },
+  { x: 100, z: -345, yaw: 0, len: 7.5, h: 1.9, w: 5.0, name: 'Juniper crest', minDist: 14, minAir: 0.65 },
+];
+
+/** Iconic city landmarks shown on the map for exploration and GPS navigation. */
+export const LANDMARKS: { x: number; z: number; name: string; subtitle: string }[] = [
+  { x: 546, z: 950, name: 'Meridian Lighthouse', subtitle: 'Southeast headland beacon' },
+  { x: 0, z: -150, name: 'Juniper Grand Fountain', subtitle: 'Central park pergola plaza' },
+  { x: -50, z: 1040, name: 'Pier 9 & Ferris Wheel', subtitle: 'Saltwater Strand boardwalk' },
+  { x: 930, z: -450, name: 'Meridian Airfield', subtitle: 'Runway & hangars' },
+  { x: 20, z: 136, name: 'Metro Police Precinct 4', subtitle: 'Headquarters & helipad' },
+  { x: -60, z: -700, name: 'Vista Overlook', subtitle: 'Northern mountain ridge' },
 ];

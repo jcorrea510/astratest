@@ -100,24 +100,31 @@ export class Minimap {
     const coneCol = pa.mode === 'deuteranopia' || pa.mode === 'protanopia'
       ? (redPhase ? '255,176,0' : '74,168,255')
       : (redPhase ? '255,68,78' : '74,148,255');
-    for (const b of s.blips) {
+    const outerFill = `rgba(${coneCol}, 0.13)`;
+    const innerFill = `rgba(${coneCol}, 0.22)`;
+    const rimStroke = `rgba(${coneCol}, 0.28)`;
+    ctx.lineWidth = 1.1 / scale;
+    for (let i = 0; i < s.blips.length; i++) {
+      const b = s.blips[i];
       if (b.kind !== 'police' || b.yaw === undefined) continue;
       const dx = b.x - s.x, dz = b.z - s.z;
       if (dx * dx + dz * dz > 190 * 190) continue;
       const ang = Math.atan2(Math.cos(b.yaw), Math.sin(b.yaw));
-      const grad = ctx.createRadialGradient(b.x, b.z, 2, b.x, b.z, coneLen);
-      grad.addColorStop(0, `rgba(${coneCol}, 0.34)`);
-      grad.addColorStop(0.65, `rgba(${coneCol}, 0.14)`);
-      grad.addColorStop(1, `rgba(${coneCol}, 0)`);
+      const a0 = ang - coneHalf, a1 = ang + coneHalf;
       ctx.beginPath();
       ctx.moveTo(b.x, b.z);
-      ctx.arc(b.x, b.z, coneLen, ang - coneHalf, ang + coneHalf);
+      ctx.arc(b.x, b.z, coneLen, a0, a1);
       ctx.closePath();
-      ctx.fillStyle = grad;
+      ctx.fillStyle = outerFill;
       ctx.fill();
-      ctx.lineWidth = 1.1 / scale;
-      ctx.strokeStyle = `rgba(${coneCol}, 0.28)`;
+      ctx.strokeStyle = rimStroke;
       ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.z);
+      ctx.arc(b.x, b.z, coneLen * 0.56, a0, a1);
+      ctx.closePath();
+      ctx.fillStyle = innerFill;
+      ctx.fill();
     }
     if (s.route && s.route.length > 1) {
       ctx.beginPath();

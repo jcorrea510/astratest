@@ -44,42 +44,63 @@ export interface GlassApi { glassPrepare?(): void; glassAtPrepared?(worldPoint: 
 
 const TRACER_SPEED = 900; // m/s (visual)
 export const TRACER_LIFE = 0.18; // s: a streak is always gone by then
-const TRACER_LEN = 7;
+const TRACER_LEN = 11;
 /** Bullet tracers: short bright streaks that fly down the shot path (a few frames), additive, head bright, tail faded. */
 export class Tracers {
-  mesh: THREE.LineSegments; /** live streak count (tests) */ get live() { return this.seg.filter((s) => s.t < TRACER_LIFE).length; }
-  private pos: Float32Array; private alpha: Float32Array;
-  private seg: { ax: number; ay: number; az: number; dx: number; dy: number; dz: number; len: number; t: number; start: number; bright: number }[] = [];
+  mesh: THREE.LineSegments;
+  /** live streak count (tests) */
+  get live() {
+    let n = 0;
+    for (let k = 0; k < this.max; k++) if (this.seg[k].t < TRACER_LIFE) n++;
+    return n;
+  }
+  private pos: Float32Array; private alpha: Float32Array; private col: Float32Array;
+  private seg: { ax: number; ay: number; az: number; dx: number; dy: number; dz: number; len: number; t: number; start: number; bright: number; r: number; g: number; b: number }[] = [];
   private i = 0;
+  private hadLive = false;
   constructor(scene: THREE.Scene, private max = 96) {
     const g = new THREE.BufferGeometry();
-    this.pos = new Float32Array(max * 6); this.alpha = new Float32Array(max * 2);
-    for (let k = 0; k < max; k++) this.seg.push({ ax: 0, ay: 0, az: 0, dx: 0, dy: 0, dz: 1, len: 0, t: 1e9, start: 0, bright: 0 });
+    this.pos = new Float32Array(max * 6); this.alpha = new Float32Array(max * 2); this.col = new Float32Array(max * 6);
+    for (let k = 0; k < max; k++) this.seg.push({ ax: 0, ay: 0, az: 0, dx: 0, dy: 0, dz: 1, len: 0, t: 1e9, start: 0, bright: 0, r: 1, g: 0.88, b: 0.62 });
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
     const m = new THREE.ShaderMaterial({
-      vertexShader: 'attribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'varying float vA; void main(){ gl_FragColor = vec4(1.0, 0.86, 0.6, vA); }', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      vertexShader: 'attribute float alpha; attribute vec3 color; varying float vA; varying vec3 vC; void main(){ vA = alpha; vC = color; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying float vA; varying vec3 vC; void main(){ gl_FragColor = vec4(vC, vA); }', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     });
     this.mesh = new THREE.LineSegments(g, m); this.mesh.frustumCulled = false; scene.add(this.mesh);
   }
-  /** start: metres from `a` where the streak may begin. */
-  add(a: THREE.Vector3, b: THREE.Vector3, start = 0.8, bright = 1) {
+  /** start: metres from `a` where the streak may begin. Optional RGB tint (defaults to warm gold). */
+  add(a: THREE.Vector3, b: THREE.Vector3, start = 0.8, bright = 1, r = 1.0, g = 0.9, bCol = 0.66) {
     const s = this.seg[this.i]; this.i = (this.i + 1) % this.max;
     const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, len = Math.hypot(dx, dy, dz) || 1;
     s.ax = a.x; s.ay = a.y; s.az = a.z; s.dx = dx / len; s.dy = dy / len; s.dz = dz / len; s.len = len; s.t = 0; s.start = Math.min(start, len * 0.5); s.bright = bright;
+    s.r = r; s.g = g; s.b = bCol;
+    this.hadLive = true;
   }
   update(dt: number) {
+    if (!this.hadLive) return;
+    let anyLive = false;
     for (let k = 0; k < this.max; k++) {
-      const s = this.seg[k]; s.t += dt;
+      const s = this.seg[k];
+      if (s.t >= TRACER_LIFE && this.alpha[k * 2 + 1] === 0) continue;
+      s.t += dt;
       const head = Math.min(s.len, s.start + TRACER_SPEED * s.t), tail = Math.max(s.start, head - TRACER_LEN);
       const alive = s.t < TRACER_LIFE && tail < s.len - 0.01 && head > tail;
+      if (alive) anyLive = true;
       const o = k * 6;
       this.pos[o] = s.ax + s.dx * tail; this.pos[o + 1] = s.ay + s.dy * tail; this.pos[o + 2] = s.az + s.dz * tail;
       this.pos[o + 3] = s.ax + s.dx * head; this.pos[o + 4] = s.ay + s.dy * head; this.pos[o + 5] = s.az + s.dz * head;
-      this.alpha[k * 2] = 0; this.alpha[k * 2 + 1] = alive ? 0.95 * s.bright * Math.min(1, (TRACER_LIFE - s.t) / 0.08) : 0;
+      this.col[o] = s.r * 0.7; this.col[o + 1] = s.g * 0.6; this.col[o + 2] = s.b * 0.5;
+      this.col[o + 3] = s.r; this.col[o + 4] = s.g; this.col[o + 5] = s.b;
+      this.alpha[k * 2] = 0; this.alpha[k * 2 + 1] = alive ? 0.98 * s.bright * Math.min(1, (TRACER_LIFE - s.t) / 0.08) : 0;
     }
-    (this.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.mesh.geometry.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
+    const g = this.mesh.geometry;
+    (g.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (g.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
+    (g.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    this.hadLive = anyLive;
   }
 }
 
@@ -139,6 +160,14 @@ export class Combat {
   onExplosion: ((at: THREE.Vector3, by: Character | null, radius: number) => void) | null = null;
   /** Called when a vehicle occupant is killed through the glass (default: slump + coast). */
   onOccupantKilled: ((c: Character, v: Vehicle) => void) | null = null;
+  /** Called on static world bullet hits (used for shootable fuel drums and gas pumps). */
+  onStaticHit: ((point: THREE.Vector3, damage: number, shooter: Character) => void) | null = null;
+  /** Called once per shot ray so nearby police/enemies can react to suppressive fire. */
+  onBulletNear: ((origin: THREE.Vector3, dir: THREE.Vector3, len: number, shooter: Character) => void) | null = null;
+  /** Called when an enemy round whizzes closely past the player's head (for HUD suppression flash). */
+  onPlayerNearMiss: ((strength: number) => void) | null = null;
+  /** Returns true while the player is inside an active combat-roll evasion window (reduces incoming gunfire damage). */
+  playerEvading: (() => boolean) | null = null;
   time = 0;
   /** The local player (set by PlayerCombat): enemy rounds that pass close by whizz past them. */
   player: Character | null = null;
@@ -165,7 +194,9 @@ export class Combat {
   /** fallback broken-pane memory when vehicles don't implement GlassApi */
   private brokenPanes = new WeakMap<object, Set<string | number>>();
   private caps: Capsule[] = [];
+  private throughSet = new Set<Vehicle>();
   private v1 = new THREE.Vector3(); private v2 = new THREE.Vector3(); private v3 = new THREE.Vector3(); private v4 = new THREE.Vector3(); private v5 = new THREE.Vector3();
+  private shootDir = new THREE.Vector3(); private waterPt = new THREE.Vector3();
   constructor(private physics: Physics, private particles: Particles, private audio: GameAudio, private scene: THREE.Scene) {
     this.tracers = new Tracers(scene);
     this.flash = addPooledLight(scene, new THREE.PointLight(0xffb36b, 0, 12, 2), 3);
@@ -198,8 +229,14 @@ export class Combat {
     const k = this.flashT / FLASH_T;
     this.flash.intensity = k > 0 ? this.flashPeak * k * k : 0;
     if (this.pending.length) {
-      const due = this.pending.filter(p => p.at <= this.time); this.pending = this.pending.filter(p => p.at > this.time);
-      for (const p of due) p.fn();
+      let w = 0;
+      const now = this.time;
+      for (let i = 0; i < this.pending.length; i++) {
+        const p = this.pending[i];
+        if (p.at <= now) p.fn();
+        else this.pending[w++] = p;
+      }
+      this.pending.length = w;
     }
     this.updateProjectiles(dt);
     this.updateFires(dt);
@@ -266,7 +303,7 @@ export class Combat {
   private vProj = new THREE.Vector3();
   trace(o: THREE.Vector3, d: THREE.Vector3, range: number, shooter: Character | null, opts: { dry?: boolean; inflate?: number; excludeVehicle?: Vehicle | null; solidGlass?: boolean; power?: number } = {}): TraceHit {
     const res: TraceHit = { t: range, point: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0), kind: 'none', character: null, zone: null, vehicle: null, collider: null, tag: undefined, glass: [], pen: [], damageMul: 1 };
-    const through = new Set<Vehicle>();
+    const through = this.throughSet; through.clear();
     let start = 0; let excludeRb = opts.excludeVehicle?.phys.body ?? null;
     for (let seg = 0; seg < 6; seg++) {
       const ox = o.x + d.x * start, oy = o.y + d.y * start, oz = o.z + d.z * start;
@@ -359,8 +396,12 @@ export class Combat {
     this.ejectCase(shooter, w, origin, dir);
     const rot = Math.random();
     let whizzed = false, impactSounds = 0;
-    const d = new THREE.Vector3();
+    const d = this.shootDir;
     const strength0 = w.pellets > 1 ? 0.55 : 1;
+    // Team-tinted tracer colors: incandescent gold-white for player, vivid orange-red for police/enemies
+    const trR = isPlayer ? 1.0 : 1.0;
+    const trG = isPlayer ? 0.92 : 0.44;
+    const trB = isPlayer ? 0.68 : 0.22;
     for (let p = 0; p < w.pellets; p++) {
       if (w.pellets > 1) {
         // shotgun: one pellet near the centre, the rest in a jittered ring (a readable, fair pattern)
@@ -381,7 +422,7 @@ export class Combat {
       }
       // Round 11: a round through a car's windows is a shot at that car (and its crew): police crews ignored it before
       for (const gv of tr.glass) if (!tr.pen.some(ph => ph.vehicle === gv) && !(tr.kind === 'vehicle' && tr.vehicle === gv)) this.onVehicleHit?.(gv, shooter);
-      const end = tr.point.clone();
+      const end = tr.point;
       const info: HitInfo = { point: end, target: null, kind: tr.kind, headshot: false, killed: false, throughGlass: tr.glass.length > 0 };
       const strength = w.pellets > 1 ? 0.55 : 1;
       const loud = impactSounds < (w.pellets > 1 ? 2 : 1);
@@ -392,19 +433,19 @@ export class Combat {
           this.corpseHit(c, end, d, zone, strength, w, tr.t);
           info.target = c; info.zone = zone; info.surface = 'body';
           if (loud) { this.sfx(IMPACT_SND.body, end, 0.9, 1); impactSounds++; }
-          if (p < (w.pellets > 1 ? 4 : 1)) this.tracers.add(origin, end, isPlayer ? 0.12 : 0.3, w.pellets > 1 ? 0.7 : 1);
+          if (p < (w.pellets > 1 ? 4 : 1)) this.tracers.add(origin, end, isPlayer ? 0.12 : 0.3, w.pellets > 1 ? 0.7 : 1, trR, trG, trB);
           hits.push(info); continue;
         }
-        const apply = () => {
-          const res = this.hitPerson(c, shooter, wHit, zone, tr.t, d.clone(), end);
-          this.particles.impact(end.x, end.y, end.z, -d.x, -d.y, -d.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
-          this.bloodHit(c, end, d, zone, strength, res.killed, w, tr.t, shooter);
+        const apply = (shotD: THREE.Vector3) => {
+          const res = this.hitPerson(c, shooter, wHit, zone, tr.t, shotD, end);
+          this.particles.impact(end.x, end.y, end.z, -shotD.x, -shotD.y, -shotD.z, 'body', strength * (zone === 'head' ? 1.4 : 1));
+          this.bloodHit(c, end, shotD, zone, strength, res.killed, w, tr.t, shooter);
           return res;
         };
         const delay = tr.t > 100 ? flightTime(v0, tr.t) : 0; // long shots take time to arrive
         info.target = c; info.zone = zone; info.headshot = zone === 'head'; info.surface = 'body';
-        if (delay > 0) this.pending.push({ at: this.time + delay, fn: () => { if (c.alive) apply(); } });
-        else { const res = apply(); info.killed = res.killed; info.damage = res.damage; }
+        if (delay > 0) { const dc = d.clone(); this.pending.push({ at: this.time + delay, fn: () => { if (c.alive) apply(dc); } }); }
+        else { const res = apply(d); info.killed = res.killed; info.damage = res.damage; }
         if (loud && delay <= 0) { this.sfx(IMPACT_SND.body, end, zone === 'head' ? 1.15 : 1, zone === 'head' ? 1.2 : 1); impactSounds++; }
       } else if (tr.kind === 'vehicle' && tr.vehicle) {
         const v = tr.vehicle, n = tr.normal;
@@ -418,17 +459,18 @@ export class Combat {
       } else if (tr.kind === 'static') {
         const n = tr.normal;
         if (origin.y > WATER_LEVEL && end.y < WATER_LEVEL + 0.02 && d.y < 0) {
-          const t = (WATER_LEVEL - origin.y) / d.y; const wp = origin.clone().addScaledVector(d, t);
+          const t = (WATER_LEVEL - origin.y) / d.y; const wp = this.waterPt.copy(origin).addScaledVector(d, t);
           info.surface = 'water'; this.particles.impact(wp.x, wp.y, wp.z, 0, 1, 0, 'water', strength);
           if (loud) { this.sfx(IMPACT_SND.water, wp); impactSounds++; }
         } else {
           const s = info.surface = this.surfaceOf(tr.collider!, tr.tag, end, n);
           this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, s, strength);
           this.particles.decal(end.x, end.y, end.z, n.x, n.y, n.z, s);
+          this.onStaticHit?.(end, w.damage * strength, shooter);
           if ((s === 'metal' || s === 'concrete') && isShallow(d.x, d.y, d.z, n.x, n.y, n.z)) { // ricochet: sparks and a skipping streak
             reflect(d, n, this.v3); const r = this.v3.normalize();
             this.particles.impact(end.x, end.y, end.z, n.x, n.y, n.z, 'metal', 1.4);
-            this.tracers.add(end, this.v2.copy(end).addScaledVector(r, 7), 0.1, 0.5);
+            this.tracers.add(end, this.v2.copy(end).addScaledVector(r, 7), 0.1, 0.55, 1.0, 0.96, 0.82);
             info.ricochet = true;
           }
           if (loud) {
@@ -439,9 +481,10 @@ export class Combat {
         }
       } else if (d.y < 0) {
         const t = (WATER_LEVEL - origin.y) / d.y;
-        if (t > 0 && t < w.range) { const wp = origin.clone().addScaledVector(d, t); info.surface = 'water'; this.particles.impact(wp.x, wp.y, wp.z, 0, 1, 0, 'water', strength); if (loud) { this.sfx(IMPACT_SND.water, wp); impactSounds++; } }
+        if (t > 0 && t < w.range) { const wp = this.waterPt.copy(origin).addScaledVector(d, t); info.surface = 'water'; this.particles.impact(wp.x, wp.y, wp.z, 0, 1, 0, 'water', strength); if (loud) { this.sfx(IMPACT_SND.water, wp); impactSounds++; } }
       }
-      if (p < (w.pellets > 1 ? 4 : 1)) this.tracers.add(origin, end, isPlayer ? 0.12 : 0.3, w.pellets > 1 ? 0.7 : 1);
+      if (p < (w.pellets > 1 ? 4 : 1)) this.tracers.add(origin, end, isPlayer ? 0.12 : 0.3, w.pellets > 1 ? 0.72 : 1, trR, trG, trB);
+      if (p === 0) this.onBulletNear?.(origin, d, tr.t, shooter);
       if (!whizzed && !isPlayer) whizzed = this.nearMiss(w, origin, d, tr.t, info.target);
       hits.push(info);
     }
@@ -499,7 +542,8 @@ export class Combat {
   hitPerson(c: Character, from: Character, w: WeaponDef, zone: Zone, dist: number, dir: THREE.Vector3, at: THREE.Vector3): { killed: boolean; damage: number } {
     const vest = c.team === 'police';
     const zd = zoneDamage(w, zone, dist, { isPlayer: c.isPlayer, vest }, 0.97 + Math.random() * 0.06);
-    const dmg = zd.instantKill ? c.health + c.armor + 1000 : zd.damage;
+    const evadeMul = c.isPlayer && this.playerEvading?.() ? 0.45 : 1;
+    const dmg = zd.instantKill ? c.health + c.armor + 1000 : zd.damage * evadeMul;
     if (zd.instantKill) c.armor = 0;
     c.lastHit = { zone, dx: dir.x, dz: dir.z, power: w.knockback * (w.pellets > 1 ? 0.8 : 1) + (zone === 'head' ? 0.3 : 0), blast: false };
     const killed = c.damage(dmg, from, this.time);
@@ -549,11 +593,11 @@ export class Combat {
     const closest = this.v2.copy(o).addScaledVector(d, s); const miss = closest.distanceTo(head);
     if (miss > 2.5) return false;
     const near = 1 - miss / 2.5;
-    const at = closest.clone();
     if (this.ax.playExtra) {
-      this.ax.playExtra('whizz', { pos: at, volume: 0.45 + 0.55 * near, pitch: 0.9 + Math.random() * 0.2 });
-      if (w.baseSound === 'rifle') this.ax.playExtra('crackBy', { pos: at, volume: 0.5 + 0.5 * near });
-    } else this.audio.play('whoosh', { pos: at, volume: 0.3 + 0.4 * near, pitch: 2.2 });
+      this.ax.playExtra('whizz', { pos: closest, volume: 0.45 + 0.55 * near, pitch: 0.9 + Math.random() * 0.2 });
+      if (w.baseSound === 'rifle') this.ax.playExtra('crackBy', { pos: closest, volume: 0.5 + 0.5 * near });
+    } else this.audio.play('whoosh', { pos: closest, volume: 0.3 + 0.4 * near, pitch: 2.2 });
+    this.onPlayerNearMiss?.(near);
     return true;
   }
   /** Shell casing out of the ejection port (pump / bolt guns eject on the cycle). */
@@ -587,7 +631,8 @@ export class Combat {
   /** Seconds until a thrown frag goes off (cooking shortens it). */
   cookFuse(seconds: number) { const p = this.projectiles[this.projectiles.length - 1]; if (p && p.kind === 'frag') p.fuse = Math.max(0.15, p.fuse - seconds); }
   private updateProjectiles(dt: number) {
-    for (const p of [...this.projectiles]) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
       p.age += dt; p.fuse -= dt;
       const g = p.kind === 'rocket' ? 0.6 : p.kind === 'grenade40' ? 9 : 14;
       p.vel.y -= g * dt;

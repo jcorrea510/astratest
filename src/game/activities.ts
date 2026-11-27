@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, MinimapBlip, ShopItem } from '../ui/contracts';
-import { PLACES, POSTCARDS, RAMPS, GARAGE_SLOTS } from './places';
+import { PLACES, POSTCARDS, RAMPS, LANDMARKS, GARAGE_SLOTS } from './places';
 import { RESPRAY, GARAGE_PAINTS, repairPrice, sellQuote, newSaleLog, recordSale, recentOfKind, SELL_COOLDOWN, type SaleLog } from './garage';
 import { BAYS, bayPark } from './bays';
 import { GarageBays } from './garageBay';
@@ -97,19 +97,36 @@ export class Activities {
     });
   }
   private buildRamps() {
-    const mat = new THREE.MeshStandardMaterial({ color: '#d9822b', roughness: 0.6, flatShading: true });
-    const stripe = new THREE.MeshStandardMaterial({ color: '#2b2f33', roughness: 0.7 });
+    const concreteMat = new THREE.MeshStandardMaterial({ color: '#5b6067', roughness: 0.82, metalness: 0.12 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: '#272b30', roughness: 0.72, metalness: 0.08 });
+    const amberMat = new THREE.MeshStandardMaterial({ color: '#f5a855', roughness: 0.42, metalness: 0.25 });
+    const beaconMat = new THREE.MeshStandardMaterial({ color: '#ffcf78', emissive: new THREE.Color('#ff9d3b'), emissiveIntensity: 1.6, roughness: 0.25 });
+    const postGeo = new THREE.CylinderGeometry(0.11, 0.13, 1.45, 8);
+    const bulbGeo = new THREE.SphereGeometry(0.18, 10, 8);
     for (const r of RAMPS) {
       const w = r.w;
       const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(r.len, 0); shape.lineTo(r.len, r.h); shape.closePath();
       const geo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false }); geo.translate(-r.len / 2, 0, -w / 2); geo.rotateY(-Math.PI / 2);
-      const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
+      const m = new THREE.Mesh(geo, concreteMat); m.castShadow = true; m.receiveShadow = true;
       const base = this.ctx.groundY(r.x, r.z);
       m.position.set(r.x, base, r.z); m.rotation.y = r.yaw;
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, 0.3), stripe); edge.position.set(0, r.h + 0.02, r.len / 2 - 0.15); m.add(edge);
+      const ang = Math.atan2(r.h, r.len), hyp = Math.hypot(r.len, r.h);
+      // Dark asphalt launch surface + high-contrast amber lip & side guard rails
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(w - 0.26, 0.06, hyp), deckMat);
+      deck.position.set(0, r.h / 2 + 0.02, 0); deck.rotation.x = -ang; deck.receiveShadow = true; m.add(deck);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.08, 0.36), amberMat);
+      edge.position.set(0, r.h + 0.03, r.len / 2 - 0.16); m.add(edge);
+      for (const sx of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, hyp), amberMat);
+        rail.position.set(sx * (w / 2 - 0.08), r.h / 2 + 0.08, 0); rail.rotation.x = -ang; m.add(rail);
+        // Twin glowing approach beacon pylons flanking the launch entry
+        const post = new THREE.Mesh(postGeo, deckMat);
+        post.position.set(sx * (w / 2 + 0.48), 0.72, -r.len / 2 + 0.25); m.add(post);
+        const bulb = new THREE.Mesh(bulbGeo, beaconMat);
+        bulb.position.set(sx * (w / 2 + 0.48), 1.54, -r.len / 2 + 0.25); m.add(bulb);
+      }
       this.game.renderer.scene.add(m);
       // inclined collider
-      const ang = Math.atan2(r.h, r.len), hyp = Math.hypot(r.len, r.h);
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-ang, r.yaw, 0, 'YXZ'));
       const center = new THREE.Vector3(0, r.h / 2 - 0.15 * Math.cos(ang), 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), r.yaw).add(new THREE.Vector3(r.x, base, r.z));
       this.game.physics.world.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, 0.15, hyp / 2).setTranslation(center.x, center.y, center.z).setRotation(q).setFriction(0.8).setCollisionGroups(groups(G_STATIC, 0xffff)));
@@ -123,6 +140,8 @@ export class Activities {
       ...BAYS.map(bb => ({ x: bb.cx, z: bb.zf + bb.d / 2, kind: 'garage' as const, label: bb.name })),
       { x: PLACES.dealer.x, z: PLACES.dealer.z, kind: 'garage', label: 'Redline Motors' },
       { x: PLACES.snack.x, z: PLACES.snack.z, kind: 'shop', label: 'Pier 9 Snacks' }, { x: PLACES.safehouse.x, z: PLACES.safehouse.z, kind: 'safehouse', label: 'Safehouse' },
+      ...RAMPS.map((r, i) => ({ x: r.x, z: r.z, kind: 'ramp' as const, label: this.jumpsDone.has(i) ? `${r.name} ✓` : r.name })),
+      ...LANDMARKS.map(l => ({ x: l.x, z: l.z, kind: 'landmark' as const, label: l.name })),
       ...this.robberies.blips(),
     ];
     return b;
@@ -369,7 +388,8 @@ export class Activities {
             const reward = first ? 300 : 50;
             this.jumpsDone.add(a.ramp); g.addMoney(reward);
             g.renderer.pulseImpact(0.28);
-            this.ui.toast(`Stunt jump  ·  ${RAMPS[a.ramp].name}  ${Math.round(dist * 3.28084)} ft  ·  +$${reward}`, 'money');
+            this.ui.toast(`Stunt jump ${this.jumpsDone.size}/${RAMPS.length}  ·  ${RAMPS[a.ramp].name}  ${Math.round(dist * 3.28084)} ft  ·  +$${reward}`, 'money');
+            if (first && this.jumpsDone.size === RAMPS.length) { g.addMoney(1500); this.ui.missionCard('Every stunt jump cleared', 'A $1,500 stunt master bonus across Port Meridian.', 'passed'); }
             g.audio.play('checkpoint');
           }
         }

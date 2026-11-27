@@ -137,6 +137,7 @@ export class Population {
   }
   private sirenT = 0; private tick = 0;
   private _spawnPos = new THREE.Vector3();
+  private _tmpMove = new THREE.Vector3();
   /** The player drives a police car with the light bar on: pedestrians stop, step back from the road edge and watch it go by. */
   private reactToSiren(dt: number) {
     this.sirenT -= dt; if (this.sirenT > 0) return;
@@ -146,10 +147,16 @@ export class Population {
     const vp = pv.position;
     for (const n of this.npcs) {
       if (!n.alive || n.role !== 'civilian' || n.far || n.brain === 'inside' || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender') continue;
-      const c = n.char, dx = c.pos.x - vp.x, dz = c.pos.z - vp.z, d = Math.hypot(dx, dz);
-      if (d > 16) continue;
+      const c = n.char, dx = c.pos.x - vp.x, dz = c.pos.z - vp.z, d2 = dx * dx + dz * dz;
+      if (d2 > 256) continue;
       if (n.brain === 'wander') { n.brain = 'idle'; n.stateT = 2; }
-      if (n.brain === 'idle') { c.yaw = Math.atan2(-dx, -dz); if (d < 4 && d > 0.01) c.move(new THREE.Vector3(dx / d * 1.8, 0, dz / d * 1.8), 0.25, false); }
+      if (n.brain === 'idle') {
+        c.yaw = Math.atan2(-dx, -dz);
+        if (d2 < 16 && d2 > 1e-4) {
+          const inv = 1.8 / Math.sqrt(d2);
+          c.move(this._tmpMove.set(dx * inv, 0, dz * inv), 0.25, false);
+        }
+      }
     }
   }
   // ---- Round 7 perf: look warm-up (hair / hat / garment extras are built before the person comes close)
@@ -181,15 +188,21 @@ export class Population {
   /** Civilians in a radius react to danger (gunfire, explosions, crashes): near ones react at once, far ones a beat later (a wave). */
   danger(at: THREE.Vector3, radius: number, source: Character | null) {
     const from = source ? source.pos : at;
-    // Round 8: sustained gunfire / chaos: the scare spreads further and nobody stops to film or freeze
-    const now = this.env.time(); this.dangerAt = this.dangerAt.filter(t => now - t < 6); this.dangerAt.push(now);
+    // In-place compaction of recent danger timestamps (zero allocation per gunshot)
+    const now = this.env.time();
+    let w = 0;
+    for (let i = 0; i < this.dangerAt.length; i++) if (now - this.dangerAt[i] < 6) this.dangerAt[w++] = this.dangerAt[i];
+    this.dangerAt.length = w;
+    this.dangerAt.push(now);
     const level = this.dangerAt.length; radius *= panicRadiusScale(level);
+    const r2 = radius * radius;
     for (const n of this.npcs) {
-      if (n.alive && n.role === 'civilian' && n.pos.distanceTo(at) <= radius) n.shotAt = this.env.time(); // store shoppers (scripted) read this to drop their hands
-      if (!n.alive || n.role !== 'civilian' || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.brain === 'hostage') continue; // a hostage in your grip does not bolt
-      const d = n.pos.distanceTo(at);
-      if (d > radius) continue;
-      // hands up but the shooting has started: they stop waiting to be robbed and bolt (a beat later when it is further off)
+      if (!n.alive || n.role !== 'civilian') continue;
+      const d2 = n.pos.distanceToSquared(at);
+      if (d2 > r2) continue;
+      n.shotAt = now;
+      if (n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.brain === 'hostage') continue;
+      const d = Math.sqrt(d2);
       if (n.brain === 'surrender') { if (n.alertT <= 0) { n.alertT = 0.15 + Math.random() * 0.45 + Math.min(1.5, Math.max(0, d - 6) * 0.05); n.alertFrom.copy(from); } continue; }
       if (n.brain === 'flee') { n.fleeFrom.copy(from); n.stateT = Math.min(n.stateT, 2); continue; }
       if (n.brain === 'cower' || n.alertT > 0) continue;
@@ -333,26 +346,29 @@ export class Population {
     this.tick++;
     for (const n of this.npcs) {
       if (n.alertT > 0 && (n.alertT -= dt) <= 0 && n.alive && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'scripted' && n.brain !== 'inside') this.panic(n, n.alertFrom, n.pos.distanceTo(n.alertFrom));
-      const fd = n.pos.distanceTo(focus);
-      n.far = fd > 75 && n.role === 'civilian' && n.brain === 'wander';
+      const fd2 = n.pos.distanceToSquared(focus);
+      n.far = fd2 > 5625 && n.role === 'civilian' && n.brain === 'wander';
       if (n.char.inVehicle) continue;
       if (n.char.knockT > 0) {
         n.char.knockT -= dt;
-        if (!n.alive || n.char.knockT > 0.4) { n.char.vel.multiplyScalar(Math.exp(-dt * 3)); n.char.move(n.char.vel.clone().setY(0), dt, false); continue; }
+        if (!n.alive || n.char.knockT > 0.4) {
+          n.char.vel.multiplyScalar(Math.exp(-dt * 3));
+          n.char.move(this._tmpMove.set(n.char.vel.x, 0, n.char.vel.z), dt, false);
+          continue;
+        }
       }
-      // Round 7 perf: calm (or simply fleeing / cowering) civilians beyond ~28 m think and sweep their collision capsule at
-      // 30 Hz (20 Hz past 50 m) with the accumulated dt: 1-1.5 cm steps at walking pace, invisible at that range
-      if (n.role === 'civilian' && fd > 28 && (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'cower') && !n.char.ragdoll) {
+      // Round 7/12 perf: calm civilians beyond ~28 m run at reduced tick rates with accumulated dt
+      if (n.role === 'civilian' && fd2 > 784 && (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'cower') && !n.char.ragdoll) {
         n.accDt += dt;
-        if ((this.tick + n.id) % (fd > 90 ? 6 : fd > 50 ? 3 : 2) !== 0) continue; // Round 12 perf: 10 Hz past 90 m
-        const step = Math.min(n.accDt, fd > 90 ? 0.3 : 0.1); n.accDt = 0; // (10 Hz past 90 m: the cap must cover the 6 skipped ticks or they walk at half speed)
+        if ((this.tick + n.id) % (fd2 > 8100 ? 6 : fd2 > 2500 ? 3 : 2) !== 0) continue;
+        const step = Math.min(n.accDt, fd2 > 8100 ? 0.3 : 0.1); n.accDt = 0;
         this.runner.update(n, step);
         continue;
       }
       // distance LOD for officers and gang members: far fighters think every 2nd/4th tick with the accumulated dt
-      if (n.role !== 'civilian' && fd > 55 && n.brain !== 'scripted' && n.brain !== 'passenger') {
+      if (n.role !== 'civilian' && fd2 > 3025 && n.brain !== 'scripted' && n.brain !== 'passenger') {
         n.accDt += dt;
-        if ((this.tick + n.id) % (fd > 110 ? 4 : 2) !== 0) continue;
+        if ((this.tick + n.id) % (fd2 > 12100 ? 4 : 2) !== 0) continue;
         const step = n.accDt; n.accDt = 0;
         this.runner.update(n, step);
         continue;
@@ -423,15 +439,14 @@ export class Population {
     for (let ni = this.npcs.length - 1; ni >= 0; ni--) {
       const n = this.npcs[ni]; if (!n) continue;
       if (n.persistent || n.char.inVehicle) continue;
-      const d = n.pos.distanceTo(focus);
-      if (d > 170 || (!n.alive && n.char.deadTime > 25 && d > 25) || (!n.alive && n.char.deadTime > 60)) { this.remove(n); }
+      const d2 = n.pos.distanceToSquared(focus);
+      if (d2 > 28900 || (!n.alive && n.char.deadTime > 25 && d2 > 625) || (!n.alive && n.char.deadTime > 60)) { this.remove(n); }
     }
-    // Spawn civilians off-screen on sidewalks
+    // Spawn civilians off-screen on sidewalks (frustum already updated above)
     this.spawnT -= dt;
     let civ = 0; for (const n of this.npcs) if (n.role === 'civilian' && !n.persistent) civ++;
     if (this.spawnT <= 0 && civ < this.maxCivilians - this.reserve) {
       this.spawnT = 0.05;
-      this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
       const nodes = this.city.pedNodes;
       for (let tries = 0; tries < 14; tries++) {
         const nd = nodes[Math.floor(Math.random() * nodes.length)];

@@ -94,6 +94,7 @@ ui.init({
     onSettingsChanged: s => applySettings(s),
     onQualityChanged: q => { settings.quality = q; saveSettings(settings); game?.renderer.setQuality(q); },
     onSetWaypoint: (x, z) => { if (game) { game.waypoint = new THREE.Vector3(x, 0, z); ui.toast('Waypoint set', 'info'); } },
+    onClearWaypoint: () => { if (game && game.waypoint) { game.waypoint = null; ui.toast('Waypoint cleared', 'info'); } },
     onUiSound: () => { }, // menu sounds go through registerUiAudio (uiSounds.ts)
     captureKey: cb => { if (game && started) game.input.captureNext(cb); else captureOnce(cb); },
   },

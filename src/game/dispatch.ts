@@ -220,16 +220,16 @@ export class Dispatch {
   /** The tank turns its turret onto the player and fires shells. */
   updateTank(car: AiCar, player: Character, dt: number) {
     const v = car.v, h = this.hooks; if (!h || v.destroyed || this.arrest) return;
-    const from = v.position.clone(); from.y += 2.3;
-    const to = player.inVehicle ? (player.inVehicle as { position: THREE.Vector3 }).position.clone() : player.pos.clone();
+    const from = this.tmpA.copy(v.position); from.y += 2.3;
+    const to = this.tmpB.copy(player.inVehicle ? (player.inVehicle as { position: THREE.Vector3 }).position : player.pos);
     to.y += 1;
     const dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz);
     const yaw = wrap(Math.atan2(dx, dz) - v.yaw), pitch = Math.atan2(to.y - from.y, Math.max(d, 1)) * 0.6;
     v.setTurret(yaw, pitch);
     let cd = (this.tankCd.get(car) ?? 3) - dt;
     if (cd <= 0 && d < 95 && d > 10 && Math.abs(wrap(yaw - v.turretYaw)) < 0.15 && this.pop.runner.hasLOS(from, to)) {
-      const dir = new THREE.Vector3(dx, to.y - from.y, dz).normalize();
-      const origin = from.clone().addScaledVector(dir, 4.2);
+      const dir = this.tmpC.set(dx, to.y - from.y, dz).normalize();
+      const origin = from.addScaledVector(dir, 4.2);
       h.combat.launch(car.driver.char, WEAPONS.rpg, origin, dir, 0.004);
       h.cam.addShake(0.15);
       cd = 5.5;
@@ -263,6 +263,9 @@ export class Dispatch {
     const hit = ph.ray(x, 400, z, 0, -1, 0, 520, (0xffff << 16) | 0x1);
     return hit ? 400 - hit.toi : 0;
   }
+  private heliScanT = 0;
+  private heliRoofs = 0;
+  private static readonly DOWN_Y = new THREE.Vector3(0, -1, 0);
   updateHeli(dt: number, player: Character, heat: number, active: boolean, vsHeli = false, camera?: THREE.Camera) {
     const h = this.hooks; if (!h) return;
     if (this.heli && (this.heli.destroyed || !this.pop || !active)) {
@@ -276,6 +279,7 @@ export class Dispatch {
       // clear every rooftop under the rotor disc (centre and four points 10 m out), not just the default altitude
       const tops = [[0, 0], [10, 0], [-10, 0], [0, 10], [0, -10]].map(([ox, oz]) => this.terrainTop(sp.x + ox, sp.z + oz));
       b.teleport(sp.x, heliSpawnY(sp.y, tops), sp.z, yaw);
+      this.heliScanT = 0; this.heliRoofs = 0;
       this.ensureLight();
     }
     const b = this.heli; if (!b) return;
@@ -284,33 +288,34 @@ export class Dispatch {
     const err = wrap(Math.atan2(dx, dz) - b.yaw);
     b.input.yaw = THREE.MathUtils.clamp(err * 1.6, -1, 1);
     b.input.pitch = d > 28 && Math.abs(err) < 0.9 ? THREE.MathUtils.clamp((d - 28) / 50, 0.1, 1) : (d < 14 ? -0.25 : 0);
-    // Round 11: clear the rooftops and hills around and ahead (at a flat 42 m it hit a 77 m tower every 11 s and respawned)
-    const fx = d > 1 ? dx / d : 0, fz = d > 1 ? dz / d : 0;
-    // ...and the ground: the hills rise 40 m above the street (it flew into a hillside at 47 m every 11 s, then respawned)
-    const ground = (x: number, z: number) => this.terrainTop(x, z);
-    // a fan of downward rays: here and 40 / 90 / 150 m ahead, on the line and 15 m either side (rooftops and hillsides)
-    let roofs = 0;
-    for (const a of [0, 40, 90, 150]) for (const l of [-15, 0, 15]) roofs = Math.max(roofs, ground(pos.x + fx * a + fz * l, pos.z + fz * a - fx * l));
-    const want = Math.max(pp.y + (vsHeli ? 10 : 42), roofs + 18, d > 110 ? 125 : 0); // cruise above every tower while far out
+    // Throttled 12-ray downward terrain/rooftop clearance fan (~6.5 Hz instead of 60 Hz saves ~650 raycasts/sec!)
+    this.heliScanT -= dt;
+    if (this.heliScanT <= 0) {
+      this.heliScanT = 0.15;
+      const fx = d > 1 ? dx / d : 0, fz = d > 1 ? dz / d : 0;
+      let roofs = 0;
+      for (const a of [0, 40, 90, 150]) for (const l of [-15, 0, 15]) roofs = Math.max(roofs, this.terrainTop(pos.x + fx * a + fz * l, pos.z + fz * a - fx * l));
+      this.heliRoofs = roofs;
+    }
+    const want = Math.max(pp.y + (vsHeli ? 10 : 42), this.heliRoofs + 18, d > 110 ? 125 : 0); // cruise above every tower while far out
     b.input.lift = THREE.MathUtils.clamp((want - pos.y) * 0.25, -1, 1);
     if (pos.y < want - 10) b.input.pitch = Math.min(b.input.pitch, 0.15); // climb before pushing on
-    // searchlight
+    // searchlight (zero per-frame allocations)
     const night = h.night();
     if (this.light && this.beam) {
       const on = night > 0.25 && !b.destroyed;
-      // the light stays in the scene (a changing light count recompiles every material = a hitch); intensity does the on/off
       this.light.intensity = on ? 170 : 0; this.beam.visible = on;
       if (on) {
-        const from = pos.clone(); from.y -= 1.2;
+        const from = this.tmpA.set(pos.x, pos.y - 1.2, pos.z);
         this.light.position.copy(from); this.lightTarget.position.copy(pp);
-        const dir = pp.clone().sub(from), len = dir.length(); dir.normalize();
-        this.beam.position.copy(from).addScaledVector(dir, len / 2);
-        this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+        const dir = this.tmpB.copy(pp).sub(from), len = dir.length() || 1; dir.multiplyScalar(1 / len);
+        this.beam.position.copy(from).addScaledVector(dir, len * 0.5);
+        this.beam.quaternion.setFromUnitVectors(Dispatch.DOWN_Y, dir);
         this.beam.scale.set(len * 0.05, len, len * 0.05);
         (this.beam.material as THREE.MeshBasicMaterial).opacity = 0.045 * Math.min(1, night * 1.5);
       }
     }
-    void dt; void heat;
+    void heat;
   }
   private footFireT = new Map<Npc, number>();
   private tmpC = new THREE.Vector3(); private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();

@@ -160,17 +160,45 @@ export class Police {
   holdT = 0;
   private shootScan = 0;
   private static readonly VIOLENT: Crime[] = ['shooting', 'kill', 'copAttack', 'copKill', 'assault'];
+  private carSet = new Set<AiCar>();
+  private npcSet = new Set<Npc>();
+  private watchersBuf: AiCar[] = [];
+  private sightedBuf: Npc[] = [];
+  private witEye = new THREE.Vector3();
+  private witHead = new THREE.Vector3();
+  private roleSeq = 0;
+  private assignRole(n: Npc) {
+    if (n.squadRole !== 'default') return;
+    const roles = ['suppressor', 'flanker', 'breacher'] as const;
+    n.squadRole = roles[this.roleSeq++ % roles.length];
+  }
+  /** Player gunfire suppresses nearby police officers into ducking/sprinting to cover. */
+  suppressNear(origin: THREE.Vector3, dir: THREE.Vector3, len: number) {
+    if (!this.foot.length) return;
+    const r2 = 2.8 * 2.8;
+    for (let i = 0; i < this.foot.length; i++) {
+      const n = this.foot[i];
+      if (!n.alive || n.char.inVehicle) continue;
+      const qx = n.pos.x - origin.x, qy = (n.pos.y + 1.2) - origin.y, qz = n.pos.z - origin.z;
+      const along = qx * dir.x + qy * dir.y + qz * dir.z;
+      if (along < 1 || along > len + 1.5) continue;
+      const px = qx - dir.x * along, py = qy - dir.y * along, pz = qz - dir.z * along;
+      if (px * px + py * py + pz * pz <= r2) n.suppressedT = 1.6;
+    }
+  }
   /** Someone who saw (or, for gunfire, heard) the crime, or null. Officers beat civilians because they radio it faster. */
   findWitness(crime: Crime, at: THREE.Vector3): Npc | null {
-    const eye = new THREE.Vector3(at.x, at.y + 1.3, at.z), head = new THREE.Vector3();
+    const eye = this.witEye.set(at.x, at.y + 1.3, at.z), head = this.witHead;
     let best: Npc | null = null, bd = Infinity;
     for (const n of this.pop.npcs) {
       if (!n.alive || (n.role !== 'police' && n.role !== 'civilian') || n.brain === 'dead') continue;
       const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
       const pos = car ? car.position : n.pos;
-      const d = pos.distanceTo(at), cop = n.role === 'police';
+      const cop = n.role === 'police';
       const range = cop ? 70 : 38;
-      if (d > range) continue;
+      const d2 = pos.distanceToSquared(at);
+      if (d2 > range * range) continue;
+      const d = Math.sqrt(d2);
       const near = (crime === 'shooting' || crime === 'kill') && d < 22; // gunfire is heard
       if (!near) { head.set(pos.x, pos.y + 1.6, pos.z); if (!this.pop.runner.hasLOS(head, eye)) continue; }
       const score = d - (cop ? 1000 : 0);
@@ -320,7 +348,7 @@ export class Police {
       v.setDoor(v.doorIndex(side === 1 ? 'left' : 'right'), 1);
       let ci = 0;
       for (const cop of this.dispatch.bail(car, side)) {
-        this.dispatch.arm(cop, 'police', Math.max(2, this.state.heat), true); this.foot.push(cop);
+        this.dispatch.arm(cop, 'police', Math.max(2, this.state.heat), true); this.assignRole(cop); this.foot.push(cop);
         cop.char.human.playAction('exit_car', { rate: 2 });
         // cover = the car's far corner as seen from the player (the body shields them, the corner lets them aim); one officer per side
         const ax = v.position.x - pp.x, az = v.position.z - pp.z, al = Math.hypot(ax, az) || 1, sg = ci++ % 2 === 0 ? 1 : -1;
@@ -344,6 +372,7 @@ export class Police {
   engage(n: Npc, aimed = false) {
     const st = this.state, p = this.player; if (!p) return;
     if (!this.foot.includes(n)) this.foot.push(n);
+    this.assignRole(n);
     this.dispatch.arm(n, 'police', Math.max(st.heat, 1), this.lethal);
     n.persistent = true; n.target = p; n.lastSeen.copy(p.pos); n.losT = 1; n.seenTime = this.clock(); n.think = 0;
     if (aimed) n.aimT = Math.max(n.aimT, 0.75);
@@ -370,13 +399,16 @@ export class Police {
       this.seeT = 0.25;
       let seen = false, strict = false;
       this.eyeB.set(pp.x, pp.y + 1.2, pp.z);
-      const watchers: AiCar[] = [], sighted: Npc[] = [];
+      const watchers = this.watchersBuf; watchers.length = 0;
+      const sighted = this.sightedBuf; sighted.length = 0;
       for (const n of this.pop.npcs) {
         if (!n.alive || n.role !== 'police') continue;
         // an officer riding in a car is where the car is (their own position is not updated while seated)
         const car = n.char.inVehicle as { position: THREE.Vector3 } | null;
-        const at = car ? car.position : n.pos, d = at.distanceTo(pp);
-        if (d > 90) continue;
+        const at = car ? car.position : n.pos;
+        const d2 = at.distanceToSquared(pp);
+        if (d2 > 8100) continue;
+        const d = Math.sqrt(d2);
         let sees = false;
         if (car ? d < 55 : d < 65 && n.losT > 0) sees = true;
         let ls = false;
@@ -396,15 +428,15 @@ export class Police {
           const to = this.eyeC.copy(this.eyeB), len = this.eyeA.distanceTo(to);
           if (pvAny && len > 4) to.sub(this.eyeA).multiplyScalar(1 - 2.5 / len).add(this.eyeA); // stop short of the player's own vehicle collider
           if (this.pop.runner.hasLOS(this.eyeA, to)) { this.heliSeeT = heliHold(hd, true); strict = true; }
-        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false, heliInbound(this.heliArrived, this.heliInT, hd, this.heliBestD))); // still flying in from the precinct: the search is not called off while it is on its way (but an outrun helicopter does not hold it)
+        } else this.heliSeeT = Math.max(this.heliSeeT, heliHold(hd, false, heliInbound(this.heliArrived, this.heliInT, hd, this.heliBestD)));
       }
       if (this.heliSeeT > 0) seen = true;
       this.seenNow = seen;
       this.strictSeen = strict;
       this.onScan(strict, watchers, pvAny, pp);
       // pulling a gun on an officer: he fires at once. And while wanted, any officer on foot with a clear view is in the fight, never standing by.
-      if (this.armedThreat && !pvAny && sighted.length) this.brandish(sighted.filter(n => n.pos.distanceTo(pp) < 45), pp);
-      else if (st.heat > 0 && !this.dispatch.arrest) for (const n of sighted) if ((n.brain === 'idle' || n.brain === 'wander' || n.brain === 'flee') && n.pos.distanceTo(pp) < 60) this.engage(n);
+      if (this.armedThreat && !pvAny && sighted.length) this.brandish(sighted.filter(n => n.pos.distanceToSquared(pp) < 45 * 45), pp);
+      else if (st.heat > 0 && !this.dispatch.arrest) for (const n of sighted) if ((n.brain === 'idle' || n.brain === 'wander' || n.brain === 'flee') && n.pos.distanceToSquared(pp) < 60 * 60) this.engage(n);
     }
     const seen = this.seenNow;
     this.updateBails(dt);
@@ -412,17 +444,19 @@ export class Police {
     const lost = st.tick(dt, seen, pp, this.violentT > 0);
     if (st.raised) { this.audio.play('heatUp'); this.onHeatChange?.(st.heat, false); }
     if (lost) { this.audio.play('heatLost'); this.onHeatChange?.(0, true); this.standDown(); }
-    // Clean dead/removed units
-    for (const u of this.units) if (!this.traffic.cars.includes(u)) { u.persistent = false; u.v.persistent = false; u.v.siren = false; }
-    { const us = this.units; let k = 0; for (let i = 0; i < us.length; i++) if (this.traffic.cars.includes(us[i])) us[k++] = us[i]; us.length = k; } // in place: no per-frame array
-    for (const n of this.foot) if (!n.alive) n.persistent = false;
-    { const ft = this.foot; let k = 0; for (let i = 0; i < ft.length; i++) if (ft[i].alive && this.pop.npcs.includes(ft[i])) ft[k++] = ft[i]; ft.length = k; }
+    // O(N+M) Set-based cleanup of dead/removed units (replaces nested includes() scans)
+    const carSet = this.carSet; carSet.clear();
+    for (let i = 0; i < this.traffic.cars.length; i++) carSet.add(this.traffic.cars[i]);
+    { const us = this.units; let k = 0; for (let i = 0; i < us.length; i++) { const u = us[i]; if (carSet.has(u)) us[k++] = u; else { u.persistent = false; u.v.persistent = false; u.v.siren = false; } } us.length = k; }
+    const npcSet = this.npcSet; npcSet.clear();
+    for (let i = 0; i < this.pop.npcs.length; i++) npcSet.add(this.pop.npcs[i]);
+    { const ft = this.foot; let k = 0; for (let i = 0; i < ft.length; i++) { const n = ft[i]; if (!n.alive) n.persistent = false; else if (npcSet.has(n)) ft[k++] = n; } ft.length = k; }
     this.violentT = Math.max(0, this.violentT - dt);
     const D = this.dispatch;
     if (D.arrest) D.updateArrest(dt, player);
     // officers that left their unit on their own (shot up, wrecked) still fight
-    for (const n of D.collectCrew()) if (!this.foot.includes(n)) { D.arm(n, D.footKind.get(n) ?? 'police', st.heat, this.lethal); this.foot.push(n); }
-    for (const car of D.kinds.keys()) if (!this.traffic.cars.includes(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
+    for (const n of D.collectCrew()) if (!this.foot.includes(n)) { D.arm(n, D.footKind.get(n) ?? 'police', st.heat, this.lethal); this.assignRole(n); this.foot.push(n); }
+    for (const car of D.kinds.keys()) if (!carSet.has(car) && !this.units.includes(car)) { D.kinds.delete(car); D.crew.delete(car); }
     if (st.heat > 0) {
       const target = seen ? pp : st.lastSeen;
       const lethal = this.lethal, pv = player.inVehicle as { position: THREE.Vector3; speed: number; yaw: number; doorPoint(side: 1 | -1): THREE.Vector3 } | null;
@@ -435,7 +469,7 @@ export class Police {
         u.targetVel = seen && pv ? Math.abs(pv.speed) : 0;
         if (seen && pv && Math.abs(pv.speed) > 5) u.target.set(pp.x + Math.sin(pv.yaw) * pv.speed * 0.5, pp.y, pp.z + Math.cos(pv.yaw) * pv.speed * 0.5);
         // tactics against a driving player: ram, cut in ahead to box in, or PIT the rear quarter
-        if (playerInVehicle && pv && kind !== 'tank' && u.v.position.distanceTo(pp) < 45 && pv.speed > 6) {
+        if (playerInVehicle && pv && kind !== 'tank' && u.v.position.distanceToSquared(pp) < 45 * 45 && pv.speed > 6) {
           const fx = Math.sin(pv.yaw), fz = Math.cos(pv.yaw), role = idx % 3;
           if (role === 1 && st.heat >= 2) { u.target.set(pp.x + fx * 16, pp.y, pp.z + fz * 16); u.ram = false; }
           else if (role === 2 && st.heat >= 2) { u.target.set(pp.x - fx * 2.5 + fz * 1.3, pp.y, pp.z - fz * 2.5 - fx * 1.3); u.ram = true; }
@@ -449,8 +483,8 @@ export class Police {
         if (!this.bails.some(b => b.car === u) && ((!playerInVehicle && d < 22) || (inHeli && d < 55) || (d < 10 && Math.abs(u.v.speed) < 1.5) || stuck)) {
           this.progress.delete(u);
           if (stuck) { u.v.input.throttle = 0; u.v.input.handbrake = true; }
-          for (const cop of D.bail(u)) { D.arm(cop, kind, st.heat, lethal); this.foot.push(cop); }
-          if (kind === 'police' && st.heat >= 2) { const p = u.v.doorPoint(-1); const extra = this.pop.spawn('police', p.x, p.z, Math.max(0.2, u.v.position.y), COP_LOOK); D.arm(extra, 'police', st.heat, lethal); this.foot.push(extra); }
+          for (const cop of D.bail(u)) { D.arm(cop, kind, st.heat, lethal); this.assignRole(cop); this.foot.push(cop); }
+          if (kind === 'police' && st.heat >= 2) { const p = u.v.doorPoint(-1); const extra = this.pop.spawn('police', p.x, p.z, Math.max(0.2, u.v.position.y), COP_LOOK); D.arm(extra, 'police', st.heat, lethal); this.assignRole(extra); this.foot.push(extra); }
         }
         // far behind and out of sight: let traffic cull it so a fresh unit can come in from the front
         if (d < 110) this.arrived.add(u);

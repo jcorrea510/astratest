@@ -88,9 +88,9 @@ export function guessIcon(text: string): WeaponIcon | null {
 }
 
 /** Map legend (sandbox: no mission, target or checkpoint markers). */
-export const BLIP_KINDS: MinimapBlip['kind'][] = ['waypoint', 'safehouse', 'bank', 'shop', 'arms', 'barber', 'clothing', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
+export const BLIP_KINDS: MinimapBlip['kind'][] = ['waypoint', 'safehouse', 'landmark', 'ramp', 'bank', 'shop', 'arms', 'barber', 'clothing', 'garage', 'vehicle', 'collectible', 'enemy', 'police'];
 export const BLIP_LABELS: Record<MinimapBlip['kind'], string> = {
-  mission: 'Job', target: 'Target', checkpoint: 'Checkpoint', waypoint: 'Waypoint', safehouse: 'Safehouse', shop: 'Store',
+  mission: 'Job', target: 'Target', checkpoint: 'Checkpoint', waypoint: 'Waypoint', safehouse: 'Safehouse', landmark: 'Landmark', ramp: 'Stunt ramp', shop: 'Store',
   arms: 'Gun store', bank: 'Bank', barber: 'Barber', clothing: 'Clothing store', garage: 'Garage', vehicle: 'Vehicle', collectible: 'Postcard', enemy: 'Hostile', police: 'Patrol',
 };
 
