@@ -33,6 +33,20 @@ for (const [s, S] of [['l', 'L'], ['r', 'R']]) {
     UE_TO_UAL[`thumb_0${n}_${s}`] = `DEF-thumb0${n}${S}`;
     for (const f of ['index', 'middle', 'ring', 'pinky']) UE_TO_UAL[`${f}_0${n}_${s}`] = `DEF-f_${f}0${n}${S}`;
   }
+  // Round 14 (owner: "men have dark nails"): the fingertip leaf bones carry skin weight on both bodies; left unmapped,
+  // their vertices fell into the torso region and were painted with the shirt/trouser colour.
+  UE_TO_UAL[`thumb_04_leaf_${s}`] = `DEF-thumb04${S}`; UE_TO_UAL[`ball_leaf_${s}`] = `DEF-toe_tip${S}`;
+  for (const f of ['index', 'middle', 'ring', 'pinky']) UE_TO_UAL[`${f}_04_leaf_${s}`] = `DEF-f_${f}04${S}`;
+}
+/** UBC (UE-style) bone name to the rig's DEF- name (unchanged when not part of the rig). */
+export const ubcBoneName = (name: string) => UE_TO_UAL[name] ?? name;
+/** Body region of a vertex from its dominant (renamed) bone. */
+export function regionOfBone(name: string): number {
+  if (name === 'DEF-head') return R.SKIN;
+  if (/^DEF-(upper_arm|forearm|hand|f_|thumb)/.test(name)) return R.ARM;
+  if (/^DEF-(thigh|shin|foot|toe)/.test(name)) return R.LEG;
+  if (name.startsWith('DEF-neck')) return R.SKIN;
+  return R.TORSO;
 }
 
 const UPPER_PREFIX = ['DEF-spine002', 'DEF-spine003', 'DEF-neck', 'DEF-head', 'DEF-shoulder', 'DEF-upper_arm', 'DEF-forearm', 'DEF-hand', 'DEF-f_', 'DEF-thumb'];
@@ -52,6 +66,8 @@ export interface BodyBase {
   height: number;
   groundY: number;
   waistT: number;
+  /** Highest torso param (0 crotch .. 1 neck) reached by leg-region vertices: a top's hem must stay above it (the region border zigzags). */
+  legTopT?: number;
   head: HeadFrame;
   J: Record<string, THREE.Vector3>;
   /** Welded scalp/head surface (positions + normals) used to grow hair shells and hats. */
@@ -118,7 +134,7 @@ export function hairline(x: number, z: number) {
 
 function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
   const scene = gltf.scene;
-  scene.traverse(o => { const n = UE_TO_UAL[o.name]; if (n) o.name = n; });
+  scene.traverse(o => { o.name = ubcBoneName(o.name); });
   const meshes: THREE.SkinnedMesh[] = [];
   scene.traverse(o => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
   meshes.sort((a, b) => b.geometry.attributes.position.count - a.geometry.attributes.position.count);
@@ -179,13 +195,7 @@ function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
     return 2;
   };
   const leftSide = (p: THREE.Vector3) => p.x > 0; // the body faces +Z, so its left is +X
-  const regionOf = (name: string): number => {
-    if (name === 'DEF-head') return R.SKIN;
-    if (/^DEF-(upper_arm|forearm|hand|f_|thumb)/.test(name)) return R.ARM;
-    if (/^DEF-(thigh|shin|foot|toe)/.test(name)) return R.LEG;
-    if (name.startsWith('DEF-neck')) return R.SKIN;
-    return R.TORSO;
-  };
+  const regionOf = regionOfBone;
   const navelY = THREE.MathUtils.lerp(crotchY, neckY, 0.42), spineZ = J.spine001.z;
   const addAttrs = (g: THREE.BufferGeometry, fixed: number | null) => {
     const p = g.attributes.position as THREE.BufferAttribute, n = p.count;
@@ -248,6 +258,8 @@ function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
   const geo = mergeGeometries([flat, eyesG.toNonIndexed(), browG.toNonIndexed()], false)!;
   geo.computeBoundingSphere();
   const waistT = (J.spine001.y - crotchY) / (neckY - crotchY);
+  let legTopT = 0;
+  { const rg = bodyG.attributes.region; for (let i = 0; i < bp.count; i++) if (rg.getX(i) === R.LEG) legTopT = Math.max(legTopT, (bp.getY(i) - crotchY) / (neckY - crotchY)); }
 
   // Animations retargeted onto this body.
   const clips = retargetClips(ual, scene, bodyM);
@@ -257,7 +269,7 @@ function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
     lower.set(c.name, new THREE.AnimationClip(c.name + '_L', c.duration, c.tracks.filter(t => !isUpperTrack(t.name))));
   }
   const loco = ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'].map(n => ({ name: n, duration: clips.get(n)!.duration, speed: measureSpeed(scene, clips.get(n)!) }));
-  return { sex, scene, geo, boneNames, clips, upper, lower, loco, height, groundY, waistT, head, J, scalp, skinSrc, extras: new Map(), bodyIdx: bodyG };
+  return { sex, scene, geo, boneNames, clips, upper, lower, loco, height, groundY, waistT, legTopT, head, J, scalp, skinSrc, extras: new Map(), bodyIdx: bodyG };
 }
 
 /**
@@ -514,6 +526,15 @@ function bodyBand(base: BodyBase, offset: (reg: number, cloth: number, p: THREE.
   return { pos, nor, uv, region, weights: { si, sw } };
 }
 
+/** Hood thickness at a body vertex (torso param c, normal z), or -1 off the band. Border vertices sit at HOOD_TUCK. */
+export const HOOD_TUCK = 0.012;
+export function hoodOffset(torso: boolean, c: number, nz: number): number {
+  if (!torso || nz > 0.05 || c < 0.8 || c > 0.995) return -1;
+  const sm = THREE.MathUtils.smoothstep;
+  const bump = sm(c, 0.8, 0.93) * (1 - sm(c, 0.975, 0.995)) * sm(-nz, -0.05, 0.4);
+  return HOOD_TUCK + 0.045 * bump;
+}
+
 /** Converts a THREE geometry placed in head-normalised coordinates into a rigid head part. */
 function headPart(base: BodyBase, g: THREE.BufferGeometry, region: number, slot: readonly number[] = SLOT.hair1): Part {
   const f = g.index ? g.toNonIndexed() : g; f.computeVertexNormals();
@@ -581,12 +602,13 @@ function extrasPart(base: BodyBase, _assets: HumanAssets, look: FullLook, key: s
   // ---- garments
   const gl = look as { topStyle: string; bottomStyle: string };
   const J = base.J;
-  const T = (p: number) => p; // torso param helper (0 crotch .. 1 neck base)
   const sm = THREE.MathUtils.smoothstep;
   if (gl.topStyle === 'hoodie') {
     // hood: a soft roll of fabric lying around the back of the neck and over the upper back
-    parts.push(bodyBand(base, (reg, c, p, n) => reg === R.TORSO && n.z < 0.35 && c > T(0.86) && c < 1.1
-      ? 0.04 * sm(c, 0.86, 0.95) * (1 - sm(c, 1.02, 1.1)) * sm(-n.z, -0.35, 0.2) + 0.02 : -1, R.CTOP));
+    // Round 14 (owner: "hoodie collar looks jagged"): the band used to reach up the sides of the neck and onto the
+    // shoulders with a raised edge, so its triangle-stepped border showed as spikes around the collar. It now stays on the
+    // back below the neckline and every border vertex sits under the hoodie's own surface (HOOD_TUCK < its thickness).
+    parts.push(bodyBand(base, (reg, c, _p, n) => hoodOffset(reg === R.TORSO, c, n.z), R.CTOP));
   }
   if (['shirt', 'polo', 'uniform', 'jacket', 'suit', 'blouse'].includes(gl.topStyle)) {
     const big = gl.topStyle === 'jacket' || gl.topStyle === 'suit';

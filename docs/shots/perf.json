@@ -1,5 +1,19 @@
-{ "quality": ["medium"],
-  "scenes": [
-    { "name": "street-day", "hour": 15, "at": 3 },
-    { "name": "street-night", "hour": 22, "at": 3, "hideTop": 0 }
-  ] }
+{
+ "quality": [
+  "medium"
+ ],
+ "scenes": [
+  {
+   "name": "street-day",
+   "hour": 15,
+   "at": 3
+  },
+  {
+   "name": "street-night",
+   "hour": 22,
+   "at": 3,
+   "hideTop": 0
+  }
+ ],
+ "note": "Round 14 final build"
+}

@@ -74,3 +74,12 @@ describe('Round 14 R2 post', () => {
     expect(FXAA_GLSL).toContain('vec3 fxaa(');
   });
 });
+
+// Round 14 regression: a 5-tap AO blur left the interleaved-noise pattern as dark speckle round people's feet.
+import { AO_BLUR_FRAG } from './post';
+describe('AO blur', () => {
+  it('blurs with the centre plus 8 depth-weighted neighbours', () => {
+    expect(AO_BLUR_FRAG).toContain('i < 8');
+    expect(AO_BLUR_FRAG).toContain('abs(lin(uv) - zc)');
+  });
+});

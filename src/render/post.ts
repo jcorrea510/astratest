@@ -67,18 +67,19 @@ const AO_FRAG = /* glsl */`
     gl_FragColor = vec4(ao, ao, ao, 1.0);
   }`;
 
-const BLUR_FRAG = /* glsl */`
+export const AO_BLUR_FRAG = /* glsl */`
   #include <packing>
   uniform sampler2D tAO, tDepth; uniform vec2 uTexel; uniform float uNear, uFar; varying vec2 vUv;
   float lin(vec2 uv){ return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
-  // 5-tap bilateral (centre + 4 diagonals at 1.25 half-res texels): the bilinear AO fetch already averages 2x2, so this
-  // covers a 4-5 texel kernel for 5 depth + 5 AO taps (was 9 + 9)
+  // 9-tap bilateral (centre + 8 neighbours at 1.5 half-res texels; bilinear fetches widen it to ~5 texels). Round 14
+  // tried 5 taps: the interleaved-noise pattern survived as dark speckle round people's feet, so the 9 taps are back.
   void main(){
     float zc = lin(vUv);
     float sum = texture2D(tAO, vUv).r, wsum = 1.0;
     float k = 80.0 / max(zc, 1.0);
-    for (int i = 0; i < 4; i++) {
-      vec2 o = vec2(mod(float(i), 2.0) < 0.5 ? -1.0 : 1.0, i < 2 ? -1.0 : 1.0) * uTexel * 1.25;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.7853982;
+      vec2 o = vec2(cos(a), sin(a)) * uTexel * 1.5;
       vec2 uv = vUv + o;
       float w = 1.0 / (1.0 + abs(lin(uv) - zc) * k);
       sum += texture2D(tAO, uv).r * w; wsum += w;
@@ -113,7 +114,7 @@ export class AOPass extends Pass {
     });
     this.blurMat = new THREE.ShaderMaterial({
       name: 'SSAOBlur', uniforms: { tAO: { value: this.rt.texture }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2() }, uNear: { value: 0.1 }, uFar: { value: 1000 } },
-      vertexShader: VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false,
+      vertexShader: VERT, fragmentShader: AO_BLUR_FRAG, depthTest: false, depthWrite: false,
     });
   }
   get texture() { return this.blurRT.texture; }
