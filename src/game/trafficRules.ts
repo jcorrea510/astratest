@@ -105,12 +105,14 @@ export function mayClearLeft(state: 'green' | 'yellow' | 'red', yellowLeft: numb
 }
 /**
  * A left turner may take the amber (mayClearLeft) and, once committed, finish the turn on red. Committed means over the line:
- * one still standing behind it when the red comes (it was held by an oncoming car or a full exit) waits for the next green
+ * one still standing short of the box when the red comes (it was held by an oncoming car or a full exit) waits for the next green
  * (it used to keep its amber go and pull away on red seconds later, seen in the 60 s traffic check).
  */
 export function leftClearing(state: 'green' | 'yellow' | 'red', yellowLeft: number, dStop: number, speed: number, committed: boolean): boolean {
   if (state === 'green') return false;
-  if (state === 'red' && dStop > 0 && Math.abs(speed) < 1) return false; // still standing behind the line
+  // still standing short of the box (27 Nov traffic6: a car or bus that stood with its centre past its stop point, on the
+  // crosswalk, kept its amber go and pulled into the junction on red)
+  if (state === 'red' && dStop > -BOX_EDGE && Math.abs(speed) < 1) return false;
   return committed || mayClearLeft(state, yellowLeft, dStop, speed);
 }
 /** An approaching car (stop line `dStop` ahead) that will halt for its own amber/red, so a clearing left turner may ignore it. */

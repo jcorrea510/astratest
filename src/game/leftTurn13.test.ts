@@ -26,6 +26,9 @@ it('patience on green is about half a cycle, not three cycles', () => {
 it('a left turner still standing behind its line when the red comes waits for green (it kept its amber go)', () => {
   expect(leftClearing('yellow', 2.0, 0.6, 0, false)).toBe(true); // takes the amber from the line
   expect(leftClearing('red', 0, 0.9, 0, true)).toBe(false); // held behind the line, now red: stays
+  expect(leftClearing('red', 0, -2, 0, true)).toBe(false); // standing over its stop point but short of the box (27 Nov): stays
+  expect(leftClearing('red', 0, -4.5, 0, true)).toBe(false); // nose 0.4 m short of the box: still waits
+  expect(leftClearing('red', 0, -BOX_EDGE - 0.5, 0, true)).toBe(true); // nose already in the box, mid-turn: finishes
   expect(leftClearing('red', 0, -2, 3, true)).toBe(true); // already over the line: finishes the turn
   expect(leftClearing('red', 0, 0.4, 3, true)).toBe(true); // rolling over the line as it turns red: committed
   expect(leftClearing('green', 9, 0.5, 0, true)).toBe(false);
