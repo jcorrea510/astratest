@@ -205,9 +205,18 @@ test('traffic pulls out and passes a car abandoned in its lane', async ({ page }
     const parked = g.vehicles.spawn('sedan', block.x, block.z, block.yaw); parked.persistent = true;
     for (const c of [...g.traffic.cars]) if (c.lane === lane) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     const car = g.traffic.spawnOnLane('hatch', lane, 8); car.persistent = true; car.v.persistent = true; car.driver.persistent = true;
-    for (let i = 0; i < 45 * 30; i++) g.frame(1 / 30, false);
+    // why it waits, sampled every 5 s (a failure used to say only how far behind it stood)
+    const why: any[] = [];
+    for (let i = 0; i < 45 * 30; i++) {
+      g.frame(1 / 30, false);
+      if (i % 150 === 149) {
+        const bb = car.blockedBy, pp = car.v.position;
+        let np = 99; for (const n of g.pop.npcs) if (n.alive && !n.char.inVehicle) np = Math.min(np, n.char.pos.distanceTo(pp));
+        why.push({ t: (i + 1) / 30, v: +car.v.speed.toFixed(1), lane: car.lane.id, avoid: car.avoid ? car.avoid.side : 0, bT: +(car.blockedT ?? 0).toFixed(1), legit: car.legitWait, by: bb ? (bb === parked ? 'parked' : bb.kind) : null, mode: car.mode, pl: +g.player.pos.distanceTo(pp).toFixed(1), np: +np.toFixed(1) });
+      }
+    }
     const dx = car.v.position.x - block.x, dz = car.v.position.z - block.z;
-    return { past: dx * Math.sin(block.yaw) + dz * Math.cos(block.yaw), inTraffic: g.traffic.cars.includes(car), parkedHealth: parked.health / parked.spec.health };
+    return { past: dx * Math.sin(block.yaw) + dz * Math.cos(block.yaw), inTraffic: g.traffic.cars.includes(car), parkedHealth: parked.health / parked.spec.health, why };
   });
   expect(r.inTraffic).toBe(true);
   expect(r.past, JSON.stringify(r)).toBeGreaterThan(5);
