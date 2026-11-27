@@ -6,6 +6,6 @@ Call log:
   - waiting for fonts to load...
   - fonts loaded
 
-street-people-day ok {"calls":162,"triangles":704029,"textures":94,"geometries":2854,"programs":144}
-night-street ok {"calls":252,"triangles":792138,"textures":112,"geometries":2861,"programs":154}
-skyline-day ok {"calls":188,"triangles":731041,"textures":112,"geometries":2865,"programs":154}
+street-people-day ok {"calls":166,"triangles":718273,"textures":95,"geometries":2853,"programs":143}
+night-street ok {"calls":255,"triangles":804242,"textures":112,"geometries":2862,"programs":153}
+skyline-day ok {"calls":186,"triangles":750924,"textures":112,"geometries":2863,"programs":153}
