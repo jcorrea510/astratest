@@ -8,8 +8,14 @@
    "hour": 17.6,
    "at": 3,
    "drawBreakdown": true,
-   "topDetail": 80,
-   "eval": "g.player.place(-41, 0.25, 9, 0); g.trafficCap = null; g.pedCap = null; for (let i = 0; i < 400; i++) g.frame(1 / 20, false); for (let i = 0; i < 2; i++) g.frame(1 / 60, true);"
+   "topDetail": 60,
+   "eval": "g.player.place(-41, 0.25, 9, 0); g.trafficCap = null; g.pedCap = null; g.clockRunning = true; for (let i = 0; i < 400; i++) g.frame(1 / 20, false);",
+   "yaws": [
+    null,
+    1.5708,
+    3.1416,
+    -1.5708
+   ]
   }
  ],
  "note": "27 Nov: draw calls at the density.spec busy corner, grouped"
