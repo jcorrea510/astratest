@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { headCoords, type BodyBase } from './humanAssets';
 import type { FacialHair, HairStyle } from './look';
+import { flatCopy } from '../core/geom';
 
 export interface ScanSrc { geo: THREE.BufferGeometry; headJoint: THREE.Vector3; slot: readonly number[] }
 export const SCAN_FILES = { long: 'Hair_Long', buns: 'Hair_Buns', parted: 'Hair_SimpleParted', beard: 'Hair_Beard' } as const;
@@ -26,7 +27,7 @@ const MODE_SCAN = 3;
  * Attributes: position, normal, uv (atlas), hs (u strand coord, v, layer = 1, density = 1), hd (comb dir, mode), skin.
  */
 export function scanGeometry(base: BodyBase, src: ScanSrc, style: HairStyle | FacialHair, hatOn: boolean): THREE.BufferGeometry | null {
-  const g0 = src.geo.toNonIndexed();
+  const g0 = flatCopy(src.geo);
   const P = g0.attributes.position, N = g0.attributes.normal, U = g0.attributes.uv;
   const d = base.head.joint.clone().sub(src.headJoint), h = base.head;
   const n = P.count;

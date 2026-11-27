@@ -7,6 +7,7 @@
  *    actual scalp, hoods, collars, skirts, caps), skinned to the same skeleton so each person is two draw calls.
  */
 import { SHELL_HAIR, hairShellGeometry, shellThick, capLine } from './hairShells';
+import { flatCopy } from '../core/geom';
 import { SCAN_FILES, SCAN_HAIR, SCAN_FACIAL, TIE_Y, scanGeometry, type ScanSrc, type ScanKey } from './hairScan';
 import { freeAfterUpload } from '../world/builders';
 import * as THREE from 'three';
@@ -242,7 +243,7 @@ function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
     si: Float32Array.from(bodyG.attributes.skinIndex.array as ArrayLike<number>), sw: Float32Array.from(bodyG.attributes.skinWeight.array as ArrayLike<number>),
   };
   // Non-indexed with per-triangle region consistency, so clothing borders are smooth iso-lines.
-  const flat = bodyG.toNonIndexed();
+  const flat = flatCopy(bodyG);
   const fp = flat.attributes.position, fr = flat.attributes.region as THREE.BufferAttribute, fc = flat.attributes.cloth as THREE.BufferAttribute;
   for (let t = 0; t < fp.count; t += 3) {
     const r = [fr.getX(t), fr.getX(t + 1), fr.getX(t + 2)];
@@ -255,7 +256,7 @@ function buildBody(gltf: GLTF, sex: Sex, ual: GLTF): BodyBase {
       fr.setX(t + k, chosen); fc.setX(t + k, chosen === R.SKIN ? 2 : paramFor(chosen, v, cx > 0));
     }
   }
-  const geo = mergeGeometries([flat, eyesG.toNonIndexed(), browG.toNonIndexed()], false)!;
+  const geo = mergeGeometries([flat, flatCopy(eyesG), flatCopy(browG)], false)!;
   geo.computeBoundingSphere();
   const waistT = (J.spine001.y - crotchY) / (neckY - crotchY);
   let legTopT = 0;
@@ -491,7 +492,7 @@ function scalpShell(base: BodyBase, line: (x: number, z: number) => number, thic
   const tri: number[] = [];
   for (let t = 0; t < idx.length; t += 3) if (inside[idx[t]] && inside[idx[t + 1]] && inside[idx[t + 2]]) tri.push(idx[t], idx[t + 1], idx[t + 2]);
   sg.setIndex(tri); sg.computeVertexNormals();
-  const flat = sg.toNonIndexed();
+  const flat = flatCopy(sg);
   const fp = flat.attributes.position, fn = flat.attributes.normal;
   const pos: number[] = [], nor: number[] = [], uv: number[] = [];
   for (let i = 0; i < fp.count; i++) {
