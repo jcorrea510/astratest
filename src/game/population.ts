@@ -11,7 +11,7 @@ import type { Character } from '../actors/character';
 import type { RagdollSystem } from '../actors/ragdoll';
 import type { Vehicle } from '../vehicles/vehicle';
 import { spawnHidden } from './crowd';
-import { animEvery } from '../actors/animLod';
+import { animEvery, EXTRAS_SHADOW_M } from '../actors/animLod';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
 
@@ -425,7 +425,7 @@ export class Population {
       h.root.visible = inView;
       h.mesh.visible = inView;
       h.mesh.castShadow = inView && d < 32;
-      h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = inView && d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
+      h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = inView && d < EXTRAS_SHADOW_M; // garment extras are small: past this the body's shadow carries the silhouette
     }
     // shadow caster budget: only the nearest people are drawn into the shadow map (the rest keep their lit body)
     const sc = this.scBuf; let scn = 0;

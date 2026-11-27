@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodyLodFor, extrasLodFor, personExtrasLod, EXTRAS_NONE_M, BODY_LOD_TRIS } from './animLod';
+import { bodyLodFor, extrasLodFor, personExtrasLod, EXTRAS_NONE_M, PERSON_EXTRAS_FULL_M, PERSON_EXTRAS_NONE_M, EXTRAS_SHADOW_M, BODY_LOD_TRIS } from './animLod';
 
 describe('person detail LOD', () => {
   it('steps down with distance and has hysteresis', () => {
@@ -31,5 +31,11 @@ describe('person detail LOD', () => {
     expect(personExtrasLod(EXTRAS_NONE_M * 1.2, true, 1)).toBe(2);
     expect(personExtrasLod(50, true, 0)).toBe(2);
     expect(personExtrasLod(5, false, 0)).toBe(2);
+  });
+  it('busy corner budget (27 Nov main run: 467 calls): street extras end before 32 m and only near garments cast shadows', () => {
+    expect(personExtrasLod(32, true, 1)).toBe(2);
+    expect(PERSON_EXTRAS_NONE_M).toBeLessThan(EXTRAS_NONE_M);
+    expect(EXTRAS_SHADOW_M).toBeLessThan(PERSON_EXTRAS_FULL_M);
+    expect(EXTRAS_SHADOW_M).toBeLessThanOrEqual(14);
   });
 });
