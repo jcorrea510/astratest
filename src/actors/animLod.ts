@@ -23,7 +23,16 @@ export function animEvery(dist: number, inView: boolean, ragdoll: boolean, still
 export const BODY_LOD_TRIS = [Infinity, 3000, 1200, 600] as const;
 export const BODY_LOD_EDGES: readonly number[] = [8, 22, 50]; // metres: 0|1, 1|2, 2|3
 export const EXTRAS_FULL_M = 12, EXTRAS_NONE_M = 32;
-export const LOD_HYST = 0.15; // a level only changes once the person is 15% past the edge
+export const LOD_HYST = 0.15;
+/**
+ * Street people (Human.setLodDistance): full 3D hair and garments out to 23 m so nearby people look right, but
+ * extras still stop at EXTRAS_NONE_M: every person drawing extras costs draw calls, and pushing that edge out to
+ * ~60 m took a busy corner past the 450-call budget (27 Nov).
+ */
+export const PERSON_EXTRAS_FULL_M = 23;
+export function personExtrasLod(dist: number, inView: boolean, prev: 0 | 1 | 2): 0 | 1 | 2 {
+  return extrasLodFor(dist, inView, prev, PERSON_EXTRAS_FULL_M, EXTRAS_NONE_M);
+} // a level only changes once the person is 15% past the edge
 
 export function bodyLodFor(dist: number, prev: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
   let l = prev;
@@ -33,12 +42,12 @@ export function bodyLodFor(dist: number, prev: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
 }
 
 /** 0 = full extras, 1 = cheap far hair + simple garments, 2 = none. Hidden (off screen) people draw nothing. */
-export function extrasLodFor(dist: number, inView: boolean, prev: 0 | 1 | 2): 0 | 1 | 2 {
+export function extrasLodFor(dist: number, inView: boolean, prev: 0 | 1 | 2, fullM = EXTRAS_FULL_M, noneM = EXTRAS_NONE_M): 0 | 1 | 2 {
   if (!inView) return 2;
-  let l = prev === 2 && dist < EXTRAS_NONE_M ? 1 : prev;
-  if (l === 0 && dist > EXTRAS_FULL_M * (1 + LOD_HYST)) l = 1;
-  else if (l === 1 && dist < EXTRAS_FULL_M * (1 - LOD_HYST)) l = 0;
-  if (l < 2 && dist > EXTRAS_NONE_M * (1 + LOD_HYST)) l = 2;
-  if (l === 2 && dist < EXTRAS_NONE_M * (1 - LOD_HYST)) l = 1;
+  let l = prev === 2 && dist < noneM ? 1 : prev;
+  if (l === 0 && dist > fullM * (1 + LOD_HYST)) l = 1;
+  else if (l === 1 && dist < fullM * (1 - LOD_HYST)) l = 0;
+  if (l < 2 && dist > noneM * (1 + LOD_HYST)) l = 2;
+  if (l === 2 && dist < noneM * (1 - LOD_HYST)) l = 1;
   return l as 0 | 1 | 2;
 }

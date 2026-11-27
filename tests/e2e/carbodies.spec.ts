@@ -5,7 +5,7 @@ import { boot, quietStreets } from './helpers';
  *  arrays are freed after upload; disposing the dented copy dropped the shared GPU buffers and they re-uploaded empty. */
 test('dented cars can be removed without emptying the shared body buffers', async ({ page }) => {
   test.setTimeout(240_000);
-  await boot(page);
+  await boot(page, '&quality=low'); // boots on the preset it runs on: a high-preset boot plus the test ran right at the 4 min limit on CI
   await quietStreets(page);
   const r = await page.evaluate(() => {
     const g = (window as any).__game;

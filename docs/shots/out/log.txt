@@ -1,6 +1,11 @@
 gun-rifle ok {"calls":5,"tris":3088}
 people-face ok {"calls":13,"tris":92616}
-signal-day ok {"calls":130,"triangles":639205,"textures":79,"geometries":2681,"programs":139}
-street-people-day ok {"calls":148,"triangles":725249,"textures":85,"geometries":2690,"programs":139}
-night-street ok {"calls":221,"triangles":803653,"textures":103,"geometries":2695,"programs":149}
-skyline-day ok {"calls":175,"triangles":752303,"textures":104,"geometries":2697,"programs":149}
+signal-day FAILED page.screenshot: Timeout 30000ms exceeded.
+Call log:
+  - taking page screenshot
+  - waiting for fonts to load...
+  - fonts loaded
+
+street-people-day ok {"calls":162,"triangles":704029,"textures":94,"geometries":2854,"programs":144}
+night-street ok {"calls":252,"triangles":792138,"textures":112,"geometries":2861,"programs":154}
+skyline-day ok {"calls":188,"triangles":731041,"textures":112,"geometries":2865,"programs":154}

@@ -1,5 +1,6 @@
 /** Game orchestrator: owns the world, systems and the main loop. */
 import * as THREE from 'three';
+import { adsAssist, makeAssistOut } from '../combat/aimAssist';
 import { shouldSkipRaf, nearestLamps } from './frameUtil';
 import { addPooledLight } from '../render/lightPool';
 import { Renderer, skipHiddenMatrices } from '../render/renderer';
@@ -67,6 +68,8 @@ export const PRECINCT = { x: 40, z: 108, yaw: 0, name: 'Meridian PD' };
 export interface Pickup { id: number; kind: 'cash' | 'health' | 'armor' | 'ammo' | 'weapon'; amount: number; weapon?: keyof typeof WEAPONS; pos: THREE.Vector3; mesh: THREE.Object3D; ttl: number; persistent?: boolean }
 
 export class Game {
+  private aimAssistOut = makeAssistOut();
+  private aimAssistV = new THREE.Vector3();
   renderer: Renderer;
   physics = new Physics();
   input: Input;
@@ -755,7 +758,15 @@ export class Game {
     const blocked = this.inputBlocked;
     if (!this.paused && !blocked && !this.orders.open) {
       const look = this.input.lookDelta(raw);
-      this.cam.addInput(look.x, look.y, this.settings.sensitivity * this.pcombat.lookScale, this.settings.invertY);
+      const asst = this.aimAssistOut; asst.friction = 1; asst.dYaw = 0; asst.dPitch = 0;
+      const tgt = this.pcombat.aimTarget;
+      if (tgt && this.pcombat.aiming && this.pcombat.armed && !this.pcombat.scoped && !this.player.inVehicle && tgt.alive) {
+        this.cam.camera.getWorldPosition(this.aimAssistV);
+        adsAssist(this.cam.yaw, this.cam.pitch, this.aimAssistV.x, this.aimAssistV.y, this.aimAssistV.z, tgt.pos.x, tgt.pos.y + 1.28, tgt.pos.z,
+          this.input.pad.connected && this.input.lookStickActive(), raw, asst);
+      }
+      this.cam.addInput(look.x * asst.friction, look.y * asst.friction, this.settings.sensitivity * this.pcombat.lookScale, this.settings.invertY);
+      this.cam.yaw += asst.dYaw; this.cam.pitch += asst.dPitch;
     }
     if (!this.paused && !blocked && this.input.justPressed('enter')) this.toggleVehicle();
     const handled = this.carEntry.update(dt);
@@ -784,6 +795,7 @@ export class Game {
         if (this.pcombat.aiming && this.pcombat.armed) this.cam.toggleShoulder();
         else this.cam.zoomLevel = (this.cam.zoomLevel + 1) % 2;
       }
+      if (!blocked && this.input.justPressed('shoulder')) this.cam.toggleShoulder();
     }
     this.orders.update(dt, raw, blocked);
     this.updateHurtFx(dt);

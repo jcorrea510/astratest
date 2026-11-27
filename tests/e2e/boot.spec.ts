@@ -37,7 +37,8 @@ for (const w of [390, 360]) {
     await page.goto('./?mobile=1');
     const gate = page.locator('.ma-mobile.is-open');
     await expect(gate).toBeVisible();
-    await expect(gate).toContainText(/best on a computer or ipad/i);
+    await expect(gate).toContainText(/has touch controls/i); // Round 13 touch controls: the gate now says how to play on a phone
+    await expect(gate).toContainText(/bigger screen/i);
     await expect(gate).not.toContainText(/mobile=1|localhost|http/i);
     const m = await page.evaluate(() => {
       const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();

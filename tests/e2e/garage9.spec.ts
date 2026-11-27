@@ -95,7 +95,7 @@ test('garage hall: drive in, door closes, world pauses, repair, respray, sell, r
   expect(e.priceTxt).toMatch(/^\+\$/);
   expect(e.gain).toBeGreaterThan(50); expect(e.gain).toBeLessThan(1600); // a stolen mid-price coupe is several hundred, not thousands
   expect(e.inCar).toBe(false); expect(e.listed).toBe(false);
-  expect(e.state).toBe('opening'); expect(e.cool[0]).toBe(180);
+  expect(e.state).toBe('opening'); expect(e.cool[0]).toBe(15); // Round 14: the next sale is 15 s away (was 180 s)
   const f = await page.evaluate(() => {
     const g = (window as any).__game, A = (window as any).__meridian.activities, other = (window as any).__other;
     for (let i = 0; i < 60; i++) g.frame(1 / 30, false);

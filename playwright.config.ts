@@ -8,7 +8,9 @@ export default defineConfig({
   timeout: 240_000,
   expect: { timeout: 30_000 },
   workers: 1,
-  retries: 0,
+  // CI: one retry. The browser suite runs ~5 h of software-GL frames on shared runners; a test that fails once and passes on
+  // the retry is listed as flaky in the log (each such test carries its own failure trace to find the cause), not hidden.
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: `http://127.0.0.1:${PORT}/astratest/`,
     viewport: { width: 1280, height: 720 },

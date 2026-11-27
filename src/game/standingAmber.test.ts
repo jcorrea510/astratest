@@ -21,3 +21,14 @@ describe('goto car near its target still obeys a close stop line (bus creeping t
     expect(skipSignalNearTarget(60)).toBe(true);
   });
 });
+
+describe('a car that braked to a crawl at the bar for the amber (traffic6 lane 53, 27 Nov)', () => {
+  it('stops instead of re-accelerating into the red when little amber is left', () => {
+    expect(signalCap('yellow', 0.6, 2.8, 0.5)).toBe(0); // it used to read "cannot stop" (0.6 m < 2.8²/11) and floor it
+    expect(signalCap('yellow', 0.6, 2.8, 0)).toBe(0); // a left turner (no amber credit)
+  });
+  it('a fast car in the dilemma zone, or a slow one with plenty of amber, still goes', () => {
+    expect(signalCap('yellow', 3, 13, 1)).toBe(Infinity);
+    expect(signalCap('yellow', 0.6, 2.8, 5)).toBe(Infinity);
+  });
+});

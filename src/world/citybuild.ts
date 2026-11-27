@@ -3,7 +3,7 @@ import { worldGlass } from './glass';
 import * as THREE from 'three';
 import { gpuOnlyAfterUpload } from '../render/gpuOnly';
 import { Rng } from '../core/rng';
-import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H } from '../game/places';
+import { RAMPS, HELIPADS, GAS_STATION, POLICE_STATION, storeAt, STORE_H, nearStoreDoor } from '../game/places';
 import { buildIsland } from './islandbuild';
 import { buildFlatiron } from './flatiron';
 import { diagTriangles } from './broadway';
@@ -552,7 +552,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       const free = (s: number, m = 3) => {
         if (!(s > e.from + 8 && s < e.to - 8 && used.every(u => Math.abs(u - s) > m))) return false;
         const pp = P(s, 1.2);
-        return !nearBayDriveway(pp.x, pp.z, 2.2);
+        return !nearBayDriveway(pp.x, pp.z, 2.2) && !nearStoreDoor(pp.x, pp.z);
       };
       // trees / palms in pits
       if (b.district !== 'cannery' && b.kind !== 'park') {

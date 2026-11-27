@@ -35,12 +35,21 @@ test('east river: draw calls at the bridge + Eastbank, drive over the bridge', a
     for (let i = 0; i < 20; i++) g.frame(1 / 60, false);
     g.input.press('KeyW');
     let maxY = 0;
-    for (let i = 0; i < 30 * 14; i++) { g.frame(1 / 15, false); maxY = Math.max(maxY, v.position.y); }
+    // what the car met, sampled every 2 s (a failure once stopped it at x 561 on the ramp with no cause in the log)
+    const why: any[] = [];
+    for (let i = 0; i < 30 * 14; i++) {
+      g.frame(1 / 15, false); maxY = Math.max(maxY, v.position.y);
+      if (i % 30 === 29) {
+        let nv = 99, nk = ''; for (const o of g.vehicles.list) { if (o === v) continue; const d = o.position.distanceTo(v.position); if (d < nv) { nv = d; nk = o.kind + (o.driver ? '+d' : '') + (o.persistent ? '+p' : ''); } }
+        let np = 99; for (const n of g.pop.npcs) if (n.alive) np = Math.min(np, n.pos.distanceTo(v.position));
+        why.push({ t: (i + 1) / 15, x: +v.position.x.toFixed(1), z: +v.position.z.toFixed(2), v: +v.speed.toFixed(1), th: v.input.throttle, hb: v.input.handbrake, ign: v.ignition, in: g.playerVehicle === v, blk: g.inputBlocked, ce: !!g.carEntry?.blocksDriving, nv: +nv.toFixed(1), nk, np: +np.toFixed(1), hp: Math.round(v.health) });
+      }
+    }
     g.input.release('KeyW');
-    return { x: v.position.x, z: v.position.z, y: v.position.y, maxY };
+    return { x: v.position.x, z: v.position.z, y: v.position.y, maxY, why };
   });
   console.log('bridge drive end', JSON.stringify(r));
-  expect(r.x).toBeGreaterThan(740);
+  expect(r.x, JSON.stringify(r.why)).toBeGreaterThan(740);
   expect(r.maxY).toBeGreaterThan(4);
   expect(r.y).toBeLessThan(2);
   if (shot) {

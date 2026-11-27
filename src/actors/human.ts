@@ -9,7 +9,7 @@
  * action (punches with a 'strike' event, knockdown/get-up, cower, hands up, handcuffed, open door, enter/exit car,
  * pulled out, smash window, hotwire, ...).
  */
-import { bodyLodFor, extrasLodFor, BODY_LOD_TRIS } from './animLod';
+import { bodyLodFor, personExtrasLod, BODY_LOD_TRIS } from './animLod';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -275,7 +275,7 @@ export class Human {
   setLodDistance(dist: number, inView: boolean) {
     this.lodDriven = true;
     this.setBodyLod(bodyLodFor(dist * 0.48, this.bodyLod));
-    const x = extrasLodFor(dist * 0.52, inView, this.extrasLod);
+    const x = personExtrasLod(dist, inView, this.extrasLod);
     if (x === this.extrasLod) return; this.extrasLod = x;
     this.detail = x < 2; this.lodFar = x === 1; this.showExtras();
   }

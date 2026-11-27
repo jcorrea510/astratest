@@ -56,6 +56,16 @@ export function ranRedLight(city: Pick<CityMap, 'intersections'>, px: number, pz
 /** Pure heat bookkeeping (unit tested). */
 /** Seconds out of sight (and outside the search radius) before the stars go. Pure. */
 export function heatLoseTime(heat: number): number { return 14 + heat * 6; }
+export type SquadRole = 'flanker' | 'suppressor' | 'breacher' | 'default';
+/** Stable rotation so a squad mixes roles: ~1/3 flanker, 1/4 suppressor, rest default; heavily armed officers (maxHealth >= 130) breach more often. */
+export function chooseSquadRole(seq: number, maxHealth: number): SquadRole {
+  const k = ((seq % 12) + 12) % 12;
+  if (maxHealth >= 130) return k % 2 === 0 ? 'breacher' : k % 4 === 1 ? 'suppressor' : 'flanker';
+  if (k < 4) return 'flanker';
+  if (k < 7) return 'suppressor';
+  if (k === 7) return 'breacher';
+  return 'default';
+}
 export class HeatState {
   heat = 0;
   lastSeen = new THREE.Vector3();
@@ -169,8 +179,7 @@ export class Police {
   private roleSeq = 0;
   private assignRole(n: Npc) {
     if (n.squadRole !== 'default') return;
-    const roles = ['suppressor', 'flanker', 'breacher'] as const;
-    n.squadRole = roles[this.roleSeq++ % roles.length];
+    n.squadRole = chooseSquadRole(this.roleSeq++, n.char.maxHealth);
   }
   /** Player gunfire suppresses nearby police officers into ducking/sprinting to cover. */
   suppressNear(origin: THREE.Vector3, dir: THREE.Vector3, len: number) {

@@ -70,7 +70,7 @@ for (const quality of req.quality ?? ['medium']) {
       log(JSON.stringify(r, null, 0));
       // CPU profile: simulation + render together
       await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 250 }); await cdp.send('Profiler.start');
-      await p.evaluate(() => { const g = window.__game; for (let i = 0; i < 30; i++) g.frame(1 / 60, true); });
+      await p.evaluate((sc) => { const g = window.__game; for (let i = 0; i < (sc.profileFrames ?? 30); i++) g.frame(1 / 60, sc.profileRender ?? true); }, sc);
       const { profile } = await cdp.send('Profiler.stop');
       const byFile = new Map(), byFn = new Map(); let total = 0;
       const dt = profile.timeDeltas ?? []; const self = new Map();
@@ -81,9 +81,21 @@ for (const quality of req.quality ?? ['medium']) {
         const fn = `${n.callFrame.functionName || '(anon)'} ${url.split('/').slice(-2).join('/')}:${n.callFrame.lineNumber + 1}`;
         byFile.set(url, (byFile.get(url) ?? 0) + us); byFn.set(fn, (byFn.get(fn) ?? 0) + us);
       }
+      // inclusive (self + callees) time per src/ function: which game system a cost belongs to
+      const kids = new Map(profile.nodes.map(n => [n.id, n.children ?? []])), node = new Map(profile.nodes.map(n => [n.id, n]));
+      const incl = new Map(); const keyOf = (n) => { const url = (n.callFrame.url || '').replace(/^https?:\/\/[^/]+/, '').replace(/\?.*$/, ''); return url.includes('/src/') ? `${n.callFrame.functionName || '(anon)'} ${url.split('/').slice(-2).join('/')}:${n.callFrame.lineNumber + 1}` : null; };
+      const walk = (id, onStack) => {
+        const n = node.get(id); let t = self.get(id) ?? 0; const k = keyOf(n); const fresh = k && !onStack.has(k); if (fresh) onStack.add(k);
+        for (const c of kids.get(id)) t += walk(c, onStack);
+        if (fresh) { incl.set(k, (incl.get(k) ?? 0) + t); onStack.delete(k); }
+        return t;
+      };
+      walk(profile.nodes[0].id, new Set());
       const top = (m, k) => [...m].sort((a, b) => b[1] - a[1]).slice(0, k).map(([n, us]) => `  ${(100 * us / total).toFixed(1)}%  ${n}`).join('\n');
-      log(`profile (30 frames with render, ${(total / 1000 / 30).toFixed(1)} ms/frame sampled) by file:\n${top(byFile, 22)}`);
-      log(`by function:\n${top(byFn, 30)}`);
+      const pf = sc.profileFrames ?? 30;
+      log(`profile (${pf} frames ${(sc.profileRender ?? true) ? 'with' : 'without'} render, ${(total / 1000 / pf).toFixed(2)} ms/frame sampled) by file:\n${top(byFile, 22)}`);
+      log(`by function:\n${top(byFn, sc.topFns ?? 30)}`);
+      log(`inclusive (game code, self + callees):\n${top(incl, sc.topFns ?? 30)}`);
       writeFileSync('docs/shots/out/perf.txt', out.join('\n') + '\n'); // partial results survive a timeout
     }
   } catch (e) { log(`FAILED ${e.message}`); }

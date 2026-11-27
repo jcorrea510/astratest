@@ -1,5 +1,5 @@
 /** Wheel / small-part geometry guarantees (R13-W6): proportions, caliper placement, per-kind triangle budget. */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getTemplate } from './build';
 import { wheelSoup, caliperSoup, mirrorSoup, handleSoup, wiperSoup, exhaustTip, antennaSoup } from './parts';
 import { SHAPES } from '../shapes';
@@ -59,5 +59,17 @@ describe('wheel and parts geometry', () => {
       expect(part.tris).toBeGreaterThan(10); expect(part.d.every(Number.isFinite)).toBe(true);
     }
     expect(bounds(antennaSoup(0, 1.2, -1)).max[1]).toBeGreaterThan(1.2 + 0.7);
+  });
+});
+
+describe('console stays clean', () => {
+  // Round 13-14 wheels called toNonIndexed() on an ExtrudeGeometry (already non-indexed): three.js warned once per
+  // wheel build, and the warnings failed every e2e test that checks for a clean console.
+  it('building every vehicle template and wheel logs no warnings', () => {
+    const warn = vi.spyOn(console, 'warn');
+    for (const kind of Object.keys(VEHICLES) as VehicleKind[]) { getTemplate(kind); for (const l of [0, 1, 2]) wheelSoup(SHAPES[kind], l); }
+    for (const rim of ['spoke5', 'multi', 'steel', 'hubcap', 'mesh', 'chrome', 'truck', 'race', 'twin'] as const) wheelSoup({ ...SHAPES.sedan, rim }, 0);
+    expect(warn.mock.calls.map(c => String(c[0]))).toEqual([]);
+    warn.mockRestore();
   });
 });

@@ -8,8 +8,8 @@ test('chase camera is smooth along the Cannery Channel bridge', async ({ page })
   await quietStreets(page);
   const r = await page.evaluate(() => {
     const g = (window as any).__game;
-    g.player.place(400, 7.5, -480, 0);
-    const v = g.vehicles.spawn('sedan', 400, -480, Math.PI / 2, -1, 7.6); v.persistent = true; g.seatPlayer(v);
+    g.player.place(400, 7.5, -478, 0);
+    const v = g.vehicles.spawn('sedan', 400, -478, Math.PI / 2, -1, 7.6); v.persistent = true; g.seatPlayer(v);
     for (let i = 0; i < 30; i++) g.frame(1 / 60, false);
     g.input.press('KeyW');
     const rel: number[][] = [], xs: number[] = [], camV: number[] = [], carV: number[] = [];

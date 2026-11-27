@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { mayClearLeft, willStopForSignal, LEFT_CLEAR_MIN, LEFT_PATIENCE, BOX_EDGE, signalCap } from './trafficRules';
+import { mayClearLeft, leftClearing, willStopForSignal, LEFT_CLEAR_MIN, LEFT_PATIENCE, BOX_EDGE, signalCap } from './trafficRules';
 
 // Round 13 (owner: "cars aren't going on green lights, the ones in the left lane")
 it('the left turner first at its line takes the amber to turn (it got only the first 0.8 s of a 3 s amber)', () => {
@@ -21,4 +21,15 @@ it('oncoming cars stopping for their own amber no longer block the turn; ones th
 });
 it('patience on green is about half a cycle, not three cycles', () => {
   expect(LEFT_PATIENCE).toBeLessThanOrEqual(20);
+});
+
+it('a left turner still standing behind its line when the red comes waits for green (it kept its amber go)', () => {
+  expect(leftClearing('yellow', 2.0, 0.6, 0, false)).toBe(true); // takes the amber from the line
+  expect(leftClearing('red', 0, 0.9, 0, true)).toBe(false); // held behind the line, now red: stays
+  expect(leftClearing('red', 0, -2, 0, true)).toBe(false); // standing over its stop point but short of the box (27 Nov): stays
+  expect(leftClearing('red', 0, -4.5, 0, true)).toBe(false); // nose 0.4 m short of the box: still waits
+  expect(leftClearing('red', 0, -BOX_EDGE - 0.5, 0, true)).toBe(true); // nose already in the box, mid-turn: finishes
+  expect(leftClearing('red', 0, -2, 3, true)).toBe(true); // already over the line: finishes the turn
+  expect(leftClearing('red', 0, 0.4, 3, true)).toBe(true); // rolling over the line as it turns red: committed
+  expect(leftClearing('green', 9, 0.5, 0, true)).toBe(false);
 });

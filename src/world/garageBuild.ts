@@ -6,6 +6,7 @@
  * glass-vision roll-up door. Static parts merge into the trim chunks; colliders keep vehicles cleanly bounded.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Physics } from '../core/physics';
 import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_IRON, T_PAINT, T_GLOW } from './builders';
 import { BAYS, type BaySpec } from '../game/bays';
@@ -387,10 +388,11 @@ function buildBay(o: { root: THREE.Object3D; physics: Physics; trim: Chunked<Tri
   tb.box(b.cx - b.w / 2 - 0.18, blY - 0.32, blZ, 0.4, 0.08, 0.08, 0, dark, T_IRON);
   tb.box(blX, blY, blZ, 1.56, 0.82, 0.14, 0, dark, T_METAL);
   const bt = bladeTexture(b), bm = glowMat(bt, o.nightUniform, 0.42, 2.2);
-  const bFront = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 0.74), bm);
-  bFront.rotation.y = Math.PI; bFront.position.set(blX, blY, blZ - 0.08); root.add(bFront);
-  const bBack = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 0.74), bm);
-  bBack.position.set(blX, blY, blZ + 0.08); root.add(bBack);
+  // both faces in one mesh: one draw call per bay (27 Nov draw-call budget)
+  const bFace = new THREE.PlaneGeometry(1.48, 0.74).rotateY(Math.PI).translate(blX, blY, blZ - 0.08);
+  const bBackFace = new THREE.PlaneGeometry(1.48, 0.74).translate(blX, blY, blZ + 0.08);
+  const blade = new THREE.Mesh(mergeGeometries([bFace, bBackFace]), bm); blade.name = 'garage-blade';
+  bFace.dispose(); bBackFace.dispose(); root.add(blade);
 
   // ---------- 8. Animated Glass-Vision Roll-Up Door ----------
   const dt = doorTexture(b.openW - 0.18, b.openH, b.accent);

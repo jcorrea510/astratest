@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { Soup, gridSurface, spow, dropDegenerate, type Paint } from './soup';
 import { K } from './kinds';
 import type { CarShape, RimStyle } from '../shapes';
+import { flatCopy } from '../../core/geom';
 
 const M = () => new THREE.Matrix4();
 export const at = (x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) =>
@@ -127,7 +128,7 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
   styleOf[style]();
   const ex0 = new THREE.ExtrudeGeometry(shape, { depth: 0.016, bevelEnabled: false, curveSegments: style === 'steel' ? 6 : 10 });
   // drop the back cap (never visible behind the barrel): non-indexed copy without -z facing triangles
-  const exn = ex0.toNonIndexed(); ex0.dispose();
+  const exn = flatCopy(ex0); ex0.dispose();
   { const a = exn.attributes.position, keep: number[] = [];
     for (let i = 0; i < a.count; i += 3) if (!(a.getZ(i) < 1e-6 && a.getZ(i + 1) < 1e-6 && a.getZ(i + 2) < 1e-6)) for (let k = 0; k < 3; k++) keep.push(a.getX(i + k), a.getY(i + k), a.getZ(i + k));
     exn.setAttribute('position', new THREE.Float32BufferAttribute(keep, 3)); exn.deleteAttribute('normal'); exn.deleteAttribute('uv'); }

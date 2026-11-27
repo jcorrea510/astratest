@@ -950,6 +950,23 @@ export function playerProximityReaction(
 }
 
 /**
+ * Sideways step for a walker making room for the player on foot. A moving player: step off the player's path. A player standing
+ * still has no path, so the walker steps aside off its own line (away from the player) and keeps walking; using the standing
+ * player's facing instead pushed walkers backwards along a narrow walkway (bridge walkers never got past someone standing on it).
+ * Pure (tests).
+ */
+export function yieldStep(dx: number, dz: number, playerMoving: boolean, pDirX: number, pDirZ: number, walkX: number, walkZ: number): { x: number; z: number } {
+  const wl = Math.hypot(walkX, walkZ);
+  if (!playerMoving && wl > 0.05) {
+    let x = -walkZ / wl, z = walkX / wl;
+    if (x * dx + z * dz < 0) { x = -x; z = -z; }
+    return { x, z };
+  }
+  const side = dx * pDirZ - dz * pDirX >= 0 ? 1 : -1;
+  return { x: pDirZ * side, z: -pDirX * side };
+}
+
+/**
  * Computes horizontal lead aim offset for an armed NPC shooting at a moving target.
  * Scales smoothly with distance and officer skill while clamping max lead to prevent overshoot on sudden jukes. Pure (tests).
  */

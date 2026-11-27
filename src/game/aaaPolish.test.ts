@@ -8,7 +8,7 @@ import { AO_FRAG, AO_BLUR_FRAG, CAS_GLSL } from '../render/post';
 import { FACADE_FRAG_PARS } from '../world/facadeShader';
 import { Inventory } from '../combat/weapons';
 import { wheelSlots } from '../combat/wheelSlots';
-import { playerProximityReaction, copLeadAimOffset } from '../actors/npc';
+import { playerProximityReaction, copLeadAimOffset, yieldStep } from '../actors/npc';
 import { QUALITY } from '../core/settings';
 
 describe('AAA driving, camera, shader & UI polish', () => {
@@ -133,5 +133,18 @@ describe('AAA driving, camera, shader & UI polish', () => {
     const fastFar = copLeadAimOffset(40, -40, 90, 1);
     expect(Math.abs(fastFar.dx)).toBeLessThanOrEqual(2.2);
     expect(Math.abs(fastFar.dz)).toBeLessThanOrEqual(2.2);
+  });
+  it('walkers step aside past a player standing still instead of being pushed back along their path', () => {
+    // walker heading east, just west of a player who stands facing north (+z): the old rule stepped along the facing's
+    // perpendicular, i.e. straight back west, so bridge walkers never got past a standing player
+    const st = yieldStep(-1.2, 0.2, false, 0, 1, 1, 0);
+    expect(Math.abs(st.x)).toBeLessThan(1e-9);
+    expect(st.z).toBeGreaterThan(0.99); // sideways, on the side away from the player
+    const st2 = yieldStep(-1.2, -0.2, false, 0, 1, 1, 0);
+    expect(st2.z).toBeLessThan(-0.99);
+    // a moving player still clears a lane off their own path
+    const mv = yieldStep(0.3, 2, true, 1, 0, 0, 1);
+    expect(Math.abs(mv.x)).toBeLessThan(1e-9);
+    expect(Math.abs(mv.z)).toBeCloseTo(1, 6);
   });
 });

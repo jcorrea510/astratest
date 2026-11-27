@@ -34,8 +34,10 @@ test('3D map: opens, zooms smoothly, pans, rotates; minimap draws', async ({ pag
   await page.mouse.down(); await page.mouse.move(box.x + 300, box.y + 260, { steps: 6 }); await page.mouse.up();
   const c = await fm();
   expect(Math.hypot(c.cx - b.cx, c.cz - b.cz)).toBeGreaterThan(10); // drag pans
-  await page.keyboard.press('KeyE'); await page.waitForTimeout(1200);
-  expect((await fm()).tilt).toBeGreaterThan(c.tilt! + 0.15); // E rotates
+  // E rotates (eases over a few rendered frames; the CI software renderer can draw the 3D map only a couple of times a second)
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction((t0) => (window as any).__meridian.ui.fullmap.view.tilt > t0 + 0.15, c.tilt!, { timeout: 15_000, polling: 200 }).catch(() => {});
+  expect((await fm()).tilt).toBeGreaterThan(c.tilt! + 0.15);
   await page.keyboard.press('KeyR');
   for (let i = 0; i < 8; i++) await page.mouse.wheel(0, 120);
   await page.waitForTimeout(1800);

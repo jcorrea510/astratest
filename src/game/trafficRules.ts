@@ -75,7 +75,11 @@ export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, spee
   // past its stop point (dStop < 0) yet short of the box. Standing there on amber it used to pull away, "committed", and entered
   // the junction after the red. A standing car with too little amber left to clear the box waits for the next green.
   if (state === 'yellow' && speed < 2.5 && dStop < 0 && yellowLeft < 3.5) return 0; // (a car that crept up to the bar on amber at 1-2 m/s re-accelerated into the red)
+  // 27 Nov (traffic6 red-runner, lane 53): a car that braked for the amber down to a crawl right at the bar fell into the
+  // dilemma rule below (0.6 m left < 2.8²/11), "could not stop" and re-accelerated into the red. Slow and short of the box
+  // with too little amber left to clear it, it stops on the crosswalk instead.
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
+    if (speed < 4 && dStop > -1 && yellowLeft < 3.5 && Math.max(0, speed) ** 2 / (2 * MAX_DECEL) < dStop + BOX_EDGE - 0.3) return 0;
     // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
     if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;
     return Math.max(0, stopSpeed(dStop - 0.4, PANIC_DECEL) - PEDAL_LAG);
@@ -98,6 +102,18 @@ export const LEFT_CLEAR_MIN = 1.4;
 export function mayClearLeft(state: 'green' | 'yellow' | 'red', yellowLeft: number, dStop: number, speed: number): boolean {
   if (state !== 'yellow' || yellowLeft < LEFT_CLEAR_MIN) return false;
   return dStop < 2.5 && dStop > -BOX_EDGE + 0.5 && Math.abs(speed) < 2;
+}
+/**
+ * A left turner may take the amber (mayClearLeft) and, once committed, finish the turn on red. Committed means over the line:
+ * one still standing short of the box when the red comes (it was held by an oncoming car or a full exit) waits for the next green
+ * (it used to keep its amber go and pull away on red seconds later, seen in the 60 s traffic check).
+ */
+export function leftClearing(state: 'green' | 'yellow' | 'red', yellowLeft: number, dStop: number, speed: number, committed: boolean): boolean {
+  if (state === 'green') return false;
+  // still standing short of the box (27 Nov traffic6: a car or bus that stood with its centre past its stop point, on the
+  // crosswalk, kept its amber go and pulled into the junction on red)
+  if (state === 'red' && dStop > -BOX_EDGE && Math.abs(speed) < 1) return false;
+  return committed || mayClearLeft(state, yellowLeft, dStop, speed);
 }
 /** An approaching car (stop line `dStop` ahead) that will halt for its own amber/red, so a clearing left turner may ignore it. */
 export function willStopForSignal(state: 'green' | 'yellow' | 'red', dStop: number, speed: number, yellowLeft = Infinity): boolean {

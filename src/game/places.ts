@@ -59,6 +59,20 @@ export const GUN_STORES = [
 /** Gas station forecourt (canopy + pumps) next to the Fuel Stop shop. */
 export const GAS_STATION = { x: -224, z: 152, w: 14, d: 22, name: 'Fuel Stop gas station' };
 /** True when a building lot centred at (x,z) is taken by a store (it then only gets the floors above). */
+/** Shop door, in the shop frame (x across the front, +z out of the door). */
+export const STORE_DOOR_X = 3.1;
+/**
+ * True when (x, z) is in the walk-up lane in front of a shop door (door width plus `pad` each side, from the front
+ * out to 6 m). Street furniture with a collider keeps out of it, so the door can always be reached head on.
+ */
+export function nearStoreDoor(x: number, z: number, pad = 1.2): boolean {
+  for (const s of STORES) {
+    const dx = x - s.x, dz = z - s.z, c = Math.cos(s.yaw), sn = Math.sin(s.yaw);
+    const lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+    if (Math.abs(lx - STORE_DOOR_X) < 0.9 + pad && lz > STORE_D / 2 - 0.5 && lz < STORE_D / 2 + 6) return true;
+  }
+  return false;
+}
 export function storeAt(x: number, z: number): Store | undefined { return STORES.find(s => Math.hypot(s.x - x, s.z - z) < 1); }
 
 /** Metro Police precinct building (replaces the street lots it covers; rooftop helipad). Front faces north onto 5th St. */
