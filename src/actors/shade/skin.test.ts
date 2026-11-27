@@ -48,3 +48,15 @@ describe('skin shader chunks', () => {
     expect(SKIN_GLSL).toContain('lr = ri == 0 ? lr : clamp(lr, 0.45, 1.1)');
   });
 });
+
+describe('R14 PL skin and cloth sheen', () => {
+  it('declares gSheen once and adds a single rim lobe to non-skin cloth', () => {
+    expect(SKIN_LIGHT_PARS.split('float gSheen').length - 1).toBe(1);
+    expect(SKIN_LIGHT_PARS).toContain('pow( 1.0 - sNv, 3.0 )');
+  });
+  it('skin gets nose redness, darker creases and a gentler specular', () => {
+    expect(SKIN_GLSL).toContain('skNose');
+    expect(SKIN_GLSL).toContain('0.09 * skRidge * skFineF');
+    expect(SKIN_LIGHT_PARS).toContain('0.22 * gSkinShine * lobeS');
+  });
+});

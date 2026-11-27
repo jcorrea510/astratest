@@ -26,7 +26,7 @@ describe('wheel and parts geometry', () => {
       expect(b.max[1] - b.min[1]).toBeGreaterThan(s.R * 1.98); expect(b.max[1] - b.min[1]).toBeLessThan(s.R * 2.02);
       expect(b.max[2] - b.min[2]).toBeGreaterThan(s.R * 1.98);
       expect(b.max[0] - b.min[0]).toBeGreaterThan(s.tw * 0.98); expect(b.max[0] - b.min[0]).toBeLessThan(s.tw + 0.06); // tyre width, rim lip slightly proud
-      expect(w.tris).toBeLessThan(5600);
+      expect(w.tris).toBeLessThan(2400); // R14 budget: ~50% of the R13 wheel (3.0-5.0k)
       expect(w.d.every(Number.isFinite)).toBe(true);
     });
     it(`${kind}: brake caliper sits inside the tyre, only behind open alloy spokes`, () => {

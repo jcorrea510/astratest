@@ -14,3 +14,31 @@ export function animEvery(dist: number, inView: boolean, ragdoll: boolean, still
   const e = dist > 90 ? 0.1 : dist > 65 ? 0.05 : dist > ANIM_FULL_RATE_M ? 0.025 : 0;
   return still && !ragdoll && dist > ANIM_FULL_RATE_M ? Math.max(e, 0.05) : e; // someone standing still (a ring of officers around the suspect): the idle loop only breathes, 20 Hz is enough
 }
+
+/**
+ * Round 14 perf: body + extras level of detail by camera distance, with hysteresis (pure, unit tested).
+ * Body levels: 0 full (< 8 m), 1 ~3000 tris, 2 ~1200, 3 ~600 (the crowd body). Extras (hair shells, scanned hair/beard, hats, garments):
+ * 'full' near, 'cheap' (two-layer solid hair, no strands) mid, 'none' far where the shader-painted body carries the look.
+ */
+export const BODY_LOD_TRIS = [Infinity, 3000, 1200, 600] as const;
+export const BODY_LOD_EDGES: readonly number[] = [8, 22, 50]; // metres: 0|1, 1|2, 2|3
+export const EXTRAS_FULL_M = 12, EXTRAS_NONE_M = 32;
+export const LOD_HYST = 0.15; // a level only changes once the person is 15% past the edge
+
+export function bodyLodFor(dist: number, prev: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
+  let l = prev;
+  while (l < 3 && dist > (BODY_LOD_EDGES[l] ?? 1e9) * (1 + LOD_HYST)) l++;
+  while (l > 0 && dist < (BODY_LOD_EDGES[l - 1] ?? 0) * (1 - LOD_HYST)) l--;
+  return l as 0 | 1 | 2 | 3;
+}
+
+/** 0 = full extras, 1 = cheap far hair + simple garments, 2 = none. Hidden (off screen) people draw nothing. */
+export function extrasLodFor(dist: number, inView: boolean, prev: 0 | 1 | 2): 0 | 1 | 2 {
+  if (!inView) return 2;
+  let l = prev === 2 && dist < EXTRAS_NONE_M ? 1 : prev;
+  if (l === 0 && dist > EXTRAS_FULL_M * (1 + LOD_HYST)) l = 1;
+  else if (l === 1 && dist < EXTRAS_FULL_M * (1 - LOD_HYST)) l = 0;
+  if (l < 2 && dist > EXTRAS_NONE_M * (1 + LOD_HYST)) l = 2;
+  if (l === 2 && dist < EXTRAS_NONE_M * (1 - LOD_HYST)) l = 1;
+  return l as 0 | 1 | 2;
+}

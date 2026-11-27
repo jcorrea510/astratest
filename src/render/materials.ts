@@ -269,23 +269,30 @@ export function sandTexture(): THREE.Texture { return sandSurface().map; }
  */
 export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18, scale = 0.012, key = 'macro', grain = 0) {
   const prev = m.onBeforeCompile;
+  const road = key.startsWith('asphalt'); // Round 14: oil / tyre patches on roads only
   m.onBeforeCompile = (sh, r) => {
     prev?.call(m, sh, r);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    // Round 14 (fill rate): sin-free hash, micro detail only inside its own view distance (branches skip the lookups)
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec3 vMW;
-      float mh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      varying vec3 vMW; float mOil = 0.0;
+      float mh(vec2 p){ p = mod(p, 289.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
       float mn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mh(i), mh(i + vec2(1, 0)), f.x), mix(mh(i + vec2(0, 1)), mh(i + vec2(1, 1)), f.x), f.y); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
-      { float mv = mn(vMW.xz * ${scale.toFixed(4)}) * 0.6 + mn(vMW.xz * ${(scale * 4.1).toFixed(4)}) * 0.4;
+      { float mvd = length(vViewPosition);
+        float mv = mn(vMW.xz * ${scale.toFixed(4)}) * 0.6 + mn(vMW.xz * ${(scale * 4.1).toFixed(4)}) * 0.4;
         float mt = mn(vMW.xz * ${(scale * 0.23).toFixed(4)} + vec2(17.0, 5.0)) - 0.5;
         diffuseColor.rgb *= 1.0 + (mv - 0.5) * ${(strength * 2).toFixed(3)};
         diffuseColor.rgb *= vec3(1.0 + mt * 0.07, 1.0, 1.0 - mt * 0.07);${grain > 0 ? `
-        float gd = mn(vMW.xz * 24.0) * 0.55 + mn(vMW.xz * 63.0) * 0.45;
-        float gf = 1.0 - smoothstep(18.0, 70.0, length(vViewPosition));
-        diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf;` : ''} }`);
+        if (mvd < 70.0) { float gd = mn(vMW.xz * 24.0) * 0.55 + mn(vMW.xz * 63.0) * 0.45;
+          float gf = 1.0 - smoothstep(18.0, 70.0, mvd);
+          diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf; }` : ''}${road ? `
+        if (mvd < 110.0) { float ov = mn(vMW.xz * vec2(0.9, 0.32) + vec2(3.0, 9.0)) * 0.7 + mn(vMW.xz * 2.3) * 0.3;
+          mOil = smoothstep(0.64, 0.8, ov) * (1.0 - smoothstep(30.0, 110.0, mvd));
+          diffuseColor.rgb *= 1.0 - 0.3 * mOil; }` : ''} }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, 0.38, mOil * 0.7);' : ''}`);
   };
-  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '');
+  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r14';
   return m;
 }
 

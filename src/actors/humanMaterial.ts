@@ -116,9 +116,11 @@ float front = smoothstep(0.1, 0.5, bn.z);
 float grain = vnoise(vBind * 420.0);
 float topId = uTop.w;
 int part = 0;
+float nEdge = 9.0; // signed distance (m) to the skin/cloth boundary at the neckline, for an anti-aliased contact seam
 if (ri == 1) {
   float nd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2));
   float vdeep = (topId > 0.5 && topId < 1.5) || (topId > 7.5 && topId < 8.5) || topId > 9.5 ? smoothstep(0.3, 0.9, bn.z) * 0.06 : 0.0;
+  nEdge = min((vCloth - (uTop.z - vdeep)) * 0.6, uNeck.z + vdeep * 0.5 - nd);
   if (vCloth > uTop.z - vdeep && nd < uNeck.z + vdeep * 0.5) part = 0;
   else if (vCloth >= uTop.y) part = 1;
   else if (vCloth < uBottom.w) part = (vCloth > uBottom.w - 0.035 && uBottom.y < 2.5) ? 8 : 3;
@@ -137,6 +139,9 @@ else if (part == 6) { col = uC[6] * (0.38 + 2.4 * lum); rough = 0.5; flatN = ri 
 else if (part == 7) { col = uC[7] * (0.9 + 0.15 * vnoise(vBind * 300.0)); rough = 0.85; }
 else if (part == 8) { col = uC[8]; rough = 0.45; }
 else if (part == 9) {${EYES_GLSL}}
+// the skin/cloth switch is a hard per-pixel cut: a soft ~2 px contact shadow along it hides the stair-stepping on low-poly collars and hoods
+float nEw = max(fwidth(nEdge), 0.0001);
+col *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 2.5 * nEw, abs(nEdge))) * step(abs(nEdge), 0.02);
 col = mix(col, vec3(1.0, 0.8, 0.75), uFlash);
 diffuseColor.rgb *= col;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = rough;')
@@ -164,6 +169,30 @@ const fabric = (out: THREE.Color, c: string) => {
   return out;
 };
 
+/**
+ * Torso param (0 crotch .. 1 neck) of a top's hem. Round 14 (owner: "ragged hoodie hem"): long tops (hoodie, jacket, suit)
+ * used to end below the highest leg-region vertices, where the torso/leg border zigzags, so the hem came out as teeth;
+ * every hem except a dress now stays just above that border.
+ */
+export function topHem(top: FullLook['topStyle'], waist: number, legTopT: number): number {
+  const hem = top === 'jacket' ? waist - 0.17 : top === 'suit' ? waist - 0.24 : top === 'hoodie' ? waist - 0.16 : top === 'dress' ? -0.2 : ['shirt', 'uniform'].includes(top) ? waist - 0.02 : waist - 0.1;
+  return top === 'dress' ? hem : Math.max(hem, legTopT + 0.012);
+}
+
+/**
+ * Neckline radius (bind metres, z stretched 1.2) inside which skin above the neckline param stays bare. Round 14 (owner:
+ * "hoodie neckline jagged, skin poking through"): the body's neck surface itself sits at about 0.07 (front) to 0.088
+ * (back) in this metric, so a 0.07 hoodie/tee radius flipped pixel by pixel between skin and cloth all round the neck.
+ * Collarless tops now clear the neck (NECK_SURFACE_MAX + margin); collared tops keep a tight cut hidden by the collar band.
+ */
+export const NECK_SURFACE_MAX = 0.088;
+export function neckRadius(top: FullLook['topStyle']): number {
+  if (top === 'tank') return 0.1;
+  if (top === 'dress' || top === 'blouse') return 0.095;
+  if (['shirt', 'polo', 'uniform', 'jacket', 'suit'].includes(top)) return 0.07;
+  return NECK_SURFACE_MAX + 0.007; // tee, longsleeve, hoodie
+}
+
 /** Writes a look into a person material's uniforms. */
 export function applyLookUniforms(m: THREE.MeshStandardMaterial, base: BodyBase, l: FullLook) {
   const u = m.userData.uniforms as PersonUniforms;
@@ -175,10 +204,10 @@ export function applyLookUniforms(m: THREE.MeshStandardMaterial, base: BodyBase,
   const top = l.topStyle;
   const sleeve = l.sleeves === 'tank' || top === 'tank' ? -1 : l.sleeves === 'short' && !['hoodie', 'jacket', 'suit', 'longsleeve'].includes(top) ? (top === 'polo' || top === 'uniform' ? 0.33 : 0.28) : 0.985;
   const waist = base.waistT;
-  const hem = top === 'jacket' ? waist - 0.17 : top === 'suit' ? waist - 0.24 : top === 'hoodie' ? waist - 0.16 : top === 'dress' ? -0.2 : ['shirt', 'uniform'].includes(top) ? waist - 0.02 : waist - 0.1;
+  const hem = topHem(top, waist, base.legTopT ?? 0);
   const neckline = top === 'tank' ? 0.9 : top === 'dress' || top === 'blouse' ? 0.93 : top === 'suit' || top === 'jacket' ? 1.03 : ['shirt', 'polo', 'uniform', 'hoodie'].includes(top) ? 1.0 : 0.96;
   u.uTop.value.set(sleeve, hem, neckline, TOP_IDS[top]);
-  u.uNeck.value.z = top === 'tank' ? 0.1 : top === 'dress' || top === 'blouse' ? 0.095 : ['shirt', 'polo', 'uniform', 'jacket', 'suit', 'hoodie'].includes(top) ? 0.07 : 0.082;
+  u.uNeck.value.z = neckRadius(top);
   const polish = nailPolish(l);
   u.uNeck.value.w = polish ? 1 : 0;
   if (polish) C[10].copy(lin(polish));

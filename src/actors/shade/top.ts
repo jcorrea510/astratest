@@ -348,7 +348,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
     float em = 1.0 - smoothstep(0.0, 0.1, abs(ec));
     float ecr = pow(0.5 + 0.5 * sin(ec * 310.0 + 3.0 * vnoise(vBind * 22.0)), 2.0);
     float eamp = 0.55 + 0.45 * sin(vBind.x * 60.0 + vBind.z * 50.0 + vBind.y * 40.0);
-    col *= 1.0 - 0.15 * ecr * em * eamp * stf;
+    col *= 1.0 - 0.2 * ecr * em * eamp * stf;
     hgt += 0.0013 * ecr * em * eamp * stf;
     float ag = 1.0 - smoothstep(0.04, 0.16, vCloth);
     float af = pow(0.5 + 0.5 * sin(vBind.x * 70.0 + vBind.z * 70.0 + vCloth * 200.0), 2.0);
@@ -375,5 +375,7 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
   hgt = hgt * (1.0 - 0.75 * pInk) + 0.0002 * pInk;
   col *= 0.97 + 0.06 * grain;
   rough = clamp(rough, 0.25, 1.0);
+  // fabric sheen: cotton jersey matte, shirting and fleece fuzz a little, shell/suit/dress cloth most
+  gSheen = (kJersey ? 0.03 : kFleece ? 0.2 : kPolo ? 0.08 : kJacket ? 0.22 : kSuit ? 0.3 : (kShirt || kBlouse || kUni) ? 0.14 : 0.26) * (1.0 - pInk);
   bumpH = hgt;
 `;

@@ -67,16 +67,21 @@ const AO_FRAG = /* glsl */`
     gl_FragColor = vec4(ao, ao, ao, 1.0);
   }`;
 
-const BLUR_FRAG = /* glsl */`
+export const AO_BLUR_FRAG = /* glsl */`
   #include <packing>
   uniform sampler2D tAO, tDepth; uniform vec2 uTexel; uniform float uNear, uFar; varying vec2 vUv;
   float lin(vec2 uv){ return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
+  // 9-tap bilateral (centre + 8 neighbours at 1.5 half-res texels; bilinear fetches widen it to ~5 texels). Round 14
+  // tried 5 taps: the interleaved-noise pattern survived as dark speckle round people's feet, so the 9 taps are back.
   void main(){
     float zc = lin(vUv);
-    float sum = 0.0, wsum = 0.0;
-    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-      vec2 uv = vUv + vec2(float(x), float(y)) * uTexel * 1.5;
-      float w = 1.0 / (1.0 + abs(lin(uv) - zc) * 8.0 / max(zc, 1.0) * 10.0);
+    float sum = texture2D(tAO, vUv).r, wsum = 1.0;
+    float k = 80.0 / max(zc, 1.0);
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.7853982;
+      vec2 o = vec2(cos(a), sin(a)) * uTexel * 1.5;
+      vec2 uv = vUv + o;
+      float w = 1.0 / (1.0 + abs(lin(uv) - zc) * k);
       sum += texture2D(tAO, uv).r * w; wsum += w;
     }
     float ao = sum / wsum;
@@ -109,12 +114,12 @@ export class AOPass extends Pass {
     });
     this.blurMat = new THREE.ShaderMaterial({
       name: 'SSAOBlur', uniforms: { tAO: { value: this.rt.texture }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2() }, uNear: { value: 0.1 }, uFar: { value: 1000 } },
-      vertexShader: VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false,
+      vertexShader: VERT, fragmentShader: AO_BLUR_FRAG, depthTest: false, depthWrite: false,
     });
   }
   get texture() { return this.blurRT.texture; }
   setSize(w: number, h: number) {
-    const hw = Math.max(1, Math.round(w / 2)), hh = Math.max(1, Math.round(h / 2));
+    const [hw, hh] = aoTargetSize(w, h);
     this.rt.setSize(hw, hh); this.blurRT.setSize(hw, hh);
     // depth taps step over full-resolution texels for the normal; the blur steps over half-resolution texels
     (this.aoMat.uniforms.uTexel.value as THREE.Vector2).set(1 / Math.max(1, w), 1 / Math.max(1, h));
@@ -164,3 +169,46 @@ export const FXAA_GLSL = /* glsl */`
     float lb = hdrLuma(b);
     return (lb < lMin || lb > lMax) ? a : b;
   }`;
+
+/** Spatial noise used by the AO pass (interleaved gradient noise, Jimenez 2014); pure mirror of the shader line for tests. */
+export function ign(x: number, y: number): number {
+  const f = (v: number) => v - Math.floor(v);
+  return f(52.9829189 * f(x * 0.06711056 + y * 0.00583715));
+}
+
+/** Half-resolution target size used by AOPass (never below 1). */
+export function aoTargetSize(w: number, h: number): [number, number] {
+  return [Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2))];
+}
+
+/**
+ * Contrast-adaptive sharpening (AMD FidelityFX CAS, compact form) for the grade pass: 4 extra taps. `sharp` 0..1 (0.25-0.5
+ * is plenty). Expects `uRes` (1/size) in scope; `m` is the centre pixel in the same space as `tex`. Taps are HDR-safe (luma-
+ * compressed limiter), so it can run on the linear buffer before tone mapping. Usage: `col = casSharpen(tDiffuse, uv, col, uSharp);`
+ */
+export const CAS_GLSL = /* glsl */`
+  vec3 casSharpen(sampler2D tex, vec2 uv, vec3 m, float sharp){
+    vec3 n = texture2D(tex, uv + vec2(0.0, -uRes.y)).rgb;
+    vec3 s = texture2D(tex, uv + vec2(0.0,  uRes.y)).rgb;
+    vec3 w = texture2D(tex, uv + vec2(-uRes.x, 0.0)).rgb;
+    vec3 e = texture2D(tex, uv + vec2( uRes.x, 0.0)).rgb;
+    vec3 mn = min(min(min(n, s), min(w, e)), m), mx = max(max(max(n, s), max(w, e)), m);
+    mx = mx / (1.0 + mx); mn = mn / (1.0 + mn);
+    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+    float peak = -1.0 / mix(8.0, 5.0, clamp(sharp, 0.0, 1.0));
+    vec3 wgt = amp * peak;
+    return max((m + (n + s + w + e) * wgt) / (1.0 + 4.0 * wgt), vec3(0.0));
+  }`;
+
+/**
+ * FXAA with sub-pixel blending: FXAA_GLSL's edge pass plus a contrast-scaled low-pass of the 4 diagonal neighbours (removes
+ * single-pixel shimmer on wires, rails and mullions). Drop-in: `fxaaPlus(uv, rgbM)`. Include it INSTEAD of FXAA_GLSL (it
+ * carries its own hdrLuma).
+ */
+export const FXAA_PLUS_GLSL = FXAA_GLSL.replace('vec3 fxaa(', 'vec3 fxaaPlus(').replace(
+  'if (lMax - lMin < max(0.0312, lMax * 0.125)) return rgbM;',
+  `if (lMax - lMin < max(0.0312, lMax * 0.125)) return rgbM;
+    float sub = clamp(abs((lNW + lNE + lSW + lSE) * 0.25 - lM) / max(lMax - lMin, 1e-4), 0.0, 1.0);
+    sub = smoothstep(0.0, 1.0, sub); sub = sub * sub * 0.5;
+    rgbM = mix(rgbM, (rgbNW + rgbNE + rgbSW + rgbSE) * 0.25, sub);`,
+);

@@ -24,6 +24,8 @@ export class VehicleManager {
   onCrash: ((e: CrashEvent) => void) | null = null;
   /** extra crash subscribers (traffic reacts to accidents) */
   crashListeners: ((e: CrashEvent) => void)[] = [];
+  /** camera vertical FOV (deg) for screen-size LOD; a game.ts hook sets it each frame (62 = default) */
+  lodFov = 62;
   onExplode: ((v: Vehicle, at: THREE.Vector3) => void) | null = null;
   private engines = new Map<number, EngineVoice>();
   private skidVoice: LoopVoice | null = null;
@@ -215,7 +217,7 @@ export class VehicleManager {
       const dist = v.position.distanceTo(listener);
       v.group.visible = dist < 260 || v === playerVehicle;
       v.bodyMesh.castShadow = dist < 44;
-      v.updateLod(v === playerVehicle ? 0 : dist);
+      v.updateLod(v === playerVehicle ? 0 : dist, this.lodFov);
       // Skid marks + tyre smoke
       const c = v.phys.ctrl;
       for (let i = 0; i < v.tpl.layout.wheels.length; i++) {

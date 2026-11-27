@@ -34,6 +34,7 @@ import {
 } from '../render/materials';
 import { loadSettings } from '../core/settings';
 import { planStreetscape, emitStreetscape, densityFor } from './streetscape';
+import { FINE_REACH } from '../game/farLod';
 import { Chunked, FacadeBuilder, TrimBuilder, SOLID, T_METAL, T_STONE, T_PAINT, T_NIGHTGLOW, T_GLOW } from './builders';
 import {
   type BuildCtx, type Helipad, type SignSpec, type BillboardSpec, streetBuilding, tower, house, warehouse,
@@ -41,7 +42,7 @@ import {
 } from './buildings';
 import {
   LAMP, streetLightGeo, signalGeo, SIGNAL_LENS_R, SIGNAL_LENS_DY, SIGNAL_LENS_Z, hydrantGeo, benchGeo, binGeo, busStopGeo, phoneGeo, newsBoxesGeo, meterGeo, mailboxGeo, dumpsterGeo, bollardGeo,
-  powerPoleGeo, WIRE, billboardFrameGeo, treeGeos, palmGeos, shrubGeos, leafMaterial,
+  powerPoleGeo, WIRE, billboardFrameGeo, castsSunShadow, treeGeos, treeFarGeos, TreeLodField, palmGeos, shrubGeos, leafMaterial,
 } from './props';
 
 export interface SignalHead { inter: number; axis: SigAxis; lamps: [number, number, number] }
@@ -53,6 +54,8 @@ export interface CityVisuals {
   /** pedestrian walk / don't-walk heads at the signalized crosswalks */
   pedSignals: PedSignals;
   chunkMeshes: THREE.Object3D[];
+  /** street trees: per-cell near/far LOD + shadow range, updated from Game.cullChunks */
+  treeLod?: { update(camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number): void };
   ferris: THREE.Object3D | null;
   water: THREE.Mesh;
   helipads: Helipad[];
@@ -169,7 +172,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const walks = new GeoBuilder();
   const inner = new GeoBuilder();
   const grassInner = new GeoBuilder();
-  const trim = new Chunked(125, () => new TrimBuilder());
+  const trim = new Chunked(80, () => new TrimBuilder());
   // Broadway cuts three blocks into triangles: raised pavement triangles either side of a street-level channel
   const triPrism = (gb: GeoBuilder, t0: { x: number; z: number }[], y0: number, y1: number, top: THREE.Color, side: THREE.Color) => {
     let t = t0;
@@ -331,12 +334,13 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
 
   // ---------- Buildings ----------
   worldGlass.reset();
-  const fac = new Chunked(250, () => new FacadeBuilder());
+  const fac = new Chunked(150, () => new FacadeBuilder());
   const signs: SignSpec[] = [], billboards: BillboardSpec[] = [], helipads: Helipad[] = [];
   const merged = mergeLots(city);
   const occ = merged.map(m => { const swap = Math.abs(Math.sin(m.rot)) > 0.7; return { x: m.x, z: m.z, hw: (swap ? m.d : m.w) / 2, hd: (swap ? m.w : m.d) / 2 }; });
   const occupied = (x: number, z: number) => occ.some(o => Math.abs(x - o.x) < o.hw && Math.abs(z - o.z) < o.hd);
-  const ctx: BuildCtx = { fac, trim, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
+  const fine = new Chunked(80, () => new TrimBuilder()); // Round 14: near-only building detail (see FINE_REACH)
+  const ctx: BuildCtx = { fac, trim, fine, physics, signs, billboards, helipads, exposed: (x, z) => !occupied(x, z) };
   const towerLots = merged.filter(l => l.kind === 'tower' && l.blockId >= 0 && city.blocks[l.blockId].district === 'heights').sort((a, b) => b.height - a.height);
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
   const pf = precinctFootprint();
@@ -478,23 +482,23 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     breakables.push({ kind, x, y: CURB_HEIGHT, z, yaw, handle, geo: geoOf[kind], mat: tmat, lampIdx, makeCollider: make, collider: make() });
   };
   props.register('streetlight', geoOf.lamp, tmat);
-  props.register('hydrant', geoOf.hydrant, tmat);
-  props.register('bench', benchGeo(), tmat);
-  props.register('bin', geoOf.bin, tmat);
+  props.register('hydrant', geoOf.hydrant, tmat, castsSunShadow('hydrant'));
+  props.register('bench', benchGeo(), tmat, castsSunShadow('bench'));
+  props.register('bin', geoOf.bin, tmat, castsSunShadow('bin'));
   props.register('busstop', busStopGeo(), tmat);
-  props.register('phone', geoOf.phone, tmat);
-  for (let k = 0; k < 3; k++) props.register(`news${k}`, newsBoxesGeo(k * 7 + 1), tmat);
-  props.register('meter', geoOf.meter, tmat);
-  props.register('mailbox', geoOf.mailbox, tmat);
+  props.register('phone', geoOf.phone, tmat, castsSunShadow('phone'));
+  for (let k = 0; k < 3; k++) props.register(`news${k}`, newsBoxesGeo(k * 7 + 1), tmat, false);
+  props.register('meter', geoOf.meter, tmat, castsSunShadow('meter'));
+  props.register('mailbox', geoOf.mailbox, tmat, castsSunShadow('mailbox'));
   for (let k = 0; k < 2; k++) props.register(`dumpster${k}`, dumpsterGeo(k), tmat);
-  props.register('bollard', bollardGeo(), tmat);
+  props.register('bollard', bollardGeo(), tmat, castsSunShadow('bollard'));
   props.register('pole', powerPoleGeo(false), tmat); props.register('poleT', powerPoleGeo(true), tmat);
   const leafMat = leafMaterial(leafTexture('broad'));
   const palmMat = leafMaterial(leafTexture('palm'));
-  for (let t = 0; t < 4; t++) { const g = treeGeos(100 + t); props.register(`tree${t}`, g.trunk, tmat); props.register(`leaf${t}`, g.leaves, leafMat); }
+  const trees = new TreeLodField([0, 1, 2, 3].map(t => treeGeos(100 + t)), treeFarGeos(150), tmat, leafMat); // R14 W2b: near / far tree LOD per 40 m cell
   for (let t = 0; t < 3; t++) { const g = palmGeos(200 + t); props.register(`palm${t}`, g.trunk, tmat); props.register(`frond${t}`, g.leaves, palmMat); }
-  for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat);
-  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); props.add(`tree${k}`, x, y, z, yaw, s); props.add(`leaf${k}`, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
+  for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat, false);
+  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); trees.add(k, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
   const addPalm = (x: number, y: number, z: number, yaw: number, rr: Rng, collide = true) => { const k = rr.int(0, 2); props.add(`palm${k}`, x, y, z, yaw); props.add(`frond${k}`, x, y, z, yaw); if (collide) physics.addStaticCylinder(x, y + 2, z, 2, 0.25); };
 
   // Kerbside furniture along each block edge: street lights, trees, hydrants, meters, benches, bins, bus stops...
@@ -672,7 +676,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       if (nearPath(x, z, 10) || Math.hypot(x - (-40), z - (-868)) < 45) continue;
       const y = terrainH(x, z); if (y < 1) continue;
       const k2 = hr.int(0, 3), sc = hr.range(1.0, 1.6), yaw = hr.range(0, 6.28);
-      props.add(`tree${k2}`, x, y - 0.2, z, yaw, sc); props.add(`leaf${k2}`, x, y - 0.2, z, yaw, sc); placed++;
+      trees.add(k2, x, y - 0.2, z, yaw, sc); placed++;
     } }
   // beach palms (kept clear of the landing strip in front of each beach ramp)
   { const pr = new Rng(91); for (let x = tipX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, false); } }
@@ -695,7 +699,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     for (let x = edgeX; x < maxX + 2; x += 6) if (!nearPath(x, edgeZ, 4) && !nearPath(x + 6, edgeZ, 4)) trim.at(x, edgeZ).box(x + 3, 0.7, edgeZ + 0.1, 6, 0.3, 0.08, 0, railC, T_METAL);
     void tb;
     const tr = new Rng(77);
-    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; props.add(`tree${k}`, x, 0, z, 0, s); props.add(`leaf${k}`, x, 0, z, 0, s); }
+    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; trees.add(k, x, 0, z, 0, s); }
   }
 
   // ---------- Elevated rail along Tidewell Ave (x=250) and subway entrances ----------
@@ -784,12 +788,14 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const bmat = buildingMaterial();
   chunkMeshes.push(...fac.meshes(bmat, root, { name: 'facade' }).map(m => { m.userData.farScale = 1.9; return m; }));
   chunkMeshes.push(...trim.meshes(tmat, root, { name: 'trim', small: true }));
+  chunkMeshes.push(...fine.meshes(tmat, root, { name: 'trimfine', small: true }).map(m => { m.userData.reachCap = FINE_REACH; return m; }));
   if (bg.length) { const bm = new THREE.Mesh(mergeGeoms(bg), bbMat); root.add(bm); }
   chunkMeshes.push(...props.build(root).map(m => { m.userData.small = true; return m; }));
+  trees.build(root);
   void T_PAINT; void T_NIGHTGLOW;
   root.add(worldGlass.finishOverlay());
   gpuOnlyAfterUpload(root); // Round 11 (memory): the city's vertex arrays leave the JS heap once on the GPU
-  return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, ferris, water, helipads, breakables };
+  return { root, lampHeads, signalHeads, signalLamps, pedSignals, chunkMeshes, treeLod: trees, ferris, water, helipads, breakables };
 }
 
 function mergeGeoms(gs: THREE.BufferGeometry[]): THREE.BufferGeometry {

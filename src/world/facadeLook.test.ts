@@ -36,3 +36,14 @@ it('lobby canopies use a mid-grey metal, not near-black', () => {
   const src = readFileSync(new URL('./buildings.ts', import.meta.url), 'utf8');
   expect(src).not.toContain("0.3, 2.8, ang, C('#2e3134')");
 });
+
+// Round 14 (fill rate): cost knobs of the facade shader
+it('interior tracing is skipped on wall pixels and far away; fbm is two octaves; weathering fades with distance', () => {
+  const f = FACADE_FRAG_COLOR + FACADE_FRAG_PARS;
+  expect(f).toContain('if (onGlass) inter = roomColor');
+  expect(f).toContain('if (g > 0.002 && far < 0.99) inter = roomColor');
+  expect(f).toContain('fWx');
+  expect(FACADE_FRAG_PARS).not.toContain('fN(p * 4.13 + 7.7)');
+  expect((f.match(/roomColor\(vec3/g) ?? []).length).toBe(4); // definition + one guarded call per glazing kind
+  expect(f).toContain('paneV'); expect(f).toContain('dirtW'); expect(f).toContain('rimW');
+});

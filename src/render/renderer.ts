@@ -9,7 +9,8 @@ import { QUALITY, type QualityName, type QualityPreset } from '../core/settings'
 import { safeMsaa } from '../core/platform';
 import { Sky, sampleSky, type SkyState } from './sky';
 import { LightPool } from './lightPool';
-import { AOPass, FXAA_GLSL, WHITE_TEX } from './post';
+import { AOPass, FXAA_PLUS_GLSL, CAS_GLSL, WHITE_TEX } from './post';
+import { adaptStep, newDyn, pixelRatioFor, shadowRedrawDue, GpuTimer, type DynState } from './perfPolicy';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
@@ -44,14 +45,15 @@ const GradeShader = {
  * Round 11 perf (GPU): tone mapping (ACES), sRGB encoding and the colour grade in ONE full-screen pass. They were two passes
  * (OutputPass, then the grade ShaderPass): a whole extra read + write of the HDR frame every frame.
  */
-const OUTPUT_GRADE_FRAG = `
+export const OUTPUT_GRADE_FRAG = `
   precision highp float;
-  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
+  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed, uSharp; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
-  ${FXAA_GLSL}
+  ${FXAA_PLUS_GLSL}
+  ${CAS_GLSL}
   ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
-      if (uFxaa > 0.5) c.rgb = fxaa(vUv, c.rgb);
+      if (uFxaa > 0.5) c.rgb = fxaaPlus(vUv, c.rgb);
       // Round 12: speed blur at high speed, radial from just above the centre (5 taps, skipped when still)
       if (uSpeed > 0.01) {
         vec2 rd = (vUv - vec2(0.5, 0.55)) * uSpeed * 0.035 * smoothstep(0.12, 0.6, length(vUv - vec2(0.5, 0.55)));
@@ -61,6 +63,7 @@ const OUTPUT_GRADE_FRAG = `
       }
       // Round 12: ambient occlusion (half-res, blurred) darkens creases and contact areas before tone mapping
       c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
+      if (uSharp > 0.0) c.rgb = casSharpen(tDiffuse, vUv, c.rgb, uSharp);
       if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
       c.rgb = TONE_MAP(c.rgb);
       c = sRGBTransferOETF(c);`)}`;
@@ -71,7 +74,7 @@ export class OutputGradePass extends Pass {
   private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
   constructor() {
     super();
-    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uSharp: { value: 0.3 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
     this.uniforms.tAO = { value: WHITE_TEX };
     this.material = new THREE.RawShaderMaterial({
       name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', TONE_MAP: TONE_MAP_FN },
@@ -99,8 +102,6 @@ export const LOOK = {
 
 /** Round 13: daytime fog starts earlier (aerial perspective: distance lightens and desaturates towards the haze colour). */
 export const DAY_FOG_NEAR = 95;
-/** Adaptive resolution floor (fraction of the preset's pixel ratio)... */
-const DYN_MIN = 0.7;
 const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 /**
  * Stable shadow frame: the sun direction moves in small steps (a continuously turning light re-rasterises every shadow
@@ -175,6 +176,8 @@ export class Renderer {
   constructor(public canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.autoUpdate = false; // redrawn on our own cadence (render())
+    try { this.gpuTimer = new GpuTimer(this.renderer.getContext()); if (!this.gpuTimer.available) this.gpuTimer = null; } catch { this.gpuTimer = null; }
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.type = THREE.PCFShadowMap; // Round 12: r182 dropped PCFSoft (it fell back to hard 1-texel PCF: stair-stepped, dithered edges)
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.15, 1600);
@@ -220,20 +223,21 @@ export class Renderer {
   }
   /** Pixel ratio = preset cap x the adaptive resolution scale (dynScale drops under load and recovers when there is headroom). */
   private applyPixelRatio() { this.renderer.setPixelRatio(this.effectivePixelRatio()); }
-  /** Preset cap x adaptive scale; the adaptive drop stops at native resolution (1 CSS px) while frames are fine. */
+  /** Preset cap (limited by the DPR and a pixel budget) x user scale x adaptive scale. */
   effectivePixelRatio() {
-    const cap = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio) * runtime.resolutionScale, r = cap * this.dyn.scale;
-    return this.dyn.floor ? Math.max(r, Math.min(1, cap)) : r;
+    const { w, h } = viewportSize();
+    return pixelRatioFor(w, h, window.devicePixelRatio || 1, this.quality.pixelRatio, this.quality.pixelBudget, runtime.resolutionScale, this.dyn.scale);
   }
   /** Adaptive resolution: 1 = full; falls towards DYN_MIN when frames run long so high graphics stay playable. Off under automation. */
   get dynScale() { return this.dyn.scale; }
   set dynScale(v: number) { this.dyn.scale = v; }
   adaptive = typeof navigator === 'undefined' || !navigator.webdriver;
+  private gpuTimer: GpuTimer | null = null;
   private lastRender = 0; private dyn: DynState = newDyn();
   get frameEma() { return this.dyn.ema; }
   private adapt(now: number) {
     const dt = now - this.lastRender; this.lastRender = now;
-    if (!adaptStep(this.dyn, dt, now, this.adaptive)) return;
+    if (!adaptStep(this.dyn, dt, now, this.adaptive, this.gpuTimer?.ms ?? 0)) return;
     // Round 8: a resize reallocates every full-screen target (a visible stall); adaptStep allows one at most every 6 s, with
     // hysteresis, so it can no longer chase its own hitch (it used to resize on every crossing of 33 ms: a freeze ~every second)
     this.applyPixelRatio(); this.resize();
@@ -264,6 +268,7 @@ export class Renderer {
     this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix();
     this.composer.setSize(w, h);
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    if (this.grade) this.grade.uniforms.uSharp.value = this.renderer.getPixelRatio() < (window.devicePixelRatio || 1) - 0.05 ? 0.5 : 0.3; // upscaled (e.g. iPad at 1.5 of 2): sharpen more
   }
   /** Updates lighting for a given hour and keeps the shadow frustum centred on the focus point. */
   updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {
@@ -295,6 +300,8 @@ export class Renderer {
     const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;
     const fx = focus.x + (fwd.x / fl) * ahead, fz = focus.z + (fwd.z / fl) * ahead;
     shadowFrame(s.lightDir, fx, fz, texel, this.lightDir, this.shadowTarget);
+    const key = `${this.shadowTarget.x.toFixed(2)},${this.shadowTarget.z.toFixed(2)},${this.lightDir.x.toFixed(4)},${this.lightDir.z.toFixed(4)}`;
+    if (key !== this.lastShadowKey) { this.lastShadowKey = key; this.shadowMoved = true; }
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(this.lightDir, 180);
     // Round 11 perf: in daylight the threshold leaves next to nothing to bloom: skip the pass (bright lights need the dark)
@@ -306,7 +313,7 @@ export class Renderer {
   }
   lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
-  private frameNo = 0;
+  private frameNo = 0; private shadowMoved = true; private lastShadowKey = '';
   private lastDrawn = 0; private appliedRes = 1;
   /** Frame-rate cap from Settings (0 = off): true when it is time to draw the next frame. */
   frameDue(now = performance.now()): boolean { return frameDue(now, this.lastDrawn, runtime.fpsCap); }
@@ -318,12 +325,11 @@ export class Renderer {
     if (runtime.fpsCap > 0) this.lastRender = t0; // a capped frame time is not load: the adaptive resolution stays put
     else this.adapt(t0);
     // Round 11 perf: on Medium the sun's shadow map (half a million triangles) is redrawn every other frame
-    this.renderer.shadowMap.autoUpdate = false;
-    if (this.quality.shadowMap > 0 && this.frameNo++ % Math.max(1, this.quality.shadowEvery) === 0) this.renderer.shadowMap.needsUpdate = true;
+    if (this.quality.shadowMap > 0 && shadowRedrawDue(this.frameNo++, this.quality.shadowEvery, this.shadowMoved)) { this.renderer.shadowMap.needsUpdate = true; this.shadowMoved = false; }
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.grade.uniforms.uSpeed.value = speedBlurAmount((this.camera.userData.speedFx as number | undefined) ?? 0);
-    this.composer.render();
+    this.gpuTimer?.begin(); this.composer.render(); this.gpuTimer?.end();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }
 }
@@ -343,28 +349,7 @@ export function skipHiddenMatrices(scene: THREE.Object3D) {
   };
 }
 
-/** Adaptive-resolution state (Round 8): smoothed frame time, scale, native-floor flag, timers. */
-export interface DynState { ema: number; scale: number; floor: boolean; slowT: number; fastT: number; lastResize: number }
-export const newDyn = (): DynState => ({ ema: 16, scale: 1, floor: true, slowT: 0, fastT: 0, lastResize: -1e9 });
-/**
- * One frame of adaptive resolution. Returns true when the pixel ratio must be re-applied (the caller resizes). Single
- * hitches are clipped (50 ms) so they can't swing it; the native floor has hysteresis (off above 38 ms, back on below
- * 26 ms); after a change nothing else may change for 6 s. Pure (tests).
- */
-export function adaptStep(s: DynState, dt: number, now: number, adaptive: boolean): boolean {
-  if (dt <= 0 || dt > 250) return false; // first frame / tab was hidden
-  s.ema += (Math.min(dt, 50) - s.ema) * 0.06;
-  if (!adaptive) return false;
-  if (now - s.lastResize < 6000) { s.slowT = 0; s.fastT = 0; return false; }
-  // Round 11: the native-resolution floor only holds while the game runs near 45+ fps (it held down to 26 fps, so a Mac
-  // stuck at 30 fps on Medium never got the lower resolution that would have made it smooth)
-  const floor = s.floor ? s.ema < 24 : s.ema < 18;
-  if (floor !== s.floor) { s.floor = floor; if (s.scale < 1) { s.lastResize = now; return true; } }
-  if (s.ema > 20) { s.slowT += dt; s.fastT = 0; } else if (s.ema < 13.5) { s.fastT += dt; s.slowT = 0; } else { s.slowT = 0; s.fastT = 0; }
-  if (s.slowT > 2500 && s.scale > DYN_MIN) { s.scale = Math.max(DYN_MIN, +(s.scale - 0.1).toFixed(2)); s.slowT = 0; s.lastResize = now; return true; }
-  if (s.fastT > 8000 && s.scale < 1) { s.scale = Math.min(1, +(s.scale + 0.1).toFixed(2)); s.fastT = 0; s.lastResize = now; return true; }
-  return false;
-}
+export { adaptStep, newDyn, type DynState };
 
 /** Round 8: rebuild the sky reflection map only after 0.75 game hours (or the first time / after a clock jump). Pure (tests). */
 export function envRebuildDue(hour: number, lastHour: number): boolean {

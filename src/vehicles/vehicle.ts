@@ -27,7 +27,19 @@ export const HIP_ABOVE_ROOT = 0.55;
 /** Swing angle of a fully open door (rad). */
 const DOOR_MAX = 1.15;
 // lod 0 (35k tris, interior) inside 15 m, lod 1 (~3k, looks the same from the street) to 65 m, lod 2 (~1.3k, the far-crowd model) beyond
-const LOD_MID = 15, LOD_FAR = 65;
+export const LOD_MID = 13, LOD_FAR = 65;
+const LOD_REF_TAN = Math.tan(THREE.MathUtils.degToRad(31)); // the game camera's 62 deg vertical FOV
+/**
+ * Pure LOD choice from screen size: distance is scaled by the camera FOV (zoom/aim makes a car look closer, a wide FOV
+ * farther) and by vehicle length (a bus keeps detail longer). Hysteresis: a finer LOD returns at 88% of the threshold that
+ * dropped it, so a car on a boundary never flickers. The player's own car is always LOD 0.
+ */
+export function pickLod(dist: number, cur: number, o: { fovDeg?: number; size?: number; midMax?: number; player?: boolean } = {}): number {
+  if (o.player) return 0;
+  const d = dist * Math.tan(THREE.MathUtils.degToRad((o.fovDeg ?? 62) / 2)) / LOD_REF_TAN / Math.min(1.6, Math.max(0.8, o.size ?? 1));
+  const mid = (o.midMax ?? LOD_MID) * (cur >= 1 ? 0.88 : 1), far = LOD_FAR * (cur === 2 ? 0.88 : 1);
+  return d > far ? 2 : d > mid ? 1 : 0;
+}
 
 export interface VehicleTemplate extends CarTemplate { model: string; /** detailed undamaged body (shared) */ body: THREE.BufferGeometry }
 export interface DoorState { side: 'left' | 'right'; row: 0 | 1; open: number; amount: number; vel: number; hanging: boolean; bone: THREE.Bone; /** crash-bent: the door stays slightly ajar (0..1) */ jam?: number }
@@ -115,7 +127,7 @@ export class Vehicle {
   panes: PaneState[] = [];
   /** tank turret yaw / gun pitch (rad), animated towards the targets */
   turretYaw = 0; gunPitch = 0; turretTarget = 0; gunTarget = 0;
-  lod = 0;
+  lod = 0; private lodTick = 0;
   private bones: THREE.Bone[] = [];
   private beam: THREE.Mesh | null = null;
   private ownGeo = false; private ownG: THREE.BufferGeometry | null = null;
@@ -382,11 +394,14 @@ export class Vehicle {
     if (this.glassMesh) this.glassMesh.geometry = this.tpl.lods[l].glass ?? this.tpl.lods[0].glass!;
   }
   /** Dented cars keep their private (dented) body out to 40 m so damage never blinks away close by. */
-  updateLod(dist: number) { this.setLod(dist > LOD_FAR ? 2 : dist > (this.ownGeo ? 40 : LOD_MID) ? 1 : 0); }
+  updateLod(dist: number, fovDeg = 62) { this.setLod(pickLod(dist, this.lod, { fovDeg, size: this.size, midMax: this.ownGeo ? 40 : LOD_MID })); }
   update(dt: number, night: number, time: number, braking: boolean) {
     this.syncTransform();
     const t = this.tpl, c = this.phys.ctrl, spec = this.spec;
-    t.wheelBones.forEach((bi, i) => {
+    // far cars (lod 2, > ~65 m): wheels animate every other frame and idle doors are not stepped (nothing there is visible)
+    const farCar = this.lod === 2 && !this.driver?.isPlayer;
+    const skipWheels = farCar && ((this.lodTick = (this.lodTick + 1) & 1) === 1);
+    if (!skipWheels) t.wheelBones.forEach((bi, i) => {
       const w = this.bones[bi], wd = t.layout.wheels[i];
       if (!wd) return;
       const sl = c.wheelSuspensionLength(i) ?? spec.suspRest;
@@ -415,6 +430,7 @@ export class Vehicle {
       const f = this.phys.forward();
       const lon = THREE.MathUtils.clamp(ax * f.x + az * f.z, -40, 40); lat = THREE.MathUtils.clamp(ax * f.z - az * f.x, -40, 40);
       for (const d of this.doors) {
+        if (farCar && d.amount === 0 && d.vel === 0 && d.open === 0 && !d.hanging && !d.jam && !this.destroyed) continue;
         if (Math.abs(this.speed) > 7 && !d.hanging) d.open = 0;
         const target = Math.max(d.hanging ? Math.max(d.open, 0.15) : d.open, (d.jam ?? 0) * 0.14);
         let acc = (target - d.amount) * 70 - d.vel * 11;

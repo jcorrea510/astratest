@@ -1,27 +1,11 @@
 [
  {
-  "name": "guns-all",
-  "lab": "mode=gun&all=1"
- },
- {
-  "name": "gun-pistol",
-  "lab": "mode=gun&id=pistol"
- },
- {
   "name": "gun-rifle",
   "lab": "mode=gun&id=rifle"
  },
  {
-  "name": "people-body",
-  "lab": "mode=people&n=5&seed=1&view=body"
- },
- {
   "name": "people-face",
   "lab": "mode=people&n=4&seed=3&view=face"
- },
- {
-  "name": "people-face2",
-  "lab": "mode=people&n=4&seed=11&view=face"
  },
  {
   "name": "signal-day",
@@ -40,7 +24,19 @@
   }
  },
  {
-  "name": "people-crowd",
-  "lab": "mode=people&n=8&seed=5&view=crowd"
+  "name": "night-street",
+  "game": {
+   "hour": 22,
+   "frames": 40,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 2, 2.2, I.z + 30], look: [I.x + 14, 1.5, I.z - 10] };"
+  }
+ },
+ {
+  "name": "skyline-day",
+  "game": {
+   "hour": 10,
+   "frames": 30,
+   "eval": "const I = g.city.intersections.filter(i => i.signalized)[3]; return { player: [I.x + 12, 1, I.z + 12], cam: [I.x + 12, 30, I.z + 60], look: [I.x - 120, 10, I.z - 200] };"
+  }
  }
 ]

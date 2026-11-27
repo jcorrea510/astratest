@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { Game } from './game';
 import type { GameUI, MinimapBlip, ShopItem } from '../ui/contracts';
 import { PLACES, POSTCARDS, RAMPS, GARAGE_SLOTS } from './places';
-import { RESPRAY, GARAGE_PAINTS, repairPrice, sellQuote, newSaleLog, recordSale, recentOfKind, type SaleLog } from './garage';
+import { RESPRAY, GARAGE_PAINTS, repairPrice, sellQuote, newSaleLog, recordSale, recentOfKind, SELL_COOLDOWN, type SaleLog } from './garage';
 import { BAYS, bayPark } from './bays';
 import { GarageBays } from './garageBay';
 import type { GarageView } from '../ui/garageMenu';
@@ -258,7 +258,7 @@ export class Activities {
   }
   /** Sale cooldowns and the repeat-sale log for the save (in-game seconds). */
   salesState(): SaleLog { return { cool: [...this.sales.cool], sold: this.sales.sold.map(s => ({ ...s })) }; }
-  loadSales(s: SaleLog | undefined) { this.sales = s ? { cool: BAYS.map((_, i) => s.cool[i] ?? 0), sold: s.sold.map(x => ({ ...x })) } : newSaleLog(BAYS.length); }
+  loadSales(s: SaleLog | undefined) { this.sales = s ? { cool: BAYS.map((_, i) => Math.min(SELL_COOLDOWN, s.cool[i] ?? 0)), sold: s.sold.map(x => ({ ...x })) } : newSaleLog(BAYS.length); }
   /** Net worth and goals, shown in the shop panel (read-only). */
   goalItems(): ShopItem[] {
     const g = this.game, f = (n: number) => `$${n.toLocaleString('en-US')}`;

@@ -59,3 +59,27 @@ describe('Round 13 photographic daylight', () => {
     const s = sampleSky(12); expect((s.fog.r + s.fog.g + s.fog.b) / 3).toBeGreaterThan(0.5);
   });
 });
+
+import { CAS_GLSL, FXAA_GLSL, FXAA_PLUS_GLSL, ign, aoTargetSize } from './post';
+describe('Round 14 R2 post', () => {
+  it('AO target is half size and noise is in 0..1', () => {
+    expect(aoTargetSize(1281, 721)).toEqual([641, 361]);
+    expect(aoTargetSize(1, 1)).toEqual([1, 1]);
+    for (let i = 0; i < 50; i++) { const v = ign(i * 3, i * 7); expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1); }
+  });
+  it('CAS and FXAA+ chunks expose their entry points', () => {
+    expect(CAS_GLSL).toContain('vec3 casSharpen(');
+    expect(FXAA_PLUS_GLSL).toContain('vec3 fxaaPlus(');
+    expect(FXAA_PLUS_GLSL).toContain('float sub =');
+    expect(FXAA_GLSL).toContain('vec3 fxaa(');
+  });
+});
+
+// Round 14 regression: a 5-tap AO blur left the interleaved-noise pattern as dark speckle round people's feet.
+import { AO_BLUR_FRAG } from './post';
+describe('AO blur', () => {
+  it('blurs with the centre plus 8 depth-weighted neighbours', () => {
+    expect(AO_BLUR_FRAG).toContain('i < 8');
+    expect(AO_BLUR_FRAG).toContain('abs(lin(uv) - zc)');
+  });
+});

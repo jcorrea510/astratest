@@ -56,13 +56,13 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
   const out = new Soup();
   // tyre: lathe profile from the inner bead over the rim protector, sidewall belly and rounded shoulder to the tread (mirrored)
   const mid = (Rr + R) / 2, side: [number, number][] = [
-    [Rr - 0.008, -hw + 0.014], [Rr + 0.004, -hw + 0.002], [Rr + 0.017, -hw - 0.004], [Rr + 0.026, -hw - 0.001],
-    [Rr + (mid - Rr) * 0.8, -hw - 0.007], [mid + (R - mid) * 0.35, -hw - 0.009], [R - 0.045, -hw - 0.003],
-    [R - 0.022, -hw + 0.008], [R - 0.008, -hw + 0.026], [R - 0.001, -hw + 0.048]];
+    // 7-point half profile (was 10): bead, protector, belly, shoulder and tread edge are enough for a round silhouette
+    [Rr - 0.008, -hw + 0.014], [Rr + 0.017, -hw - 0.004], [Rr + (mid - Rr) * 0.8, -hw - 0.007], [mid + (R - mid) * 0.35, -hw - 0.009],
+    [R - 0.045, -hw - 0.003], [R - 0.012, -hw + 0.016], [R - 0.001, -hw + 0.048]];
   const pr: [number, number][] = [...side, ...side.slice().reverse().map(([r, h]) => [r, -h] as [number, number])];
   // far lods: a 6-point profile (beads, shoulders, tread) keeps the tyre round when the body is clustered separately (R6-V)
   const prLo: [number, number][] = [[Rr, -hw], [R - 0.04, -hw], [R, -hw + 0.05], [R, hw - 0.05], [R - 0.04, hw], [Rr, hw]];
-  const lathe = new THREE.LatheGeometry((lod ? prLo : pr).map(([r, h]) => new THREE.Vector2(r, h)), lod > 1 ? 12 : lod ? 18 : 36).rotateZ(-Math.PI / 2);
+  const lathe = new THREE.LatheGeometry((lod ? prLo : pr).map(([r, h]) => new THREE.Vector2(r, h)), lod > 1 ? 12 : lod ? 18 : 28).rotateZ(-Math.PI / 2);
   const tyre = new Soup().addGeometry(lathe, { kind: K.RUBBER, color: '#1a1a1b' }); lathe.dispose();
   // material contract: u = angle, v = tread span (0..1) on the tread, 2 + x/hw on the sidewalls
   for (let i = 0; i < tyre.d.length; i += 14) {
@@ -75,7 +75,7 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
     const u = [tyre.d[t + 6], tyre.d[t + 20], tyre.d[t + 34]];
     if (Math.max(...u) - Math.min(...u) > 0.5) for (let k = 0; k < 3; k++) if (u[k] < 0.5) tyre.d[t + k * 14 + 6] += 1;
   }
-  out.append(tyre);
+  out.append(tyre); 
   const style = s.rim, v = variantOf(s);
   const rimPaint: Paint = { kind: style === 'chrome' ? K.CHROME : K.RIM, color: s.rimColor };
   const faceX = hw - 0.03;
@@ -87,11 +87,11 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
   }
   const dark: Paint = { kind: K.METAL, color: '#2a2b2d' };
   // barrel (rim well), vented brake disc with its hat and a hub, all visible between the spokes
-  out.append(cyl(Rr - 0.006, Rr - 0.006, s.tw - 0.04, { kind: K.METAL, color: '#3c3e42' }, at(0, 0, 0, 0, 0, Math.PI / 2), 20, true));
+  out.append(cyl(Rr - 0.006, Rr - 0.006, s.tw - 0.04, { kind: K.METAL, color: '#3c3e42' }, at(0, 0, 0, 0, 0, Math.PI / 2), 16, true));
   const disc = discR(s);
-  out.append(cyl(disc, disc, 0.026, { kind: K.METAL, color: '#74767a' }, at(hw * 0.1, 0, 0, 0, 0, Math.PI / 2), 22));
-  out.append(cyl(disc * 0.86, disc * 0.86, 0.034, { kind: K.METAL, color: '#4f5155' }, at(hw * 0.1, 0, 0, 0, 0, Math.PI / 2), 22));
-  out.append(cyl(Rr * 0.34, Rr * 0.3, 0.05, dark, at(hw * 0.2, 0, 0, 0, 0, Math.PI / 2), 16));
+  out.append(cyl(disc, disc, 0.026, { kind: K.METAL, color: '#74767a' }, at(hw * 0.1, 0, 0, 0, 0, Math.PI / 2), 14));
+  out.append(cyl(disc * 0.86, disc * 0.86, 0.034, { kind: K.METAL, color: '#4f5155' }, at(hw * 0.1, 0, 0, 0, 0, Math.PI / 2), 14));
+  out.append(cyl(Rr * 0.34, Rr * 0.3, 0.05, dark, at(hw * 0.2, 0, 0, 0, 0, Math.PI / 2), 12));
   // face: disc with windows between spokes (straight, tapered or swirled), extruded and dished
   const ro = Rr - 0.004;
   const shape = new THREE.Shape(); shape.absarc(0, 0, ro, 0, Math.PI * 2, false);
@@ -125,29 +125,35 @@ export function wheelSoup(s: CarShape, lod: number): Soup {
     truck: () => { win(6, ro * 0.45, ro * 0.72, 0.075); dish = 0.06; },
   };
   styleOf[style]();
-  const ex = new THREE.ExtrudeGeometry(shape, { depth: 0.016, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.004, bevelSegments: 1, curveSegments: style === 'steel' ? 10 : 16 });
+  const ex0 = new THREE.ExtrudeGeometry(shape, { depth: 0.016, bevelEnabled: false, curveSegments: style === 'steel' ? 6 : 10 });
+  // drop the back cap (never visible behind the barrel): non-indexed copy without -z facing triangles
+  const exn = ex0.toNonIndexed(); ex0.dispose();
+  { const a = exn.attributes.position, keep: number[] = [];
+    for (let i = 0; i < a.count; i += 3) if (!(a.getZ(i) < 1e-6 && a.getZ(i + 1) < 1e-6 && a.getZ(i + 2) < 1e-6)) for (let k = 0; k < 3; k++) keep.push(a.getX(i + k), a.getY(i + k), a.getZ(i + k));
+    exn.setAttribute('position', new THREE.Float32BufferAttribute(keep, 3)); exn.deleteAttribute('normal'); exn.deleteAttribute('uv'); }
+  const ex = exn;
   const pos = ex.attributes.position;
   for (let i = 0; i < pos.count; i++) { const r = Math.hypot(pos.getX(i), pos.getY(i)) / ro; pos.setZ(i, pos.getZ(i) + dish * (r - 1)); }
   ex.computeVertexNormals();
   ex.rotateY(Math.PI / 2).translate(faceX - 0.016, 0, 0);
   out.addGeometry(ex, rimPaint); ex.dispose();
   // polished lip, centre cap with a dark insert, hex lug nuts on the bolt circle, valve stem
-  const lip = new THREE.TorusGeometry(ro, 0.011, 5, 34).rotateY(Math.PI / 2).translate(faceX - 0.004, 0, 0);
+  const lip = new THREE.TorusGeometry(ro, 0.011, 3, 28).rotateY(Math.PI / 2).translate(faceX - 0.004, 0, 0);
   out.addGeometry(lip, rimPaint); lip.dispose();
   const cx = faceX - (dish > 0 ? dish * 0.95 : 0) + 0.004;
   if (style === 'race') {
     out.append(cyl(0.04, 0.032, 0.05, { kind: K.CHROME }, at(cx + 0.02, 0, 0, 0, 0, -Math.PI / 2), 8));
-    for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5; out.append(cyl(0.007, 0.007, 0.03, { kind: K.CHROME }, at(cx + 0.012, Math.cos(a) * 0.052, Math.sin(a) * 0.052, 0, 0, -Math.PI / 2), 6)); }
+    for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5; out.append(cyl(0.007, 0.007, 0.03, { kind: K.CHROME }, at(cx + 0.012, Math.cos(a) * 0.052, Math.sin(a) * 0.052, 0, 0, -Math.PI / 2), 5)); }
   } else {
-    out.append(cyl(ro * 0.17, ro * 0.15, 0.022, style === 'hubcap' ? rimPaint : { kind: K.CHROME }, at(cx + 0.006, 0, 0, 0, 0, -Math.PI / 2), 18));
+    out.append(cyl(ro * 0.17, ro * 0.15, 0.022, style === 'hubcap' ? rimPaint : { kind: K.CHROME }, at(cx + 0.006, 0, 0, 0, 0, -Math.PI / 2), 14));
     out.append(cyl(ro * 0.08, ro * 0.08, 0.004, dark, at(cx + 0.018, 0, 0, 0, 0, -Math.PI / 2), 10));
     const nl = style === 'truck' ? 8 : s.R < 0.3 ? 4 : 5;
-    for (let i = 0; i < nl; i++) { const a = i * Math.PI * 2 / nl + Math.PI / 2; out.append(cyl(0.012, 0.012, 0.024, { kind: K.CHROME }, at(cx, Math.cos(a) * ro * 0.27, Math.sin(a) * ro * 0.27, 0, 0, -Math.PI / 2), 6)); }
+    for (let i = 0; i < nl; i++) { const a = i * Math.PI * 2 / nl + Math.PI / 2; out.append(cyl(0.012, 0.012, 0.024, { kind: K.CHROME }, at(cx, Math.cos(a) * ro * 0.27, Math.sin(a) * ro * 0.27, 0, 0, -Math.PI / 2), 5)); }
   }
   out.append(cyl(0.005, 0.005, 0.03, dark, at(faceX - 0.01, ro * 0.93, 0, 0, 0, -Math.PI / 2), 5));
   if (style === 'hubcap' || style === 'steel') {
     // steel wheel rim edge behind the cap
-    const ring = new THREE.RingGeometry(ro * 0.82, ro, 36).rotateY(Math.PI / 2).translate(faceX - 0.02, 0, 0);
+    const ring = new THREE.RingGeometry(ro * 0.82, ro, 24).rotateY(Math.PI / 2).translate(faceX - 0.02, 0, 0);
     out.addGeometry(ring, { kind: K.RIM, color: '#2c2d30' }); ring.dispose();
   }
   return out;
@@ -162,11 +168,12 @@ export function caliperSoup(s: CarShape): Soup {
   const hw = s.tw / 2, dx = hw * 0.1, disc = discR(s);
   const colour = s.rim === 'race' ? '#d8b44a' : s.rim === 'mesh' || s.rim === 'twin' ? '#b3201c' : s.rim === 'chrome' ? '#8a8d91' : variantOf(s) === 1 ? '#b3201c' : '#4a4d52';
   const p: Paint = { kind: K.METAL, color: colour };
+  const bx = (w: number, h: number, d: number, m: THREE.Matrix4) => { const g = new THREE.BoxGeometry(w, h, d); const r = new Soup().addGeometry(g, p, m); g.dispose(); return r; };
   const a = 0.5, ca = Math.cos(a), sa = Math.sin(a); // above the axle, on the trailing (rear) side
   const rc = disc * 0.8, y = ca * rc, z = -sa * rc, rot = -a;
-  out.append(rbox(0.032, disc * 0.34, 0.15, 0.01, p, at(dx + 0.032, y, z, rot)));  // outboard piston housing
-  out.append(rbox(0.032, disc * 0.34, 0.15, 0.01, p, at(dx - 0.032, y, z, rot)));  // inboard housing
-  out.append(rbox(0.088, 0.03, 0.15, 0.01, p, at(dx, ca * disc * 0.97, -sa * disc * 0.97, rot))); // bridge over the disc edge
+  out.append(bx(0.032, disc * 0.34, 0.15,  at(dx + 0.032, y, z, rot)));  // outboard piston housing
+  out.append(bx(0.032, disc * 0.34, 0.15,  at(dx - 0.032, y, z, rot)));  // inboard housing
+  out.append(bx(0.088, 0.03, 0.15,  at(dx, ca * disc * 0.97, -sa * disc * 0.97, rot))); // bridge over the disc edge
   out.append(cyl(0.011, 0.011, 0.02, { kind: K.METAL, color: '#9a9ca0' }, at(dx + 0.05, y + 0.04 * ca, z - 0.04 * sa, 0, 0, -Math.PI / 2), 6)); // bleed nipple
   return out;
 }

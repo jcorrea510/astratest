@@ -169,6 +169,13 @@ export class TrimBuilder {
     _m.compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz));
     this.geo(g, _m, color, t, [Math.max(sx, sz), sy]);
   }
+  /** Round 14: a box that rests on something, so its underside is never seen (10 triangles instead of 12). Yaw only. */
+  boxUp(x: number, y: number, z: number, sx: number, sy: number, sz: number, yaw: number, color: THREE.Color, t: TrimParams) {
+    const g = template('boxUp', () => { const b = new THREE.BoxGeometry(1, 1, 1); const idx = Array.from(b.index!.array); idx.splice(18, 6); b.setIndex(idx); return b; });
+    _q.setFromEuler(_e.set(0, yaw, 0, 'YXZ'));
+    _m.compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz));
+    this.geo(g, _m, color, t, [Math.max(sx, sz), sy]);
+  }
   /** Vertical cylinder (or cone when r1 != r0) with its base at y. */
   cyl(x: number, y: number, z: number, r0: number, r1: number, h: number, seg: number, color: THREE.Color, t: TrimParams, yaw = 0, pitch = 0, roll = 0) {
     const key = `cyl${seg}:${(r1 / Math.max(r0, 1e-4)).toFixed(3)}`;

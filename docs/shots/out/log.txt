@@ -1,9 +1,6 @@
-guns-all ok {"calls":123,"tris":57474}
-gun-pistol ok {"calls":7,"tris":2230}
 gun-rifle ok {"calls":5,"tris":3088}
-people-body ok {"calls":16,"tris":110631}
-people-face ok {"calls":13,"tris":92888}
-people-face2 ok {"calls":13,"tris":95922}
-people-crowd ok {"calls":24,"tris":179828}
-signal-day ok {"calls":118,"triangles":762131,"textures":78,"geometries":2046,"programs":138}
-street-people-day ok {"calls":141,"triangles":890926,"textures":83,"geometries":2052,"programs":139}
+people-face ok {"calls":13,"tris":92616}
+signal-day ok {"calls":130,"triangles":639205,"textures":79,"geometries":2681,"programs":139}
+street-people-day ok {"calls":148,"triangles":725249,"textures":85,"geometries":2690,"programs":139}
+night-street ok {"calls":221,"triangles":803653,"textures":103,"geometries":2695,"programs":149}
+skyline-day ok {"calls":175,"triangles":752303,"textures":104,"geometries":2697,"programs":149}
