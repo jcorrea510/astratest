@@ -67,6 +67,15 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
     };
     let prev = snapshot(), frames = 0, maxSeen = 0; const flipped = new Set<number>(); const flips: any[] = []; const born = new Map<number, number>(); const woke = new Map<number, any>();
     const dt = 1 / 30, n = Math.round(seconds / dt);
+    // a car that starts to lean: its last frames (lean, speed, nearest other vehicle, its lane) so a rollover can be explained
+    const tiltH = new Map<number, any[]>();
+    const tilt = (v: any, upY: number, f: number) => {
+      let h = tiltH.get(v.id); if (!h) { if (upY > 0.97) return; h = []; tiltH.set(v.id, h); }
+      if (h.length >= 40 || flipped.has(v.id)) return;
+      let nd = 99, nk = ''; for (const o of g.vehicles.list) { if (o === v) continue; const d = o.position.distanceTo(v.position); if (d < nd) { nd = d; nk = o.kind + ':' + Math.abs(o.speed).toFixed(1); } }
+      const c = g.traffic.cars.find((x: any) => x.v === v);
+      h.push([f, +upY.toFixed(2), +v.speed.toFixed(1), +nd.toFixed(1), nk, c ? c.lane.id + (c.lane.connector ? 'C' : '') + '/' + c.mode : '-', +(v.health / v.spec.health).toFixed(3)]);
+    };
     for (let i = 0; i < n; i++) {
       s += speed * dt;
       while (s > lane.length) { s -= lane.length; const nx = lane.next; lane = lanes[nx.length ? nx[Math.floor(rnd() * nx.length)] : lane.id]; if (!nx.length) { s = 0; break; } }
@@ -74,7 +83,7 @@ export async function driveAndWatch(page: Page, opts: { seconds: number; speed: 
       g.frame(dt, false); frames++;
       for (const v of g.vehicles.list) { if (!born.has(v.id)) born.set(v.id, i);
         if (v.parked && !v.phys.body.isSleeping() && !woke.has(v.id)) { let nd = 99, nk = ''; for (const o of g.vehicles.list) { if (o === v) continue; const d = o.position.distanceTo(v.position); if (d < nd) { nd = d; nk = o.kind + (o.driver ? '/drv' : '') + ':' + Math.abs(o.speed).toFixed(1); } } woke.set(v.id, { f: i, nd: +nd.toFixed(1), nk, pd: +Math.hypot(v.position.x - g.player.pos.x, v.position.z - g.player.pos.z).toFixed(1) }); } }
-      for (const v of g.vehicles.list) { const q = v.group.quaternion; const upY = 1 - 2 * (q.x * q.x + q.z * q.z); if (upY < 0.3 && !flipped.has(v.id)) { flipped.add(v.id); flips.push({ woke: woke.get(v.id), f: i, dp: +Math.hypot(v.position.x - g.player.pos.x, v.position.z - g.player.pos.z).toFixed(1), born: born.get(v.id), kind: v.kind, parked: v.parked, sleep: v.phys.body.isSleeping(), y: +v.position.y.toFixed(2), near: (g.breakables?.list ?? g.breakables?.items ?? []).length, ai: !!g.traffic.cars.find((c: any) => c.v === v), hp: +(v.health / v.spec.health).toFixed(2) }); } }
+      for (const v of g.vehicles.list) { const q = v.group.quaternion; const upY = 1 - 2 * (q.x * q.x + q.z * q.z); tilt(v, upY, i); if (upY < 0.3 && !flipped.has(v.id)) { flipped.add(v.id); flips.push({ woke: woke.get(v.id), f: i, dp: +Math.hypot(v.position.x - g.player.pos.x, v.position.z - g.player.pos.z).toFixed(1), born: born.get(v.id), kind: v.kind, parked: v.parked, sleep: v.phys.body.isSleeping(), y: +v.position.y.toFixed(2), near: (g.breakables?.list ?? g.breakables?.items ?? []).length, ai: !!g.traffic.cars.find((c: any) => c.v === v), hp: +(v.health / v.spec.health).toFixed(2), h: tiltH.get(v.id) }); } }
       const cur = snapshot(); maxSeen = Math.max(maxSeen, cur.size); if (i > 30) checkNearFar(i);
       for (const [k, e] of prev) {
         if (cur.has(k)) continue;

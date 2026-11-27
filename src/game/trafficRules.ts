@@ -75,7 +75,11 @@ export function signalCap(state: 'green' | 'yellow' | 'red', dStop: number, spee
   // past its stop point (dStop < 0) yet short of the box. Standing there on amber it used to pull away, "committed", and entered
   // the junction after the red. A standing car with too little amber left to clear the box waits for the next green.
   if (state === 'yellow' && speed < 2.5 && dStop < 0 && yellowLeft < 3.5) return 0; // (a car that crept up to the bar on amber at 1-2 m/s re-accelerated into the red)
+  // 27 Nov (traffic6 red-runner, lane 53): a car that braked for the amber down to a crawl right at the bar fell into the
+  // dilemma rule below (0.6 m left < 2.8²/11), "could not stop" and re-accelerated into the red. Slow and short of the box
+  // with too little amber left to clear it, it stops on the crosswalk instead.
   if (state === 'yellow' && dStop < Math.max(0, speed) ** 2 / (2 * MAX_DECEL)) {
+    if (speed < 4 && dStop > -1 && yellowLeft < 3.5 && Math.max(0, speed) ** 2 / (2 * MAX_DECEL) < dStop + BOX_EDGE - 0.3) return 0;
     // cannot stop comfortably: still go, but only when the line is reached before the red; else brake as hard as a driver would
     if (dStop <= Math.max(0, speed) * yellowLeft + 1 || dStop < Math.max(0, speed) ** 2 / (2 * PANIC_DECEL)) return Infinity;
     return Math.max(0, stopSpeed(dStop - 0.4, PANIC_DECEL) - PEDAL_LAG);
