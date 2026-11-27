@@ -2,6 +2,16 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 14 (owner 26 Nov: "sell cars sooner; 10+ helpers on looks and performance") — docs/ROUND14.md
+- Car sale cooldown 180 s -> 15 s (garage SELL_COOLDOWN; saved cooldowns clamped on load).
+- 12 helpers: perfPolicy (iPad/Mac default Medium, pixel budget, adaptive res v2 to 16.7 ms, GPU timer), CAS sharpen + FXAA+,
+  sky/fog, car paint/glass, facade/ground shader cost, people LODs, car screen-size LODs, tree far LOD, building fine-trim LOD,
+  wheel triangle diet, spatial grids (traffic/population), main loop (120 Hz skip, no per-frame allocations).
+- Lead: fingertip leaf bones were unmapped (painted as clothes = dark nails), hoodie neckline/hood/hem cleaned, AO blur 9 taps.
+- CI (shots.yml + scripts/perf.mjs, SwiftShader, medium 1280x720): street day 928k -> 758k tris, 189 -> 172 calls; night
+  1.36M -> 1.10M, 280 -> 269; skyline 1.0M -> 752k. ms numbers there are software-GL noise; iPad GPU time unmeasured here.
+- Open: 128k-tri single "Mesh" (likely terrain) not yet split; night shop interiors read too white.
+
 ## Round 13 (owner 26 Nov, iPad: "looks like an itch game, make it look like real life") — docs/ROUND13.md
 - Touch controls (mobile). ~20 parallel helpers: people shader split into src/actors/shade (skin, face/eyes, tops, bottoms+shoes,
   hair) + realistic palettes (look.ts); every gun rebuilt in src/combat/guns (one file each, procedural materials.ts).
