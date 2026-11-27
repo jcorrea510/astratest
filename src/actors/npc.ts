@@ -112,7 +112,10 @@ export class Npc {
     this.weapon = id; this.clip = WEAPONS[id].clip;
     if (this.model) { this.model.removeFromParent(); this.model = null; }
     if (id !== 'fists') { this.model = weaponMesh(id); scene.add(this.model); }
+    this.modelShadow = undefined;
   }
+  /** whether the carried weapon model currently casts a sun shadow (population follows the body's shadow budget) */
+  modelShadow: boolean | undefined = undefined;
   get alive() { return this.char.alive; }
   get pos() { return this.char.pos; }
   dispose() { this.disposed = true; this.buddy = null; if (this.bench) { this.bench.occupied = false; this.bench = null; } if (this.model) { this.model.removeFromParent(); this.model.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.userData.shared) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); /* COMBAT: weapon models share cached geometry/materials */ this.model = null; } this.target = null; this.char.dispose(); }

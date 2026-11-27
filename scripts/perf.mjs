@@ -38,7 +38,7 @@ for (const quality of req.quality ?? ['medium']) {
           const shadowRts = new Set(); R.scene.traverse(o => { if (o.isLight && o.shadow?.map) shadowRts.add(o.shadow.map); });
           const label = (o) => {
             let top = o; while (top.parent && top.parent !== R.scene) top = top.parent;
-            let tn = top.name || ''; if (!tn) { let q = o; while (q && q !== top && !q.name) q = q.parent; tn = (q && q.name) || top.type; }
+            let tn = top.name || (top.userData?.kind ? 'k:' + top.userData.kind : '') || (Object.keys(top.userData ?? {}).slice(0, 2).join('+') ? 'u:' + Object.keys(top.userData).slice(0, 2).join('+') : ''); if (!tn) { let q = o; while (q && q !== top && !q.name) q = q.parent; tn = (q && q.name) || top.type; }
             return tn.slice(0, 26);
           };
           const runOne = (yaw) => {

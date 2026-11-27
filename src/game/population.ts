@@ -12,6 +12,7 @@ import type { RagdollSystem } from '../actors/ragdoll';
 import type { Vehicle } from '../vehicles/vehicle';
 import { spawnHidden } from './crowd';
 import { animEvery, EXTRAS_SHADOW_M } from '../actors/animLod';
+import { setWeaponShadow } from '../combat/weaponModels';
 import type { WeaponId } from '../combat/weapons';
 import type { GameAudio } from '../ui/contracts';
 
@@ -438,6 +439,8 @@ export class Population {
       }
       for (let i = this.shadowBudget; i < scn; i++) { const h = sc[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; }
     }
+    // carried guns cast a shadow only with their holder (they are scene children, so hiding the body left them in the shadow map)
+    for (const n of this.npcs) if (n.model) { const on = gunCastsShadow(n.char.human.mesh.castShadow, n.inView, !!n.char.inVehicle); if (n.modelShadow !== on) { n.modelShadow = on; setWeaponShadow(n.model, on); } }
     // Despawn
     for (let ni = this.npcs.length - 1; ni >= 0; ni--) {
       const n = this.npcs[ni]; if (!n) continue;
@@ -481,3 +484,8 @@ export class Population {
 
 /** Round 8: how far a scare reaches, by how many scares (shots, blasts, crashes) happened in the last 6 s. Pure (tests). */
 export function panicRadiusScale(recent: number): number { return recent >= 6 ? 1.8 : recent >= 3 ? 1.4 : 1; }
+
+/** A carried gun casts a sun shadow only while its holder's body does and is on screen (pure: tests). */
+export function gunCastsShadow(bodyCasts: boolean, inView: boolean, inVehicle: boolean): boolean {
+  return bodyCasts && inView && !inVehicle;
+}

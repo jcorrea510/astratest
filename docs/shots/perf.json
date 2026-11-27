@@ -8,15 +8,16 @@
    "hour": 17.6,
    "at": 3,
    "drawBreakdown": true,
-   "topDetail": 60,
+   "topDetail": 45,
    "eval": "g.player.place(-41, 0.25, 9, 0); g.trafficCap = null; g.pedCap = null; g.clockRunning = true; for (let i = 0; i < 400; i++) g.frame(1 / 20, false);",
    "yaws": [
     null,
     1.5708,
     3.1416,
     -1.5708
-   ]
+   ],
+   "allDetail": true
   }
  ],
- "note": "27 Nov: draw calls at the density.spec busy corner, grouped"
+ "note": "27 Nov: draw calls at the density corner after gun shadows follow their holder"
 }
