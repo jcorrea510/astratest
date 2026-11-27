@@ -32,6 +32,25 @@ for (const quality of req.quality ?? ['medium']) {
         if (sc.eval) (new Function('g', 'M', sc.eval))(g, window.__meridian);
         for (let i = 0; i < 120; i++) g.frame(1 / 60, false);
         g.frame(1 / 60, true); sync();
+        if (sc.drawBreakdown) {
+          // draw calls of one rendered frame grouped by pass, top-level group, object and material (density budget probe)
+          const rr = R.renderer, orig = rr.renderBufferDirect.bind(rr), tally = new Map(); let total = 0;
+          rr.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+            const rt = rr.getRenderTarget(), pass = rt ? (rt.texture?.name || 'rt') : 'screen';
+            let top = object; while (top.parent && top.parent !== R.scene && top.parent.parent) top = top.parent;
+            const who = (object.name || object.parent?.name || '') + (object.isSkinnedMesh ? '[skin]' : object.isInstancedMesh ? '[inst]' : '');
+            const k = `${pass.slice(0, 18)} | ${(top.name || top.type).slice(0, 24)} | ${who.slice(0, 28)} | ${material.type}${material.name ? ':' + material.name.slice(0, 16) : ''}`;
+            tally.set(k, (tally.get(k) ?? 0) + 1); total++;
+            return orig(camera, scene, geometry, material, object, group);
+          };
+          const c0 = rr.info.render.calls; g.frame(1 / 60, true); sync(); const infoCalls = rr.info.render.calls;
+          rr.renderBufferDirect = orig;
+          const byTop = new Map(), byPass = new Map();
+          for (const [k, n] of tally) { const [pa, tp] = k.split(' | '); byPass.set(pa, (byPass.get(pa) ?? 0) + n); byTop.set(pa + ' | ' + tp, (byTop.get(pa + ' | ' + tp) ?? 0) + n); }
+          const srt = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v}  ${k}`);
+          const people = g.pop.npcs.filter(n => n.char.human.root.visible && !n.char.inVehicle).length;
+          return { infoCalls, c0, total, people, npcs: g.pop.npcs.length, cars: g.vehicles.list.length, byPass: srt(byPass, 12), byTop: srt(byTop, 40), detail: srt(tally, sc.topDetail ?? 70) };
+        }
         const now = () => performance.now();
         let t = now(); for (let i = 0; i < 240; i++) g.frame(1 / 60, false); const simMs = (now() - t) / 240;
         const N = sc.renderFrames ?? 6;
@@ -67,6 +86,7 @@ for (const quality of req.quality ?? ['medium']) {
         }
         return res;
       }, sc);
+      if (sc.drawBreakdown) { log(JSON.stringify({ ...r, byPass: undefined, byTop: undefined, detail: undefined })); log('by pass:\n' + r.byPass.join('\n')); log('by group:\n' + r.byTop.join('\n')); log('detail:\n' + r.detail.join('\n')); writeFileSync('docs/shots/out/perf.txt', out.join('\n') + '\n'); continue; }
       log(JSON.stringify(r, null, 0));
       // CPU profile: simulation + render together
       await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 250 }); await cdp.send('Profiler.start');

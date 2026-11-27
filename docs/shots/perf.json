@@ -1,20 +1,16 @@
 {
  "quality": [
-  "low"
+  "medium"
  ],
  "scenes": [
   {
-   "name": "fight-sim-22-cops",
-   "hour": 13,
+   "name": "density-corner-draws",
+   "hour": 12,
    "at": 3,
-   "hideTop": 0,
-   "renderFrames": 2,
-   "profileFrames": 360,
-   "profileRender": false,
-   "topFns": 60,
-   "eval": "const p = g.player.pos; g.player.maxHealth = 1e7; g.player.health = 1e7; g.police.setHeat(4, p); for (let i = 0; i < 22; i++) { const a = (i / 22) * Math.PI * 2, r = 14 + (i % 4) * 6; const n = g.pop.spawn('police', p.x + Math.cos(a) * r, p.z + Math.sin(a) * r, p.y); g.police.dispatch.gear(n, 'police', 4); g.police.dispatch.arm(n, 'police', 4, true); g.police.foot.push(n); }",
-   "note": "inclusive profile"
+   "drawBreakdown": true,
+   "topDetail": 80,
+   "eval": "g.player.place(-41, 0.25, 9, 0); g.trafficCap = null; g.pedCap = null; for (let i = 0; i < 400; i++) g.frame(1 / 20, false); for (let i = 0; i < 2; i++) g.frame(1 / 60, true);"
   }
  ],
- "note": "27 Nov: 22-cop firefight, inclusive times by game function"
+ "note": "27 Nov: draw calls at the density.spec busy corner, grouped"
 }
