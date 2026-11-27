@@ -14,4 +14,4 @@
   ray scans and minimap drawing.
 - Fixes: car wheels no longer log a console warning on every build (it failed the automated browser checks on every
   recent commit). Bike racks and benches no longer block shop doors. Street people far away drop hair and garment
-  extras again, and each garage blade sign is one draw call, so busy corners stay inside the draw-call budget.
+  extras again, and each garage blade sign is one draw call, so busy corners stay inside the draw-call budget. People walking past you while you stand still now step aside instead of turning back, and a car waiting to turn left no longer pulls out on a red.

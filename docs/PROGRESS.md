@@ -9,6 +9,9 @@ Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLA
 - Round 16 fallout: street-furniture colliders stood in shop door lanes (places.nearStoreDoor keeps them out;
   world/storeDoors.test walks into all 69 shops); people extras edge back to 32 m (animLod.personExtrasLod) and one-mesh
   garage blades (453 -> <450 calls); freeway median barrier now solid, so drivingcam spawns in a lane; garage9 cooldown 15 s.
+- Also: walkers passing a player who stands still step aside off their own line (npc.yieldStep; the old rule used the
+  player's facing and pushed bridge walkers back); a left turner held behind its line when the red comes no longer keeps
+  its amber go (trafficRules.leftClearing); e2e: 8 shards (6 hit ~58/60 min), garage leave button reads Exit Bay.
 
 ## Round 16 (Collision fixes, green-box render fix, realistic people/NPCs & AAA UI)
 - World Collisions: added static colliders for hillside trees, north treeline, beach palms, promenade/plaza planters, roadside

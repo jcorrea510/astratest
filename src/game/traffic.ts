@@ -14,7 +14,7 @@ import { SpatialGrid } from './spatialGrid';
 import type { Look } from '../actors/human';
 import { carActivity } from './schedule';
 import { COP_LOOK } from './dispatch';
-import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, mayClearLeft, willStopForSignal, LEFT_PATIENCE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
+import { aiPedal, stopBack, curbShift, yieldsToSiren, signalCap, skipSignalNearTarget, stopSignCap, spawnSafeAtSignal, stopSpeed, turnSide, oncomingConflict, arrivalTime, lineStop, BOX_EDGE, leftClearing, willStopForSignal, LEFT_PATIENCE, ViolationMonitor, type Violation, type LaneProbe } from './trafficRules';
 export type { Violation, ViolationKind } from './trafficRules';
 
 export type DriveMode = 'cruise' | 'flee' | 'pursuit' | 'park' | 'goto';
@@ -391,8 +391,8 @@ export class Traffic {
         const leftTurn = car.nextChoice !== undefined && this.turnOf(car.nextChoice) === 1, yl = yellowLeft(inter, laneSigAxis(car.lane), t);
         // Round 13 (owner: left-lane cars not going): the first left turner takes the amber to turn once oncoming traffic is
         // stopping (it used to get 0.8 s of amber and sat through cycles); once started it is committed
-        if (car.clearGo !== undefined && car.clearGo !== car.lane.id) car.clearGo = undefined;
-        const clearing = leftTurn && st !== 'green' && (car.clearGo === car.lane.id || mayClearLeft(st, yl, dStop, speed));
+        if (car.clearGo !== undefined && (car.clearGo !== car.lane.id || (st === 'red' && dStop > 0 && Math.abs(speed) < 1))) car.clearGo = undefined;
+        const clearing = leftTurn && leftClearing(st, yl, dStop, speed, car.clearGo === car.lane.id);
         const sneak = clearing;
         const cap = sneak ? Infinity : signalCap(st, dStop, Math.max(0, speed), leftTurn ? 0 : yl);
         if (cap < Infinity) { targetSpeed = Math.min(targetSpeed, cap); legit = true; }

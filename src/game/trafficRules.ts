@@ -99,6 +99,16 @@ export function mayClearLeft(state: 'green' | 'yellow' | 'red', yellowLeft: numb
   if (state !== 'yellow' || yellowLeft < LEFT_CLEAR_MIN) return false;
   return dStop < 2.5 && dStop > -BOX_EDGE + 0.5 && Math.abs(speed) < 2;
 }
+/**
+ * A left turner may take the amber (mayClearLeft) and, once committed, finish the turn on red. Committed means over the line:
+ * one still standing behind it when the red comes (it was held by an oncoming car or a full exit) waits for the next green
+ * (it used to keep its amber go and pull away on red seconds later, seen in the 60 s traffic check).
+ */
+export function leftClearing(state: 'green' | 'yellow' | 'red', yellowLeft: number, dStop: number, speed: number, committed: boolean): boolean {
+  if (state === 'green') return false;
+  if (state === 'red' && dStop > 0 && Math.abs(speed) < 1) return false; // still standing behind the line
+  return committed || mayClearLeft(state, yellowLeft, dStop, speed);
+}
 /** An approaching car (stop line `dStop` ahead) that will halt for its own amber/red, so a clearing left turner may ignore it. */
 export function willStopForSignal(state: 'green' | 'yellow' | 'red', dStop: number, speed: number, yellowLeft = Infinity): boolean {
   return state !== 'green' && dStop > -1 && signalCap(state, dStop, Math.max(0, speed), yellowLeft) !== Infinity;
