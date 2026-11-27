@@ -7,8 +7,9 @@ Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLA
   clean-console check. core/geom flatCopy() guards it (+ body/eyes/brows/hair). Wired shoulder swap (T), ADS aim assist
   (combat/aimAssist), mixed police squad roles (chooseSquadRole). CHANGELOG.md holds player-facing notes.
 - Round 16 fallout: street-furniture colliders stood in shop door lanes (places.nearStoreDoor keeps them out;
-  world/storeDoors.test walks into all 69 shops); street people extras end at 27 m, garment shadows at 14 m (animLod; main run hit 467) and
-  one-mesh garage blades (<450 calls); freeway median barrier now solid, so drivingcam spawns in a lane; garage9 cooldown 15 s.
+  world/storeDoors.test walks into all 69 shops); busy corner draw calls (main run hit 467; worst heading now ~400,
+  scripts/perf.mjs drawBreakdown): ten stunt ramps merged (game/rampMesh, 90 -> 4 calls), guns of hidden or far people
+  hidden, far cars drop the contact shadow, street extras end at 27 m, garment shadows 14 m, one-mesh garage blades; freeway median barrier now solid, so drivingcam spawns in a lane; garage9 cooldown 15 s.
 - Also: walkers passing a player who stands still step aside off their own line (npc.yieldStep; the old rule used the
   player's facing and pushed bridge walkers back); a left turner held behind its line when the red comes no longer keeps
   its amber go (trafficRules.leftClearing); e2e: 8 shards, one CI retry (flaky shows in the log),
