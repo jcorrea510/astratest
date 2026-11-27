@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { boot, step, quietStreets, watch, clean } from './helpers';
+import config from '../../playwright.config';
+
+// Own browser (as perfbench): the 22-cop software-GL firefight leaves the GPU process backlogged, and the next file's
+// browser.newContext timed out at 240 s on CI twice (popout far-crowd test, 27 Nov). A distinct launch option gives this
+// file a worker of its own, which Playwright shuts down (browser and all) before the next file starts.
+const base = config.use?.launchOptions ?? {};
+test.use({ launchOptions: { ...base, args: [...(base.args ?? []), '--policerealism-own-browser'] } });
 
 const civ = (page: Page) => page.evaluate(() => {
   const g = (window as any).__game, p = g.player.pos;
