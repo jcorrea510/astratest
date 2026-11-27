@@ -1,159 +1,148 @@
 
-=== low / idle-sim (hour 13) ===
-{"simMs":3.12,"px":[1280,720],"base":4920.8,"stats":{"calls":195,"triangles":723664,"textures":105,"geometries":2823,"programs":134},"shadowEveryFrame":4946.8,"noShadows":4919.6,"withBloom":5073.6,"sceneOnly":6175.1,"groups":[{"name":"city","tris":615060,"meshes":256,"skinned":0},{"name":"Mesh","tris":128080,"meshes":1,"skinned":0},{"name":"Group","tris":52092,"meshes":7,"skinned":5},{"name":"Group","tris":17746,"meshes":3,"skinned":3},{"name":"crowdPeople:m","tris":13356,"meshes":1,"skinned":0},{"name":"crowdPeople:f","tris":12048,"meshes":1,"skinned":0},{"name":"Group","tris":10126,"meshes":6,"skinned":5},{"name":"farCars:hatch","tris":8315,"meshes":1,"skinned":0},{"name":"farCars:minivan","tris":6648,"meshes":1,"skinned":0},{"name":"Mesh","tris":6404,"meshes":1,"skinned":0},{"name":"store:Fade Factory","tris":5136,"meshes":11,"skinned":0},{"name":"farCars:sedan","tris":4902,"meshes":1,"skinned":0},{"name":"Group","tris":3707,"meshes":3,"skinned":2},{"name":"Group","tris":3706,"meshes":3,"skinned":2}],"objects":14043,"hideCost":{}}
-profile (360 frames without render, 5.68 ms/frame sampled) by file:
-  26.9%  wasm://wasm/005fccd2
-  20.6%  (native)
-  13.1%  /astratest/node_modules/.vite/deps/chunk-XSTVJSXX.js
-  5.9%  /astratest/src/game/game.ts
-  5.1%  /astratest/src/vehicles/vehicle.ts
+=== low / fight-sim-22-cops (hour 13) ===
+{"simMs":5.18,"px":[1280,720],"base":10076.2,"stats":{"calls":335,"triangles":1039665,"textures":141,"geometries":2857,"programs":136},"shadowEveryFrame":10226.3,"noShadows":10156.3,"withBloom":10448.8,"sceneOnly":12125.9,"groups":[{"name":"city","tris":615192,"meshes":258,"skinned":0},{"name":"Mesh","tris":128080,"meshes":1,"skinned":0},{"name":"crowdPeople:m","tris":31164,"meshes":1,"skinned":0},{"name":"crowdPeople:f","tris":28614,"meshes":1,"skinned":0},{"name":"Group","tris":23740,"meshes":3,"skinned":3},{"name":"Group","tris":22716,"meshes":4,"skinned":4},{"name":"Group","tris":21602,"meshes":4,"skinned":4},{"name":"Group","tris":21602,"meshes":4,"skinned":4},{"name":"Group","tris":19948,"meshes":4,"skinned":4},{"name":"Group","tris":18536,"meshes":3,"skinned":3},{"name":"Group","tris":18320,"meshes":3,"skinned":3},{"name":"Group","tris":17966,"meshes":2,"skinned":2},{"name":"Group","tris":17746,"meshes":3,"skinned":3},{"name":"Group","tris":17678,"meshes":3,"skinned":3}],"objects":15785,"hideCost":{}}
+profile (360 frames without render, 9.03 ms/frame sampled) by file:
+  31.9%  wasm://wasm/005fccd2
+  21.1%  /astratest/node_modules/.vite/deps/chunk-XSTVJSXX.js
+  14.9%  (native)
   4.3%  /astratest/src/game/crowd.ts
-  3.8%  /astratest/node_modules/.vite/deps/@dimforge_rapier3d-compat.js
-  3.3%  /astratest/src/game/traffic.ts
-  2.4%  /astratest/src/vehicles/crumple.ts
-  2.1%  /astratest/src/vehicles/vehiclePhysics.ts
-  1.7%  /astratest/src/world/citymap.ts
-  1.3%  /astratest/src/game/population.ts
-  1.1%  /astratest/src/game/robbery.ts
-  0.7%  /astratest/src/game/vehicles.ts
-  0.7%  /astratest/src/world/props.ts
-  0.6%  /astratest/src/vehicles/farCars.ts
-  0.5%  /astratest/src/actors/human.ts
-  0.5%  /astratest/src/game/spatialGrid.ts
-  0.5%  /astratest/src/world/interiors.ts
-  0.4%  /astratest/src/actors/humanAssets.ts
-  0.4%  /astratest/src/actors/npc.ts
-  0.3%  /astratest/src/actors/character.ts
+  4.1%  /astratest/src/game/game.ts
+  3.0%  /astratest/node_modules/.vite/deps/@dimforge_rapier3d-compat.js
+  3.0%  /astratest/src/game/traffic.ts
+  2.5%  /astratest/src/actors/human.ts
+  1.7%  /astratest/src/vehicles/vehicle.ts
+  1.4%  /astratest/src/game/population.ts
+  1.3%  /astratest/src/world/citymap.ts
+  1.0%  /astratest/src/vehicles/vehiclePhysics.ts
+  0.9%  /astratest/src/game/robbery.ts
+  0.6%  /astratest/src/actors/npc.ts
+  0.6%  /astratest/src/actors/character.ts
+  0.6%  /astratest/src/world/props.ts
+  0.6%  /astratest/src/world/interiors.ts
+  0.5%  /astratest/src/game/vehicles.ts
+  0.5%  /astratest/src/vehicles/farCars.ts
+  0.4%  /astratest/src/combat/hitzones.ts
+  0.3%  /astratest/src/vehicles/helicopter.ts
+  0.3%  /astratest/src/combat/gunRig.ts
 by function:
-  18.6%  (program) (native):0
-  4.6%  wasm-function[338] wasm/005fccd2:1
-  4.1%  wasm-function[258] wasm/005fccd2:1
-  2.6%  fixedUpdate game/game.ts:594
-  2.5%  wasm-function[37] wasm/005fccd2:1
-  2.5%  wasm-function[58] wasm/005fccd2:1
-  2.4%  updateCars game/crowd.ts:368
-  2.2%  wasm-function[586] wasm/005fccd2:1
-  2.2%  fixedUpdate game/traffic.ts:305
-  2.1%  surfaceRay vehicles/vehicle.ts:441
-  2.0%  getY deps/chunk-XSTVJSXX.js:10620
-  1.8%  update vehicles/vehicle.ts:521
-  1.6%  updateMatrixWorld deps/chunk-XSTVJSXX.js:8389
-  1.6%  cullChunks game/game.ts:1449
-  1.5%  getX deps/chunk-XSTVJSXX.js:10597
-  1.3%  (garbage collector) (native):0
-  1.2%  wasm-function[1257] wasm/005fccd2:1
-  1.2%  fixedUpdate vehicles/vehiclePhysics.ts:198
-  0.9%  pathHeightAt world/citymap.ts:835
-  0.9%  apply deps/chunk-XSTVJSXX.js:27142
-  0.7%  wasm-function[1379] wasm/005fccd2:1
-  0.7%  wasm-function[66] wasm/005fccd2:1
-  0.7%  update world/props.ts:367
-  0.7%  wasm-function[67] wasm/005fccd2:1
-  0.7%  update game/crowd.ts:195
+  12.8%  (program) (native):0
+  5.8%  wasm-function[338] wasm/005fccd2:1
+  4.6%  updateMatrixWorld deps/chunk-XSTVJSXX.js:8389
+  3.0%  wasm-function[37] wasm/005fccd2:1
+  2.7%  wasm-function[258] wasm/005fccd2:1
+  2.4%  wasm-function[586] wasm/005fccd2:1
+  2.4%  slerpFlat deps/chunk-XSTVJSXX.js:1409
+  2.1%  updateCars game/crowd.ts:368
+  2.0%  wasm-function[58] wasm/005fccd2:1
+  1.9%  updateWorldMatrix deps/chunk-XSTVJSXX.js:8415
+  1.8%  fixedUpdate game/traffic.ts:305
+  1.7%  setFromRotationMatrix deps/chunk-XSTVJSXX.js:7500
+  1.7%  fixedUpdate game/game.ts:594
+  1.7%  apply deps/chunk-XSTVJSXX.js:27142
+  1.5%  multiplyMatrices deps/chunk-XSTVJSXX.js:6705
+  1.5%  wasm-function[66] wasm/005fccd2:1
+  1.4%  wasm-function[67] wasm/005fccd2:1
+  1.4%  (garbage collector) (native):0
+  1.4%  update vehicles/vehicle.ts:521
+  1.0%  cullChunks game/game.ts:1449
+  1.0%  wasm-function[114] wasm/005fccd2:1
+  0.9%  update actors/human.ts:483
+  0.9%  wasm-function[1257] wasm/005fccd2:1
+  0.8%  update game/crowd.ts:195
+  0.8%  update game/population.ts:482
+  0.8%  wasm-function[1379] wasm/005fccd2:1
+  0.7%  wasm-function[402] wasm/005fccd2:1
+  0.7%  wasm-function[33] wasm/005fccd2:1
+  0.7%  fixedUpdate vehicles/vehiclePhysics.ts:198
+  0.7%  update game/game.ts:1032
   0.7%  updatePeds game/crowd.ts:603
-  0.6%  update game/game.ts:1032
-  0.6%  setFromRotationMatrix deps/chunk-XSTVJSXX.js:7500
-  0.6%  wasm-function[428] wasm/005fccd2:1
-  0.6%  multiplyMatrices deps/chunk-XSTVJSXX.js:6705
+  0.6%  onQuaternionChange deps/chunk-XSTVJSXX.js:7771
+  0.6%  update world/props.ts:367
+  0.6%  wasm-function[86] wasm/005fccd2:1
+  0.6%  curlFingers actors/human.ts:738
+  0.5%  setDoor world/interiors.ts:435
+  0.5%  nearestLane world/citymap.ts:588
+  0.5%  copySampleValue_ deps/chunk-XSTVJSXX.js:22315
+  0.5%  applyPose actors/human.ts:826
   0.5%  update game/vehicles.ts:287
   0.5%  wasm-function[152] wasm/005fccd2:1
-  0.5%  panels vehicles/crumple.ts:174
-  0.5%  getZ deps/chunk-XSTVJSXX.js:10643
   0.5%  update game/robbery.ts:416
-  0.5%  onRotationChange deps/chunk-XSTVJSXX.js:7768
-  0.5%  wasm-function[402] wasm/005fccd2:1
-  0.5%  wasm-function[397] wasm/005fccd2:1
-  0.5%  linvel deps/@dimforge_rapier3d-compat.js:2814
-  0.5%  update game/population.ts:482
-  0.5%  setDoor world/interiors.ts:435
-  0.4%  retilt vehicles/crumple.ts:130
-  0.4%  hit vehicles/crumple.ts:81
-  0.4%  Grid vehicles/crumple.ts:3
-  0.4%  inside game/robbery.ts:60
-
-=== low / fight-sim-22-cops (hour 13) ===
-{"simMs":5.92,"px":[1280,720],"base":7812.8,"stats":{"calls":370,"triangles":1291911,"textures":177,"geometries":2890,"programs":143},"shadowEveryFrame":7822.9,"noShadows":7840,"withBloom":7964.9,"sceneOnly":7850.8,"groups":[{"name":"city","tris":615192,"meshes":258,"skinned":0},{"name":"Mesh","tris":128080,"meshes":1,"skinned":0},{"name":"Group","tris":54906,"meshes":6,"skinned":5},{"name":"Group","tris":53355,"meshes":6,"skinned":5},{"name":"Group","tris":52527,"meshes":7,"skinned":6},{"name":"Group","tris":50093,"meshes":10,"skinned":9},{"name":"crowdPeople:f","tris":39156,"meshes":1,"skinned":0},{"name":"Group","tris":36561,"meshes":3,"skinned":2},{"name":"crowdPeople:m","tris":35616,"meshes":1,"skinned":0},{"name":"Group","tris":34930,"meshes":3,"skinned":2},{"name":"Group","tris":34517,"meshes":3,"skinned":2},{"name":"Group","tris":24790,"meshes":3,"skinned":3},{"name":"Group","tris":24644,"meshes":3,"skinned":3},{"name":"Group","tris":24618,"meshes":3,"skinned":3}],"objects":17528,"hideCost":{}}
-profile (360 frames without render, 8.15 ms/frame sampled) by file:
-  32.4%  wasm://wasm/005fccd2
-  24.4%  /astratest/node_modules/.vite/deps/chunk-XSTVJSXX.js
-  9.3%  (native)
-  4.6%  /astratest/src/game/crowd.ts
-  4.2%  /astratest/src/game/traffic.ts
-  3.7%  /astratest/node_modules/.vite/deps/@dimforge_rapier3d-compat.js
-  2.9%  /astratest/src/game/game.ts
-  2.4%  /astratest/src/vehicles/vehicle.ts
-  2.0%  /astratest/src/world/citymap.ts
-  2.0%  /astratest/src/actors/human.ts
-  1.6%  /astratest/src/game/population.ts
-  1.0%  /astratest/src/vehicles/vehiclePhysics.ts
-  0.9%  /astratest/src/game/vehicles.ts
-  0.7%  /astratest/src/game/robbery.ts
-  0.7%  /astratest/src/world/interiors.ts
-  0.7%  /astratest/src/vehicles/farCars.ts
-  0.7%  /astratest/src/actors/npc.ts
-  0.6%  /astratest/src/actors/character.ts
-  0.5%  /astratest/src/game/spatialGrid.ts
-  0.4%  /astratest/src/world/props.ts
-  0.4%  /astratest/src/combat/hitzones.ts
-  0.3%  /astratest/src/game/police.ts
-by function:
-  6.9%  (program) (native):0
-  6.9%  wasm-function[338] wasm/005fccd2:1
-  6.7%  updateMatrixWorld deps/chunk-XSTVJSXX.js:8389
-  3.0%  wasm-function[586] wasm/005fccd2:1
-  2.7%  apply deps/chunk-XSTVJSXX.js:27142
-  2.7%  updateCars game/crowd.ts:368
-  2.6%  wasm-function[258] wasm/005fccd2:1
-  2.5%  fixedUpdate game/traffic.ts:305
-  2.3%  wasm-function[37] wasm/005fccd2:1
-  2.2%  slerpFlat deps/chunk-XSTVJSXX.js:1409
-  2.1%  setFromRotationMatrix deps/chunk-XSTVJSXX.js:7500
-  2.1%  update vehicles/vehicle.ts:521
-  2.0%  wasm-function[58] wasm/005fccd2:1
-  1.9%  multiplyMatrices deps/chunk-XSTVJSXX.js:6705
-  1.6%  updateWorldMatrix deps/chunk-XSTVJSXX.js:8415
-  1.5%  (garbage collector) (native):0
-  1.4%  wasm-function[66] wasm/005fccd2:1
-  1.1%  cullChunks game/game.ts:1449
-  1.1%  wasm-function[67] wasm/005fccd2:1
-  0.9%  update actors/human.ts:483
-  0.9%  update game/population.ts:482
-  0.8%  wasm-function[114] wasm/005fccd2:1
-  0.8%  fixedUpdate vehicles/vehiclePhysics.ts:198
-  0.8%  wasm-function[1257] wasm/005fccd2:1
-  0.7%  wasm-function[1379] wasm/005fccd2:1
-  0.7%  update game/vehicles.ts:287
-  0.7%  fixedUpdate game/game.ts:594
-  0.7%  setDoor world/interiors.ts:435
-  0.7%  update game/crowd.ts:195
-  0.7%  wasm-function[478] wasm/005fccd2:1
-  0.7%  onQuaternionChange deps/chunk-XSTVJSXX.js:7771
-  0.7%  _update deps/chunk-XSTVJSXX.js:28150
-  0.7%  wasm-function[402] wasm/005fccd2:1
-  0.6%  nearestLane world/citymap.ts:588
-  0.6%  wasm-function[33] wasm/005fccd2:1
-  0.6%  setFromEuler deps/chunk-XSTVJSXX.js:1589
-  0.6%  pathHeightAt world/citymap.ts:835
-  0.6%  onRotationChange deps/chunk-XSTVJSXX.js:7768
-  0.5%  update game/game.ts:1032
-  0.5%  wasm-function[86] wasm/005fccd2:1
-  0.5%  updatePeds game/crowd.ts:603
-  0.5%  wasm-function[152] wasm/005fccd2:1
-  0.5%  __wrap deps/@dimforge_rapier3d-compat.js:2451
-  0.4%  update world/props.ts:367
-  0.4%  applyImpulseAtPoint deps/@dimforge_rapier3d-compat.js:2945
-  0.4%  wasm-function[397] wasm/005fccd2:1
-  0.4%  update game/traffic.ts:925
-  0.4%  update actors/npc.ts:288
-  0.4%  applyPose actors/human.ts:826
-  0.4%  check game/traffic.ts:520
+  0.4%  copy deps/chunk-XSTVJSXX.js:1573
   0.4%  wasm-to-js (native):1
-  0.4%  setStyle deps/chunk-XSTVJSXX.js:9313
-  0.4%  wasm-function[428] wasm/005fccd2:1
-  0.3%  samplePath world/citymap.ts:147
-  0.3%  wasm-function[684] wasm/005fccd2:1
-  0.3%  update game/police.ts:568
-  0.3%  add vehicles/farCars.ts:74
-  0.3%  update deps/chunk-XSTVJSXX.js:28662
+  0.4%  setFromEuler deps/chunk-XSTVJSXX.js:1589
+  0.4%  wasm-function[478] wasm/005fccd2:1
+  0.4%  _update deps/chunk-XSTVJSXX.js:28150
+  0.4%  evaluate deps/chunk-XSTVJSXX.js:22227
+  0.3%  wasm-function[428] wasm/005fccd2:1
+  0.3%  wasm-function[170] wasm/005fccd2:1
+  0.3%  wasm-function[454] wasm/005fccd2:1
   0.3%  holdOnHuman combat/gunRig.ts:21
-  0.3%  update game/robbery.ts:416
+  0.3%  vehicleHits game/population.ts:362
+  0.3%  update deps/chunk-XSTVJSXX.js:28662
+  0.3%  setFromAxisAngle deps/chunk-XSTVJSXX.js:1649
+  0.3%  samplePath world/citymap.ts:147
+  0.3%  I3.wbg.__wbg_call_7cccdd69e0791ae2 deps/@dimforge_rapier3d-compat.js:2528
+  0.3%  wasm-function[45] wasm/005fccd2:1
+  0.3%  _WA deps/@dimforge_rapier3d-compat.js:2468
+  0.3%  onRotationChange deps/chunk-XSTVJSXX.js:7768
+inclusive (game code, self + callees):
+  85.8%  frame game/game.ts:568
+  42.3%  fixedUpdate game/game.ts:594
+  39.9%  update game/game.ts:1032
+  16.6%  update game/population.ts:482
+  14.3%  sweep actors/character.ts:163
+  11.9%  fixedUpdate game/population.ts:444
+  11.7%  update actors/npc.ts:288
+  11.2%  move actors/character.ts:110
+  10.7%  update actors/human.ts:483
+  8.8%  updateVisual actors/character.ts:608
+  6.6%  update game/crowd.ts:195
+  6.2%  update game/playerCombat.ts:236
+  5.8%  updateAim game/playerCombat.ts:350
+  5.7%  trace combat/combat.ts:352
+  5.5%  updateModel actors/npc.ts:976
+  5.2%  holdOnHuman combat/gunRig.ts:21
+  4.8%  bodyCapsules combat/hitzones.ts:107
+  4.5%  fixedUpdate vehicles/vehiclePhysics.ts:198
+  3.7%  update game/vehicles.ts:287
+  3.5%  fixedUpdate game/traffic.ts:305
+  3.4%  updateCars game/crowd.ts:368
+  3.3%  fixedUpdate game/player.ts:124
+  3.3%  g.onFrame src/main.ts:329
+  3.2%  integrate actors/character.ts:153
+  3.2%  frame src/main.ts:620
+  3.1%  gripSolve actors/human.ts:715
+  3.0%  update vehicles/vehicle.ts:521
+  2.0%  curlFingers actors/human.ts:738
+  1.9%  update game/activities.ts:443
+  1.7%  update game/robbery.ts:416
+  1.6%  cullChunks game/game.ts:1449
+  1.5%  W combat/hitzones.ts:130
+  1.3%  findLedge actors/character.ts:322
+  1.3%  plantSeatedFeet actors/human.ts:766
+  1.0%  update game/traffic.ts:925
+  0.9%  ray core/physics.ts:87
+  0.9%  applyPose actors/human.ts:826
+  0.7%  solveArm actors/human.ts:762
+  0.7%  solveChain actors/human.ts:782
+  0.7%  updatePeds game/crowd.ts:603
+  0.7%  syncTransform vehicles/vehicle.ts:490
+  0.7%  curbAssist vehicles/vehiclePhysics.ts:460
+  0.6%  (anon) game/traffic.ts:946
+  0.6%  towAbandoned game/traffic.ts:1071
+  0.6%  update world/props.ts:367
+  0.5%  setDoor world/interiors.ts:435
+  0.5%  refreshPose vehicles/vehiclePhysics.ts:136
+  0.5%  nearestLane world/citymap.ts:588
+  0.5%  promoteCar game/crowd.ts:95
+  0.5%  update vehicles/helicopterManager.ts:201
+  0.5%  spawnOnLane game/traffic.ts:83
+  0.5%  rotBone actors/human.ts:117
+  0.5%  drawCars game/crowd.ts:572
+  0.5%  drawParked game/crowd.ts:724
+  0.4%  update game/police.ts:568
+  0.4%  drawPeds game/crowd.ts:681
+  0.4%  warmStep game/population.ts:221
+  0.4%  update vehicles/helicopter.ts:292
+  0.4%  draw ui/minimap.ts:63
+  0.4%  update ui/minimap.ts:44
