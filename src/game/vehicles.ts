@@ -121,6 +121,14 @@ export class VehicleManager {
   private barPools: { m: THREE.Mesh; side: 0 | 1 }[] = [];
   private barLights: THREE.PointLight[] = [];
   private barTex: THREE.Texture | null = null;
+  private litBuf: Vehicle[] = [];
+  private curHeadsBuf: (Vehicle | null)[] = [];
+  private listSnap: Vehicle[] = [];
+  private castBuf: { v: Vehicle; d: number }[] = [];
+  private frustum = new THREE.Frustum();
+  private projScreen = new THREE.Matrix4();
+  private cullSphere = new THREE.Sphere();
+  private cullCentre = new THREE.Vector3();
   setBarLightCount(n: number) {
     while (this.barLights.length < n * 2) { const l = new THREE.PointLight(this.barLights.length % 2 ? 0x2a5cff : 0xff2a1a, 0, 26, 1.6); l.castShadow = false; addPooledLight(this.scene, l, 2.5); this.barLights.push(l); }
     while (this.barLights.length > n * 2) { const l = this.barLights.pop()!; (this.scene.userData.lightPool as LightPool | undefined)?.remove(l); this.scene.remove(l); l.dispose(); }
@@ -140,9 +148,9 @@ export class VehicleManager {
   }
   private updateBarLights(night: number, time: number, listener: THREE.Vector3) {
     this.ensureBarPools();
-    const lit: Vehicle[] = [];
+    const lit = this.litBuf; lit.length = 0;
     for (const v of this.list) if (v.barOn && v.group.visible && v.position.distanceToSquared(listener) < 140 * 140) lit.push(v);
-    lit.sort((a, b) => a.position.distanceToSquared(listener) - b.position.distanceToSquared(listener));
+    if (lit.length > 1) lit.sort((a, b) => a.position.distanceToSquared(listener) - b.position.distanceToSquared(listener));
     const st = barStrobe(time), k = 0.25 + 0.75 * Math.min(1, night * 1.5);
     for (let i = 0; i < this.barPools.length; i++) {
       const pl = this.barPools[i], v = lit[i >> 1];
@@ -179,7 +187,10 @@ export class VehicleManager {
    */
   private updateHeadlights(night: number, listener: THREE.Vector3, pv: Vehicle | null, dt: number) {
     if (!this.heads.length) return;
-    const want = pickHeadlightCars(this.list, this.heads.map(h => h.v), listener, pv, this.heads.length);
+    const cur = this.curHeadsBuf;
+    cur.length = this.heads.length;
+    for (let i = 0; i < this.heads.length; i++) cur[i] = this.heads[i].v;
+    const want = pickHeadlightCars(this.list, cur, listener, pv, this.heads.length);
     for (const h of this.heads) {
       if (h.v && !this.list.includes(h.v)) { h.v = null; h.w = 0; } // removed / despawned: its physics body is gone (reading it panicked)
       const keep = !!h.v && want.includes(h.v) && !h.v.destroyed;
@@ -187,9 +198,10 @@ export class VehicleManager {
       else h.w = Math.min(1, h.w + dt * 3.5);
     }
     for (const v of want) {
-      if (this.heads.some(h => h.v === v)) continue;
-      const free = this.heads.find(h => !h.v); if (!free) break;
-      free.v = v; free.w = 0;
+      let has = false;
+      for (let i = 0; i < this.heads.length; i++) if (this.heads[i].v === v) { has = true; break; }
+      if (has) continue;
+      for (let i = 0; i < this.heads.length; i++) if (!this.heads[i].v) { this.heads[i].v = v; this.heads[i].w = 0; break; }
     }
     for (const h of this.heads) {
       const v = h.v;
@@ -200,12 +212,20 @@ export class VehicleManager {
       h.l.intensity = HEADLIGHT_CD * Math.min(1, night * 1.6) * h.w * h.w * (3 - 2 * h.w);
     }
   }
-  update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null) {
+  update(dt: number, night: number, time: number, listener: THREE.Vector3, playerVehicle: Vehicle | null, camera?: THREE.Camera) {
     this.updateHeadlights(night, listener, playerVehicle, dt);
     this.updateBarLights(night, time, listener);
     this.updateSkidAudio(playerVehicle);
     this.updatePlayerSiren(playerVehicle);
-    for (const v of [...this.list]) {
+    if (camera) {
+      this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.projScreen);
+    }
+    const snap = this.listSnap;
+    snap.length = this.list.length;
+    for (let i = 0; i < this.list.length; i++) snap[i] = this.list[i];
+    for (let si = 0; si < snap.length; si++) {
+      const v = snap[si];
       const braking = v.input.throttle < -0.1 && v.speed > 1;
       v.update(dt, night, time, braking || v.input.handbrake);
       // Deep water floods the engine: the car is lost and slowly sinks.
@@ -215,8 +235,10 @@ export class VehicleManager {
         const p = v.position; this.particles.splash(p.x, WATER_LEVEL, p.z, 30); this.audio.play('splash', { pos: p, volume: 1 });
       }
       const dist = v.position.distanceTo(listener);
-      v.group.visible = dist < 260 || v === playerVehicle;
-      v.bodyMesh.castShadow = dist < 44;
+      const inDist = dist < 260 || v === playerVehicle;
+      const inView = !camera || v === playerVehicle || dist < 50 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(v.position.x, v.position.y + 1, v.position.z), 6));
+      v.group.visible = inDist && inView;
+      v.bodyMesh.castShadow = v.group.visible && dist < 44;
       v.updateLod(v === playerVehicle ? 0 : dist, this.lodFov);
       // Skid marks + tyre smoke
       const c = v.phys.ctrl;
@@ -249,14 +271,29 @@ export class VehicleManager {
         ev.update({ rpm: v.phys.rpm, throttle: Math.abs(v.input.throttle), pos: v.position, kind: v.spec.sound ?? 'car', damage: 1 - frac });
       } else if (ev) { ev.stop(); this.engines.delete(v.id); }
     }
+    snap.length = 0;
     // shadow caster budget: only the nearest few cars are drawn into the shadow map
-    const cast: { v: Vehicle; d: number }[] = [];
-    for (const v of this.list) if (v.bodyMesh.castShadow) cast.push({ v, d: v.position.distanceToSquared(listener) });
-    if (cast.length > this.shadowBudget) { cast.sort((a, b) => a.d - b.d); for (let i = this.shadowBudget; i < cast.length; i++) cast[i].v.bodyMesh.castShadow = false; }
+    const cast = this.castBuf; let cn = 0;
+    for (const v of this.list) if (v.bodyMesh.castShadow) {
+      const e = cast[cn] ?? (cast[cn] = { v, d: 0 });
+      e.v = v; e.d = v.position.distanceToSquared(listener); cn++;
+    }
+    if (cn > this.shadowBudget) {
+      for (let i = 1; i < cn; i++) {
+        const cur = cast[i]; let j = i - 1;
+        while (j >= 0 && cast[j].d > cur.d) { cast[j + 1] = cast[j]; j--; }
+        cast[j + 1] = cur;
+      }
+      for (let i = this.shadowBudget; i < cn; i++) cast[i].v.bodyMesh.castShadow = false;
+    }
   }
   /** Tyre squeal for the player's car (loop) plus a screech one-shot when a slide starts. */
   private updateSkidAudio(pv: Vehicle | null) {
-    const slip = pv && !pv.destroyed ? Math.max(...pv.phys.slip) : 0;
+    let slip = 0;
+    if (pv && !pv.destroyed) {
+      const sl = pv.phys.slip;
+      for (let i = 0; i < sl.length; i++) if (sl[i] > slip) slip = sl[i];
+    }
     const vol = Math.min(1, Math.max(0, (slip - 3) / 6));
     if (vol > 0.02 && pv) {
       if (!this.skidVoice) this.skidVoice = this.audio.skid();

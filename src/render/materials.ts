@@ -3,9 +3,13 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { FACADE_FRAG_COLOR, FACADE_FRAG_PARS, FACADE_VERT_MAIN, FACADE_VERT_PARS, FACADE_VERT_WORLD } from '../world/facadeShader';
 
-/** Night factor shared by every material that glows after dusk. */
+/** Night factor and live sky/sun uniforms shared by reflective and glowing world materials. */
 export const nightUniform = { value: 0 };
 export const timeUniform = { value: 0 };
+export const skyTopUniform = { value: new THREE.Color('#3a7fc4') };
+export const skyHorizonUniform = { value: new THREE.Color('#cfe3ee') };
+export const sunDirUniform = { value: new THREE.Vector3(0.4, 0.7, 0.4).normalize() };
+export const sunColUniform = { value: new THREE.Color('#fff4e0') };
 
 function canvas(w: number, h: number) { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, g: c.getContext('2d', { willReadFrequently: true })! }; }
 function tex(c: HTMLCanvasElement, repeat = true, srgb = true) {
@@ -272,10 +276,11 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
   const road = key.startsWith('asphalt'); // Round 14: oil / tyre patches on roads only
   m.onBeforeCompile = (sh, r) => {
     prev?.call(m, sh, r);
+    if (road) sh.uniforms.uNight = nightUniform;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     // Round 14 (fill rate): sin-free hash, micro detail only inside its own view distance (branches skip the lookups)
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec3 vMW; float mOil = 0.0;
+      varying vec3 vMW; float mOil = 0.0;${road ? ' uniform float uNight;' : ''}
       float mh(vec2 p){ p = mod(p, 289.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
       float mn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mh(i), mh(i + vec2(1, 0)), f.x), mix(mh(i + vec2(0, 1)), mh(i + vec2(1, 1)), f.x), f.y); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -288,11 +293,11 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
           float gf = 1.0 - smoothstep(18.0, 70.0, mvd);
           diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf; }` : ''}${road ? `
         if (mvd < 110.0) { float ov = mn(vMW.xz * vec2(0.9, 0.32) + vec2(3.0, 9.0)) * 0.7 + mn(vMW.xz * 2.3) * 0.3;
-          mOil = smoothstep(0.64, 0.8, ov) * (1.0 - smoothstep(30.0, 110.0, mvd));
-          diffuseColor.rgb *= 1.0 - 0.3 * mOil; }` : ''} }`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, 0.38, mOil * 0.7);' : ''}`);
+          mOil = smoothstep(0.60, 0.80, ov) * (1.0 - smoothstep(30.0, 110.0, mvd));
+          diffuseColor.rgb *= 1.0 - 0.28 * mOil; }` : ''} }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, mix(0.42, 0.24, uNight), mOil * 0.72);' : ''}`);
   };
-  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r14';
+  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r15';
   return m;
 }
 
@@ -301,6 +306,10 @@ export function buildingMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
   m.onBeforeCompile = sh => {
     sh.uniforms.uNight = nightUniform;
+    sh.uniforms.uSkyTop = skyTopUniform;
+    sh.uniforms.uSkyHorizon = skyHorizonUniform;
+    sh.uniforms.uSunDir = sunDirUniform;
+    sh.uniforms.uSunCol = sunColUniform;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + FACADE_VERT_PARS)
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + FACADE_VERT_MAIN)
@@ -319,7 +328,7 @@ export function buildingMaterial(): THREE.MeshStandardMaterial {
           normal = normalize(abs(det) * normal - grad); }`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fEmis;');
   };
-  m.customProgramCacheKey = () => 'meridian-building';
+  m.customProgramCacheKey = () => 'meridian-building-r15';
   return m;
 }
 

@@ -4,7 +4,7 @@
  * grime, burn); one glass material per vehicle hides broken panes. Programs are shared across vehicles.
  */
 import * as THREE from 'three';
-import { nightUniform } from '../../render/materials';
+import { nightUniform, skyTopUniform, skyHorizonUniform, sunDirUniform, sunColUniform } from '../../render/materials';
 import { K } from './kinds';
 import { GROUND } from '../shapes';
 
@@ -67,7 +67,7 @@ export interface CarUniforms {
 const hdr = (k: Record<string, number>) => Object.entries(k).map(([n, v]) => `#define K_${n} ${v}.0`).join('\n');
 /** Body material (one per vehicle; the program is shared). */
 export function carMaterial(): THREE.MeshPhysicalMaterial & { userData: { u: CarUniforms } } {
-  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.025, side: THREE.DoubleSide, shadowSide: THREE.FrontSide, envMapIntensity: 1.3 });
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.025, side: THREE.DoubleSide, shadowSide: THREE.FrontSide, envMapIntensity: 1.45 });
   const u: CarUniforms = {
     uPaint: { value: new THREE.Color(0.5, 0.5, 0.5) }, uPaint2: { value: new THREE.Color(1, 1, 1) }, uMetal: { value: 0.5 }, uLivery: { value: 0 },
     uBurn: { value: 0 }, uFlash: { value: 0 }, uDirt: { value: 0 },
@@ -288,18 +288,26 @@ export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassU
   m.userData.broken = broken; m.userData.crack = crack;
   m.onBeforeCompile = sh => {
     sh.uniforms.uNight = nightUniform; sh.uniforms.uBroken = broken; sh.uniforms.uCrack = crack;
+    sh.uniforms.uSkyTop = skyTopUniform; sh.uniforms.uSkyHorizon = skyHorizonUniform;
+    sh.uniforms.uSunDir = sunDirUniform; sh.uniforms.uSunCol = sunColUniform;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 color; uniform int uBroken; varying vec3 vObj; varying vec3 vTint; varying float vPane;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vTint = color.rgb; vPane = floor(color.a + 0.5);')
       .replace('#include <project_vertex>', '#include <project_vertex>\nif (((uBroken >> int(color.a + 0.5)) & 1) == 1) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying vec3 vTint; varying float vPane; uniform float uNight; uniform vec4 uCrack[8];')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying vec3 vTint; varying float vPane; uniform float uNight; uniform vec4 uCrack[8]; uniform vec3 uSkyTop, uSkyHorizon, uSunDir, uSunCol;')
       .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vTint;')
       .replace('#include <opaque_fragment>', `
-        float ndv = clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0);
-        float fres = 0.05 + 0.95 * pow(1.0 - ndv, 4.0); // Schlick-like: faint head-on, strongly reflective at grazing
+        vec3 gN = normalize(normal);
+        vec3 gV = normalize(vViewPosition);
+        float ndv = clamp(abs(dot(gN, gV)), 0.0, 1.0);
+        float fres = 0.06 + 0.94 * pow(1.0 - ndv, 4.0); // Schlick-like: faint head-on, strongly reflective at grazing
         float dark = 1.0 - clamp(length(vTint) * 6.0, 0.0, 1.0);
         float rear = (1.0 - smoothstep(-1.3, 0.1, vObj.z)) * 0.22; // privacy tint on the rear panes
         outgoingLight *= (1.0 - rear) * 0.82; // dark cabin behind the tint
-        outgoingLight += vec3(0.55, 0.66, 0.75) * fres * 0.6 * (1.0 - uNight * 0.75);
+        vec3 gRWorld = normalize((vec4(reflect(-gV, gN), 0.0) * viewMatrix).xyz);
+        vec3 gSky = mix(uSkyHorizon, uSkyTop, pow(clamp(gRWorld.y, 0.0, 1.0), 0.55));
+        gSky += vec3(0.16, 0.10, 0.045) * uNight * exp(-max(gRWorld.y, 0.0) * 6.0);
+        float gSun = pow(max(dot(gRWorld, normalize(uSunDir)), 0.0), 96.0) * (1.0 - uNight * 0.8);
+        outgoingLight += gSky * fres * mix(0.68, 0.34, uNight) + uSunCol * gSun * (0.35 + 0.65 * fres) * 0.85;
         diffuseColor.a = clamp(0.4 + dark * 0.45 + rear + fres * 0.5, 0.0, 0.96);
         // spiderweb cracks: radial fractures + wobbly rings around the impact, denser and wider at level 2
         vec4 ck = uCrack[int(clamp(vPane, 0.0, 7.0))];
@@ -324,6 +332,6 @@ export function glassMaterial(): THREE.MeshStandardMaterial & { userData: GlassU
         }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'car-glass-v6';
+  m.customProgramCacheKey = () => 'car-glass-v7';
   return m as THREE.MeshStandardMaterial & { userData: GlassUniforms };
 }

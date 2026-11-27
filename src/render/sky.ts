@@ -71,43 +71,61 @@ export class Sky {
         uniform vec3 uTop, uHorizon, uSunCol, uSunDir, uCloud; uniform float uNight, uTime, uStars; varying vec3 vDir;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
-        float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<3;i++){ v+=a*noise(p); p*=2.03; a*=0.5; } return v; }
+        float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<4;i++){ v+=a*noise(p); p=p*2.03+vec2(17.3,9.1); a*=0.5; } return v; }
         void main(){
           vec3 d = normalize(vDir);
           float h = clamp(d.y, -0.2, 1.0);
-          // Round 13: a pale desaturated haze band hugging the horizon, then the zenith colour (photographic gradient)
-          vec3 haze = mix(uHorizon, vec3(dot(uHorizon, vec3(0.333))), 0.25);
-          vec3 col = mix(haze, uTop, pow(smoothstep(-0.02, 0.7, h), 0.65));
-          col = mix(col, haze, (1.0 - smoothstep(0.0, 0.16, h)) * 0.35 * (1.0 - uNight));
-          float sd = max(dot(d, normalize(uSunDir)), 0.0);
-          // Rayleigh-ish: the horizon band warms and brightens on the sun side (forward scattering), stays cool opposite
-          float hz = 1.0 - smoothstep(0.0, 0.35, max(d.y, 0.0));
-          col += uSunCol * hz * pow(sd, 2.0) * 0.10 * (1.0 - uNight);
-          col = mix(col, col * vec3(0.94, 0.97, 1.03), hz * (1.0 - sd) * 0.4 * (1.0 - uNight));
-          // night: sodium/LED city glow hugging the horizon (also tints the fog colour via the keys)
-          float glow = pow(1.0 - smoothstep(0.0, 0.32, max(d.y, 0.0)), 2.0);
-          col += vec3(0.55, 0.30, 0.13) * glow * 0.20 * uNight * (0.75 + 0.25 * noise(d.xz * 9.0));
-          col += uSunCol * (pow(sd, 4.0) * 0.16 + pow(sd, 24.0) * 0.22 + pow(sd, 400.0) * 0.8) * (1.0 - uNight * 0.7);
-          float disc = smoothstep(0.9993, 0.9997, sd);
-          col = mix(col, uSunCol * 2.2 + 0.4, disc * (1.0 - uNight));
-          // moon opposite-ish the sun at night
+          // photographic atmospheric gradient with subtle horizon mist band
+          vec3 haze = mix(uHorizon, vec3(dot(uHorizon, vec3(0.333))), 0.22);
+          vec3 col = mix(haze, uTop, pow(smoothstep(-0.02, 0.72, h), 0.62));
+          col = mix(col, haze, (1.0 - smoothstep(0.0, 0.18, h)) * 0.36 * (1.0 - uNight));
+          vec3 sDir = normalize(uSunDir);
+          float sd = max(dot(d, sDir), 0.0);
+          // Rayleigh + Mie: warm forward scattering toward the sun, cool crisp sky opposite
+          float hz = 1.0 - smoothstep(0.0, 0.38, max(d.y, 0.0));
+          col += uSunCol * hz * (pow(sd, 2.0) * 0.12 + pow(sd, 8.0) * 0.10) * (1.0 - uNight);
+          col = mix(col, col * vec3(0.93, 0.97, 1.04), hz * (1.0 - sd) * 0.42 * (1.0 - uNight));
+          // night: coastal city sodium/LED light dome hugging the horizon
+          float glow = pow(1.0 - smoothstep(0.0, 0.34, max(d.y, 0.0)), 2.1);
+          col += vec3(0.56, 0.31, 0.15) * glow * 0.22 * uNight * (0.76 + 0.24 * noise(d.xz * 9.0));
+          // Mie solar aureole & crisp sun disc
+          col += uSunCol * (pow(sd, 4.0) * 0.16 + pow(sd, 28.0) * 0.26 + pow(sd, 360.0) * 0.85) * (1.0 - uNight * 0.72);
+          float disc = smoothstep(0.99935, 0.99972, sd);
+          col = mix(col, uSunCol * 2.3 + 0.4, disc * (1.0 - uNight));
+          // moon with subtle atmospheric halo at night
           vec3 md = normalize(vec3(-0.45, 0.55, -0.7));
-          float moon = smoothstep(0.9990, 0.9994, dot(d, md));
-          col = mix(col, vec3(0.92, 0.95, 1.0) * 1.4, moon * uNight);
-          col += vec3(0.6, 0.75, 1.0) * pow(max(dot(d, md), 0.0), 40.0) * 0.12 * uNight;
-          // stars
+          float mdot = max(dot(d, md), 0.0);
+          float moon = smoothstep(0.99905, 0.99942, mdot);
+          col = mix(col, vec3(0.92, 0.95, 1.0) * 1.45, moon * uNight);
+          col += vec3(0.58, 0.74, 1.0) * (pow(mdot, 45.0) * 0.14 + pow(mdot, 6.0) * 0.03) * uNight;
+          // stars with colour-temperature variation and subtle scintillation
           vec2 sp = d.xz / (d.y + 0.25) * 140.0;
-          float st = step(0.9965, hash(floor(sp))) * smoothstep(0.05, 0.4, d.y);
-          float sb = hash(floor(sp) + 7.3); col += mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), sb) * st * (0.35 + 0.9 * sb * sb) * uNight * uStars * (0.75 + 0.25 * sin(uTime * 3.0 + hash(floor(sp)) * 40.0));
-          // soft clouds: wide smoothstep for feathered edges, darker underside (one extra noise tap towards the sun), silver lining near the sun
-          vec2 cp = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.004, uTime * 0.002);
-          float fb = fbm(cp);
-          float c = smoothstep(0.46, 0.86, fb) * smoothstep(0.0, 0.2, d.y);
-          float shade = clamp(noise(cp * 2.0 + normalize(uSunDir.xz + vec2(0.001)) * 0.35) - fb * 0.5, 0.0, 1.0);
-          vec3 cc = uCloud * (1.0 - 0.28 * c * (1.0 - shade) * (1.0 - uNight));
-          cc = mix(cc, uSunCol, pow(sd, 3.0) * 0.4);
-          col = mix(col, cc, c * 0.8);
-          col = mix(col, haze, (1.0 - smoothstep(0.0, 0.1, d.y)) * c * 0.5);
+          vec2 sid = floor(sp);
+          float st = step(0.9964, hash(sid)) * smoothstep(0.05, 0.4, d.y);
+          float sb = hash(sid + 7.3);
+          col += mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.86, 1.0), sb) * st * (0.35 + 0.9 * sb * sb) * uNight * uStars * (0.78 + 0.22 * sin(uTime * 2.8 + hash(sid) * 40.0));
+          // high-altitude wispy cirrus streaks
+          if (d.y > 0.01) {
+            vec2 cirP = d.xz / (d.y + 0.24) * vec2(1.1, 2.7) + vec2(uTime * 0.0022, uTime * 0.0008);
+            float cir = smoothstep(0.56, 0.86, fbm(cirP)) * smoothstep(0.01, 0.24, d.y) * (1.0 - smoothstep(0.65, 1.0, d.y) * 0.4);
+            vec3 cirC = mix(uCloud, uSunCol * 1.1, pow(sd, 3.0) * 0.45);
+            col = mix(col, cirC, cir * mix(0.28, 0.12, uNight));
+            // lower sculpted cumulus layer: directional self-shadow + silver lining near the sun
+            vec2 cp = d.xz / (d.y + 0.13) * 1.55 + vec2(uTime * 0.004, uTime * 0.002);
+            float fb = fbm(cp);
+            float c = smoothstep(0.47, 0.84, fb) * smoothstep(0.0, 0.22, d.y);
+            vec2 sunStep = normalize(sDir.xz + vec2(0.001)) * 0.24;
+            float fbSun = fbm(cp + sunStep);
+            float litEdge = clamp((fb - fbSun) * 2.2 + 0.52, 0.0, 1.0);
+            vec3 shadowC = mix(uTop * 0.62, uHorizon * 0.78, 0.55);
+            vec3 cc = mix(shadowC, uCloud, mix(0.45, 1.0, litEdge) * (1.0 - uNight * 0.35));
+            // golden/silver lining when backlit by the sun
+            float silver = pow(sd, 5.0) * (1.0 - c * 0.55) * (1.0 - uNight * 0.85);
+            cc += uSunCol * silver * 0.55;
+            cc = mix(cc, uSunCol, pow(sd, 3.0) * 0.28 * (1.0 - uNight));
+            col = mix(col, cc, c * 0.82);
+            col = mix(col, haze, (1.0 - smoothstep(0.0, 0.12, d.y)) * c * 0.55);
+          }
           // horizon haze below 0
           col = mix(col, uHorizon * 0.9, smoothstep(0.02, -0.15, d.y));
           gl_FragColor = vec4(col, 1.0);

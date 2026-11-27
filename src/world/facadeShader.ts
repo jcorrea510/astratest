@@ -27,6 +27,7 @@ vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
 
 export const FACADE_FRAG_PARS = /* glsl */`
 uniform float uNight;
+uniform vec3 uSkyTop, uSkyHorizon, uSunDir, uSunCol;
 flat varying vec4 vFacade; flat varying vec4 vFacade2; flat varying vec4 vFacade3;
 varying vec2 vFUv; varying vec3 vWPos; varying vec3 vWN;
 float fH(vec2 p){ p = mod(p, 289.0); vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -65,10 +66,10 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
     float aa = pix / 1.5;
     float joint = 1.0 - smoothstep(0.006 - aa, 0.006 + aa, f.x) * smoothstep(0.006 - aa, 0.006 + aa, f.y);
     col *= (0.86 + 0.12 * fH(id + seed)) * (0.88 + 0.18 * fBm(p * 0.8 + seed));
-    vec2 tf = fract(p / vec2(0.6, 0.5)) - 0.5; float tie = 1.0 - smoothstep(0.02, 0.035, length(tf * vec2(0.6, 0.5)));
-    col *= 1.0 - (joint * 0.35 + tie * 0.25) * (1.0 - far);
-    h -= (joint * 0.01 + tie * 0.004) * (1.0 - far);
-    rough = 0.88;
+    vec2 tf = fract(p / vec2(0.6, 0.5)) - 0.5; float tie = 1.0 - smoothstep(0.018, 0.032, length(tf * vec2(0.6, 0.5)));
+    col *= 1.0 - (joint * 0.30 + tie * 0.13) * (1.0 - far);
+    h -= (joint * 0.01 + tie * 0.003) * (1.0 - far);
+    rough = 0.87;
   } else if (m < 3.5) { // dressed stone (ashlar)
     vec2 bs = vec2(0.9, 0.42); vec2 q = p / bs; q.x += mod(floor(q.y), 2.0) * 0.5; vec2 id = floor(q), f = fract(q);
     float aa = pix / bs.y;
@@ -99,14 +100,20 @@ void wallMaterial(float m, vec2 p, float pix, float seed, inout vec3 col, inout 
   }
 }
 
-// fake sky / street reflection for glass: Fresnel weight and a horizon-to-zenith gradient with per-pane tilt
-float glassFresnel(vec3 V, vec3 N){ float c = clamp(dot(-V, N), 0.0, 1.0); return 0.04 + 0.5 * pow(1.0 - c, 4.0); }
+// live sky / street / sun reflection for glass: Fresnel weight and time-of-day gradient with per-pane tilt
+float glassFresnel(vec3 V, vec3 N){ float c = clamp(dot(-V, N), 0.0, 1.0); return 0.04 + 0.56 * pow(1.0 - c, 4.0); }
 vec3 glassSky(vec3 V, vec3 N, vec2 cell, float seed, float night){
-  vec3 Nt = normalize(N + vec3(fH(cell + seed) - 0.5, (fH(cell * 1.7 + seed) - 0.5) * 0.5, fH(cell * 2.9 + seed) - 0.5) * 0.14);
+  vec3 Nt = normalize(N + vec3(fH(cell + seed) - 0.5, (fH(cell * 1.7 + seed) - 0.5) * 0.5, fH(cell * 2.9 + seed) - 0.5) * 0.12);
   vec3 R = reflect(V, Nt);
-  vec3 sky = mix(vec3(0.5, 0.58, 0.66), vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.9, R.y));
-  sky = mix(vec3(0.12, 0.12, 0.115), sky, smoothstep(-0.15, 0.1, R.y));
-  return sky * mix(0.5, 0.03, night);
+  vec3 sky = mix(uSkyHorizon, uSkyTop, pow(smoothstep(0.0, 0.85, R.y), 0.7));
+  vec3 streetRef = mix(vec3(0.11, 0.11, 0.105), vec3(0.06, 0.055, 0.07), night);
+  // subtle warm city horizon reflection band at night
+  float band = exp(-abs(R.y - 0.03) * 14.0);
+  sky += vec3(0.45, 0.28, 0.14) * band * 0.35 * night;
+  sky = mix(streetRef, sky, smoothstep(-0.14, 0.12, R.y));
+  // crisp sunlit sky highlight on angled glass panes
+  float sunSpec = pow(max(dot(R, normalize(uSunDir)), 0.0), 48.0) * (1.0 - night * 0.85);
+  return sky * mix(0.62, 0.14, night) + uSunCol * sunSpec * 0.85;
 }
 // interior mapping: trace a view ray into a box room behind the window; returns lit interior colour
 vec3 gGlow;
@@ -186,11 +193,14 @@ vec3 shopWall(vec2 q, vec3 hp, vec3 room, float st, float rs, vec3 base, bool si
     c = mix(c, vec3(0.12, 0.13, 0.15), step(dr, 0.27) * dryer); c = mix(c, vec3(0.62, 0.55, 0.4), step(dr, 0.22) * dryer);
     float counter = step(0.0, hp.z) * step(0.9, h) * step(h, 0.97) * (1.0 - washer) ; c = mix(c, vec3(0.6, 0.45, 0.3), counter);
     float sgn = step(2.1, h) * step(h, 2.5) * step(0.2, fract(u / 4.0)) * step(fract(u / 4.0), 0.8); c = mix(c, vec3(0.2, 0.5, 0.8), sgn); gGlow += vec3(0.2, 0.5, 0.9) * sgn * 0.6;
-  } else { // office lobby: pale wall, reception desk, plants
-    c = vec3(0.82, 0.82, 0.8);
-    float desk = step(h, 1.1) * step(0.2, fract(u / 6.0)) * step(fract(u / 6.0), 0.75); c = mix(c, vec3(0.3, 0.26, 0.22), desk);
-    float logo = step(1.8, h) * step(h, 2.3) * step(0.35, fract(u / 6.0)) * step(fract(u / 6.0), 0.6); c = mix(c, vec3(0.2, 0.3, 0.45), logo); gGlow += vec3(0.2, 0.35, 0.6) * logo * 0.4;
-    float pl = step(abs(fract(u / 6.0) - 0.9), 0.05) * step(h, 1.2); c = mix(c, vec3(0.15, 0.4, 0.2), pl);
+  } else { // office lobby: warm stone/wood wall, reception desk, backlit logo, plants
+    c = vec3(0.58, 0.56, 0.52);
+    float panel = step(0.03, fract(u / 1.5)) * step(fract(u / 1.5), 0.97);
+    c *= 0.88 + 0.12 * panel;
+    float desk = step(h, 1.1) * step(0.18, fract(u / 6.0)) * step(fract(u / 6.0), 0.76); c = mix(c, vec3(0.22, 0.17, 0.13), desk);
+    float deskTop = step(1.04, h) * step(h, 1.12) * step(0.18, fract(u / 6.0)) * step(fract(u / 6.0), 0.76); c = mix(c, vec3(0.45, 0.42, 0.38), deskTop);
+    float logo = step(1.85, h) * step(h, 2.3) * step(0.35, fract(u / 6.0)) * step(fract(u / 6.0), 0.6); c = mix(c, vec3(0.18, 0.28, 0.42), logo); gGlow += vec3(0.35, 0.52, 0.72) * logo * 0.35;
+    float pl = step(abs(fract(u / 6.0) - 0.9), 0.06) * step(h, 1.35); c = mix(c, vec3(0.12, 0.32, 0.16), pl);
   }
   return c;
 }
@@ -201,21 +211,21 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
   float tz = (room.z - p0.z) / v.z;
   float t = min(min(tx, ty), tz);
   vec3 hp = p0 + v * t;
-  vec3 wallC = mix(vec3(0.78, 0.74, 0.66), vec3(0.62, 0.7, 0.72), step(0.5, fH(vec2(rs, 1.7))));
-  if (type > 0.5) wallC = vec3(0.82, 0.83, 0.82);
-  if (type > 1.5) wallC = mix(vec3(0.9, 0.9, 0.86), vec3(0.95, 0.88, 0.8), fH(vec2(rs, 5.3)));
+  vec3 wallC = mix(vec3(0.68, 0.62, 0.54), vec3(0.52, 0.58, 0.62), step(0.5, fH(vec2(rs, 1.7))));
+  if (type > 0.5) wallC = vec3(0.68, 0.69, 0.68);
+  if (type > 1.5) wallC = mix(vec3(0.62, 0.59, 0.53), vec3(0.70, 0.61, 0.52), fH(vec2(rs, 5.3)));
   float st = type - 2.0; gGlow = vec3(0.0);
-  vec3 floorC = mix(vec3(0.42, 0.3, 0.2), vec3(0.35, 0.36, 0.38), step(0.6, fH(vec2(rs, 3.1))));
-  if (type > 0.5) floorC = vec3(0.28, 0.3, 0.33);
-  if (type > 1.5) { floorC = vec3(0.75, 0.74, 0.7); vec2 fc = floor(hp.xz * 1.6); float chk = mod(fc.x + fc.y, 2.0);
-    if (st < 1.5) floorC = mix(vec3(0.82, 0.86, 0.88), vec3(0.5, 0.58, 0.62), chk);
-    else if (st < 2.5) floorC = vec3(0.18, 0.11, 0.07);
-    else if (st < 3.5) floorC = mix(vec3(0.05), vec3(0.85), chk);
-    else if (st < 4.5) floorC = vec3(0.28, 0.27, 0.26);
-    else if (st < 5.5) floorC = mix(vec3(0.78, 0.74, 0.66), vec3(0.6, 0.57, 0.5), chk);
-    else if (st < 7.5) floorC = mix(vec3(0.6, 0.5, 0.4), vec3(0.2, 0.2, 0.22), chk * step(6.5, st));
-    else if (st < 8.5) floorC = mix(vec3(0.9), vec3(0.15), chk);
-    else if (st < 9.5) floorC = vec3(0.2, 0.21, 0.23); }
+  vec3 floorC = mix(vec3(0.34, 0.24, 0.16), vec3(0.28, 0.29, 0.31), step(0.6, fH(vec2(rs, 3.1))));
+  if (type > 0.5) floorC = vec3(0.24, 0.26, 0.28);
+  if (type > 1.5) { floorC = vec3(0.52, 0.5, 0.46); vec2 fc = floor(hp.xz * 1.6); float chk = mod(fc.x + fc.y, 2.0);
+    if (st < 1.5) floorC = mix(vec3(0.58, 0.62, 0.64), vec3(0.36, 0.42, 0.46), chk);
+    else if (st < 2.5) floorC = vec3(0.16, 0.1, 0.06);
+    else if (st < 3.5) floorC = mix(vec3(0.05), vec3(0.62), chk);
+    else if (st < 4.5) floorC = vec3(0.22, 0.2, 0.19);
+    else if (st < 5.5) floorC = mix(vec3(0.6, 0.56, 0.48), vec3(0.45, 0.42, 0.36), chk);
+    else if (st < 7.5) floorC = mix(vec3(0.46, 0.38, 0.3), vec3(0.16, 0.16, 0.18), chk * step(6.5, st));
+    else if (st < 8.5) floorC = mix(vec3(0.68, 0.65, 0.6), vec3(0.14), chk);
+    else if (st < 9.5) floorC = vec3(0.16, 0.17, 0.19); }
   vec3 c;
   float lightAt = 0.0;
   if (t == tz) {
@@ -224,40 +234,49 @@ vec3 roomColor(vec3 p0, vec3 v, vec3 room, float rs, float type, float lit, floa
     if (type < 0.5) {
       // furniture silhouettes and a picture on the back wall
       float sofa = boxMask(q, vec2(0.15 + fH(vec2(rs, 9.0)) * 0.3, 0.0), vec2(0.55 + fH(vec2(rs, 9.0)) * 0.3, 0.3), 0.01);
-      c = mix(c, mix(vec3(0.35, 0.25, 0.2), vec3(0.25, 0.3, 0.4), fH(vec2(rs, 11.0))), sofa);
+      c = mix(c, mix(vec3(0.32, 0.22, 0.18), vec3(0.22, 0.26, 0.35), fH(vec2(rs, 11.0))), sofa);
       float pic = boxMask(q, vec2(0.3, 0.5), vec2(0.6, 0.75), 0.005);
-      c = mix(c, mix(vec3(0.6, 0.4, 0.3), vec3(0.3, 0.5, 0.6), fH(vec2(rs, 13.0))), pic * step(0.4, fH(vec2(rs, 14.0))));
+      c = mix(c, mix(vec3(0.55, 0.38, 0.28), vec3(0.28, 0.44, 0.54), fH(vec2(rs, 13.0))), pic * step(0.4, fH(vec2(rs, 14.0))));
     } else if (type < 1.5) {
       float desk = boxMask(q, vec2(0.05, 0.0), vec2(0.95, 0.27), 0.01);
-      c = mix(c, vec3(0.3, 0.3, 0.32), desk);
+      c = mix(c, vec3(0.25, 0.25, 0.27), desk);
       float scr = boxMask(fract(q * vec2(3.0, 1.0)), vec2(0.35, 0.28), vec2(0.65, 0.42), 0.02);
-      c = mix(c, vec3(0.1, 0.12, 0.16) + night * vec3(0.2, 0.3, 0.5) * lit, scr);
+      c = mix(c, vec3(0.08, 0.1, 0.14) + night * vec3(0.2, 0.34, 0.55) * lit, scr);
     } else {
       c = shopWall(q * room.xy, hp, room, st, rs, wallC, false);
     }
   } else if (t == ty) {
     if (v.y < 0.0) { c = floorC * (type > 1.5 ? 1.0 : (0.8 + 0.2 * fH(floor(hp.xz * 2.0)))); }
     else {
-      c = wallC * 1.05;
+      c = wallC * 0.85;
       // ceiling lights
       vec2 lp2 = hp.xz;
-      float panel = type > 0.5 ? boxMask(fract(lp2 / vec2(1.6, 2.4)), vec2(0.2, 0.35), vec2(0.8, 0.65), 0.02) : 1.0 - smoothstep(0.1, 0.18, length(hp.xz - vec2(room.x * 0.5, room.z * 0.5)) / room.x);
+      float panel = type > 0.5 ? boxMask(fract(lp2 / vec2(1.8, 2.6)), vec2(0.24, 0.38), vec2(0.76, 0.62), 0.02) : 1.0 - smoothstep(0.1, 0.18, length(hp.xz - vec2(room.x * 0.5, room.z * 0.5)) / room.x);
       lightAt = panel;
     }
   } else {
-    c = wallC * 0.85;
-    if (type > 1.5) c = shopWall(vec2(0.0), hp, room, st, rs, wallC * 0.85, true) * 0.85;
+    c = wallC * 0.76;
+    if (type > 1.5) c = shopWall(vec2(0.0), hp, room, st, rs, wallC * 0.78, true) * 0.78;
   }
-  if (type > 1.5) c = mix(vec3(dot(c, vec3(0.3, 0.59, 0.11))), c, mix(0.45, 0.85, night)) * mix(0.8, 1.0, night);
-  // light falloff: brighter near the ceiling, darker deep in the room
-  float depthK = mix(1.0, 0.55, clamp(hp.z / room.z, 0.0, 1.0));
-  float hk = mix(0.7, 1.0, clamp(hp.y / room.y, 0.0, 1.0));
-  vec3 lightC = mix(vec3(1.0, 0.78, 0.52), vec3(0.85, 0.92, 1.0), step(0.75, fH(vec2(rs, 21.0))));
-  if (type > 0.5) lightC = vec3(0.92, 0.96, 1.0);
-  float dayL = 0.22;
-  float nightL = lit * 1.1;
+  if (type > 1.5) c = mix(vec3(dot(c, vec3(0.3, 0.59, 0.11))), c, mix(0.55, 0.92, night)) * mix(0.75, 0.88, night);
+  // 3D room corner AO + depth falloff: realistic shadowed corners and deeper interior falloff
+  vec3 ruv = clamp(hp / max(room, vec3(0.1)), 0.0, 1.0);
+  float edgeX = min(ruv.x, 1.0 - ruv.x), edgeY = min(ruv.y, 1.0 - ruv.y);
+  float cornerAO = mix(0.58, 1.0, smoothstep(0.0, 0.18, edgeX)) * mix(0.65, 1.0, smoothstep(0.0, 0.16, edgeY));
+  float depthK = mix(1.0, 0.36, pow(ruv.z, 0.85));
+  float hk = mix(0.64, 1.0, ruv.y);
+  vec3 lightC = mix(vec3(1.0, 0.76, 0.48), vec3(0.84, 0.91, 1.0), step(0.75, fH(vec2(rs, 21.0))));
+  if (type > 0.5 && type <= 1.5) lightC = mix(vec3(0.95, 0.90, 0.82), vec3(0.84, 0.92, 1.0), step(0.4, fH(vec2(rs, 23.0))));
+  else if (type > 1.5) {
+    // curated warm vs cool commercial lighting so shopfronts never read as flat chalky white boxes at night
+    bool coolShop = (st < 1.5) || (st > 8.5 && st < 9.5) || (st > 10.5);
+    lightC = coolShop ? vec3(0.84, 0.91, 0.98) : vec3(1.0, 0.79, 0.54);
+  }
+  float dayL = 0.20;
+  float nightL = lit * (type > 1.5 ? 0.78 : 1.05);
   float L = mix(dayL, nightL, night);
-  return c * depthK * hk * L * mix(vec3(1.0), lightC, night) + lightC * lightAt * mix(0.4, 2.5 * lit, night) + gGlow * lit * mix(0.35, 1.0, night) * depthK;
+  float ceilPow = type > 1.5 ? 1.45 : 2.1;
+  return c * depthK * hk * cornerAO * L * mix(vec3(1.0), lightC, night) + lightC * lightAt * mix(0.32, ceilPow * lit, night) * depthK + gGlow * lit * mix(0.3, 0.95, night) * depthK;
 }
 `;
 
@@ -417,11 +436,13 @@ if (fKind < 0.5) {
     float grille = (1.0 - open) * fNight * win;
     vec3 frameCol = mix(vec3(0.12, 0.12, 0.13), vec3(0.55, 0.4, 0.25), step(0.6, fract(fSeed * 0.71)));
     col = mix(col, frameCol, win);
-    col = mix(col, mix(vec3(0.13, 0.17, 0.21), vec3(0.02), fNight), win * glassM);
-    fEmis = (inter * mix(0.7, 0.45, fNight) * (1.0 - glassFresnel(fV, fN3)) + glassSky(fV, fN3, cell, fSeed, fNight) * glassFresnel(fV, fN3)) * win * glassM * (1.0 - grille);
+    col = mix(col, mix(vec3(0.09, 0.12, 0.15), vec3(0.015), fNight), win * glassM);
+    float shopFrs = glassFresnel(fV, fN3);
+    float shopReveal = mix(0.72, 1.0, smoothstep(0.0, 0.28, hi.y - lp.y));
+    fEmis = (inter * shopReveal * mix(0.58, 0.42, fNight) * (1.0 - shopFrs) + glassSky(fV, fN3, cell, fSeed, fNight) * shopFrs) * win * glassM * (1.0 - grille);
     col = mix(col, vec3(0.42, 0.43, 0.44) * (0.75 + 0.25 * step(0.5, fract(lp.y / 0.09))), grille);
     fGlass = win * glassM * (1.0 - grille);
-    rough = mix(rough, 0.05, fGlass); metal = mix(metal, 0.5, win * (1.0 - glassM));
+    rough = mix(rough, 0.04, fGlass); metal = mix(metal, 0.5, win * (1.0 - glassM));
     h -= win * 0.05;
   } else if (fKind < 7.5) {
     // roll-up / garage door: horizontal slats

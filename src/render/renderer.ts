@@ -11,6 +11,7 @@ import { Sky, sampleSky, type SkyState } from './sky';
 import { LightPool } from './lightPool';
 import { AOPass, FXAA_PLUS_GLSL, CAS_GLSL, WHITE_TEX } from './post';
 import { adaptStep, newDyn, pixelRatioFor, shadowRedrawDue, GpuTimer, type DynState } from './perfPolicy';
+import { skyTopUniform, skyHorizonUniform, sunDirUniform, sunColUniform } from './materials';
 
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uVignette: { value: 0.14 }, uTime: { value: 0 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 0.2, 0.2) }, uSlow: { value: 0 }, uSat: { value: 0.95 }, uSplit: { value: 0.2 } },
@@ -28,7 +29,7 @@ const GradeShader = {
       col *= mix(vec3(1.0), mix(shadowTint, highTint, smoothstep(0.15, 0.75, l)), uSplit);
       // gentle S-curve and saturation
       col = mix(vec3(l), col, uSat);
-      col = mix(col, col * col * (3.0 - 2.0 * col), 0.32); // filmic S-curve on the display-referred image (AgX is flat by design)
+      col = mix(col, col * col * (3.0 - 2.0 * col), 0.26); // filmic S-curve on the display-referred image (AgX rolls highlights smoothly)
       // slow-motion desaturation for the inventory wheel
       col = mix(col, vec3(dot(col, vec3(0.299,0.587,0.114))) * vec3(0.9,1.0,1.05), uSlow * 0.55);
       vec2 d = vUv - 0.5;
@@ -61,9 +62,9 @@ export const OUTPUT_GRADE_FRAG = `
         for (int i = 1; i <= 4; i++) acc += texture2D(tDiffuse, vUv - rd * float(i)).rgb;
         c.rgb = acc / 5.0;
       }
-      // Round 12: ambient occlusion (half-res, blurred) darkens creases and contact areas before tone mapping
-      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
       if (uSharp > 0.0) c.rgb = casSharpen(tDiffuse, vUv, c.rgb, uSharp);
+      // ambient occlusion (half-res, blurred) darkens creases and contact areas cleanly after sharpening
+      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
       if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
       c.rgb = TONE_MAP(c.rgb);
       c = sRGBTransferOETF(c);`)}`;
@@ -166,10 +167,13 @@ export class Renderer {
   }
   private hurtK = 0;
   private shadowTarget = new THREE.Vector3(); private lightDir = new THREE.Vector3(0, 1, 0);
-  private _fwd = new THREE.Vector3();
+  private _fwd = new THREE.Vector3(); private _zero = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator;
   private envScene = new THREE.Scene();
   private envSky = new Sky();
+  private envGroundMat!: THREE.MeshBasicMaterial;
+  private envCityMat!: THREE.MeshBasicMaterial;
+  private envLightsMat!: THREE.MeshBasicMaterial;
   private envRT: THREE.WebGLRenderTarget | null = null;
   private envHour = -100;
 
@@ -187,15 +191,37 @@ export class Renderer {
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.035;
     this.sun.shadow.radius = 2.6; // Vogel-disk PCF footprint in texels: a soft ~12 cm penumbra on Medium instead of pixel stairs
     this.scene.add(this.hemi, this.sun, this.sun.target, this.sky.mesh);
+    this.scene.updateMatrix();
+    this.scene.matrixAutoUpdate = false;
     skipHiddenMatrices(this.scene);
     this.lightPool = new LightPool(this.scene); this.scene.userData.lightPool = this.lightPool;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.envSky.mesh.scale.setScalar(50);
     this.envSky.uniforms.uStars.value = 0; // stars in reflections read as noise on glass
     this.envScene.add(this.envSky.mesh);
-    // ground bounce for the lower hemisphere of reflections
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(48, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3a3634 }));
+    // Rich urban reflection ring for PMREM: ground bounce + skyline silhouettes + night warm window ribbons
+    this.envGroundMat = new THREE.MeshBasicMaterial({ color: 0x45413e });
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(48, 24).rotateX(-Math.PI / 2), this.envGroundMat);
     ground.position.y = -2; this.envScene.add(ground);
+    this.envCityMat = new THREE.MeshBasicMaterial({ color: 0x3b4048 });
+    this.envLightsMat = new THREE.MeshBasicMaterial({ color: 0xffc685 });
+    const skyline = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.envCityMat, 28);
+    const skyLights = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.envLightsMat, 28);
+    const em = new THREE.Matrix4(), eq = new THREE.Quaternion(), ep = new THREE.Vector3(), es = new THREE.Vector3(), eu = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const dist = 34 + (i % 3) * 4;
+      const h = 4.5 + ((i * 7 + 3) % 11) * 1.4;
+      const w = 5.5 + (i % 4) * 1.5;
+      ep.set(Math.cos(a) * dist, h * 0.5 - 2, Math.sin(a) * dist);
+      eq.setFromAxisAngle(eu, -a);
+      es.set(2.5, h, w);
+      em.compose(ep, eq, es); skyline.setMatrixAt(i, em);
+      ep.set(Math.cos(a) * (dist - 1.5), h * 0.45 - 1.2, Math.sin(a) * (dist - 1.5));
+      es.set(0.3, h * 0.22, w * 0.72);
+      em.compose(ep, eq, es); skyLights.setMatrixAt(i, em);
+    }
+    this.envScene.add(skyline, skyLights);
     this.setQuality('medium');
     window.addEventListener('resize', () => this.resize());
     // iPadOS home-screen apps report a short viewport at launch and settle later; re-measure on rotation / viewport changes
@@ -274,17 +300,29 @@ export class Renderer {
   updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {
     const s = sampleSky(hour, this.skyState);
     this.sky.update(s, time, this.camera.position);
+    // Sync shared live sky uniforms for water, building glass, and vehicle glass reflections
+    skyTopUniform.value.copy(s.top);
+    skyHorizonUniform.value.copy(s.horizon);
+    sunDirUniform.value.copy(s.sunDir);
+    sunColUniform.value.copy(s.sun);
     // Rebuild the reflection environment from the sky every 0.75 game hours (~45 real s). Round 8: it was every 6 game
     // minutes = every 6 real seconds, and each rebuild (a new PMREM target) made every material re-resolve its program: a
     // regular hitch on the Mac
     if (envRebuildDue(hour, this.envHour)) {
       this.envHour = hour;
-      this.envSky.update(s, 0, new THREE.Vector3());
+      this.envSky.update(s, 0, this._zero);
+      this.envGroundMat.color.copy(s.hemiGround).multiplyScalar(THREE.MathUtils.lerp(0.65, 0.32, s.night));
+      this.envCityMat.color.copy(s.horizon).lerp(s.hemiGround, 0.65).multiplyScalar(THREE.MathUtils.lerp(0.55, 0.16, s.night));
+      this.envLightsMat.color.setRGB(
+        THREE.MathUtils.lerp(0.45, 1.35, s.night),
+        THREE.MathUtils.lerp(0.48, 0.96, s.night),
+        THREE.MathUtils.lerp(0.54, 0.56, s.night),
+      );
       const rt = this.pmrem.fromScene(this.envScene, 0.02, 0.1, 200);
       this.envRT?.dispose(); this.envRT = rt;
       this.scene.environment = rt.texture;
     }
-    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.42, 0.4, s.night);
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.56, 0.48, s.night);
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI;
     const L = LOOK[this.look];
     this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
@@ -300,20 +338,29 @@ export class Renderer {
     const fwd = this.camera.getWorldDirection(this._fwd); const fl = Math.hypot(fwd.x, fwd.z) || 1; const ahead = range * 0.45;
     const fx = focus.x + (fwd.x / fl) * ahead, fz = focus.z + (fwd.z / fl) * ahead;
     shadowFrame(s.lightDir, fx, fz, texel, this.lightDir, this.shadowTarget);
-    const key = `${this.shadowTarget.x.toFixed(2)},${this.shadowTarget.z.toFixed(2)},${this.lightDir.x.toFixed(4)},${this.lightDir.z.toFixed(4)}`;
-    if (key !== this.lastShadowKey) { this.lastShadowKey = key; this.shadowMoved = true; }
+    if (
+      Math.abs(this.shadowTarget.x - this.lastSx) > 1e-3 ||
+      Math.abs(this.shadowTarget.z - this.lastSz) > 1e-3 ||
+      Math.abs(this.lightDir.x - this.lastLdx) > 1e-4 ||
+      Math.abs(this.lightDir.z - this.lastLdz) > 1e-4
+    ) {
+      this.lastSx = this.shadowTarget.x; this.lastSz = this.shadowTarget.z;
+      this.lastLdx = this.lightDir.x; this.lastLdz = this.lightDir.z;
+      this.shadowMoved = true;
+    }
     this.sun.target.position.copy(this.shadowTarget);
     this.sun.position.copy(this.shadowTarget).addScaledVector(this.lightDir, 180);
     // Round 11 perf: in daylight the threshold leaves next to nothing to bloom: skip the pass (bright lights need the dark)
     this.bloom.enabled = this.quality.bloom && s.night > 0.12;
-    this.bloom.strength = THREE.MathUtils.lerp(0.12, 0.26, s.night);
-    this.bloom.threshold = THREE.MathUtils.lerp(0.95, 0.88, s.night);
+    this.bloom.strength = THREE.MathUtils.lerp(0.14, 0.30, s.night);
+    this.bloom.threshold = THREE.MathUtils.lerp(0.95, 0.85, s.night);
     this.grade.uniforms.uNight.value = s.night;
     this.grade.uniforms.uTime.value = time % 100;
   }
   lightPool: LightPool;
   stats = { calls: 0, triangles: 0, textures: 0, geometries: 0, programs: 0 };
-  private frameNo = 0; private shadowMoved = true; private lastShadowKey = '';
+  private frameNo = 0; private shadowMoved = true;
+  private lastSx = NaN; private lastSz = NaN; private lastLdx = NaN; private lastLdz = NaN;
   private lastDrawn = 0; private appliedRes = 1;
   /** Frame-rate cap from Settings (0 = off): true when it is time to draw the next frame. */
   frameDue(now = performance.now()): boolean { return frameDue(now, this.lastDrawn, runtime.fpsCap); }
@@ -343,9 +390,19 @@ export class Renderer {
 export function skipHiddenMatrices(scene: THREE.Object3D) {
   scene.updateMatrixWorld = function (this: THREE.Object3D, force?: boolean) {
     if (this.matrixAutoUpdate) this.updateMatrix();
-    if (this.matrixWorldNeedsUpdate || force) { this.matrixWorld.copy(this.matrix); this.matrixWorldNeedsUpdate = false; force = true; }
+    if (this.matrixWorldNeedsUpdate || force) {
+      if (this.parent === null) this.matrixWorld.copy(this.matrix);
+      else this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+      this.matrixWorldNeedsUpdate = false;
+      force = true;
+    }
     const ch = this.children;
-    for (let i = 0; i < ch.length; i++) { const c = ch[i]; if (c.visible || c.userData.matrixWhenHidden) c.updateMatrixWorld(force); else c.matrixWorldNeedsUpdate = true; }
+    for (let i = 0; i < ch.length; i++) {
+      const c = ch[i];
+      if (!c.matrixWorldAutoUpdate && !force) continue;
+      if (c.visible || c.userData.matrixWhenHidden) c.updateMatrixWorld(force);
+      else c.matrixWorldNeedsUpdate = true;
+    }
   };
 }
 

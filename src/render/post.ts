@@ -11,14 +11,14 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 
 export interface AOSettings { samples: number; radius: number; intensity: number; fadeNear: number; fadeFar: number }
-export const AO_DEFAULT: AOSettings = { samples: 8, radius: 1.2, intensity: 1.7, fadeNear: 55, fadeFar: 150 };
+export const AO_DEFAULT: AOSettings = { samples: 8, radius: 0.95, intensity: 1.35, fadeNear: 55, fadeFar: 150 };
 
 /** Projected size in pixels of a world-space length `r` at view depth `z` (pure, for tests and the shader's radius). */
 export function projectedRadiusPx(r: number, z: number, projScaleY: number, heightPx: number): number {
   return (r * projScaleY * heightPx * 0.5) / Math.max(1e-3, Math.abs(z));
 }
 
-const AO_FRAG = /* glsl */`
+export const AO_FRAG = /* glsl */`
   #include <packing>
   uniform sampler2D tDepth; uniform vec2 uTexel; uniform mat4 uProjInv; uniform float uNear, uFar, uRadius, uIntensity, uProjScale, uFadeNear, uFadeFar;
   varying vec2 vUv0;
@@ -45,24 +45,28 @@ const AO_FRAG = /* glsl */`
     vec3 dy = abs(Py1.z - P.z) < abs(P.z - Py0.z) ? Py1 - P : P - Py0;
     vec3 N = normalize(cross(dx, dy));
     float rPx = uRadius * uProjScale / -z; // radius in UV units (height-normalised)
-    rPx = min(rPx, 0.12);
+    rPx = min(rPx, 0.085);
     // per-pixel rotation (interleaved gradient noise) hides the low sample count; the blur pass removes the pattern
     float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     float sum = 0.0;
     float r2 = uRadius * uRadius;
+    float bias = 0.028 + 0.005 * -z;
     for (int i = 0; i < AO_SAMPLES; i++) {
       float a = (float(i) + 0.5) / float(AO_SAMPLES);
       float ang = a * 6.2831853 * 2.618 + rot; // golden-angle-ish spiral (several turns)
       vec2 off = vec2(cos(ang), sin(ang)) * rPx * a;
       off.x *= uTexel.x / uTexel.y; // keep the disc round on screen (UV x spans the wider side)
-      vec2 suv = vUv + off;
+      vec2 suv = clamp(vUv + off, uTexel, 1.0 - uTexel);
       vec3 Q = viewPos(suv, viewZ(suv));
       vec3 v = Q - P;
       float vv = dot(v, v), vn = dot(v, N);
+      // reject large silhouette depth jumps so foreground legs/poles never cast dark halos on background pavement
+      float dz = abs(v.z);
+      float rangeW = 1.0 - smoothstep(uRadius * 0.45, uRadius * 1.15, dz);
       float f = max(r2 - vv, 0.0);
-      sum += f * f * f * max((vn - (0.02 + 0.004 * -z)) / (vv + 0.01), 0.0);
+      sum += f * f * f * rangeW * max((vn - bias) / (vv + 0.02), 0.0);
     }
-    float ao = max(0.0, 1.0 - sum * uIntensity * 5.0 / (r2 * r2 * r2 * float(AO_SAMPLES)));
+    float ao = max(0.22, 1.0 - sum * uIntensity * 4.4 / (r2 * r2 * r2 * float(AO_SAMPLES)));
     ao = mix(1.0, ao, fade);
     gl_FragColor = vec4(ao, ao, ao, 1.0);
   }`;
@@ -76,7 +80,7 @@ export const AO_BLUR_FRAG = /* glsl */`
   void main(){
     float zc = lin(vUv);
     float sum = texture2D(tAO, vUv).r, wsum = 1.0;
-    float k = 80.0 / max(zc, 1.0);
+    float k = 95.0 / max(zc, 1.0);
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.7853982;
       vec2 o = vec2(cos(a), sin(a)) * uTexel * 1.5;

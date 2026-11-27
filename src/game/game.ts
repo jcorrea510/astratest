@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { shouldSkipRaf, nearestLamps } from './frameUtil';
 import { addPooledLight } from '../render/lightPool';
-import { Renderer } from '../render/renderer';
+import { Renderer, skipHiddenMatrices } from '../render/renderer';
 import { Physics, groups, ALL, G_STATIC, G_VEHICLE, G_PROP } from '../core/physics';
 import { Input } from '../core/input';
 import type { Settings } from '../core/settings';
@@ -89,6 +89,8 @@ export class Game {
   private acc = 0;
   private rafEma = 16.7; private lastRaf = 0;
   private camDirTmp = new THREE.Vector3();
+  private _airDir = new THREE.Vector3();
+  private _airVel = new THREE.Vector3();
   private lampPick: { i: number; d: number }[] = [];
   private last = 0;
   private running = false;
@@ -173,8 +175,21 @@ export class Game {
     onProgress(0.05, 'Laying out streets');
     await tick();
     this.visuals = buildCity(this.renderer.scene, this.physics, this.assets, this.city);
-    // Round 7 perf: the city chunks never move: compute their matrices once instead of on every frame's scene update
-    for (const o of this.visuals.chunkMeshes) { o.updateMatrix(); o.updateMatrixWorld(true); o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; }
+    // Freeze every static mesh under visuals.root (skipping the rotating Ferris wheel and its gondolas)
+    const ferris = this.visuals.ferris;
+    const freezeStatic = (o: THREE.Object3D) => {
+      if (o === ferris) return;
+      o.updateMatrix();
+      o.updateMatrixWorld(true);
+      o.matrixAutoUpdate = false;
+      o.matrixWorldAutoUpdate = false;
+      for (let i = 0; i < o.children.length; i++) freezeStatic(o.children[i]);
+    };
+    this.visuals.root.updateMatrix();
+    this.visuals.root.updateMatrixWorld(true);
+    this.visuals.root.matrixAutoUpdate = false;
+    for (let i = 0; i < this.visuals.root.children.length; i++) freezeStatic(this.visuals.root.children[i]);
+    skipHiddenMatrices(this.visuals.root);
     this.buildLamps();
     onProgress(0.55, 'Waking up the locals');
     await tick();
@@ -296,7 +311,9 @@ export class Game {
       takeBaseHeli: () => this.helis.pads.find(p => /Fort Calder/.test(p.def.name) && p.heli && !p.heli.destroyed && !p.heli.driver && !p.heli.aiOwned && !p.heli.playerUsed)?.heli ?? null,
     });
     this.heliArms = new HeliArms(this.combat, this.physics);
-    this.armyLod = buildArmyBaseLod(); this.renderer.scene.add(this.armyLod); // far silhouette of Fort Calder
+    this.armyLod = buildArmyBaseLod();
+    this.armyLod.updateMatrix(); this.armyLod.updateMatrixWorld(true); this.armyLod.matrixAutoUpdate = false; this.armyLod.matrixWorldAutoUpdate = false;
+    this.renderer.scene.add(this.armyLod); // far silhouette of Fort Calder
     this.armyGuards = new ArmyGuards(this.pop); this.armyGuards.init();
     for (const m of armyLayout().motorPool) { const v = this.vehicles.spawn(m.kind, m.x, m.z, m.yaw, -1, 0.3); v.persistent = true; }
     for (const c of precinctCarSpots()) { const v = this.vehicles.spawn('police', c.x, c.z, c.yaw, -1, 0.3); v.persistent = true; } // parked patrol cars in the Precinct 4 lot (stealable)
@@ -311,7 +328,7 @@ export class Game {
   private trespassWarned = false;
   private updateArmyAir(dt: number, ph: Helicopter | null, pv: Vehicle | null, blocked: boolean) {
     if (ph?.armed && !blocked && !this.paused) {
-      const cam = this.renderer.camera, dir = cam.getWorldDirection(new THREE.Vector3());
+      const cam = this.renderer.camera, dir = cam.getWorldDirection(this._airDir);
       const missile = this.input.held('aim') || this.input.held('reload');
       this.heliArms.update(dt, ph, { fire: this.input.held('fire'), missile }, cam.position, dir, this.player);
     }
@@ -328,7 +345,7 @@ export class Game {
     const v = (pv ?? ph) as { position: THREE.Vector3; phys: { body: { linvel(): { x: number; y: number; z: number } } }; damage: never } | null;
     const lv = v ? v.phys.body.linvel() : null;
     this.armyAir.update(dt, !ignored && this.player.alive && armyAirWanted(heat, this.armyAir.trespassT, !!ph?.armed), {
-      pos: v ? v.position : this.player.pos, vel: lv ? new THREE.Vector3(lv.x, lv.y, lv.z) : this.player.vel, vehicle: v as never, onFoot: !v,
+      pos: v ? v.position : this.player.pos, vel: lv ? this._airVel.set(lv.x, lv.y, lv.z) : this.player.vel, vehicle: v as never, onFoot: !v,
     });
   }
   explosion(at: THREE.Vector3, by: Character | null, R = 8) {
@@ -686,7 +703,8 @@ export class Game {
   }
   private updatePickups(dt: number) {
     if (!this.pickups.length) return;
-    for (const p of [...this.pickups]) {
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const p = this.pickups[i];
       p.ttl -= dt;
       p.mesh.children[0].rotation.y += dt * 2; p.mesh.children[0].position.y = Math.sin(this.time * 3 + p.id) * 0.06;
       const near = !this.playerVehicle && this.player.alive && Math.hypot(p.pos.x - this.player.pos.x, p.pos.z - this.player.pos.z) < 1.2 && Math.abs(p.pos.y - 0.55 - this.player.pos.y) < 1.6;
@@ -742,7 +760,7 @@ export class Game {
     this.vehicles.setHeadlightCount(this.renderer.quality.headlights ?? 1);
     this.vehicles.setBarLightCount(this.renderer.quality.bloom ? 1 : 0); // Round 9: real red/blue light on Medium+ (fixed count: no recompiles)
     this.vehicles.lodFov = this.renderer.camera.fov; // Round 14: LOD by screen size (zoomed aim keeps detail)
-    this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv);
+    this.vehicles.update(dt, this.renderer.skyState.night, this.time, this.renderer.camera.position, pv, this.renderer.camera);
     this.helis.update(dt, this.time, this.renderer.skyState.night, this.renderer.camera.position, ph, this.player.pos);
     this.pop.update(dt, this.renderer.camera, this.player.pos, this.pedCap ?? this.renderer.quality.pedestrians);
     this.pedSteps();
@@ -841,11 +859,13 @@ export class Game {
     const heads = this.visuals.lampHeads;
     this.lampOrig = heads.map(h => h.clone());
     this.lampBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.6), toneMapped: false }), heads.length);
-    this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.62, 0.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
+    this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(10.5, 10.5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.66, 0.32), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
     const m = new THREE.Matrix4();
     this.lampPoolY = heads.map(h => this.groundUnder(h));
     heads.forEach((h, i) => { m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, this.lampPoolY[i], h.z); this.lampPools.setMatrixAt(i, m); });
     this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere();
+    this.lampBulbs.updateMatrix(); this.lampBulbs.updateMatrixWorld(true); this.lampBulbs.matrixAutoUpdate = false; this.lampBulbs.matrixWorldAutoUpdate = false;
+    this.lampPools.updateMatrix(); this.lampPools.updateMatrixWorld(true); this.lampPools.matrixAutoUpdate = false; this.lampPools.matrixWorldAutoUpdate = false;
     this.lampPools.renderOrder = 1;
     this.renderer.scene.add(this.lampBulbs, this.lampPools);
     for (let i = 0; i < 8; i++) this.lampLights.push(addPooledLight(this.renderer.scene, new THREE.PointLight(0xffc98a, 0, 22, 1.6), 1)); // Round 11: virtual, the light pool shows the nearest
@@ -875,8 +895,8 @@ export class Game {
   private updateLamps(dt: number) {
     const night = this.renderer.skyState.night;
     const on = THREE.MathUtils.smoothstep(night, 0.15, 0.5);
-    (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 1.6, 0.35 + on * 1.3, 0.3 + on * 0.8);
-    (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.3;
+    (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 1.65, 0.35 + on * 1.32, 0.3 + on * 0.82);
+    (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.36;
     this.lampTimer -= dt;
     const n = 8; // Round 11: every nearby lamp asks for light; the light pool decides how many are real
     if (this.lampTimer <= 0) {
@@ -886,14 +906,27 @@ export class Game {
       for (let k = 0; k < this.lampLights.length; k++) { const e = sorted[k]; if (k < n && e) { const hd = this.visuals.lampHeads[e.i]; this.lampLights[k].position.set(hd.x, hd.y - 0.4, hd.z); } }
     }
     // Lights stay in the scene (constant light count avoids shader recompiles); intensity fades them.
-    this.lampLights.forEach((l, k) => { l.intensity = k < n ? on * 28 : 0; });
+    for (let k = 0; k < this.lampLights.length; k++) this.lampLights[k].intensity = k < n ? on * 30 : 0;
   }
   /** Round 9: vehicles pedestrians must get out of the way of: siren cars, and the player's car when it comes fast. */
   private moverList: { x: number; z: number; fx: number; fz: number; speed: number; siren: boolean }[] = [];
+  private moverPool: { x: number; z: number; fx: number; fz: number; speed: number; siren: boolean }[] = [];
   private movers() {
     const out = this.moverList; out.length = 0;
-    for (const s of this.traffic.sirenSources) out.push({ ...s, siren: true });
-    const pv = this.playerVehicle; if (pv && !pv.sirenOn && Math.abs(pv.speed) > 8) { const f = pv.phys.forward(), sg = pv.speed < 0 ? -1 : 1; out.push({ x: pv.position.x, z: pv.position.z, fx: f.x * sg, fz: f.z * sg, speed: Math.abs(pv.speed), siren: false }); }
+    let pi = 0;
+    const push = (x: number, z: number, fx: number, fz: number, speed: number, siren: boolean) => {
+      let item = this.moverPool[pi];
+      if (!item) item = this.moverPool[pi] = { x: 0, z: 0, fx: 0, fz: 0, speed: 0, siren: false };
+      item.x = x; item.z = z; item.fx = fx; item.fz = fz; item.speed = speed; item.siren = siren;
+      out.push(item); pi++;
+    };
+    const sirens = this.traffic.sirenSources;
+    for (let i = 0; i < sirens.length; i++) { const s = sirens[i]; push(s.x, s.z, s.fx, s.fz, s.speed, true); }
+    const pv = this.playerVehicle;
+    if (pv && !pv.sirenOn && Math.abs(pv.speed) > 8) {
+      const f = pv.phys.forward(), sg = pv.speed < 0 ? -1 : 1;
+      push(pv.position.x, pv.position.z, f.x * sg, f.z * sg, Math.abs(pv.speed), false);
+    }
     return out;
   }
   private signalTimer = 0;

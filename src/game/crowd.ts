@@ -484,10 +484,12 @@ export class Crowd {
       const lead = p.leader && !p.leader.dead ? p.leader : undefined; if (!lead) p.leader = undefined;
       if (lead) { p.from = lead.from; p.to = lead.to; p.t = lead.t; p.wait = lead.wait; p.speed = lead.speed; }
       const a = nodes[p.from], b = nodes[p.to];
+      let edge: (typeof a.edges)[number] | undefined;
+      for (let ei = 0; ei < a.edges.length; ei++) if (a.edges[ei].to === p.to) { edge = a.edges[ei]; break; }
+      let changed = false;
       if (lead) { /* follows its friend */ }
       else if (p.wait > 0) { p.wait -= dt; }
       else {
-        const edge = a.edges.find(e => e.to === p.to);
         const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
         // wait at the kerb for the walk signal
         if (edge?.crossing && p.t < 0.02 && !pedestrianMayCross(this.city.intersections[edge.crossing.intersection], edge.crossing.axis, t)) { p.wait = 0.5; }
@@ -495,16 +497,23 @@ export class Crowd {
           p.t += p.speed * dt / len;
           if (p.t >= 1) {
             // arrived: choose the next edge (never straight back unless dead end), sometimes stop to chat / look at a phone
-            const opts = b.edges.filter(e => e.to !== p.from);
-            const e = (opts.length ? opts : b.edges)[Math.floor(Math.random() * (opts.length || b.edges.length))];
-            p.from = p.to; p.to = e.to; p.t = 0;
+            let optCount = 0;
+            for (let ei = 0; ei < b.edges.length; ei++) if (b.edges[ei].to !== p.from) optCount++;
+            let pick = b.edges[0];
+            if (optCount > 0) {
+              let k = Math.floor(Math.random() * optCount);
+              for (let ei = 0; ei < b.edges.length; ei++) if (b.edges[ei].to !== p.from && k-- === 0) { pick = b.edges[ei]; break; }
+            } else if (b.edges.length > 1) {
+              pick = b.edges[Math.floor(Math.random() * b.edges.length)];
+            }
+            p.from = p.to; p.to = pick.to; p.t = 0; edge = pick; changed = true;
             if (Math.random() < 0.18) p.wait = 2 + Math.random() * 7;
           }
         }
       }
-      const a2 = nodes[p.from], b2 = nodes[p.to];
+      const a2 = changed ? nodes[p.from] : a, b2 = changed ? nodes[p.to] : b;
       const dx = b2.x - a2.x, dz = b2.z - a2.z, l = Math.hypot(dx, dz) || 1;
-      const crossing = a2.edges.find(e => e.to === p.to)?.crossing; p.road = !!crossing;
+      const crossing = edge?.crossing; p.road = !!crossing;
       const off = crossing ? (lead ? p.off - lead.off : 0) : p.off;
       p.x = a2.x + dx * p.t - dz / l * off; p.z = a2.z + dz * p.t + dx / l * off; p.y = (a2.y ?? 0) + ((b2.y ?? 0) - (a2.y ?? 0)) * p.t;
       const yaw = Math.atan2(dx, dz); if (p.wait <= 0) p.yaw = yaw;
@@ -520,7 +529,8 @@ export class Crowd {
 
   // ---------------------------------------------------------------- parked
   private updateParked(focus: THREE.Vector3) {
-    const vis: Slot[] = [], cap = Math.min(this.caps.parked, 1200);
+    const vis = this.visSlots; vis.length = 0;
+    const cap = Math.min(this.caps.parked, 1200);
     for (const s of this.slots) {
       const d = Math.hypot(s.x - focus.x, s.z - focus.z);
       if (s.real) {
@@ -537,7 +547,6 @@ export class Crowd {
     }
     vis.sort((a, b) => (a.x - focus.x) ** 2 + (a.z - focus.z) ** 2 - ((b.x - focus.x) ** 2 + (b.z - focus.z) ** 2));
     if (vis.length > cap) vis.length = cap;
-    this.visSlots = vis;
   }
   /** Parked cars are drawn every frame (culled per instance) with the real far model and the slot's real paint. */
   private drawParked() {

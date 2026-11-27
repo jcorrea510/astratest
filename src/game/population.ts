@@ -75,6 +75,7 @@ export class Population {
     }
   }
   private sirenT = 0; private tick = 0;
+  private _spawnPos = new THREE.Vector3();
   /** The player drives a police car with the light bar on: pedestrians stop, step back from the road edge and watch it go by. */
   private reactToSiren(dt: number) {
     this.sirenT -= dt; if (this.sirenT > 0) return;
@@ -320,17 +321,17 @@ export class Population {
         // included, in every car on the map: ~1.2M triangles a frame on high; R6-V)
         const vp = (c.inVehicle as { position?: THREE.Vector3 }).position ?? c.pos, dv = vp.distanceTo(focus);
         const vis = dv < 14 || dv < 150 && this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(vp.x, vp.y + 1, vp.z), 3));
+        h.root.visible = vis;
         h.mesh.visible = vis;
         // Round 7 perf: seated people barely move: full rate only up close
         n.animAcc += dt;
         if (vis) { h.setLodDistance(dv, true); if (n.animAcc >= (dv > 40 ? 0.1 : dv > 14 ? 0.05 : 0)) { h.update(n.animAcc); n.animAcc = 0; } }
         if (!vis) h.setLodDistance(dv, false);
-        h.mesh.castShadow = dv < 18; for (const e of h.extras) e.castShadow = dv < 12;
+        h.mesh.castShadow = vis && dv < 18; for (const e of h.extras) e.castShadow = vis && dv < 12;
         continue;
       }
       const d = c.pos.distanceTo(focus);
-      h.root.visible = d < 160;
-      if (!h.root.visible) continue;
+      if (d >= 160) { h.root.visible = false; continue; }
       n.animAcc += dt;
       // animation rate by distance: smooth near the player (the old 5-10 Hz far rates read as lagging people)
       const inView = d < 3 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
@@ -340,14 +341,23 @@ export class Population {
       n.posed = n.animAcc >= every || !c.alive || !!c.ragdoll;
       if (n.posed) { c.updateVisual(n.animAcc); n.animAcc = 0; } else { h.root.position.copy(c.pos); h.root.rotation.y = c.yaw; }
       this.runner.updateModel(n);
-      h.mesh.castShadow = d < 32;
+      // Hiding root lets skipHiddenMatrices bypass ~65 bone matrix updates for every offscreen NPC.
+      h.root.visible = inView;
       h.mesh.visible = inView;
-      h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
+      h.mesh.castShadow = inView && d < 32;
+      h.setLodDistance(d, inView); for (const e of h.extras) e.castShadow = inView && d < 22; // hair/garment extras are small: beyond ~48 m the shader-painted body carries the look
     }
     // shadow caster budget: only the nearest people are drawn into the shadow map (the rest keep their lit body)
     const sc = this.scBuf; let scn = 0;
     for (const n of this.npcs) if (n.char.human.mesh.castShadow && n.brain !== 'inside' && !n.char.inVehicle) { const e = sc[scn] ?? (sc[scn] = { n, d: 0 }); e.n = n; e.d = n.char.pos.distanceToSquared(focus); scn++; }
-    if (scn > this.shadowBudget) { const sl = sc.slice(0, scn).sort((x, y) => x.d - y.d); for (let i = this.shadowBudget; i < sl.length; i++) { const h = sl[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; } }
+    if (scn > this.shadowBudget) {
+      for (let i = 1; i < scn; i++) {
+        const cur = sc[i]; let j = i - 1;
+        while (j >= 0 && sc[j].d > cur.d) { sc[j + 1] = sc[j]; j--; }
+        sc[j + 1] = cur;
+      }
+      for (let i = this.shadowBudget; i < scn; i++) { const h = sc[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; }
+    }
     // Despawn
     for (let ni = this.npcs.length - 1; ni >= 0; ni--) {
       const n = this.npcs[ni]; if (!n) continue;
@@ -367,7 +377,7 @@ export class Population {
         const e = nd.edges[Math.floor(Math.random() * nd.edges.length)];
         if (e.crossing) continue;
         const to = nodes[e.to]; const t = Math.random();
-        const p = new THREE.Vector3(nd.x + (to.x - nd.x) * t, 0.2 + (nd.y ?? 0) + ((to.y ?? 0) - (nd.y ?? 0)) * t, nd.z + (to.z - nd.z) * t);
+        const p = this._spawnPos.set(nd.x + (to.x - nd.x) * t, 0.2 + (nd.y ?? 0) + ((to.y ?? 0) - (nd.y ?? 0)) * t, nd.z + (to.z - nd.z) * t);
         const d = p.distanceTo(focus);
         if (d < (this.prewarming ? 10 : 35) || d > this.spawnMax) continue;
         const dist = districtAt(this.city, p.x, p.z), dens = DISTRICT_INFO[dist].pedDensity * districtNightFactor(dist, this.hour);

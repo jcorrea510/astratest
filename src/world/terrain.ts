@@ -58,8 +58,16 @@ export function makeTerrainHeight(city: CityMap, pads: Pad[]) {
   };
 }
 
-/** Builds the terrain mesh (vertex-coloured: grass, dry grass, rock on steep slopes) and its trimesh collider. */
-export function buildTerrain(root: THREE.Object3D, physics: Physics, height: (x: number, z: number) => number, mat: THREE.Material): THREE.Mesh {
+const TERRAIN_TILES_X = 8, TERRAIN_TILES_Z = 4;
+
+/** Builds the terrain as an 8x4 grid of spatial tiles (for frustum/distance culling) and one shared Rapier trimesh collider. */
+export function buildTerrain(
+  root: THREE.Object3D,
+  physics: Physics,
+  height: (x: number, z: number) => number,
+  mat: THREE.Material,
+  chunkOut?: THREE.Object3D[],
+): THREE.Group {
   const { x0, x1, z0, z1, step } = TERRAIN;
   const nx = Math.round((x1 - x0) / step) + 1, nz = Math.round((z1 - z0) / step) + 1;
   const pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2), col = new Float32Array(nx * nz * 3);
@@ -67,27 +75,102 @@ export function buildTerrain(root: THREE.Object3D, physics: Physics, height: (x:
     const x = x0 + i * step, z = z0 + j * step, k = j * nx + i;
     pos[k * 3] = x; pos[k * 3 + 1] = height(x, z); pos[k * 3 + 2] = z; uv[k * 2] = x / 7; uv[k * 2 + 1] = z / 7;
   }
-  const idx: number[] = [];
-  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1; idx.push(a, c, b, b, c, d); }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
-  g.computeVertexNormals();
-  const nor = g.attributes.normal;
+  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+  let ii = 0;
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+    idx[ii++] = a; idx[ii++] = c; idx[ii++] = b;
+    idx[ii++] = b; idx[ii++] = c; idx[ii++] = d;
+  }
+  // Compute seamless normals across the whole terrain once before slicing into culled visual tiles.
+  const tmpGeo = new THREE.BufferGeometry();
+  tmpGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  tmpGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+  tmpGeo.computeVertexNormals();
+  const norArr = tmpGeo.attributes.normal.array as Float32Array;
   for (let k = 0; k < nx * nz; k++) {
-    const ny = nor.getY(k), y = pos[k * 3 + 1], x = pos[k * 3], z = pos[k * 3 + 2];
-    const rock = smooth(0.86, 0.7, ny), dry = vnoise(x * 0.01, z * 0.01) * 0.6 + smooth(10, 50, y) * 0.4, wet = y < -1 ? 1 : 0;
-    let r = 1 + dry * 0.35, gg = 1 - dry * 0.05, b = 0.95 - dry * 0.2;
-    r = r * (1 - rock) + 1.25 * rock; gg = gg * (1 - rock) + 1.05 * rock; b = b * (1 - rock) + 1.0 * rock;
-    if (wet) { r = 0.9; gg = 0.85; b = 0.8; }
+    const ny = norArr[k * 3 + 1], y = pos[k * 3 + 1], x = pos[k * 3], z = pos[k * 3 + 2];
+    const rock = smooth(0.87, 0.68, ny);
+    const strata = 0.88 + 0.2 * vnoise(x * 0.018 + y * 0.12, z * 0.018);
+    const nLarge = vnoise(x * 0.0085, z * 0.0085);
+    const nMed = vnoise(x * 0.028 + 13.4, z * 0.028 - 7.1);
+    const dry = smooth(14, 58, y) * 0.52 + nLarge * 0.34 + nMed * 0.14;
+    const lush = smooth(12, 0, y) * (0.4 + 0.6 * nLarge);
+    const wet = y < -1 ? 1 : 0;
+    // Coastal hillside palette: deep coastal sage/olive valleys, warm sunlit golden-tan ridges, weathered granite rock faces
+    let r = 0.86 + dry * 0.28 - lush * 0.07;
+    let gg = 0.94 + dry * 0.04 + lush * 0.04;
+    let b = 0.82 - dry * 0.12 - lush * 0.04;
+    const rockR = 1.06 * strata, rockG = 1.02 * strata, rockB = 0.96 * strata;
+    r = r * (1 - rock) + rockR * rock;
+    gg = gg * (1 - rock) + rockG * rock;
+    b = b * (1 - rock) + rockB * rock;
+    if (wet) { r = 0.78; gg = 0.76; b = 0.72; }
     col[k * 3] = r; col[k * 3 + 1] = gg; col[k * 3 + 2] = b;
   }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g.computeBoundingSphere(); g.computeBoundingBox();
-  const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; mesh.castShadow = false; mesh.name = 'terrain';
-  root.add(mesh);
-  const desc = RAPIER.ColliderDesc.trimesh(pos, new Uint32Array(idx)).setFriction(0.8).setCollisionGroups(groups(G_STATIC, ALL));
+  const group = new THREE.Group();
+  group.name = 'terrain';
+  group.matrixAutoUpdate = false;
+  group.matrixWorldAutoUpdate = false;
+  for (let tz = 0; tz < TERRAIN_TILES_Z; tz++) {
+    const iz0 = Math.floor((tz * (nz - 1)) / TERRAIN_TILES_Z);
+    const iz1 = Math.floor(((tz + 1) * (nz - 1)) / TERRAIN_TILES_Z);
+    const th = iz1 - iz0 + 1;
+    for (let tx = 0; tx < TERRAIN_TILES_X; tx++) {
+      const ix0 = Math.floor((tx * (nx - 1)) / TERRAIN_TILES_X);
+      const ix1 = Math.floor(((tx + 1) * (nx - 1)) / TERRAIN_TILES_X);
+      const tw = ix1 - ix0 + 1;
+      const vCount = tw * th;
+      const tPos = new Float32Array(vCount * 3);
+      const tNor = new Float32Array(vCount * 3);
+      const tUv = new Float32Array(vCount * 2);
+      const tCol = new Float32Array(vCount * 3);
+      for (let lj = 0; lj < th; lj++) {
+        const gj = iz0 + lj;
+        for (let li = 0; li < tw; li++) {
+          const gi = ix0 + li;
+          const gk = gj * nx + gi, lk = lj * tw + li;
+          tPos[lk * 3] = pos[gk * 3]; tPos[lk * 3 + 1] = pos[gk * 3 + 1]; tPos[lk * 3 + 2] = pos[gk * 3 + 2];
+          tNor[lk * 3] = norArr[gk * 3]; tNor[lk * 3 + 1] = norArr[gk * 3 + 1]; tNor[lk * 3 + 2] = norArr[gk * 3 + 2];
+          tUv[lk * 2] = uv[gk * 2]; tUv[lk * 2 + 1] = uv[gk * 2 + 1];
+          tCol[lk * 3] = col[gk * 3]; tCol[lk * 3 + 1] = col[gk * 3 + 1]; tCol[lk * 3 + 2] = col[gk * 3 + 2];
+        }
+      }
+      const tIdx = new Uint16Array((tw - 1) * (th - 1) * 6);
+      let ti = 0;
+      for (let lj = 0; lj < th - 1; lj++) for (let li = 0; li < tw - 1; li++) {
+        const a = lj * tw + li, b = a + 1, c = a + tw, d = c + 1;
+        tIdx[ti++] = a; tIdx[ti++] = c; tIdx[ti++] = b;
+        tIdx[ti++] = b; tIdx[ti++] = c; tIdx[ti++] = d;
+      }
+      const tg = new THREE.BufferGeometry();
+      tg.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
+      tg.setAttribute('normal', new THREE.BufferAttribute(tNor, 3));
+      tg.setAttribute('uv', new THREE.BufferAttribute(tUv, 2));
+      tg.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
+      tg.setIndex(new THREE.BufferAttribute(tIdx, 1));
+      tg.computeBoundingBox();
+      tg.computeBoundingSphere();
+      const tile = new THREE.Mesh(tg, mat);
+      tile.receiveShadow = true;
+      tile.castShadow = false;
+      tile.name = `terrain@${tx},${tz}`;
+      tile.userData.farScale = 2.6;
+      tile.updateMatrix();
+      tile.updateMatrixWorld(true);
+      tile.matrixAutoUpdate = false;
+      tile.matrixWorldAutoUpdate = false;
+      group.add(tile);
+      if (chunkOut) chunkOut.push(tile);
+    }
+  }
+  tmpGeo.dispose();
+  group.updateMatrix();
+  group.updateMatrixWorld(true);
+  root.add(group);
+  const desc = RAPIER.ColliderDesc.trimesh(pos, idx).setFriction(0.8).setCollisionGroups(groups(G_STATIC, ALL));
   physics.tag(physics.world.createCollider(desc), { kind: 'static' });
-  return mesh;
+  return group;
 }
 
 /** Depth of the underlay plane and skirts (below the seabed at SEABED_Y). */

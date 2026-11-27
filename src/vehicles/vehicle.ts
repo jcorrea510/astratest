@@ -401,15 +401,19 @@ export class Vehicle {
     // far cars (lod 2, > ~65 m): wheels animate every other frame and idle doors are not stepped (nothing there is visible)
     const farCar = this.lod === 2 && !this.driver?.isPlayer;
     const skipWheels = farCar && ((this.lodTick = (this.lodTick + 1) & 1) === 1);
-    if (!skipWheels) t.wheelBones.forEach((bi, i) => {
-      const w = this.bones[bi], wd = t.layout.wheels[i];
-      if (!wd) return;
-      const sl = c.wheelSuspensionLength(i) ?? spec.suspRest;
-      w.position.y = wd.y + spec.suspRest * 0.8 - sl;
-      w.rotation.set(0, 0, 0);
-      w.rotateY(c.wheelSteering(i) ?? 0);
-      w.rotateX(this.phys.wheelRot[i]);
-    });
+    if (!skipWheels) {
+      const wb = t.wheelBones, wl = t.layout.wheels;
+      for (let i = 0; i < wb.length; i++) {
+        const wd = wl[i];
+        if (!wd) continue;
+        const w = this.bones[wb[i]];
+        const sl = c.wheelSuspensionLength(i) ?? spec.suspRest;
+        w.position.y = wd.y + spec.suspRest * 0.8 - sl;
+        w.rotation.set(0, 0, 0);
+        w.rotateY(c.wheelSteering(i) ?? 0);
+        w.rotateX(this.phys.wheelRot[i]);
+      }
+    }
     if (t.turretBone >= 0) {
       const k = Math.min(1, dt * 1.2);
       const dy = Math.atan2(Math.sin(this.turretTarget - this.turretYaw), Math.cos(this.turretTarget - this.turretYaw));

@@ -30,7 +30,7 @@ import {
 import { ChunkInstancer, colorize, mergeColored, type InstHandle } from './geometry';
 import {
   asphaltSurface, pavementSurface, grassSurface, sandSurface, buildingMaterial, trimMaterial, signAtlas, billboardAtlas, paintWearTexture, leafTexture, addMacroVariation,
-  nightUniform, timeUniform, BRANDS, type Surface,
+  nightUniform, timeUniform, skyTopUniform, skyHorizonUniform, sunDirUniform, sunColUniform, BRANDS, type Surface,
 } from '../render/materials';
 import { loadSettings } from '../core/settings';
 import { planStreetscape, emitStreetscape, densityFor } from './streetscape';
@@ -143,27 +143,45 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   for (let j = 0; j < ISLAND_LEFT.length; j++) slab(road, AVENUES[ISLAND_LEFT[j]] - halfWidth(2), j === 0 ? minZ : STREETS[j] - halfWidth(lanesForStreet(j)), maxX, j === ISLAND_LEFT.length - 1 ? maxZ : STREETS[j + 1] + halfWidth(lanesForStreet(j + 1)), 0, 0, C('#ffffff'), C('#ffffff'), 12);
   const roadMesh = new THREE.Mesh(road.build(), asphaltMat); roadMesh.receiveShadow = true; root.add(roadMesh);
 
-  // Water with gentle animated waves and shoreline foam.
-  const waterMat = new THREE.MeshStandardMaterial({ color: '#1f6f80', roughness: 0.08, metalness: 0.0, transparent: true, opacity: 0.94 });
+  // Water with multi-scale animated swells, shoreline foam, live sky Fresnel reflections, and shimmering solar/lunar glints.
+  const waterMat = new THREE.MeshStandardMaterial({ color: '#185c6e', roughness: 0.06, metalness: 0.05, transparent: true, opacity: 0.95 });
   waterMat.onBeforeCompile = sh => {
     sh.uniforms.uTime = timeUniform; sh.uniforms.uNight = nightUniform;
+    sh.uniforms.uSkyTop = skyTopUniform; sh.uniforms.uSkyHorizon = skyHorizonUniform;
+    sh.uniforms.uSunDir = sunDirUniform; sh.uniforms.uSunCol = sunColUniform;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed,1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      uniform float uTime, uNight; varying vec3 vW;`)
+      uniform float uTime, uNight; uniform vec3 uSkyTop, uSkyHorizon, uSunDir, uSunCol; varying vec3 vW;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        float fadeW = 1.0 - smoothstep(60.0, 420.0, length(vViewPosition));
-        float w1 = sin(dot(vW.xz, vec2(0.19, 0.07)) + uTime * 1.1) + sin(dot(vW.xz, vec2(-0.05, 0.23)) - uTime * 0.9) + 0.5 * sin(dot(vW.xz, vec2(0.31, -0.27)) + uTime * 1.7) + 0.35 * sin(dot(vW.xz, vec2(-0.6, -0.41)) + uTime * 2.3) + 0.25 * sin(dot(vW.xz, vec2(1.3, 0.9)) + uTime * 3.1);
-        float w2 = cos(dot(vW.xz, vec2(0.29, -0.13)) - uTime * 1.3) + cos(dot(vW.xz, vec2(0.08, 0.31)) + uTime * 0.7) + 0.35 * cos(dot(vW.xz, vec2(0.52, 0.47)) - uTime * 2.1) + 0.25 * cos(dot(vW.xz, vec2(-1.1, 1.4)) - uTime * 2.9);
-        normal = normalize(normal + (viewMatrix * vec4(w1 * 0.03, 0.0, w2 * 0.03, 0.0)).xyz * fadeW);`)
+        float fadeW = 1.0 - smoothstep(55.0, 460.0, length(vViewPosition));
+        float w1 = sin(dot(vW.xz, vec2(0.16, 0.07)) + uTime * 1.05) + sin(dot(vW.xz, vec2(-0.06, 0.22)) - uTime * 0.85) + 0.52 * sin(dot(vW.xz, vec2(0.31, -0.27)) + uTime * 1.65) + 0.36 * sin(dot(vW.xz, vec2(-0.58, -0.41)) + uTime * 2.25) + 0.24 * sin(dot(vW.xz, vec2(1.25, 0.88)) + uTime * 3.05);
+        float w2 = cos(dot(vW.xz, vec2(0.27, -0.12)) - uTime * 1.25) + cos(dot(vW.xz, vec2(0.08, 0.29)) + uTime * 0.72) + 0.38 * cos(dot(vW.xz, vec2(0.51, 0.45)) - uTime * 2.05) + 0.24 * cos(dot(vW.xz, vec2(-1.08, 1.35)) - uTime * 2.85);
+        vec3 wNorm = normalize(vec3(w1 * 0.036 * fadeW, 1.0, w2 * 0.036 * fadeW));
+        normal = normalize(normal + (viewMatrix * vec4(w1 * 0.032, 0.0, w2 * 0.032, 0.0)).xyz * fadeW);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float shoreS = smoothstep(${(COAST_Z - 5).toFixed(1)}, ${(COAST_Z - 13).toFixed(1)}, vW.z) * step(${(COAST_Z - 20).toFixed(1)}, vW.z) * step(vW.x, ${(HARBOR_X - 2).toFixed(1)}) * step(${(AVENUES[ISLAND_LEFT[ISLAND_LEFT.length - 1]] - 14).toFixed(1)}, vW.x);
         float shoreE = smoothstep(${(HARBOR_X + 6).toFixed(1)}, ${(HARBOR_X).toFixed(1)}, vW.x) * step(${(HARBOR_X - 1).toFixed(1)}, vW.x) * step(-60.0, vW.z) * step(vW.z, ${(COAST_Z - 30).toFixed(1)});
         float foamBand = max(shoreS, shoreE);
-        float foam = foamBand * step(0.5, 0.5 + 0.5 * sin(vW.x * 1.7 + sin(vW.x * 0.21) * 4.0 + uTime * 1.6 + foamBand * 7.0)) * step(0.35, 0.5 + 0.5 * sin(vW.x * 0.37 + vW.z * 0.9 - uTime * 0.8));
-        float deep = smoothstep(0.0, 160.0, vW.z - ${COAST_Z.toFixed(1)});
-        diffuseColor.rgb = mix(vec3(0.07, 0.24, 0.26), vec3(0.025, 0.09, 0.14), deep);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 0.95), foam * 0.75 + foamBand * 0.15);`);
+        float foam = foamBand * step(0.48, 0.5 + 0.5 * sin(vW.x * 1.7 + sin(vW.x * 0.21) * 4.0 + uTime * 1.6 + foamBand * 7.0)) * step(0.35, 0.5 + 0.5 * sin(vW.x * 0.37 + vW.z * 0.9 - uTime * 0.8));
+        float deep = smoothstep(0.0, 175.0, vW.z - ${COAST_Z.toFixed(1)});
+        diffuseColor.rgb = mix(vec3(0.034, 0.165, 0.195), vec3(0.011, 0.044, 0.092), deep);
+        float foamAmt = clamp(foam * 0.78 + foamBand * 0.16, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.94), foamAmt);`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        vec3 wV = normalize(cameraPosition - vW);
+        float wNdv = clamp(dot(wNorm, wV), 0.0, 1.0);
+        float wFres = 0.02 + 0.98 * pow(1.0 - wNdv, 5.0);
+        vec3 wR = reflect(-wV, wNorm);
+        vec3 wSky = mix(uSkyHorizon, uSkyTop, pow(clamp(wR.y, 0.0, 1.0), 0.55));
+        wSky += vec3(0.14, 0.085, 0.04) * uNight * exp(-max(wR.y, 0.0) * 8.0);
+        vec3 wSunL = normalize(uSunDir);
+        float wSpecDot = max(dot(wR, wSunL), 0.0);
+        float wGlint = pow(wSpecDot, 160.0) * 1.85 + pow(wSpecDot, 24.0) * 0.16;
+        vec3 wSunCol = mix(uSunCol, vec3(0.68, 0.78, 0.96), uNight * 0.75);
+        float wQuiet = 1.0 - foamAmt * 0.85;
+        totalEmissiveRadiance += (wSky * wFres * mix(0.62, 0.42, uNight) + wSunCol * wGlint * mix(0.95, 0.32, uNight)) * wQuiet;`);
   };
+  waterMat.customProgramCacheKey = () => 'meridian-water-r15';
   const water = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000).rotateX(-Math.PI / 2), waterMat);
   water.position.y = WATER_LEVEL; water.receiveShadow = true; root.add(water);
 
@@ -287,7 +305,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   // north terrain: hills, road beds, channel, house pads
   const terrainH = makeTerrainHeight(city, expansionPads(city));
   const terrainMat = surfaceMat(grassSurface(), 1, { vertexColors: true }, 0.3, 'terrain');
-  buildTerrain(root, physics, terrainH, terrainMat);
+  buildTerrain(root, physics, terrainH, terrainMat, chunkMeshes);
   buildUnderlay(root, terrainH); // closes the world edge and the space under the ground (no clear-colour void)
   // channel quay walls south of the freeway
   { const tb0 = new TrimBuilder(); for (const x of [CHANNEL.x0, CHANNEL.x1]) for (let z = -62; z > NORTH_EDGE - 4; z -= 40) tb0.box(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, z - 20, 0.8, 7, 40, 0, C('#7d7870'), T_STONE); const qm = new THREE.Mesh(tb0.build(), trimMaterial()); qm.receiveShadow = true; root.add(qm); for (const x of [CHANNEL.x0, CHANNEL.x1]) physics.addStaticBox(x + (x === CHANNEL.x0 ? -0.4 : 0.4), -3.4, (-62 + NORTH_EDGE) / 2, 0.4, 3.5, (NORTH_EDGE + 62) / -2); }

@@ -160,6 +160,7 @@ export class Human {
   readonly base: BodyBase;
   private lower = new Map<string, Slot>();
   private upper = new Map<string, Slot>();
+  private readonly layers: [Map<string, Slot>, Map<string, Slot>] = [this.lower, this.upper];
   private bones = new Map<BoneKey, THREE.Object3D>();
   private phase = 0;
   private locoWeights = [0, 0, 0, 0];
@@ -370,14 +371,18 @@ export class Human {
   get busy() { const a = this.act; return !!a && !a.soft && !a.ending && a.t < a.dur - a.fade; }
   flash() { this.flashT = 0.12; }
 
+  private addLower(n: string, t = 1) { this.slot(this.lower, n).target += t; }
+  private addUpper(n: string, t = 1) { this.slot(this.upper, n).target += t; }
+
   update(dt: number) {
     this.updateHairLod(dt);
     this.stateTime += dt;
     const base = this.base;
     const sc = this.scale;
-    const [walk, jog, sprint] = base.loco.map(l => l.speed * sc);
+    const loco = base.loco;
+    const walk = loco[0].speed * sc, jog = loco[1].speed * sc, sprint = loco[2].speed * sc;
     const v = this.speed;
-    const w = this.locoWeights; w.fill(0);
+    const w = this.locoWeights; w[0] = 0; w[1] = 0; w[2] = 0; w[3] = 0;
     if (v < 0.15) w[0] = 1;
     else if (v < walk) { const t = v / walk; w[0] = 1 - t; w[1] = t; }
     else if (v < jog) { const t = (v - walk) / (jog - walk); w[1] = 1 - t; w[2] = t; }
@@ -386,46 +391,45 @@ export class Human {
     // Turning on the spot: short shuffling steps instead of pivoting on frozen feet.
     const turning = this.state === 'loco' && v < 0.5 ? THREE.MathUtils.clamp((Math.abs(this.turnRate) - 0.7) * 0.25, 0, 0.6) : 0;
     if (turning > 0) { w[1] = Math.max(w[1], turning); w[0] = Math.max(0, 1 - w[1] - w[2] - w[3]); }
-    const strides = base.loco.map(l => l.speed * sc * l.duration);
     const movingW = w[1] + w[2] + w[3];
     if (this.state === 'jump') this.phase = (this.phase + dt * 0.35) % 1; // a held stride while airborne
     else if (movingW > 0.001) {
-      const stride = (w[1] * strides[0] + w[2] * strides[1] + w[3] * strides[2]) / movingW;
+      const stride = (w[1] * walk * loco[0].duration + w[2] * jog * loco[1].duration + w[3] * sprint * loco[2].duration) / movingW;
       const travel = Math.max(v, 0.4) + Math.abs(this.turnRate) * 0.25 * turning * 4;
       this.phase = (this.phase + (travel * dt) / stride) % 1;
     } else this.phase = (this.phase + dt / 4) % 1;
     for (let i = 0; i < 4; i++) {
-      const n = LOCO[i], dur = i === 0 ? base.clips.get(n)!.duration : base.loco[i - 1].duration;
+      const n = LOCO[i], dur = i === 0 ? base.clips.get(n)!.duration : loco[i - 1].duration;
       const time = i === 0 ? (this.stateTime % dur) : this.phase * dur;
       this.lower.get(n)!.action.time = time; this.upper.get(n)!.action.time = time;
     }
     for (const s of this.lower.values()) s.target = 0;
     for (const s of this.upper.values()) s.target = 0;
-    const L = (n: string, t = 1) => { this.slot(this.lower, n).target += t; };
-    const U = (n: string, t = 1) => { this.slot(this.upper, n).target += t; };
     let fullOverride = false;
     switch (this.state) {
-      case 'loco': LOCO.forEach((n, i) => { if (w[i] > 0) { L(n, w[i]); U(n, w[i]); } }); break;
+      case 'loco':
+        for (let i = 0; i < 4; i++) { const wi = w[i]; if (wi > 0) { const n = LOCO[i]; this.addLower(n, wi); this.addUpper(n, wi); } }
+        break;
       case 'jump': {
         const m = THREE.MathUtils.clamp(this.airMove, 0, 1);
-        L('Jump_Loop', 1 - m); if (m > 0) L('Jog_Fwd_Loop', m);
-        U('Jump_Loop', 1 - m * 0.5); if (m > 0) U('Jog_Fwd_Loop', m * 0.5);
+        this.addLower('Jump_Loop', 1 - m); if (m > 0) this.addLower('Jog_Fwd_Loop', m);
+        this.addUpper('Jump_Loop', 1 - m * 0.5); if (m > 0) this.addUpper('Jog_Fwd_Loop', m * 0.5);
         break;
       }
-      case 'drive': L('Driving_Loop'); U('Driving_Loop'); fullOverride = true; break;
-      case 'swim': { const f = Math.min(1, v / 1.5); L('Swim_Idle_Loop', 1 - f); L('Swim_Fwd_Loop', f); U('Swim_Idle_Loop', 1 - f); U('Swim_Fwd_Loop', f); fullOverride = true; break; }
-      case 'sit': L('Sitting_Idle_Loop'); U('Sitting_Idle_Loop'); break;
-      case 'crouch': case 'cower': L('Crouch_Idle_Loop'); U('Crouch_Idle_Loop'); break;
-      case 'talk': L('Idle_Loop'); U('Idle_Talking_Loop'); break;
-      case 'dance': L('Dance_Loop'); U('Dance_Loop'); fullOverride = true; break;
+      case 'drive': this.addLower('Driving_Loop'); this.addUpper('Driving_Loop'); fullOverride = true; break;
+      case 'swim': { const f = Math.min(1, v / 1.5); this.addLower('Swim_Idle_Loop', 1 - f); this.addLower('Swim_Fwd_Loop', f); this.addUpper('Swim_Idle_Loop', 1 - f); this.addUpper('Swim_Fwd_Loop', f); fullOverride = true; break; }
+      case 'sit': this.addLower('Sitting_Idle_Loop'); this.addUpper('Sitting_Idle_Loop'); break;
+      case 'crouch': case 'cower': this.addLower('Crouch_Idle_Loop'); this.addUpper('Crouch_Idle_Loop'); break;
+      case 'talk': this.addLower('Idle_Loop'); this.addUpper('Idle_Talking_Loop'); break;
+      case 'dance': this.addLower('Dance_Loop'); this.addUpper('Dance_Loop'); fullOverride = true; break;
       case 'dead': fullOverride = true; break;
     }
     if (!fullOverride && this.state !== 'cower') {
       if (this.upperMode === 'pistol' || this.upperMode === 'rifle') {
         for (const s of this.upper.values()) s.target = 0;
         const p = THREE.MathUtils.clamp(this.aimPitch / 0.9, -1, 1);
-        if (p >= 0) { U('Pistol_Aim_Neutral', 1 - p); U('Pistol_Aim_Up', p); } else { U('Pistol_Aim_Neutral', 1 + p); U('Pistol_Aim_Down', -p); }
-      } else if (this.upperMode === 'carry') { for (const s of this.upper.values()) s.target = 0; U('Pistol_Idle_Loop'); }
+        if (p >= 0) { this.addUpper('Pistol_Aim_Neutral', 1 - p); this.addUpper('Pistol_Aim_Up', p); } else { this.addUpper('Pistol_Aim_Neutral', 1 + p); this.addUpper('Pistol_Aim_Down', -p); }
+      } else if (this.upperMode === 'carry') { for (const s of this.upper.values()) s.target = 0; this.addUpper('Pistol_Idle_Loop'); }
     }
     // Active action overrides its layer(s).
     let actK = 0;
@@ -436,8 +440,8 @@ export class Human {
       const fadeOut = Number.isFinite(a.dur) ? Math.min(1, Math.max(0, (a.dur - a.t) / Math.max(1e-3, a.fade))) : 1;
       actK = Math.min(fadeIn, fadeOut) * a.weight;
       if (a.clip) {
-        const layers = a.layer === 'full' ? [this.lower, this.upper] : [this.upper];
-        for (const l of layers) { for (const s of l.values()) s.target *= 1 - actK; this.slot(l, a.clip).target = actK; }
+        if (a.layer === 'full') { for (const s of this.lower.values()) s.target *= 1 - actK; this.slot(this.lower, a.clip).target = actK; }
+        for (const s of this.upper.values()) s.target *= 1 - actK; this.slot(this.upper, a.clip).target = actK;
       }
       // events at normalised times of the first cycle
       const evs = a.def.events;
@@ -447,9 +451,11 @@ export class Human {
       }
       if (a.t >= a.dur) { this.act = null; a.onDone?.(); }
     }
-    if (this.state === 'dead' && (!this.act || this.act.ending)) { for (const l of [this.lower, this.upper]) { for (const s of l.values()) s.target = 0; this.slot(l, this.deathClip).target = 1; } }
+    if (this.state === 'dead' && (!this.act || this.act.ending)) {
+      for (let li = 0; li < 2; li++) { const l = this.layers[li]; for (const s of l.values()) s.target = 0; this.slot(l, this.deathClip).target = 1; }
+    }
     const rate = 1 - Math.exp(-dt * 14);
-    for (const l of [this.lower, this.upper]) for (const s of l.values()) {
+    for (let li = 0; li < 2; li++) for (const s of this.layers[li].values()) {
       s.weight += (s.target - s.weight) * (dt === 0 ? 1 : rate);
       if (s.weight < 0.001 && s.target === 0) s.weight = 0;
       s.action.setEffectiveWeight(s.weight);

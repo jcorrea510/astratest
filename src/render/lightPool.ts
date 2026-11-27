@@ -24,13 +24,29 @@ export function lightScore(intensity: number, weight: number, dist: number, rang
  * weakest holder clearly (hysteresis: lights do not flicker between two lamps at equal distance). Pure (tests).
  * `held[i]` = index of the virtual light real light i shows now (-1 none). Returns the new `held`.
  */
-export function assignLights(scores: number[], held: number[], margin = 1.35): number[] {
-  const n = held.length;
-  const out = held.map(h => (h >= 0 && h < scores.length && scores[h] > 0 ? h : -1));
-  const order = scores.map((_, i) => i).filter(i => scores[i] > 0).sort((a, b) => scores[b] - scores[a]).slice(0, n);
-  for (const c of order) {
-    if (out.includes(c)) continue;
-    let slot = out.indexOf(-1);
+function assignLightsInto(scores: number[], out: number[], orderBuf: number[], margin = 1.35): void {
+  const n = out.length, sn = scores.length;
+  for (let i = 0; i < n; i++) {
+    const h = out[i];
+    if (!(h >= 0 && h < sn && scores[h] > 0)) out[i] = -1;
+  }
+  orderBuf.length = 0;
+  for (let i = 0; i < sn; i++) if (scores[i] > 0) orderBuf.push(i);
+  // partial selection of top `n` indices (n <= 8, sn ~16): faster than full sort and zero-alloc
+  const top = Math.min(n, orderBuf.length);
+  for (let k = 0; k < top; k++) {
+    let best = k, bestS = scores[orderBuf[k]];
+    for (let j = k + 1; j < orderBuf.length; j++) {
+      const sj = scores[orderBuf[j]];
+      if (sj > bestS) { bestS = sj; best = j; }
+    }
+    if (best !== k) { const tmp = orderBuf[k]; orderBuf[k] = orderBuf[best]; orderBuf[best] = tmp; }
+    const c = orderBuf[k];
+    let already = false;
+    for (let i = 0; i < n; i++) if (out[i] === c) { already = true; break; }
+    if (already) continue;
+    let slot = -1;
+    for (let i = 0; i < n; i++) if (out[i] === -1) { slot = i; break; }
     if (slot < 0) {
       let ws = Infinity;
       for (let i = 0; i < n; i++) if (scores[out[i]] < ws) { ws = scores[out[i]]; slot = i; }
@@ -38,6 +54,11 @@ export function assignLights(scores: number[], held: number[], margin = 1.35): n
     }
     out[slot] = c;
   }
+}
+
+export function assignLights(scores: number[], held: number[], margin = 1.35): number[] {
+  const out = held.slice();
+  assignLightsInto(scores, out, [], margin);
   return out;
 }
 
@@ -53,13 +74,21 @@ export class LightPool {
   private virt: THREE.PointLight[] = [];
   private held: number[] = [];
   private scores: number[] = [];
+  private orderBuf: number[] = [];
   constructor(private scene: THREE.Scene) {}
   /** Registers a virtual light (not added to the scene). `weight` ranks it against others (lamps 1, muzzle flash 3). */
   add(l: THREE.PointLight, weight = 1): THREE.PointLight {
     l.userData.poolWeight = weight; if (!this.virt.includes(l)) this.virt.push(l);
     return l;
   }
-  remove(l: THREE.PointLight) { const i = this.virt.indexOf(l); if (i < 0) return; this.virt.splice(i, 1); this.held = this.held.map(h => (h === i ? -1 : h > i ? h - 1 : h)); }
+  remove(l: THREE.PointLight) {
+    const i = this.virt.indexOf(l); if (i < 0) return;
+    this.virt.splice(i, 1);
+    for (let k = 0; k < this.held.length; k++) {
+      const h = this.held[k];
+      this.held[k] = h === i ? -1 : h > i ? h - 1 : h;
+    }
+  }
   get count() { return this.real.length; }
   /** Number of real lights (changes shader light count: call on quality change only). */
   setCount(preset: number) {
@@ -73,7 +102,7 @@ export class LightPool {
       const l = v[i]; l.getWorldPosition(_p);
       s[i] = lightScore(l.intensity, (l.userData.poolWeight as number) ?? 1, _p.distanceTo(cam), l.distance);
     }
-    this.held = assignLights(s, this.held);
+    assignLightsInto(s, this.held, this.orderBuf);
     for (let i = 0; i < this.real.length; i++) {
       const r = this.real[i], h = this.held[i];
       if (h < 0) { r.intensity = 0; continue; }

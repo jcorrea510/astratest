@@ -12,6 +12,7 @@ import { BOTTOM_PARS, BOTTOM_GLSL, SHOE_GLSL, SOLE_GLSL } from './shade/bottom';
 import { patchHair } from './shade/hair';
 import { nailPolish, type FullLook } from './look';
 import type { BodyBase } from './humanAssets';
+import { nightUniform } from '../render/materials';
 
 export const TOP_IDS: Record<FullLook['topStyle'], number> = { tee: 0, tank: 1, longsleeve: 2, hoodie: 3, jacket: 4, suit: 5, shirt: 6, polo: 7, dress: 8, uniform: 9, blouse: 10 };
 const BOTTOM_IDS: Record<FullLook['bottomStyle'], number> = { jeans: 0, trousers: 1, shorts: 2, skirt: 3, sweats: 4 };
@@ -39,7 +40,7 @@ export function personMaterial(base: BodyBase, map: THREE.Texture, normalMap: TH
   };
   m.userData.uniforms = u;
   m.onBeforeCompile = sh => patchPerson(sh, u, false);
-  m.customProgramCacheKey = () => 'person-ubc-1';
+  m.customProgramCacheKey = () => 'person-ubc-2';
   return m;
 }
 
@@ -60,6 +61,7 @@ export function hairMaterialFor(person: THREE.MeshStandardMaterial): THREE.MeshS
 
 function patchPerson(sh: THREE.WebGLProgramParametersWithUniforms, u: PersonUniforms, hair: boolean) {
     Object.assign(sh.uniforms, u);
+    sh.uniforms.uNight = nightUniform;
     if (hair) { patchHair(sh); return; }
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
@@ -88,7 +90,7 @@ transformed.x *= 1.0 + shape.w * uShape.w;
 transformed = mix(transformed, uHeadJoint + (transformed - uHeadJoint) * uShape.z, shape.z);`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform vec3 uC[12]; uniform vec4 uTop; uniform vec4 uBottom; uniform vec4 uPat; uniform vec4 uBody; uniform vec4 uNeck; uniform float uFlash;
+uniform vec3 uC[12]; uniform vec4 uTop; uniform vec4 uBottom; uniform vec4 uPat; uniform vec4 uBody; uniform vec4 uNeck; uniform float uFlash; uniform float uNight;
 flat varying float vRegion; varying float vCloth; varying vec3 vHn; varying vec3 vBind; varying vec3 vBN;
 float hsh(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float vnoise(vec3 p) {
@@ -154,7 +156,15 @@ diffuseColor.rgb *= col;`)
   vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx);
   float det = dot(dpx, r1);
   if (abs(det) > 1e-12 && dot(dh, dh) > 0.0) normal = normalize(abs(det) * normal - sign(det) * (dh.x * r1 + dh.y * r2));
-}`);
+}`)
+      .replace('#include <opaque_fragment>', `
+{
+  float pNdv = clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
+  float pRim = pow(1.0 - pNdv, 3.4) * smoothstep(-0.25, 0.7, normal.y);
+  vec3 pRimTint = mix(vec3(0.08, 0.095, 0.115), vec3(0.09, 0.075, 0.06), uNight);
+  outgoingLight += (diffuseColor.rgb * 0.42 + pRimTint) * pRim * mix(0.22, 0.16, uNight);
+}
+#include <opaque_fragment>`);
 }
 
 /** HAIR variant: layered strand shells with a strand-aligned highlight (see hairShells.ts for the attributes). */

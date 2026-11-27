@@ -319,10 +319,16 @@ const TREE_CELL = 40;
  * Street trees in 40 m cells; every cell has a near mesh set (trunk + leaves per variant) and ONE far set (trunk + leaves,
  * shared by all variants). `update` swaps per cell by distance (hysteresis) and turns shadow casting off for far / out of range cells.
  */
+type TreeCell = {
+  minX: number; maxX: number; minZ: number; maxZ: number;
+  near: THREE.InstancedMesh[]; far: THREE.InstancedMesh[];
+  isNear: boolean;
+};
+
 export class TreeLodField {
   private inst = new ChunkInstancer(TREE_CELL);
   private meshes: THREE.InstancedMesh[] = [];
-  private cellNear = new Map<string, boolean>();
+  private cells: TreeCell[] = [];
   constructor(variants: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }[], far: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, trunkMat: THREE.Material, leafMat: THREE.Material) {
     variants.forEach((g, k) => { this.inst.register(`tree${k}`, g.trunk, trunkMat); this.inst.register(`leaf${k}`, g.leaves, leafMat); });
     this.inst.register('ftrunk', far.trunk, trunkMat); this.inst.register('fleaf', far.leaves, leafMat);
@@ -334,24 +340,70 @@ export class TreeLodField {
   }
   build(parent: THREE.Object3D): THREE.InstancedMesh[] {
     this.meshes = this.inst.build(parent);
+    const byCell = new Map<string, TreeCell>();
     for (const m of this.meshes) {
-      const far = m.name.startsWith('ftrunk') || m.name.startsWith('fleaf'); const bs = m.boundingSphere!;
-      m.userData.treeLod = { far, cell: m.name.slice(m.name.indexOf('@')), minX: bs.center.x - bs.radius, maxX: bs.center.x + bs.radius, minZ: bs.center.z - bs.radius, maxZ: bs.center.z + bs.radius };
+      const far = m.name.startsWith('ftrunk') || m.name.startsWith('fleaf');
+      const cellKey = m.name.slice(m.name.indexOf('@'));
+      const bs = m.boundingSphere!;
+      const minX = bs.center.x - bs.radius, maxX = bs.center.x + bs.radius;
+      const minZ = bs.center.z - bs.radius, maxZ = bs.center.z + bs.radius;
+      m.userData.treeLod = { far, cell: cellKey, minX, maxX, minZ, maxZ };
       m.userData.shadow = m.castShadow;
+      m.updateMatrix();
+      m.updateMatrixWorld(true);
+      m.matrixAutoUpdate = false;
+      m.matrixWorldAutoUpdate = false;
+      let cell = byCell.get(cellKey);
+      if (!cell) {
+        cell = { minX, maxX, minZ, maxZ, near: [], far: [], isNear: true };
+        byCell.set(cellKey, cell);
+      } else {
+        if (minX < cell.minX) cell.minX = minX;
+        if (maxX > cell.maxX) cell.maxX = maxX;
+        if (minZ < cell.minZ) cell.minZ = minZ;
+        if (maxZ > cell.maxZ) cell.maxZ = maxZ;
+      }
+      if (far) cell.far.push(m);
+      else cell.near.push(m);
     }
+    this.cells = [...byCell.values()];
     return this.meshes;
   }
   /** Call every few frames. `reach` = draw distance, `shadowR` = how far from the player trees still cast sun shadows. */
   update(camX: number, camZ: number, plX: number, plZ: number, reach: number, shadowR: number) {
-    for (const m of this.meshes) {
-      const d = m.userData.treeLod as { far: boolean; cell: string; minX: number; maxX: number; minZ: number; maxZ: number };
-      const dist = Math.hypot(Math.max(d.minX - camX, 0, camX - d.maxX), Math.max(d.minZ - camZ, 0, camZ - d.maxZ));
-      // the near and far meshes of one cell share one state (their bounds differ by a few cm, so decide once per cell per update)
-      let near: boolean;
-      if (!d.far) { near = treeLodNear(dist, this.cellNear.get(d.cell) ?? true); this.cellNear.set(d.cell, near); } else near = this.cellNear.get(d.cell) ?? true;
-      m.visible = dist < reach && (d.far ? !near : near);
-      const dp = Math.hypot(Math.max(d.minX - plX, 0, plX - d.maxX), Math.max(d.minZ - plZ, 0, plZ - d.maxZ));
-      m.castShadow = m.visible && treeCastsShadow(dp, shadowR);
+    const reach2 = reach * reach;
+    const shadowR2 = shadowR * shadowR;
+    const nearCheckMax = TREE_LOD_NEAR + TREE_LOD_HYST;
+    const nearCheck2 = nearCheckMax * nearCheckMax;
+    const cells = this.cells;
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      const dx = camX < c.minX ? c.minX - camX : camX > c.maxX ? camX - c.maxX : 0;
+      const dz = camZ < c.minZ ? c.minZ - camZ : camZ > c.maxZ ? camZ - c.maxZ : 0;
+      const d2 = dx * dx + dz * dz;
+      const vis = d2 < reach2;
+      const near = d2 < nearCheck2 ? treeLodNear(Math.sqrt(d2), c.isNear) : false;
+      c.isNear = near;
+      let cast = false;
+      if (vis) {
+        const pdx = plX < c.minX ? c.minX - plX : plX > c.maxX ? plX - c.maxX : 0;
+        const pdz = plZ < c.minZ ? c.minZ - plZ : plZ > c.maxZ ? plZ - c.maxZ : 0;
+        cast = pdx * pdx + pdz * pdz < shadowR2;
+      }
+      const showNear = vis && near;
+      const showFar = vis && !near;
+      const nearCast = showNear && cast;
+      const farCast = showFar && cast;
+      for (let j = 0; j < c.near.length; j++) {
+        const m = c.near[j];
+        m.visible = showNear;
+        m.castShadow = nearCast;
+      }
+      for (let j = 0; j < c.far.length; j++) {
+        const m = c.far[j];
+        m.visible = showFar;
+        m.castShadow = farCast;
+      }
     }
   }
 }
