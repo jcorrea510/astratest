@@ -45,7 +45,7 @@ for (const quality of req.quality ?? ['medium']) {
             const tally = new Map(); let total = 0;
             rr.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
               const rt = rr.getRenderTarget(), pass = !rt ? 'screen' : shadowRts.has(rt) ? 'shadow' : 'main';
-              const who = (object.name || object.parent?.name || '').slice(0, 26) + (object.isSkinnedMesh ? '[skin]' : object.isInstancedMesh ? '[inst]' : '');
+              const who = (object.name || object.parent?.name || ('g:' + (geometry.type || '') + (Object.keys(object.userData ?? {})[0] ? ' u:' + Object.keys(object.userData)[0] : '') + (object.parent && object.parent !== R.scene ? ' p:' + (Object.keys(object.parent.userData ?? {})[0] ?? '') : ''))).slice(0, 34) + (object.isSkinnedMesh ? '[skin]' : object.isInstancedMesh ? '[inst]' : '');
               const k = `${pass} | ${label(object)} | ${who} | ${material.type}${material.name ? ':' + material.name.slice(0, 16) : ''}`;
               tally.set(k, (tally.get(k) ?? 0) + 1); total++;
               return orig(camera, scene, geometry, material, object, group);
@@ -59,7 +59,8 @@ for (const quality of req.quality ?? ['medium']) {
             for (const [k, n] of tally) { const [pa, tp] = k.split(' | '); byPass.set(pa, (byPass.get(pa) ?? 0) + n); byTop.set(pa + ' | ' + tp, (byTop.get(pa + ' | ' + tp) ?? 0) + n); }
             const srt = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v}  ${k}`);
             const people = g.pop.npcs.filter(n => n.char.human.root.visible && !n.char.inVehicle).length;
-            return { yaw, infoCalls, total, people, byPass: srt(byPass, 6), byTop: srt(byTop, 30), detail: srt(tally, sc.topDetail ?? 60) };
+            const guns = g.pop.npcs.filter(n => n.model).map(n => `${n.role}/${n.brain} view:${+!!n.inView} root:${+n.char.human.root.visible} gun:${+n.model.visible} sh:${n.modelShadow} d:${Math.round(n.pos.distanceTo(g.player.pos))}`);
+            return { yaw, infoCalls, total, people, guns, byPass: srt(byPass, 6), byTop: srt(byTop, 30), detail: srt(tally, sc.topDetail ?? 60) };
           };
           return { npcs: g.pop.npcs.length, cars: g.vehicles.list.length, runs: (sc.yaws ?? [null]).map(runOne) };
         }
@@ -100,7 +101,7 @@ for (const quality of req.quality ?? ['medium']) {
       }, sc);
       if (sc.drawBreakdown) {
         log(`npcs ${r.npcs} cars ${r.cars}`);
-        for (const x of r.runs) { log(`\n-- yaw ${x.yaw}: calls ${x.infoCalls} (hooked ${x.total}), people in view ${x.people}`); log('by pass:\n' + x.byPass.join('\n')); log('by group:\n' + x.byTop.join('\n')); if (x === r.runs[0] || sc.allDetail) log('detail:\n' + x.detail.join('\n')); }
+        for (const x of r.runs) { log(`\n-- yaw ${x.yaw}: calls ${x.infoCalls} (hooked ${x.total}), people in view ${x.people}`); log('by pass:\n' + x.byPass.join('\n')); log('guns: ' + x.guns.join(' ; ')); log('by group:\n' + x.byTop.join('\n')); if (x === r.runs[0] || sc.allDetail) log('detail:\n' + x.detail.join('\n')); }
         writeFileSync('docs/shots/out/perf.txt', out.join('\n') + '\n'); continue;
       }
       log(JSON.stringify(r, null, 0));

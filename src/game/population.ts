@@ -389,7 +389,7 @@ export class Population {
     this.projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.projScreen);
     for (const n of this.npcs) {
       const c = n.char, h = c.human;
-      if (n.brain === 'inside') { h.root.visible = false; continue; }
+      if (n.brain === 'inside') { h.root.visible = false; if (n.model) n.model.visible = false; continue; } // their gun hid with them (27 Nov: 7 guns floated in the shadow map)
       if (!c.alive) {
         c.deadTime += dt;
         if (c.deadTime > 0.05 && c.deadTime < 0.1) h.setState('dead');
@@ -412,7 +412,7 @@ export class Population {
         continue;
       }
       const d = c.pos.distanceTo(focus);
-      if (d >= 160) { h.root.visible = false; continue; }
+      if (d >= 160) { h.root.visible = false; if (n.model) n.model.visible = false; continue; }
       n.animAcc += dt;
       // animation rate by distance: smooth near the player (the old 5-10 Hz far rates read as lagging people)
       const inView = d < 3 || this.frustum.intersectsSphere(this.cullSphere.set(this.cullCentre.set(c.pos.x, c.pos.y + 1, c.pos.z), 3)); // generous sphere: the frustum is last frame's, so a quick camera swing must not clip anyone
@@ -440,7 +440,7 @@ export class Population {
       for (let i = this.shadowBudget; i < scn; i++) { const h = sc[i].n.char.human; h.mesh.castShadow = false; for (const e of h.extras) e.castShadow = false; }
     }
     // carried guns cast a shadow only with their holder (they are scene children, so hiding the body left them in the shadow map)
-    for (const n of this.npcs) if (n.model) { const on = gunCastsShadow(n.char.human.mesh.castShadow, n.inView, !!n.char.inVehicle); if (n.modelShadow !== on) { n.modelShadow = on; setWeaponShadow(n.model, on); } }
+    for (const n of this.npcs) if (n.model) { const on = gunCastsShadow(n.char.human.mesh.castShadow, n.inView && n.char.human.root.visible && n.model.visible, !!n.char.inVehicle); if (n.modelShadow !== on) { n.modelShadow = on; setWeaponShadow(n.model, on); } }
     // Despawn
     for (let ni = this.npcs.length - 1; ni >= 0; ni--) {
       const n = this.npcs[ni]; if (!n) continue;

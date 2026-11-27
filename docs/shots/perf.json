@@ -19,5 +19,5 @@
    "allDetail": true
   }
  ],
- "note": "27 Nov: draw calls at the density corner after gun shadows follow their holder"
+ "note": "27 Nov: density corner draws, hidden holders hide their guns"
 }
