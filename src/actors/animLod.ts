@@ -30,8 +30,12 @@ export const LOD_HYST = 0.15;
  * ~60 m took a busy corner past the 450-call budget (27 Nov).
  */
 export const PERSON_EXTRAS_FULL_M = 23;
+/** Street people drop extras a little sooner than EXTRAS_NONE_M: the busy-corner budget ran 448-467 calls at 32 m (27 Nov). */
+export const PERSON_EXTRAS_NONE_M = 27;
+/** Garment extras cast shadows only this close; past it the body's own shadow carries the silhouette (27 Nov budget). */
+export const EXTRAS_SHADOW_M = 14;
 export function personExtrasLod(dist: number, inView: boolean, prev: 0 | 1 | 2): 0 | 1 | 2 {
-  return extrasLodFor(dist, inView, prev, PERSON_EXTRAS_FULL_M, EXTRAS_NONE_M);
+  return extrasLodFor(dist, inView, prev, PERSON_EXTRAS_FULL_M, PERSON_EXTRAS_NONE_M);
 } // a level only changes once the person is 15% past the edge
 
 export function bodyLodFor(dist: number, prev: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {

@@ -32,8 +32,15 @@ export function weaponMesh(id: WeaponId): THREE.Group {
   const g = c.proto.clone(true);
   g.userData.muzzle = c.muzzle.clone(); g.userData.eject = c.eject.clone(); g.userData.weapon = id;
   g.userData.anchors = { grip: c.grip.clone(), butt: c.butt?.clone() ?? null, support: c.support?.clone() ?? null } satisfies WeaponAnchors;
-  g.traverse(o => { o.userData.rest = o.position.clone(); o.userData.restRot = o.rotation.clone(); });
+  g.traverse(o => { o.userData.rest = o.position.clone(); o.userData.restRot = o.rotation.clone(); o.userData.casts = (o as THREE.Mesh).castShadow; });
   return g;
+}
+/**
+ * Turns a weapon model's sun shadow on or off (parts that never cast, like lenses and bores, stay off). A gun carried by
+ * someone off screen or past the people shadow budget was still drawn into the shadow map: ~34 calls at a busy corner (27 Nov).
+ */
+export function setWeaponShadow(g: THREE.Object3D, on: boolean) {
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = on && o.userData.casts !== false; });
 }
 /** Muzzle distance along +z (legacy: the muzzle is at (0, 0.07, MUZZLE[id]) roughly; prefer userData.muzzle). */
 export const MUZZLE = new Proxy({} as Record<WeaponId, number>, { get: (_t, id: string) => proto(id as WeaponId).muzzle.z });

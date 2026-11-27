@@ -532,7 +532,7 @@ export class Vehicle {
     if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? BEAM_OPACITY * night : 0; this.beam.visible = on && night > 0.05; }
     if (this.underShadow) {
       const upY = 1 - 2 * (this.group.quaternion.x * this.group.quaternion.x + this.group.quaternion.z * this.group.quaternion.z);
-      const showShadow = this.phys.grounded && upY > 0.6;
+      const showShadow = underShadowShown(this.phys.grounded, upY, this.lod);
       this.underShadow.visible = showShadow;
       if (showShadow) (this.underShadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.lerp(0.76, 0.42, night);
     }
@@ -712,3 +712,9 @@ void _q;
 
 /** Heading (yaw, atan2 of the forward +Z axis) of a rotation. Pure. */
 export function yawOfQuat(q: { x: number; y: number; z: number; w: number }): number { return Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y)); }
+
+/** The soft contact shadow under a car: grounded, upright, and not a far car (lod 2, ~65 m+: one draw call per car for a
+ * patch too small to see; 27 Nov busy-corner budget). Pure: tests. */
+export function underShadowShown(grounded: boolean, upY: number, lod: number): boolean {
+  return grounded && upY > 0.6 && lod < 2;
+}

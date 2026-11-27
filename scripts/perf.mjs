@@ -32,6 +32,38 @@ for (const quality of req.quality ?? ['medium']) {
         if (sc.eval) (new Function('g', 'M', sc.eval))(g, window.__meridian);
         for (let i = 0; i < 120; i++) g.frame(1 / 60, false);
         g.frame(1 / 60, true); sync();
+        if (sc.drawBreakdown) {
+          // draw calls of one rendered frame (shadow map redrawn) grouped by pass, top-level group, object and material
+          const rr = R.renderer, orig = rr.renderBufferDirect.bind(rr);
+          const shadowRts = new Set(); R.scene.traverse(o => { if (o.isLight && o.shadow?.map) shadowRts.add(o.shadow.map); });
+          const label = (o) => {
+            let top = o; while (top.parent && top.parent !== R.scene) top = top.parent;
+            let tn = top.name || (top.userData?.kind ? 'k:' + top.userData.kind : '') || (Object.keys(top.userData ?? {}).slice(0, 2).join('+') ? 'u:' + Object.keys(top.userData).slice(0, 2).join('+') : ''); if (!tn) { let q = o; while (q && q !== top && !q.name) q = q.parent; tn = (q && q.name) || top.type; }
+            return tn.slice(0, 26);
+          };
+          const runOne = (yaw) => {
+            const tally = new Map(); let total = 0;
+            rr.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+              const rt = rr.getRenderTarget(), pass = !rt ? 'screen' : shadowRts.has(rt) ? 'shadow' : 'main';
+              const who = (object.name || object.parent?.name || ('g:' + (geometry.type || '') + (Object.keys(object.userData ?? {})[0] ? ' u:' + Object.keys(object.userData)[0] : '') + (object.parent && object.parent !== R.scene ? ' p:' + (Object.keys(object.parent.userData ?? {})[0] ?? '') : ''))).slice(0, 34) + (object.isSkinnedMesh ? '[skin]' : object.isInstancedMesh ? '[inst]' : '');
+              const k = `${pass} | ${label(object)} | ${who} | ${material.type}${material.name ? ':' + material.name.slice(0, 16) : ''}`;
+              tally.set(k, (tally.get(k) ?? 0) + 1); total++;
+              return orig(camera, scene, geometry, material, object, group);
+            };
+            if (yaw !== null) { g.cam.yaw = yaw; for (let i = 0; i < 3; i++) g.frame(1 / 60, false); }
+            for (let i = 0; i < 4; i++) g.frame(1 / 60, true); // the test reads calls after a few rendered frames
+            tally.clear(); total = 0; rr.shadowMap.needsUpdate = true; R.shadowMoved = true;
+            g.frame(1 / 60, true); sync(); const infoCalls = rr.info.render.calls;
+            rr.renderBufferDirect = orig;
+            const byTop = new Map(), byPass = new Map();
+            for (const [k, n] of tally) { const [pa, tp] = k.split(' | '); byPass.set(pa, (byPass.get(pa) ?? 0) + n); byTop.set(pa + ' | ' + tp, (byTop.get(pa + ' | ' + tp) ?? 0) + n); }
+            const srt = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v}  ${k}`);
+            const people = g.pop.npcs.filter(n => n.char.human.root.visible && !n.char.inVehicle).length;
+            const guns = g.pop.npcs.filter(n => n.model).map(n => `${n.role}/${n.brain} view:${+!!n.inView} root:${+n.char.human.root.visible} gun:${+n.model.visible} sh:${n.modelShadow} d:${Math.round(n.pos.distanceTo(g.player.pos))}`);
+            return { yaw, infoCalls, total, people, guns, byPass: srt(byPass, 6), byTop: srt(byTop, 30), detail: srt(tally, sc.topDetail ?? 60) };
+          };
+          return { npcs: g.pop.npcs.length, cars: g.vehicles.list.length, runs: (sc.yaws ?? [null]).map(runOne) };
+        }
         const now = () => performance.now();
         let t = now(); for (let i = 0; i < 240; i++) g.frame(1 / 60, false); const simMs = (now() - t) / 240;
         const N = sc.renderFrames ?? 6;
@@ -67,6 +99,11 @@ for (const quality of req.quality ?? ['medium']) {
         }
         return res;
       }, sc);
+      if (sc.drawBreakdown) {
+        log(`npcs ${r.npcs} cars ${r.cars}`);
+        for (const x of r.runs) { log(`\n-- yaw ${x.yaw}: calls ${x.infoCalls} (hooked ${x.total}), people in view ${x.people}`); log('by pass:\n' + x.byPass.join('\n')); log('guns: ' + x.guns.join(' ; ')); log('by group:\n' + x.byTop.join('\n')); if (x === r.runs[0] || sc.allDetail) log('detail:\n' + x.detail.join('\n')); }
+        writeFileSync('docs/shots/out/perf.txt', out.join('\n') + '\n'); continue;
+      }
       log(JSON.stringify(r, null, 0));
       // CPU profile: simulation + render together
       await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 250 }); await cdp.send('Profiler.start');
