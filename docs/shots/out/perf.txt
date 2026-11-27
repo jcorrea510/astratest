@@ -1,34 +1,37 @@
 
 === medium / density-corner-draws (hour 17.6) ===
-npcs 58 cars 51
+npcs 58 cars 53
 
--- yaw null: calls 333 (hooked 337), people in view 1
+-- yaw null: calls 358 (hooked 362), people in view 0
 by pass:
-255  main
-81  shadow
+279  main
+82  shadow
 1  screen
 guns: gang/idle view:1 root:0 gun:0 sh:false d:1018 ; gang/idle view:1 root:0 gun:0 sh:false d:1011 ; gang/idle view:1 root:0 gun:0 sh:false d:1031 ; gang/idle view:1 root:0 gun:0 sh:false d:992 ; gang/idle view:1 root:0 gun:0 sh:false d:982 ; gang/idle view:1 root:0 gun:0 sh:false d:1066 ; gang/scripted view:1 root:0 gun:0 sh:false d:1001 ; gang/scripted view:1 root:0 gun:0 sh:false d:983 ; gang/scripted view:1 root:0 gun:0 sh:false d:976 ; gang/scripted view:1 root:0 gun:0 sh:false d:945
 by group:
 143  main | city
+62  main | Group
 59  shadow | city
-46  main | Group
-27  main | Mesh
+18  main | Mesh
+12  main | Armature
+9  main | SuperHero_Male
 8  shadow | Group
-8  main | Armature
-6  main | SuperHero_Male
-5  shadow | Armature
+6  main | Superhero_Female
+4  shadow | Armature
+4  shadow | Superhero_Female
+4  main | stuntRamps
 3  shadow | SuperHero_Male
 3  shadow | Mesh
-3  shadow | Superhero_Female
 3  main | Points
 2  main | u:blood
+1  shadow | stuntRamps
 1  main | crowdPeople:m
 1  main | crowdPeople:f
 1  main | armyBaseLod
+1  main | farCars:hatch
 1  main | farCars:sedan
 1  main | farCars:fullsize
 1  main | farCars:sportsedan
-1  main | farCars:hatch
 1  main | farCars:pickup
 1  main | farCars:luxury
 1  main | farCars:crossover
@@ -36,21 +39,19 @@ by group:
 1  main | farCars:van
 1  main | farCars:coupe
 1  main | farCars:convertible
-1  main | farCars:muscle
-1  main | farCars:suv
-1  main | farCars:citycar
 detail:
+28  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
 23  main | city | city | MeshStandardMaterial
-18  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
-9  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
-9  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
+14  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
+12  main | Armature | Armature[skin] | MeshStandardMaterial
+10  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
+9  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
 8  shadow | Group | g:BufferGeometry u:shared p:[skin] | MeshDepthMaterial
-8  main | Armature | Armature[skin] | MeshStandardMaterial
-6  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
-5  shadow | Armature | Armature[skin] | MeshDepthMaterial
-4  main | Mesh | g:BoxGeometry p: | MeshStandardMaterial
+6  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
+4  shadow | Armature | Armature[skin] | MeshDepthMaterial
+4  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
+4  main | stuntRamps | stuntRamps | MeshStandardMaterial
 3  shadow | SuperHero_Male | SuperHero_Male[skin] | MeshDepthMaterial
-3  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
 3  main | Mesh | g:BufferGeometry | MeshStandardMaterial
 3  main | Group | g:PlaneGeometry p: | MeshStandardMaterial
 3  main | Group | g:SphereGeometry p: | MeshBasicMaterial
@@ -60,8 +61,6 @@ detail:
 2  main | city | pedSignals[inst] | MeshBasicMaterial
 2  main | city | storeGlass[inst] | MeshBasicMaterial
 2  main | Mesh | g:CylinderGeometry[inst] | MeshStandardMaterial
-2  main | Mesh | g:CylinderGeometry p: | MeshStandardMaterial
-2  main | Mesh | g:SphereGeometry p: | MeshStandardMaterial
 2  main | u:blood | g:PlaneGeometry u:blood[inst] | MeshStandardMaterial
 2  main | Mesh | g:BufferGeometry[inst] | MeshBasicMaterial
 1  shadow | city | g:CylinderGeometry p:gondolas[inst] | MeshDepthMaterial
@@ -85,34 +84,37 @@ detail:
 1  shadow | city | streetlight@0,-1[inst] | MeshDepthMaterial
 1  shadow | city | streetlight@0,0[inst] | MeshDepthMaterial
 1  shadow | city | dumpster0@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster0@0,0[inst] | MeshDepthMaterial
 
--- yaw 1.5708: calls 367 (hooked 371), people in view 8
+-- yaw 1.5708: calls 330 (hooked 334), people in view 8
 by pass:
-293  main
-77  shadow
+257  main
+76  shadow
 1  screen
 guns: gang/idle view:1 root:0 gun:0 sh:false d:1018 ; gang/idle view:1 root:0 gun:0 sh:false d:1011 ; gang/idle view:1 root:0 gun:0 sh:false d:1031 ; gang/idle view:1 root:0 gun:0 sh:false d:992 ; gang/idle view:1 root:0 gun:0 sh:false d:982 ; gang/idle view:1 root:0 gun:0 sh:false d:1066 ; gang/scripted view:1 root:0 gun:0 sh:false d:1001 ; gang/scripted view:1 root:0 gun:0 sh:false d:983 ; gang/scripted view:1 root:0 gun:0 sh:false d:976 ; gang/scripted view:1 root:0 gun:0 sh:false d:944
 by group:
 130  main | city
-84  main | Group
+61  main | Group
 55  shadow | city
 17  main | Mesh
-15  main | Armature
-12  main | Superhero_Female
-10  main | SuperHero_Male
 8  shadow | Group
-5  shadow | Armature
-3  shadow | SuperHero_Male
+8  main | SuperHero_Male
+6  main | Superhero_Female
+5  main | Armature
+4  shadow | Armature
+4  shadow | Superhero_Female
+4  main | stuntRamps
 3  shadow | Mesh
-3  shadow | Superhero_Female
 3  main | Points
 2  main | u:blood
+1  shadow | SuperHero_Male
+1  shadow | stuntRamps
 1  main | crowdPeople:m
 1  main | crowdPeople:f
+1  main | farCars:hatch
 1  main | farCars:sedan
 1  main | farCars:fullsize
 1  main | farCars:sportsedan
-1  main | farCars:hatch
 1  main | farCars:pickup
 1  main | farCars:luxury
 1  main | farCars:crossover
@@ -120,25 +122,23 @@ by group:
 1  main | farCars:van
 1  main | farCars:coupe
 1  main | farCars:convertible
-1  main | farCars:bus
-1  main | farCars:muscle
 1  main | farCars:suv
 detail:
-32  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
+24  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
 16  main | city | city | MeshStandardMaterial
-16  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
-16  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
-15  main | Armature | Armature[skin] | MeshStandardMaterial
-12  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
-10  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
+12  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
 8  shadow | Group | g:BufferGeometry u:shared p:[skin] | MeshDepthMaterial
-5  shadow | Armature | Armature[skin] | MeshDepthMaterial
+8  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
+6  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
+5  main | Armature | Armature[skin] | MeshStandardMaterial
+5  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
+4  shadow | Armature | Armature[skin] | MeshDepthMaterial
+4  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
+4  main | stuntRamps | stuntRamps | MeshStandardMaterial
 4  main | Group | g:CircleGeometry p: | MeshBasicMaterial
 4  main | Group | g:RingGeometry p: | MeshBasicMaterial
 4  main | Group | g:CylinderGeometry p: | ShaderMaterial
 4  main | Group | g:BufferGeometry p: | SpriteMaterial
-3  shadow | SuperHero_Male | SuperHero_Male[skin] | MeshDepthMaterial
-3  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
 3  main | Mesh | g:BufferGeometry | MeshStandardMaterial
 3  main | Points | g:BufferGeometry | ShaderMaterial
 2  shadow | Mesh | g:BufferGeometry | MeshDepthMaterial
@@ -170,65 +170,62 @@ detail:
 1  shadow | city | streetlight@-1,-1[inst] | MeshDepthMaterial
 1  shadow | city | streetlight@-1,0[inst] | MeshDepthMaterial
 
--- yaw 3.1416: calls 470 (hooked 474), people in view 7
+-- yaw 3.1416: calls 399 (hooked 403), people in view 3
 by pass:
-393  main
-80  shadow
+321  main
+81  shadow
 1  screen
 guns: gang/idle view:1 root:0 gun:0 sh:false d:1018 ; gang/idle view:1 root:0 gun:0 sh:false d:1011 ; gang/idle view:1 root:0 gun:0 sh:false d:1031 ; gang/idle view:1 root:0 gun:0 sh:false d:992 ; gang/idle view:1 root:0 gun:0 sh:false d:982 ; gang/idle view:1 root:0 gun:0 sh:false d:1066 ; gang/scripted view:1 root:0 gun:0 sh:false d:1001 ; gang/scripted view:1 root:0 gun:0 sh:false d:983 ; gang/scripted view:1 root:0 gun:0 sh:false d:976 ; gang/scripted view:1 root:0 gun:0 sh:false d:944
 by group:
 138  main | city
-133  main | Group
-63  main | Mesh
+117  main | Group
 59  shadow | city
-14  main | Armature
-11  main | SuperHero_Male
-10  main | Superhero_Female
+18  main | Mesh
 8  shadow | Group
-5  shadow | Armature
+7  main | SuperHero_Male
+7  main | Armature
+6  main | Superhero_Female
+5  shadow | Superhero_Female
+4  main | stuntRamps
+3  shadow | Armature
 3  shadow | Mesh
-3  shadow | Superhero_Female
 3  main | Points
 2  shadow | SuperHero_Male
 2  main | u:blood
+1  shadow | stuntRamps
 1  main | crowdPeople:m
 1  main | crowdPeople:f
+1  main | farCars:hatch
 1  main | farCars:sedan
 1  main | farCars:fullsize
 1  main | farCars:sportsedan
-1  main | farCars:hatch
 1  main | farCars:pickup
 1  main | farCars:luxury
 1  main | farCars:crossover
 1  main | farCars:wagon
 1  main | farCars:van
-1  main | farCars:coupe
 1  main | farCars:convertible
-1  main | farCars:muscle
 1  main | farCars:suv
 1  main | farCars:citycar
 detail:
-44  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
-22  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
-22  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
+42  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
 21  main | city | city | MeshStandardMaterial
-20  main | Mesh | g:BoxGeometry p: | MeshStandardMaterial
-14  main | Armature | Armature[skin] | MeshStandardMaterial
-11  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
-10  main | Mesh | g:CylinderGeometry p: | MeshStandardMaterial
-10  main | Mesh | g:SphereGeometry p: | MeshStandardMaterial
-10  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
+21  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
 9  main | Group | g:BufferGeometry p: | MeshPhysicalMaterial
+9  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
 8  shadow | Group | g:BufferGeometry u:shared p:[skin] | MeshDepthMaterial
+7  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
+7  main | Armature | Armature[skin] | MeshStandardMaterial
 7  main | Group | g:SphereGeometry p: | MeshBasicMaterial
-5  shadow | Armature | Armature[skin] | MeshDepthMaterial
-5  main | Mesh | g:ExtrudeGeometry | MeshStandardMaterial
+6  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
+5  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
 5  main | Group | g:CircleGeometry p: | MeshBasicMaterial
 5  main | Group | g:RingGeometry p: | MeshBasicMaterial
 5  main | Group | g:CylinderGeometry p: | ShaderMaterial
 5  main | Group | g:BufferGeometry p: | SpriteMaterial
 4  main | Group | g:BufferGeometry p: | MeshStandardMaterial
-3  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
+4  main | stuntRamps | stuntRamps | MeshStandardMaterial
+3  shadow | Armature | Armature[skin] | MeshDepthMaterial
 3  main | city | garage-blade | MeshStandardMaterial
 3  main | Mesh | g:BufferGeometry | MeshStandardMaterial
 3  main | Group | g:PlaneGeometry p: | MeshStandardMaterial
@@ -253,65 +250,65 @@ detail:
 1  shadow | city | trim@0,-1 | MeshDepthMaterial
 1  shadow | city | trim@0,0 | MeshDepthMaterial
 1  shadow | city | trim@-1,0 | MeshDepthMaterial
+1  shadow | city | trimfine@-1,-1 | MeshDepthMaterial
+1  shadow | city | trimfine@-2,0 | MeshDepthMaterial
+1  shadow | city | trimfine@-1,0 | MeshDepthMaterial
 
--- yaw -1.5708: calls 354 (hooked 358), people in view 4
+-- yaw -1.5708: calls 325 (hooked 329), people in view 8
 by pass:
-282  main
-75  shadow
+255  main
+73  shadow
 1  screen
 guns: gang/idle view:1 root:0 gun:0 sh:false d:1018 ; gang/idle view:1 root:0 gun:0 sh:false d:1011 ; gang/idle view:1 root:0 gun:0 sh:false d:1031 ; gang/idle view:1 root:0 gun:0 sh:false d:992 ; gang/idle view:1 root:0 gun:0 sh:false d:982 ; gang/idle view:1 root:0 gun:0 sh:false d:1066 ; gang/scripted view:1 root:0 gun:0 sh:false d:1001 ; gang/scripted view:1 root:0 gun:0 sh:false d:984 ; gang/scripted view:1 root:0 gun:0 sh:false d:977 ; gang/scripted view:1 root:0 gun:0 sh:false d:944
 by group:
 133  main | city
-65  main | Mesh
 53  shadow | city
-43  main | Group
+47  main | Group
+20  main | Mesh
+9  main | Superhero_Female
 8  shadow | Group
-7  main | SuperHero_Male
-6  main | Armature
-5  shadow | Armature
-4  main | Superhero_Female
-3  shadow | SuperHero_Male
+8  main | SuperHero_Male
+8  main | Armature
+4  main | stuntRamps
+3  shadow | Armature
 3  shadow | Mesh
 3  shadow | Superhero_Female
 3  main | Points
+2  shadow | SuperHero_Male
 2  main | u:blood
+1  shadow | stuntRamps
 1  main | crowdPeople:m
 1  main | crowdPeople:f
 1  main | armyBaseLod
+1  main | farCars:hatch
 1  main | farCars:sedan
 1  main | farCars:fullsize
 1  main | farCars:sportsedan
-1  main | farCars:hatch
 1  main | farCars:pickup
 1  main | farCars:luxury
 1  main | farCars:crossover
 1  main | farCars:wagon
+1  main | farCars:van
 1  main | farCars:coupe
 1  main | farCars:convertible
-1  main | farCars:muscle
-1  main | farCars:suv
-1  main | farCars:citycar
 detail:
-20  main | Mesh | g:BoxGeometry p: | MeshStandardMaterial
+20  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
 18  main | city | city | MeshStandardMaterial
-16  main | Group | g:BufferGeometry u:shared p:[skin] | MeshStandardMaterial
-10  main | Mesh | g:CylinderGeometry p: | MeshStandardMaterial
-10  main | Mesh | g:SphereGeometry p: | MeshStandardMaterial
+10  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
+9  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
 8  shadow | Group | g:BufferGeometry u:shared p:[skin] | MeshDepthMaterial
-8  main | Group | g:BufferGeometry u:shared p:[skin] | MeshPhysicalMaterial
-7  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
-7  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
-6  main | Armature | Armature[skin] | MeshStandardMaterial
-5  shadow | Armature | Armature[skin] | MeshDepthMaterial
-5  main | Mesh | g:ExtrudeGeometry | MeshStandardMaterial
+8  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
+8  main | Armature | Armature[skin] | MeshStandardMaterial
+5  main | Group | g:PlaneGeometry p: | MeshBasicMaterial
+4  main | stuntRamps | stuntRamps | MeshStandardMaterial
 4  main | Group | g:PlaneGeometry p: | MeshStandardMaterial
-4  main | Superhero_Female | Superhero_Female[skin] | MeshStandardMaterial
 4  main | Group | g:SphereGeometry p: | MeshBasicMaterial
-3  shadow | SuperHero_Male | SuperHero_Male[skin] | MeshDepthMaterial
+3  shadow | Armature | Armature[skin] | MeshDepthMaterial
 3  shadow | Superhero_Female | Superhero_Female[skin] | MeshDepthMaterial
 3  main | Mesh | g:CircleGeometry | MeshStandardMaterial
 3  main | Mesh | g:BufferGeometry | MeshStandardMaterial
 3  main | Points | g:BufferGeometry | ShaderMaterial
+2  shadow | SuperHero_Male | SuperHero_Male[skin] | MeshDepthMaterial
 2  shadow | Mesh | g:BufferGeometry | MeshDepthMaterial
 2  main | city | pedSignals[inst] | MeshBasicMaterial
 2  main | city | storeGlass[inst] | MeshBasicMaterial
@@ -337,3 +334,6 @@ detail:
 1  shadow | city | streetlight@-1,-1[inst] | MeshDepthMaterial
 1  shadow | city | streetlight@-1,0[inst] | MeshDepthMaterial
 1  shadow | city | streetlight@0,-1[inst] | MeshDepthMaterial
+1  shadow | city | streetlight@0,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster0@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster0@0,0[inst] | MeshDepthMaterial
