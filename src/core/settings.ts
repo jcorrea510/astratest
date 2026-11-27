@@ -17,20 +17,20 @@ export const QUALITY: Record<QualityName, QualityPreset> = {
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'sprint' | 'jump' | 'crouch' | 'enter' | 'fire' | 'aim' | 'reload'
-  | 'wheel' | 'handbrake' | 'horn' | 'lookBehind' | 'map' | 'pause' | 'interact' | 'nextWeapon' | 'prevWeapon' | 'headlights' | 'radio' | 'camera'
+  | 'wheel' | 'handbrake' | 'horn' | 'lookBehind' | 'map' | 'pause' | 'interact' | 'nextWeapon' | 'prevWeapon' | 'headlights' | 'radio' | 'camera' | 'shoulder'
   | 'sirenWail' | 'sirenYelp' | 'sirenPhaser' | 'lightBar' | 'orders';
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Move forward / Accelerate', back: 'Move back / Brake', left: 'Move left / Steer left', right: 'Move right / Steer right',
   sprint: 'Sprint', jump: 'Jump / Handbrake', crouch: 'Dodge roll', enter: 'Enter / exit vehicle', fire: 'Fire / Punch', aim: 'Aim',
   reload: 'Reload', wheel: 'Inventory wheel (hold)', handbrake: 'Handbrake', horn: 'Horn', lookBehind: 'Look behind', map: 'City map',
-  pause: 'Pause', interact: 'Interact / Shop', nextWeapon: 'Next weapon', prevWeapon: 'Previous weapon', headlights: 'Headlights', radio: 'Radio station', camera: 'Camera distance',
+  pause: 'Pause', interact: 'Interact / Shop', nextWeapon: 'Next weapon', prevWeapon: 'Previous weapon', headlights: 'Headlights', radio: 'Radio station', camera: 'Camera distance', shoulder: 'Swap aiming shoulder',
   orders: 'Give orders (hold)', sirenWail: 'Siren: wail', sirenYelp: 'Siren: yelp', sirenPhaser: 'Siren: phaser', lightBar: 'Emergency light bar',
 };
 export const DEFAULT_BINDINGS: Record<Action, string[]> = {
   forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft'], jump: ['Space'], crouch: ['KeyC'], enter: ['KeyF'], fire: ['Mouse0'], aim: ['Mouse2'],
   reload: ['KeyR'], wheel: ['Tab', 'KeyZ'], handbrake: ['Space'], horn: ['KeyH'], lookBehind: ['KeyV'], map: ['KeyM'],
-  pause: ['KeyP', 'Escape'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'],
+  pause: ['KeyP', 'Escape'], interact: ['KeyE'], nextWeapon: ['WheelDown'], prevWeapon: ['WheelUp'], headlights: ['KeyN'], radio: ['Period'], camera: ['KeyB'], shoulder: ['KeyT'],
   orders: ['KeyG'], sirenWail: ['KeyJ'], sirenYelp: ['KeyK'], sirenPhaser: ['KeyL'], lightBar: ['KeyU'],
 };
 export interface Settings {

@@ -121,6 +121,8 @@ export class Input {
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
     return { x, y };
   }
+  /** True while the right stick is pushed past the deadzone (aim assist pulls only then). */
+  lookStickActive(): boolean { return Math.abs(this.pad.rx) + Math.abs(this.pad.ry) > this.padDz(); }
   /** Look delta in "mouse pixel" units for this frame. */
   lookDelta(dt: number): { x: number; y: number } {
     let x = this.mouseDX, y = this.mouseDY;
