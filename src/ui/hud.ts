@@ -64,6 +64,8 @@ export class Hud {
   private ammoEl: HTMLDivElement;
   private ammoClip: TextSlot;
   private ammoReserve: TextSlot;
+  private reloadEl: HTMLDivElement;
+  private reloadFill: HTMLDivElement;
   private objectiveText: TextSlot;
   private objectiveLast: string | null = '\u0000';
   private objectiveShownAt = 0;
@@ -85,6 +87,8 @@ export class Hud {
   private locLast = { district: '', street: '', vehicle: '' as string | null, at: 0 };
   private clock: TextSlot;
   private zone: TextSlot;
+  private wpDistEl: HTMLDivElement;
+  private wpDist: TextSlot;
   private radarEl: HTMLDivElement;
   private healthFill: HTMLDivElement;
   private armorFill: HTMLDivElement;
@@ -93,6 +97,8 @@ export class Hud {
   private vitalsEl: HTMLDivElement;
   private speedoEl: HTMLDivElement;
   private speed: TextSlot;
+  private gearEl: HTMLSpanElement;
+  private gear: TextSlot;
   private speedBar: HTMLDivElement;
   private vehHealthFill: HTMLDivElement;
   private radioPop: Popup;
@@ -100,8 +106,8 @@ export class Hud {
   private radioLast: string | null = null;
   private crosshair: HTMLDivElement;
   private hitmarker: HTMLDivElement;
-  /** COMBAT: kill marker (skull) and scope overlay */
-  private killmark!: HTMLDivElement; private scopeEl!: HTMLDivElement; private scopeZoom!: HTMLDivElement;
+  /** COMBAT: kill marker (skull), kill flash and scope overlay */
+  private killmark!: HTMLDivElement; private killFlash!: HTMLDivElement; private scopeEl!: HTMLDivElement; private scopeZoom!: HTMLDivElement;
   private promptEl: HTMLDivElement;
   private promptKey: TextSlot;
   private promptText: TextSlot;
@@ -143,7 +149,10 @@ export class Hud {
     this.ammoEl.append(ac, h('span', 'ma-ammo-sep', '/'), ar);
     const wrow = h('div', 'ma-weapon-row');
     wrow.append(this.ammoEl, this.weaponIconEl);
-    this.weaponEl.append(wrow, wn);
+    this.reloadEl = h('div', 'ma-ammo-reload');
+    this.reloadFill = h('div', 'ma-ammo-reload-fill');
+    this.reloadEl.appendChild(this.reloadFill);
+    this.weaponEl.append(this.reloadEl, wrow, wn);
     tr.appendChild(this.weaponEl);
     this.heatEl = h('div', 'ma-heat');
     this.heatEl.setAttribute('aria-label', 'Heat 0 of 5');
@@ -162,10 +171,12 @@ export class Hud {
     this.clock = new TextSlot(ck);
     const zn = h('div', 'ma-radar-zone');
     this.zone = new TextSlot(zn);
+    this.wpDistEl = h('div', 'ma-radar-dist is-hidden');
+    this.wpDist = new TextSlot(this.wpDistEl);
     this.minimap = new Minimap(painter);
     this.radarEl.appendChild(this.minimap.el);
     const meta = h('div', 'ma-radar-meta');
-    meta.append(zn, ck);
+    meta.append(zn, this.wpDistEl, ck);
     this.radarEl.appendChild(meta);
     this.vitalsEl = h('div', 'ma-vitals');
     const mkBar = (cls: string) => {
@@ -189,9 +200,11 @@ export class Hud {
     const br = h('div', 'ma-hud-br');
     this.speedoEl = h('div', 'ma-speedo');
     const sp = h('div', 'ma-speed');
+    this.gearEl = h('span', 'ma-speed-gear is-hidden');
+    this.gear = new TextSlot(this.gearEl);
     const spv = h('span', 'ma-speed-value');
     this.speed = new TextSlot(spv);
-    sp.append(spv, h('span', 'ma-speed-unit', 'mph'));
+    sp.append(this.gearEl, spv, h('span', 'ma-speed-unit', 'mph'));
     const sbar = h('div', 'ma-speed-bar');
     this.speedBar = h('div', 'ma-speed-bar-fill');
     sbar.appendChild(this.speedBar);
@@ -251,6 +264,8 @@ export class Hud {
     this.killmark = h('div', 'ma-killmark');
     this.killmark.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 3C9.4 3 5 7.6 5 13.4c0 3.3 1.5 5.6 3.6 7.1V25c0 1.1.9 2 2 2h1.6v-2.4h1.8V27h4v-2.4h1.8V27h1.6c1.1 0 2-.9 2-2v-4.5c2.1-1.5 3.6-3.8 3.6-7.1C27 7.6 22.6 3 16 3zm-5 9.2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm10 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM16 18.6l2 3.4h-4z"/></svg>';
     this.el.appendChild(this.killmark);
+    this.killFlash = h('div', 'ma-kill-flash');
+    this.el.appendChild(this.killFlash);
     this.scopeEl = h('div', 'ma-scope');
     this.scopeEl.innerHTML = '<div class="ma-scope-ring"></div><div class="ma-scope-h"></div><div class="ma-scope-v"></div><div class="ma-scope-dots"></div>';
     this.scopeZoom = h('div', 'ma-scope-zoom'); this.scopeEl.appendChild(this.scopeZoom);
@@ -357,6 +372,14 @@ export class Hud {
       setClass(this.ammoEl, 'is-empty', s.ammoClip === 0);
       setClass(this.ammoEl, 'is-reloading', s.reloading);
     }
+    const relOn = !melee && s.reloading;
+    setClass(this.reloadEl, 'is-visible', relOn);
+    if (relOn) {
+      const rp = Math.round(Math.max(0, Math.min(1, s.reloadProgress ?? 0)) * 200) / 200;
+      if (this.changed('rp', rp)) this.reloadFill.style.transform = `scaleX(${rp.toFixed(3)})`;
+    } else if (this.changed('rp', -1)) {
+      this.reloadFill.style.transform = 'scaleX(0)';
+    }
 
     // Objective: re-animates when it really changes (not for counters ticking within the same line)
     if (s.objective !== this.objectiveLast) {
@@ -381,6 +404,15 @@ export class Hud {
     // Location popup: district changes, entering a vehicle, or a new street (rate-limited)
     this.clock.set(s.clock);
     this.zone.set(s.district);
+    const wpM = s.waypointDistM;
+    const wpShow = wpM !== null && wpM !== undefined && wpM > 6;
+    setClass(this.wpDistEl, 'is-hidden', !wpShow);
+    if (wpShow) {
+      const ft = Math.round(wpM * 3.28084 / 10) * 10;
+      const mi10 = Math.round((wpM / 1609.34) * 10);
+      const key = mi10 >= 2 ? `m${mi10}` : `f${ft}`;
+      if (this.changed('wp', key)) this.wpDist.set(mi10 >= 2 ? `${(mi10 / 10).toFixed(1)} mi` : `${ft} ft`);
+    } else this.changed('wp', null);
     const L = this.locLast;
     const inVeh = s.vehicleSpeedKmh !== null;
     const vname = inVeh ? (s.vehicleName ?? '') : null;
@@ -422,9 +454,17 @@ export class Hud {
     setClass(this.el, 'in-vehicle', inVeh);
     if (inVeh) {
       const kmh = Math.max(0, Math.round((s.vehicleSpeedKmh ?? 0) / 3.6 * MPS_TO_MPH)); // (field keeps its name; shown in mph)
-      if (this.changed('kmh', kmh)) {
-        this.speed.set(String(kmh));
-        this.speedBar.style.transform = `scaleX(${Math.min(1, kmh / 125).toFixed(3)})`;
+      if (this.changed('kmh', kmh)) this.speed.set(String(kmh));
+      const hasGear = !!s.vehicleGear;
+      setClass(this.gearEl, 'is-hidden', !hasGear);
+      if (hasGear && this.changed('gear', s.vehicleGear ?? null)) this.gear.set(s.vehicleGear!);
+      const rpm = s.vehicleRpm !== null && s.vehicleRpm !== undefined
+        ? Math.max(0, Math.min(1, s.vehicleRpm))
+        : Math.min(1, kmh / 125);
+      const rpmQ = Math.round(rpm * 120) / 120;
+      if (this.changed('rpm', rpmQ)) {
+        this.speedBar.style.transform = `scaleX(${rpmQ.toFixed(3)})`;
+        setClass(this.speedoEl, 'is-redline', s.vehicleRpm !== null && s.vehicleRpm !== undefined && rpm > 0.86);
       }
       const vhp = Math.max(0, Math.min(1, s.vehicleHealth ?? 1));
       if (this.changed('vhp', Math.round(vhp * 200))) {
@@ -440,19 +480,26 @@ export class Hud {
     }
     if (!inVeh && !s.radio && this.radioPop.el.classList.contains('is-visible')) this.radioPop.hide();
 
-    // Crosshair (COMBAT: a centred dot that turns red over a target), hit marker, kill marker, scope
+    // Crosshair (COMBAT: a centred dot + subtle dynamic precision ticks while aiming), hit marker, kill marker, scope
     if (this.changed('ch', s.crosshair)) {
       setClass(this.crosshair, 'is-dot', s.crosshair === 'dot');
       setClass(this.crosshair, 'is-aim', s.crosshair === 'aim');
       setClass(this.scopeEl, 'is-on', s.crosshair === 'scope');
     }
+    const spQ = Math.round(Math.max(0, Math.min(1, s.crosshairSpread ?? 0)) * 20) / 20;
+    if (this.changed('spread', spQ)) this.crosshair.style.setProperty('--ma-spread', String(spQ));
     if (this.changed('hot', !!s.reticleHot)) { setClass(this.crosshair, 'is-hot', !!s.reticleHot); setClass(this.scopeEl, 'is-hot', !!s.reticleHot); }
     if (s.crosshair === 'scope' && this.changed('zoom', s.scopeZoom ?? 0)) this.scopeZoom.textContent = `${(s.scopeZoom ?? 0).toFixed(1)}x`;
     const hm = Math.round(Math.max(0, Math.min(1, s.hitMarker)) * 20) / 20;
     if (this.changed('hm', hm)) { this.hitmarker.style.opacity = String(hm); this.hitmarker.style.setProperty('--ma-hm', String(hm)); }
     const km = Math.round(Math.max(0, Math.min(1, s.killMarker ?? 0)) * 20) / 20;
-    if (this.changed('km', km)) { this.killmark.style.opacity = String(Math.min(1, km * 1.6)); this.killmark.style.setProperty('--ma-km', String(km)); setClass(this.hitmarker, 'is-kill', km > 0); }
-    if (this.changed('hs', !!s.headshotMarker)) setClass(this.killmark, 'is-head', !!s.headshotMarker);
+    if (this.changed('km', km)) {
+      this.killmark.style.opacity = String(Math.min(1, km * 1.6));
+      this.killmark.style.setProperty('--ma-km', String(km));
+      setClass(this.hitmarker, 'is-kill', km > 0);
+      this.killFlash.style.opacity = String(km > 0.45 ? Math.min(1, (km - 0.45) * 1.8) : 0);
+    }
+    if (this.changed('hs', !!s.headshotMarker)) { setClass(this.killmark, 'is-head', !!s.headshotMarker); setClass(this.killFlash, 'is-head', !!s.headshotMarker); }
 
     // Interact prompt: "E  Enter vehicle" -> key cap + text
     if (s.interactPrompt !== this.promptLast) {

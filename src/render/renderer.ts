@@ -48,7 +48,7 @@ const GradeShader = {
  */
 export const OUTPUT_GRADE_FRAG = `
   precision highp float;
-  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed, uSharp; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
+  uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed, uSharp, uChroma; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
   ${FXAA_PLUS_GLSL}
@@ -61,6 +61,12 @@ export const OUTPUT_GRADE_FRAG = `
         vec3 acc = c.rgb;
         for (int i = 1; i <= 4; i++) acc += texture2D(tDiffuse, vUv - rd * float(i)).rgb;
         c.rgb = acc / 5.0;
+      }
+      // Dynamic impact chromatic aberration on explosions, heavy crashes, and gunshots (zero cost when idle)
+      if (uChroma > 0.001) {
+        vec2 cd = (vUv - 0.5) * uChroma * 0.014;
+        c.r = texture2D(tDiffuse, vUv + cd).r;
+        c.b = texture2D(tDiffuse, vUv - cd).b;
       }
       if (uSharp > 0.0) c.rgb = casSharpen(tDiffuse, vUv, c.rgb, uSharp);
       // ambient occlusion (half-res, blurred) darkens creases and contact areas cleanly after sharpening
@@ -75,7 +81,7 @@ export class OutputGradePass extends Pass {
   private quad: FullScreenQuad; private material: THREE.RawShaderMaterial;
   constructor() {
     super();
-    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uSharp: { value: 0.3 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
+    this.uniforms = THREE.UniformsUtils.merge([GradeShader.uniforms, { toneMappingExposure: { value: 1 }, uSpeed: { value: 0 }, uSharp: { value: 0.3 }, uFxaa: { value: 0 }, uAO: { value: 0 }, uChroma: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } }]);
     this.uniforms.tAO = { value: WHITE_TEX };
     this.material = new THREE.RawShaderMaterial({
       name: 'OutputGrade', uniforms: this.uniforms, defines: { SRGB_TRANSFER: '', TONE_MAP: TONE_MAP_FN },
@@ -165,6 +171,11 @@ export class Renderer {
     this.hurtK = k; const u = this.grade.uniforms, L = LOOK[this.look];
     u.uSat.value = L.sat * (1 - 0.55 * k); u.uVignette.value = L.vignette + 0.3 * k;
   }
+  /** Triggers a brief radial chromatic aberration punch (0..1) on explosions, heavy crashes, and hits. */
+  pulseImpact(strength: number) {
+    this.chroma = Math.max(this.chroma, Math.min(1, strength));
+  }
+  private chroma = 0;
   private hurtK = 0;
   private shadowTarget = new THREE.Vector3(); private lightDir = new THREE.Vector3(0, 1, 0);
   private _fwd = new THREE.Vector3(); private _zero = new THREE.Vector3();
@@ -376,6 +387,12 @@ export class Renderer {
     this.lightPool.update(this.camera.position);
     const info = this.renderer.info; info.autoReset = false; info.reset();
     this.grade.uniforms.uSpeed.value = speedBlurAmount((this.camera.userData.speedFx as number | undefined) ?? 0);
+    if (this.chroma > 0.001) {
+      this.chroma = Math.max(0, this.chroma - 0.065);
+      this.grade.uniforms.uChroma.value = this.chroma;
+    } else if (this.grade.uniforms.uChroma.value !== 0) {
+      this.grade.uniforms.uChroma.value = 0;
+    }
     this.gpuTimer?.begin(); this.composer.render(); this.gpuTimer?.end();
     this.stats.calls = info.render.calls; this.stats.triangles = info.render.triangles; this.stats.textures = info.memory.textures; this.stats.geometries = info.memory.geometries; this.stats.programs = info.programs?.length ?? 0;
   }

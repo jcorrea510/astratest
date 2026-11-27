@@ -2,6 +2,17 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 15 (AAA open-world graphics, driving/combat feel & UI overhaul)
+- World & Lighting: dual-cone headlight ground projections + soft underbody AO contact shadows per vehicle; instanced atmospheric
+  streetlamp light halos (1 draw call); organic coastal chaparral grass + world-space hillside variation; architectural walnut/stone
+  commercial lobbies & deeper interior reflections; sharper light-box shop signs; zero-idle-cost impact chromatic aberration pass.
+- Driving, Camera & Gameplay: zero-alloc dynamic chase camera (accel pullback, brake dive, cornering lead, subtle banking roll, ADS
+  sway); 6-speed transmission gear/RPM simulation with performance exhaust backfire flames & pops; slip-scaled drift smoke + crash-free
+  street drift cash bonuses; stunt-jump & explosion impact pulses; dynamic aim reticle spread & kill-confirm edge flash.
+- UI & HUD: removed runtime `backdrop-filter` stalls on all in-game HUD overlays; 5-pointed GTA-style wanted stars; sweeping police
+  vision cones & layered glowing GPS path on circular radar; weapon wheel SVG stat bars; reload progress bar, gear badge, redline
+  tachometer, waypoint distance readout, and unified obsidian combat FX panels.
+
 ## Round 14 (owner 26 Nov: "sell cars sooner; 10+ helpers on looks and performance") — docs/ROUND14.md
 - Car sale cooldown 180 s -> 15 s (garage SELL_COOLDOWN; saved cooldowns clamped on load).
 - 12 helpers: perfPolicy (iPad/Mac default Medium, pixel budget, adaptive res v2 to 16.7 ms, GPU timer), CAS sharpen + FXAA+,

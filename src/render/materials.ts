@@ -227,19 +227,19 @@ export function pavementSurface(): Surface {
 }
 export function paintGrass(S: number, col: Float32Array, h: Float32Array, rough: Float32Array, seed = 7) {
   const r = new Rng(seed);
-  const big = fbmField(S, r, 4), mid = fbmField(S, r, 24), patch = fbmField(S, r, 10), clump = noiseField(S, 96, r), streakN = noiseField(S, 128, r);
+  const big = fbmField(S, r, 6), mid = fbmField(S, r, 24), patch = fbmField(S, r, 14), clump = noiseField(S, 96, r), streakN = noiseField(S, 128, r);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const i = y * S + x; const b = big(x, y), m = mid(x, y), blade = r.next(), p = patch(x, y), cl = clump(x, y);
-    const dry = smooth(0.52, 0.78, b) * 0.9 + smooth(0.6, 0.8, p) * 0.3; // sun-bleached straw patches
-    const lush = smooth(0.35, 0.6, 1 - p) * 0.35;
-    const streak = streakN(x * 0.35, y); // vertical blade streaks
-    const v = 0.62 + blade * 0.4 + m * 0.22 + cl * 0.18 + (streak - 0.5) * 0.25;
-    // deep green <-> olive <-> straw
-    const rr = 0.095 + dry * 0.17 - lush * 0.015, gg = 0.17 + dry * 0.07 + lush * 0.04, bb = 0.05 + dry * 0.015;
+    // Soft organic coastal chaparral variation without repetitive polka-dot straw blobs
+    const dry = smooth(0.42, 0.88, b * 0.65 + p * 0.35) * 0.42;
+    const lush = smooth(0.32, 0.72, 1 - p) * 0.32;
+    const streak = streakN(x * 0.42, y);
+    const v = 0.66 + blade * 0.32 + m * 0.20 + cl * 0.16 + (streak - 0.5) * 0.2;
+    const rr = 0.105 + dry * 0.085 - lush * 0.018, gg = 0.168 + dry * 0.032 + lush * 0.035, bb = 0.056 + dry * 0.012;
     col[i * 3] = rr * v; col[i * 3 + 1] = gg * v; col[i * 3 + 2] = bb * v;
-    if (blade > 0.985) { col[i * 3] *= 0.45; col[i * 3 + 1] *= 0.45; col[i * 3 + 2] *= 0.45; }
-    else if (blade < 0.012) { col[i * 3] = 0.2; col[i * 3 + 1] = 0.17; col[i * 3 + 2] = 0.08; } // bare soil / dead blade specks
-    h[i] = blade * 0.45 + cl * 0.5 + m * 0.3; rough[i] = Math.min(0.95, 0.88 + blade * 0.07);
+    if (blade > 0.988) { col[i * 3] *= 0.58; col[i * 3 + 1] *= 0.58; col[i * 3 + 2] *= 0.58; }
+    else if (blade < 0.01) { col[i * 3] = 0.17; col[i * 3 + 1] = 0.145; col[i * 3 + 2] = 0.085; }
+    h[i] = blade * 0.4 + cl * 0.48 + m * 0.28; rough[i] = Math.min(0.95, 0.89 + blade * 0.06);
   }
 }
 export function grassSurface(): Surface {
@@ -274,6 +274,7 @@ export function sandTexture(): THREE.Texture { return sandSurface().map; }
 export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18, scale = 0.012, key = 'macro', grain = 0) {
   const prev = m.onBeforeCompile;
   const road = key.startsWith('asphalt'); // Round 14: oil / tyre patches on roads only
+  const grass = key.startsWith('grass'); // Sweeping coastal hillside chaparral / dry grass macro patches (sin-free)
   m.onBeforeCompile = (sh, r) => {
     prev?.call(m, sh, r);
     if (road) sh.uniforms.uNight = nightUniform;
@@ -288,7 +289,10 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
         float mv = mn(vMW.xz * ${scale.toFixed(4)}) * 0.6 + mn(vMW.xz * ${(scale * 4.1).toFixed(4)}) * 0.4;
         float mt = mn(vMW.xz * ${(scale * 0.23).toFixed(4)} + vec2(17.0, 5.0)) - 0.5;
         diffuseColor.rgb *= 1.0 + (mv - 0.5) * ${(strength * 2).toFixed(3)};
-        diffuseColor.rgb *= vec3(1.0 + mt * 0.07, 1.0, 1.0 - mt * 0.07);${grain > 0 ? `
+        diffuseColor.rgb *= vec3(1.0 + mt * 0.07, 1.0, 1.0 - mt * 0.07);${grass ? `
+        float gMacro = mn(vMW.xz * 0.0065 + vec2(4.2, 9.7)) * 0.65 + mn(vMW.xz * 0.019 + vec2(13.1, 2.4)) * 0.35;
+        float gDry = smoothstep(0.45, 0.85, gMacro) * clamp((vMW.y + 2.0) * 0.045, 0.18, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.26, 1.04, 0.72), gDry * 0.52);` : ''}${grain > 0 ? `
         if (mvd < 70.0) { float gd = mn(vMW.xz * 24.0) * 0.55 + mn(vMW.xz * 63.0) * 0.45;
           float gf = 1.0 - smoothstep(18.0, 70.0, mvd);
           diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf; }` : ''}${road ? `
@@ -297,7 +301,7 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
           diffuseColor.rgb *= 1.0 - 0.28 * mOil; }` : ''} }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, mix(0.42, 0.24, uNight), mOil * 0.72);' : ''}`);
   };
-  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r15';
+  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r16';
   return m;
 }
 
@@ -386,13 +390,17 @@ export function signAtlas(): THREE.Texture {
   const { c, g } = canvas(1024, 512);
   BRANDS.forEach((b, i) => {
     const x = (i % 4) * 256, y = Math.floor(i / 4) * 64;
-    const gr = g.createLinearGradient(0, y, 0, y + 64); gr.addColorStop(0, b.bg); gr.addColorStop(1, shade(b.bg, -0.25));
+    const gr = g.createLinearGradient(x, y, x, y + 64);
+    gr.addColorStop(0, shade(b.bg, 0.08)); gr.addColorStop(0.55, b.bg); gr.addColorStop(1, shade(b.bg, -0.32));
     g.fillStyle = gr; g.fillRect(x + 2, y + 2, 252, 60);
-    g.strokeStyle = shade(b.bg, 0.25); g.lineWidth = 3; g.strokeRect(x + 4, y + 4, 248, 56);
+    // Subtle top light-box specular strip & architectural border
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x + 4, y + 4, 248, 12);
+    g.strokeStyle = shade(b.bg, 0.3); g.lineWidth = 2; g.strokeRect(x + 4, y + 4, 248, 56);
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 1.5; g.strokeRect(x + 6, y + 6, 244, 52);
     g.fillStyle = b.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
-    let size = 30; g.font = `800 ${size}px "Arial Narrow", Arial, sans-serif`;
-    while (g.measureText(b.name).width > 226 && size > 13) { size--; g.font = `800 ${size}px "Arial Narrow", Arial, sans-serif`; }
-    g.shadowColor = b.fg; g.shadowBlur = 6; g.fillText(b.name, x + 128, y + 34); g.shadowBlur = 0;
+    let size = 30; g.font = `800 ${size}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
+    while (g.measureText(b.name).width > 224 && size > 13) { size--; g.font = `800 ${size}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`; }
+    g.shadowColor = b.fg; g.shadowBlur = 8; g.fillText(b.name, x + 128, y + 34); g.shadowBlur = 0;
   });
   const t = tex(c, false); t.anisotropy = 8; return t;
 }

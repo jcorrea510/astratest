@@ -60,6 +60,7 @@ export class Activities {
   private goalT = 0; private garageT = 0;
   private airborne: { t: number; start: THREE.Vector3; ramp: number } | null = null;
   private lastRamp = -1; private rampT = 0;
+  private driftT = 0; private driftDist = 0; private driftCool = 0; private driftStartCrashes = 0;
   private garageArmed = true;
   missionActive: () => boolean = () => false;
   /** Called when a mission ends: a delivery into the garage must not turn into a paid respray. */
@@ -363,12 +364,34 @@ export class Activities {
             const first = !this.jumpsDone.has(a.ramp);
             const reward = first ? 300 : 50;
             this.jumpsDone.add(a.ramp); g.addMoney(reward);
-            this.ui.toast(`${RAMPS[a.ramp].name}: ${Math.round(dist * 3.28084)} ft, ${a.t.toFixed(1)} s air  ·  +$${reward}`, 'money');
+            g.renderer.pulseImpact(0.28);
+            this.ui.toast(`Stunt jump  ·  ${RAMPS[a.ramp].name}  ${Math.round(dist * 3.28084)} ft  ·  +$${reward}`, 'money');
             g.audio.play('checkpoint');
           }
         }
         if (this.airborne && this.airborne.t > 8) this.airborne = null;
       }
-    } else this.airborne = null;
+      // Clean street drift cash bonus (rewards sustained powerslides without crashing)
+      if (this.driftCool > 0) this.driftCool = Math.max(0, this.driftCool - dt);
+      const lv = pv.phys.body.linvel(), fwd = pv.phys.forward();
+      const latSpeed = Math.abs(lv.x * -fwd.z + lv.z * fwd.x);
+      const sp = Math.abs(pv.speed);
+      const drifting = pv.phys.grounded && !pv.destroyed && sp > 9.5 && latSpeed > 3.6;
+      if (drifting) {
+        if (this.driftT === 0) this.driftStartCrashes = g.stats.crashes;
+        this.driftT += dt;
+        this.driftDist += sp * dt;
+        if (g.stats.crashes > this.driftStartCrashes) { this.driftT = 0; this.driftDist = 0; }
+      } else if (this.driftT > 0) {
+        if (this.driftT >= 1.15 && this.driftDist >= 16 && g.stats.crashes === this.driftStartCrashes && this.driftCool <= 0) {
+          const bonus = Math.min(250, Math.max(25, Math.round(((this.driftDist / 16) * 25) / 5) * 5));
+          g.addMoney(bonus);
+          g.audio.play('money');
+          this.ui.toast(`Drift bonus  ·  ${Math.round(this.driftDist * 3.28084)} ft  ·  +$${bonus}`, 'money');
+          this.driftCool = 3.5;
+        }
+        this.driftT = 0; this.driftDist = 0;
+      }
+    } else { this.airborne = null; this.driftT = 0; this.driftDist = 0; }
   }
 }

@@ -157,7 +157,9 @@ export class Game {
   private lampLights: THREE.PointLight[] = [];
   private lampBulbs!: THREE.InstancedMesh;
   private lampPools!: THREE.InstancedMesh;
+  private lampHalos!: THREE.InstancedMesh;
   private lampTimer = 0;
+  private prevVehSpeed = 0;
   respawnPoint = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw };
   private ambT = 0;
   /** Police vehicle models are built one per ~1.5 s in the background so the first patrol car never hitches a fight. */
@@ -299,8 +301,13 @@ export class Game {
     this.combat.helis = () => this.helis.list;
     this.combat.onExplosion = (at, by, R) => this.explosion(at, by, R); // COMBAT: grenades / rockets damage people like car explosions
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
+    this.pcombat.onKill = (headshot) => { this.renderer.pulseImpact(headshot ? 0.36 : 0.18); };
     this.vehicles.onCrash = e => {
-      if (e.vehicle === this.playerVehicle) { this.cam.addShake(Math.min(0.8, e.impact / 18)); this.stats.crashes++; this.pop.danger(e.point, 15, this.player); }
+      if (e.vehicle === this.playerVehicle) {
+        this.cam.addShake(Math.min(0.8, e.impact / 18));
+        if (e.impact > 7) this.renderer.pulseImpact(Math.min(0.75, (e.impact - 6) / 14));
+        this.stats.crashes++; this.pop.danger(e.point, 15, this.player);
+      }
     };
     this.vehicles.onExplode = (v, at) => this.explosion(at, v.lastDamagedBy === this.player ? this.player : null);
     this.helis.onExplode = (h, at) => this.explosion(at, h.lastDamagedBy === this.player ? this.player : null);
@@ -350,7 +357,9 @@ export class Game {
   }
   explosion(at: THREE.Vector3, by: Character | null, R = 8) {
     this.pop.danger(at, 60, by);
-    this.cam.addShake(Math.max(0, 1 - this.renderer.camera.position.distanceTo(at) / 60));
+    const prox = Math.max(0, 1 - this.renderer.camera.position.distanceTo(at) / 60);
+    this.cam.addShake(prox);
+    if (prox > 0.05) this.renderer.pulseImpact(0.32 + prox * 0.68);
     for (const c of [this.player, ...this.pop.characters()]) {
       if (!c.alive || c.inVehicle) continue;
       const d = c.pos.distanceTo(at);
@@ -783,9 +792,15 @@ export class Game {
     if (this.camOverride?.(raw)) { /* scripted shot (garage) */ }
     else if (this.deathT >= 0) this.cam.update(raw, this.player.pos, this.police.dispatch.arrest ? 'cinematic' : 'dead');
     else if (ph) this.cam.update(raw, ph.position, 'vehicle', { vehicleYaw: ph.yaw + Math.PI, speed: ph.speed, vehicleSize: ph.size, exclude: ph.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind') });
-    else if (pv) this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.visualYaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim });
-    else if (this.taxi.vehicle) { const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.visualYaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
-    else this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot');
+    else if (pv) {
+      const accel = dt > 1e-4 ? (pv.speed - this.prevVehSpeed) / dt : 0;
+      this.prevVehSpeed = pv.speed;
+      const lv = pv.phys.body.linvel(), fwd = pv.phys.forward();
+      const latVel = lv.x * -fwd.z + lv.z * fwd.x, fwdVel = lv.x * fwd.x + lv.z * fwd.z;
+      const slipAngle = Math.abs(fwdVel) > 3 ? Math.atan2(latVel, Math.abs(fwdVel)) : 0;
+      this.cam.update(raw, pv.position, 'vehicle', { vehicleYaw: pv.visualYaw + Math.PI, speed: pv.speed, vehicleSize: pv.size, exclude: pv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: this.pcombat.driveAim, steer: pv.input.steer, accel, slipAngle });
+    } else if (this.taxi.vehicle) { this.prevVehSpeed = 0; const tv = this.taxi.vehicle; this.cam.update(raw, tv.position, 'vehicle', { vehicleYaw: tv.visualYaw + Math.PI, speed: tv.speed, vehicleSize: tv.size, exclude: tv.phys.body, lookBack: !this.inputBlocked && this.input.held('lookBehind'), free: true }); }
+    else { this.prevVehSpeed = 0; this.cam.update(raw, this.player.pos, this.pcombat.aiming && this.pcombat.armed ? 'aim' : 'foot'); }
     const camDir = this.renderer.camera.getWorldDirection(this.camDirTmp);
     this.audio.setListener(this.renderer.camera.position, camDir);
     this.warmT -= raw;
@@ -815,6 +830,7 @@ export class Game {
   /** The player was hit: red arrow towards the shooter, vignette, thud, camera flinch. */
   private onPlayerHurt(from: Character, dmg: number) {
     this.cam.addShake(0.15 + Math.min(0.2, dmg / 120));
+    this.renderer.pulseImpact(Math.min(0.6, 0.2 + dmg / 90));
     this.cam.addInput((Math.random() - 0.5) * 8, -7, 1, false); // a small kick up and sideways
     this.extra('hitThud', Math.min(1, 0.5 + dmg / 40));
     if (from === this.player || !from.pos) return;
@@ -860,14 +876,33 @@ export class Game {
     this.lampOrig = heads.map(h => h.clone());
     this.lampBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.6), toneMapped: false }), heads.length);
     this.lampPools = new THREE.InstancedMesh(new THREE.PlaneGeometry(10.5, 10.5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.66, 0.32), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), heads.length);
+    // Volumetric atmospheric lamp halo: two crossed vertical quads per bulb head (1 instanced draw call, zero CPU billboarding)
+    const haloGeo = new THREE.BufferGeometry();
+    const s = 1.65;
+    haloGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+      -s, -s, 0,  s, -s, 0,  s, s, 0,  -s, -s, 0,  s, s, 0, -s, s, 0,
+      0, -s, -s,  0, -s, s,  0, s, s,   0, -s, -s, 0, s, s,  0, s, -s,
+    ], 3));
+    haloGeo.setAttribute('uv', new THREE.Float32BufferAttribute([
+      0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1,
+      0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1,
+    ], 2));
+    this.lampHalos = new THREE.InstancedMesh(haloGeo, new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color(1, 0.72, 0.36), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }), heads.length);
     const m = new THREE.Matrix4();
     this.lampPoolY = heads.map(h => this.groundUnder(h));
-    heads.forEach((h, i) => { m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, this.lampPoolY[i], h.z); this.lampPools.setMatrixAt(i, m); });
-    this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere();
+    heads.forEach((h, i) => {
+      m.makeTranslation(h.x, h.y - 0.1, h.z);
+      this.lampBulbs.setMatrixAt(i, m);
+      this.lampHalos.setMatrixAt(i, m);
+      m.makeTranslation(h.x, this.lampPoolY[i], h.z);
+      this.lampPools.setMatrixAt(i, m);
+    });
+    this.lampBulbs.computeBoundingSphere(); this.lampPools.computeBoundingSphere(); this.lampHalos.computeBoundingSphere();
     this.lampBulbs.updateMatrix(); this.lampBulbs.updateMatrixWorld(true); this.lampBulbs.matrixAutoUpdate = false; this.lampBulbs.matrixWorldAutoUpdate = false;
     this.lampPools.updateMatrix(); this.lampPools.updateMatrixWorld(true); this.lampPools.matrixAutoUpdate = false; this.lampPools.matrixWorldAutoUpdate = false;
-    this.lampPools.renderOrder = 1;
-    this.renderer.scene.add(this.lampBulbs, this.lampPools);
+    this.lampHalos.updateMatrix(); this.lampHalos.updateMatrixWorld(true); this.lampHalos.matrixAutoUpdate = false; this.lampHalos.matrixWorldAutoUpdate = false;
+    this.lampPools.renderOrder = 1; this.lampHalos.renderOrder = 2;
+    this.renderer.scene.add(this.lampBulbs, this.lampPools, this.lampHalos);
     for (let i = 0; i < 8; i++) this.lampLights.push(addPooledLight(this.renderer.scene, new THREE.PointLight(0xffc98a, 0, 22, 1.6), 1)); // Round 11: virtual, the light pool shows the nearest
   }
   /**
@@ -888,15 +923,29 @@ export class Game {
   private setLamp(i: number, on: boolean) {
     const h = this.visuals.lampHeads[i], o = this.lampOrig[i]; if (!h || !o || !this.lampBulbs) return;
     const m = new THREE.Matrix4();
-    if (on) { h.copy(o); m.makeTranslation(h.x, h.y - 0.1, h.z); this.lampBulbs.setMatrixAt(i, m); m.makeTranslation(h.x, this.lampPoolY[i] ?? 0.03, h.z); this.lampPools.setMatrixAt(i, m); }
-    else { h.set(0, -5000, 0); m.makeScale(0, 0, 0); this.lampBulbs.setMatrixAt(i, m); this.lampPools.setMatrixAt(i, m); }
+    if (on) {
+      h.copy(o);
+      m.makeTranslation(h.x, h.y - 0.1, h.z);
+      this.lampBulbs.setMatrixAt(i, m);
+      this.lampHalos?.setMatrixAt(i, m);
+      m.makeTranslation(h.x, this.lampPoolY[i] ?? 0.03, h.z);
+      this.lampPools.setMatrixAt(i, m);
+    } else {
+      h.set(0, -5000, 0);
+      m.makeScale(0, 0, 0);
+      this.lampBulbs.setMatrixAt(i, m);
+      this.lampHalos?.setMatrixAt(i, m);
+      this.lampPools.setMatrixAt(i, m);
+    }
     this.lampBulbs.instanceMatrix.needsUpdate = true; this.lampPools.instanceMatrix.needsUpdate = true;
+    if (this.lampHalos) this.lampHalos.instanceMatrix.needsUpdate = true;
   }
   private updateLamps(dt: number) {
     const night = this.renderer.skyState.night;
     const on = THREE.MathUtils.smoothstep(night, 0.15, 0.5);
     (this.lampBulbs.material as THREE.MeshBasicMaterial).color.setRGB(0.4 + on * 1.65, 0.35 + on * 1.32, 0.3 + on * 0.82);
     (this.lampPools.material as THREE.MeshBasicMaterial).opacity = on * 0.36;
+    if (this.lampHalos) (this.lampHalos.material as THREE.MeshBasicMaterial).opacity = on * 0.24;
     this.lampTimer -= dt;
     const n = 8; // Round 11: every nearby lamp asks for light; the light pool decides how many are real
     if (this.lampTimer <= 0) {
@@ -978,14 +1027,17 @@ export class Game {
   }
   hudState(objective: string | null, timer: number | null): HudState {
     const pv = this.playerVehicle ?? this.playerHeli, inv = this.pcombat.inv, def = inv.def; // CAR-ENTRY: helicopters too
+    const car = this.playerVehicle;
     return {
       health: this.player.health, maxHealth: this.player.maxHealth, armor: this.player.armor, money: this.money,
       heat: this.police.heat, heatMax: 5, heatFlash: this.police.heat > 0 && !this.police.state.seen,
       weaponName: this.playerHeli?.armed ? `Chin gun  ·  Missiles ${this.heliArms.missiles}` : def.name, weaponIcon: def.icon, reloading: inv.reloading,
       objective, vehicleSpeedKmh: pv ? Math.abs(pv.speed) * 3.6 : null, vehicleName: pv ? pv.name : null, vehicleHealth: pv ? pv.health / pv.spec.health : null,
+      vehicleGear: car ? car.gear : null, vehicleRpm: car ? car.rpm : null,
+      waypointDistM: this.waypoint ? Math.hypot(this.waypoint.x - this.player.pos.x, this.waypoint.z - this.player.pos.z) : null,
       district: DISTRICT_INFO[districtAt(this.city, this.player.pos.x, this.player.pos.z)].name, streetName: this.streetName(this.player.pos.x, this.player.pos.z),
       clock: fmtClock12(this.hour),
-      ...this.pcombat.hud(), ...((pv && !this.pcombat.driveAim) || this.deathT >= 0 ? { crosshair: 'none' as const } : {}), crosshairSpread: 0, // COMBAT: dot reticle, markers, ammo
+      ...this.pcombat.hud(), ...((pv && !this.pcombat.driveAim) || this.deathT >= 0 ? { crosshair: 'none' as const, crosshairSpread: 0 } : {}),
       interactPrompt: this.interactPrompt(), radio: null, missionTimer: timer, stamina: this.playerCtl.stamina,
       fps: this.settings.showFps ? Math.round(this.fps) : null, cpuMs: this.cpuMs,
     };
@@ -1007,8 +1059,8 @@ export class Game {
   }
   baseBlips(): MinimapBlip[] {
     const b: MinimapBlip[] = [];
-    for (const n of this.pop.npcs) if (n.alive && (n.role === 'police' || (n.role === 'gang' && n.hostile)) && n.pos.distanceTo(this.player.pos) < 120 && !n.char.inVehicle) b.push({ x: n.pos.x, z: n.pos.z, kind: n.role === 'police' ? 'police' : 'enemy' });
-    for (const u of this.police.units) b.push({ x: u.v.position.x, z: u.v.position.z, kind: 'police' });
+    for (const n of this.pop.npcs) if (n.alive && (n.role === 'police' || (n.role === 'gang' && n.hostile)) && n.pos.distanceTo(this.player.pos) < 120 && !n.char.inVehicle) b.push({ x: n.pos.x, z: n.pos.z, kind: n.role === 'police' ? 'police' : 'enemy', yaw: n.role === 'police' ? n.char.yaw : undefined });
+    for (const u of this.police.units) b.push({ x: u.v.position.x, z: u.v.position.z, kind: 'police', yaw: u.v.yaw });
     if (this.waypoint) b.push({ x: this.waypoint.x, z: this.waypoint.z, kind: 'waypoint' });
     for (const s of this.helis.pads) b.push({ x: s.pos.x, z: s.pos.z, kind: 'vehicle', label: s.def.name }); // CAR-ENTRY: helipads
     return b;

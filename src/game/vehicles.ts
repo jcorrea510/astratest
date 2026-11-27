@@ -247,8 +247,28 @@ export class VehicleManager {
         const id = v.id * 8 + i;
         if (slip > 3.2 && dist < 120) {
           const cp = c.wheelContactPoint(i);
-          if (cp) { this.skids.add(id, cp.x, cp.y, cp.z, Math.min(1, (slip - 3) / 5)); if (Math.random() < 0.35 && dist < 60) this.particles.tireSmoke(cp.x, cp.y, cp.z, v.phys.body.linvel().x, v.phys.body.linvel().z); }
+          if (cp) {
+            this.skids.add(id, cp.x, cp.y, cp.z, Math.min(1, (slip - 3) / 5));
+            const driftIntensity = Math.min(2, (slip - 3) / 4);
+            if (Math.random() < (slip > 5.5 ? 0.62 : 0.35) && dist < 68) this.particles.tireSmoke(cp.x, cp.y, cp.z, v.phys.body.linvel().x, v.phys.body.linvel().z, driftIntensity);
+          }
         } else this.skids.end(id);
+      }
+      // Performance exhaust backfire on high-RPM upshifts / rapid throttle lifts
+      if (v.backfireTriggered) {
+        v.backfireTriggered = false;
+        if (dist < 75 && v.group.visible && !v.destroyed) {
+          const fwd = v.phys.forward(), L = v.tpl.layout;
+          const rear = (L.half[2] ?? 2.1) - (L.zCenter ?? 0) + 0.08;
+          const exY = v.position.y - L.half[1] + 0.34;
+          const sx = -fwd.z, sz = fwd.x;
+          for (const side of [-0.46, 0.46]) {
+            const exX = v.position.x - fwd.x * rear + sx * side;
+            const exZ = v.position.z - fwd.z * rear + sz * side;
+            this.particles.backfire(exX, exY, exZ, -fwd.x, 0.05, -fwd.z);
+          }
+          this.audio.play('ricochet', { pos: v.position, volume: v === playerVehicle ? 0.24 : 0.11, pitch: 0.34 + Math.random() * 0.08 });
+        }
       }
       // Damage effects
       const frac = v.health / v.spec.health;

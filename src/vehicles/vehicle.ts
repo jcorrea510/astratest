@@ -53,11 +53,58 @@ export interface PaneState { id: number; name: string; broken: boolean; door: nu
 
 const beamTex = (() => {
   if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d')!;
-  g.setTransform(1, 0, 0, 2, 0, 0);
-  const gr = g.createRadialGradient(32, 50, 2, 32, 40, 30); gr.addColorStop(0, 'rgba(255,238,200,0.55)'); gr.addColorStop(0.55, 'rgba(255,238,200,0.18)'); gr.addColorStop(1, 'rgba(255,240,200,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d')!;
+  // Twin-headlight dual-cone ground projection (left & right hot cores merging into wide forward throw)
+  g.clearRect(0, 0, 128, 128);
+  const drawBeam = (cx: number) => {
+    g.save();
+    g.translate(cx, 118);
+    g.scale(0.85, 2.1);
+    const gr = g.createRadialGradient(0, -10, 2, 0, -24, 46);
+    gr.addColorStop(0, 'rgba(255,244,218,0.68)');
+    gr.addColorStop(0.28, 'rgba(255,238,200,0.34)');
+    gr.addColorStop(0.65, 'rgba(255,232,190,0.10)');
+    gr.addColorStop(1, 'rgba(255,230,185,0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(0, -24, 46, 0, Math.PI * 2); g.fill();
+    g.restore();
+  };
+  drawBeam(40);
+  drawBeam(88);
+  return new THREE.CanvasTexture(c);
 })();
+/** Soft radial-ellipse underbody ambient occlusion contact shadow to ground vehicles on asphalt. */
+const underShadowTex = (() => {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d')!;
+  g.clearRect(0, 0, 128, 128);
+  // Dark tight chassis core + wide soft penumbra so cars never look like they float over flat asphalt
+  const outer = g.createRadialGradient(64, 64, 14, 64, 64, 62);
+  outer.addColorStop(0, 'rgba(4, 6, 10, 0.78)');
+  outer.addColorStop(0.52, 'rgba(4, 6, 10, 0.56)');
+  outer.addColorStop(0.78, 'rgba(4, 6, 10, 0.22)');
+  outer.addColorStop(1, 'rgba(4, 6, 10, 0)');
+  g.fillStyle = outer;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+const PERF_CLASSES = new Set(['sports', 'muscle', 'race', 'super']);
+/** Pure gear (R/N/1..6) and normalized RPM (0..1) estimator for HUD tach and shift pops. */
+export function vehicleGearRpm(speed: number, topSpeed: number, throttle: number): { gear: string; gearNum: number; rpm: number } {
+  const sp = Math.abs(speed), top = Math.max(12, topSpeed);
+  if (speed < -0.5) return { gear: 'R', gearNum: -1, rpm: Math.min(1, 0.22 + (sp / (top * 0.35)) * 0.72) };
+  if (sp < 0.45 && Math.abs(throttle) < 0.08) return { gear: 'N', gearNum: 0, rpm: 0.16 };
+  const ratios = [0, 0.19, 0.36, 0.54, 0.73, 0.89, 1.08];
+  const frac = Math.min(1.06, sp / top);
+  let g = 1;
+  while (g < 6 && frac > ratios[g]) g++;
+  const lo = ratios[g - 1], hi = ratios[g];
+  const band = Math.max(0, Math.min(1, (frac - lo) / Math.max(0.05, hi - lo)));
+  const rpm = Math.min(1, 0.24 + band * 0.72 + (throttle > 0.2 ? 0.05 : 0));
+  return { gear: String(g), gearNum: g, rpm };
+}
 const _sm = new THREE.Matrix4(), _sa = new THREE.Vector3(), _sb = new THREE.Vector3();
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const _m2 = new THREE.Matrix4(), _v3 = new THREE.Vector3();
@@ -130,6 +177,7 @@ export class Vehicle {
   lod = 0; private lodTick = 0;
   private bones: THREE.Bone[] = [];
   private beam: THREE.Mesh | null = null;
+  private underShadow: THREE.Mesh | null = null;
   private ownGeo = false; private ownG: THREE.BufferGeometry | null = null;
   /** 0..1: a city bus kneels at the kerb (body lowered and leaning to the pavement) */
   kneel = 0;
@@ -138,6 +186,14 @@ export class Vehicle {
   private lastVel = new THREE.Vector3();
   private brokenMask = 0;
   private trackL = 0; private trackR = 0;
+  /** Live estimated gear ('R'|'N'|'1'..'6') and normalized engine RPM (0..1) for HUD & exhaust pops. */
+  gear = 'N';
+  gearNum = 0;
+  rpm = 0.16;
+  private prevThrottle = 0;
+  private backfireCool = 0;
+  /** Set true on frames where a performance car triggers an upshift or throttle-lift exhaust backfire pop. */
+  backfireTriggered = false;
 
   constructor(physics: Physics, public kind: VehicleKind, _tpl: unknown, x: number, y: number, z: number, yaw: number, _atlas: unknown = null, paintIndex = -1) {
     this.spec = VEHICLES[kind];
@@ -186,8 +242,17 @@ export class Vehicle {
     for (const d of t.doors) this.doors.push({ side: d.side, row: d.row, open: 0, amount: 0, vel: 0, hanging: false, bone: this.bones[d.bone] });
     for (const p of t.panes) this.panes.push({ id: p.id, name: p.name, broken: false, door: t.doorBones.indexOf(p.bone), crack: 0 });
     if (beamTex && s.type !== 'tank') {
-      this.beam = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 3.6), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
+      this.beam = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 8.6).rotateX(-Math.PI / 2).translate(0, GROUND + 0.04, t.front + 4.1), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, toneMapped: false }));
       this.beam.renderOrder = 2; this.visual.add(this.beam);
+    }
+    if (underShadowTex) {
+      const len = Math.max(3.2, (t.front - t.rear) * 1.12);
+      const wid = Math.max(1.8, s.W * 1.24);
+      const cz = (t.front + t.rear) * 0.5;
+      const sm = new THREE.MeshBasicMaterial({ map: underShadowTex, transparent: true, depthWrite: false, opacity: 0.72, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+      this.underShadow = new THREE.Mesh(new THREE.PlaneGeometry(wid, len).rotateX(-Math.PI / 2).translate(0, GROUND + 0.028, cz), sm);
+      this.underShadow.renderOrder = 0;
+      this.group.add(this.underShadow);
     }
     this.visual.userData.floorY = GROUND + t.shape.clear + 0.14; // cabin carpet top: seated humans plant their feet here
     this.group.add(this.visual);
@@ -465,6 +530,24 @@ export class Vehicle {
     this.headOn = on;
     u.uHead.value = on ? HEAD_LENS : 0;
     if (this.beam) { (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? BEAM_OPACITY * night : 0; this.beam.visible = on && night > 0.05; }
+    if (this.underShadow) {
+      const upY = 1 - 2 * (this.group.quaternion.x * this.group.quaternion.x + this.group.quaternion.z * this.group.quaternion.z);
+      const showShadow = this.phys.grounded && upY > 0.6;
+      this.underShadow.visible = showShadow;
+      if (showShadow) (this.underShadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.lerp(0.76, 0.42, night);
+    }
+    // Gear, RPM and performance exhaust backfire trigger on upshift / fast throttle lift
+    const prevGear = this.gearNum;
+    const gr = vehicleGearRpm(this.speed, spec.topSpeed, this.input.throttle);
+    this.gear = gr.gear; this.gearNum = gr.gearNum; this.rpm = gr.rpm;
+    this.backfireCool = Math.max(0, this.backfireCool - dt);
+    this.backfireTriggered = false;
+    if (occupied && !this.destroyed && PERF_CLASSES.has(spec.cls) && this.backfireCool <= 0 && this.speed > 12) {
+      const upshift = prevGear >= 2 && this.gearNum > prevGear && this.input.throttle > 0.5;
+      const liftPop = this.prevThrottle > 0.65 && this.input.throttle < 0.15 && this.rpm > 0.62;
+      if (upshift || liftPop) { this.backfireTriggered = true; this.backfireCool = 0.85; }
+    }
+    this.prevThrottle = this.input.throttle;
     const lit = !this.destroyed && occupied;
     u.uTail.value = this.destroyed ? 0 : braking && lit ? 3.5 : on ? 1.2 : 0;
     u.uRev.value = lit && this.input.throttle < -0.1 && this.speed < -0.3 ? 3 : 0;

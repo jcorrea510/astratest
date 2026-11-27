@@ -6,6 +6,18 @@ export const CAT_PREFIX = 'cat:';
 /** Slots for the wheel. A category shows the weapon it would equip (scroll while highlighted to change it). */
 /** Categories a gun can be used from a car seat (drive-by): Round 7 in-car wheel. */
 export const CAR_CATS: ReadonlySet<WeaponCat> = new Set(['melee', 'pistol', 'smg', 'shotgun', 'rifle'] as WeaponCat[]);
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+function weaponWheelStats(id: keyof typeof WEAPONS): WheelSlot['stats'] {
+  const w = WEAPONS[id];
+  if (w.melee) return [{ label: 'Damage', value: clamp01(w.damage / 80) }, { label: 'Speed', value: clamp01(0.5 / w.interval) }];
+  if (w.cat === 'throw') return [{ label: 'Blast', value: clamp01(w.damage / 160) }, { label: 'Range', value: clamp01(w.range / 50) }];
+  return [
+    { label: 'Damage', value: clamp01((w.damage * Math.min(w.pellets, 4)) / 120) },
+    { label: 'Fire rate', value: clamp01(0.14 / w.interval) },
+    { label: 'Range', value: clamp01(w.range / 260) },
+    { label: 'Magazine', value: clamp01(w.clip / 60) },
+  ];
+}
 export function wheelSlots(inv: Inventory, canHeal: boolean, inCar = false): WheelSlot[] {
   const slots: WheelSlot[] = CATEGORY_ORDER.map(cat => {
     const id = inv.categoryPick(cat); const list = inv.inCategory(cat);
@@ -14,7 +26,7 @@ export function wheelSlots(inv: Inventory, canHeal: boolean, inCar = false): Whe
     const w = WEAPONS[id], st = inv.weapons[id];
     const more = list.length > 1 ? `  · ${list.indexOf(id) + 1}/${list.length}` : ''; // scroll the mouse wheel over the slot to switch
     const detail = w.melee ? `Melee${more}` : w.cat === 'throw' ? `x${inv.total(id)}${more}` : `${st.clip} / ${st.reserve}${more}`;
-    return { id: CAT_PREFIX + cat, label: w.name, icon: w.icon, detail, enabled: true };
+    return { id: CAT_PREFIX + cat, label: w.name, icon: w.icon, detail, enabled: true, stats: weaponWheelStats(id) };
   });
   slots.push({ id: 'medkit', label: 'First-aid kit', icon: 'medkit', detail: `x${inv.medkits}`, enabled: inv.medkits > 0 && canHeal && !inCar });
   return slots;

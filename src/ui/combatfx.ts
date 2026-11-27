@@ -14,17 +14,18 @@ const CSS = `
 .ma-fx-ind path { fill: none; stroke: rgba(235,28,24,0.95); stroke-width: 1.1; stroke-linecap: round; filter: drop-shadow(0 0 0.6vh rgba(120,0,0,0.8)); }
 .ma-fx-ind.is-on { animation: ma-fx-ind 1s ease-out forwards; }
 @keyframes ma-fx-ind { 0% { opacity: 1; } 60% { opacity: 0.75; } 100% { opacity: 0; } }
-.ma-fx-say { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); padding: 6px 14px; border-radius: 14px; background: rgba(12,14,18,0.72);
-  color: #f2f4f8; font-size: 15px; letter-spacing: 0.01em; opacity: 0; transition: opacity 0.2s; white-space: nowrap; }
+.ma-fx-say { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); padding: 6px 14px; border-radius: 4px; background: rgba(9,12,17,0.86);
+  border: 1px solid rgba(255,255,255,0.1); border-left: 3px solid #ffc37e; box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  color: #f4f6fa; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; opacity: 0; transition: opacity 0.2s; white-space: nowrap; }
 .ma-fx-say.is-on { opacity: 1; }
 .ma-fx-menu { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; transition: opacity 0.12s; }
 .ma-fx-menu.is-on { opacity: 1; }
-.ma-fx-menu .ring { position: absolute; left: -120px; top: -120px; width: 240px; height: 240px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.18); background: rgba(10,12,16,0.35); backdrop-filter: blur(2px); }
-.ma-fx-menu .hub { position: absolute; left: -46px; top: -12px; width: 92px; text-align: center; font-size: 11px; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.1em; }
-.ma-fx-menu .opt { position: absolute; padding: 7px 12px; border-radius: 16px; background: rgba(16,18,24,0.88); color: #eef1f6; font-size: 15px; white-space: nowrap;
-  border: 1px solid rgba(255,255,255,0.22); transform: translate(-50%, -50%); }
-.ma-fx-menu .opt b { color: #ffb347; margin-right: 7px; }
-.ma-fx-menu .opt.is-sel { background: #ffb347; color: #14100a; border-color: #ffd7a0; }
+.ma-fx-menu .ring { position: absolute; left: -120px; top: -120px; width: 240px; height: 240px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.18); background: rgba(9,12,17,0.72); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.ma-fx-menu .hub { position: absolute; left: -46px; top: -12px; width: 92px; text-align: center; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.72); text-transform: uppercase; letter-spacing: 0.14em; }
+.ma-fx-menu .opt { position: absolute; padding: 7px 13px; border-radius: 4px; background: rgba(9,12,17,0.92); color: #eef1f6; font-size: 15px; font-weight: 600; white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 4px 14px rgba(0,0,0,0.45); transform: translate(-50%, -50%); }
+.ma-fx-menu .opt b { color: #ffc37e; margin-right: 7px; }
+.ma-fx-menu .opt.is-sel { background: #ffc37e; color: #14100a; border-color: #ffe2bc; }
 .ma-fx-menu .opt.is-sel b { color: #14100a; }
 `;
 

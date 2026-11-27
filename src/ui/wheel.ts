@@ -42,6 +42,7 @@ export class Wheel {
   private centerName: SVGTextElement;
   private centerDetail: SVGTextElement;
   private centerHint: SVGTextElement;
+  private statsGroup: SVGGElement;
   private needle: SVGCircleElement;
   private slotLayer: SVGGElement;
 
@@ -59,9 +60,10 @@ export class Wheel {
     this.svgRoot.appendChild(this.needle);
     this.centerName = svg('text', { x: 0, y: -20, 'text-anchor': 'middle' }, 'ma-wheel-name');
     this.centerDetail = svg('text', { x: 0, y: 24, 'text-anchor': 'middle' }, 'ma-wheel-detail');
+    this.statsGroup = svg('g', {}, 'ma-wheel-stats');
     this.centerHint = svg('text', { x: 0, y: 50, 'text-anchor': 'middle' }, 'ma-wheel-hint');
     this.centerHint.textContent = 'Release to equip';
-    this.svgRoot.append(this.centerName, this.centerDetail, this.centerHint);
+    this.svgRoot.append(this.centerName, this.centerDetail, this.statsGroup, this.centerHint);
     this.el.appendChild(this.svgRoot);
   }
 
@@ -137,6 +139,29 @@ export class Wheel {
     this.centerName.textContent = s.label;
     this.centerDetail.textContent = s.enabled ? s.detail : 'Not carried';
     this.centerHint.textContent = s.enabled ? 'Release to equip' : 'Unavailable';
+    this.statsGroup.textContent = '';
+    const stats = s.enabled && s.stats && s.stats.length ? s.stats.slice(0, 4) : null;
+    if (stats) {
+      this.centerName.setAttribute('y', '-44');
+      this.centerDetail.setAttribute('y', '-22');
+      this.centerDetail.setAttribute('style', 'font-size:18px');
+      this.centerHint.setAttribute('y', '64');
+      const barW = 66, barH = 4.5, xLabel = -58, xBar = -6;
+      const startY = stats.length <= 2 ? 4 : -4;
+      stats.forEach((st, idx) => {
+        const y = startY + idx * 14;
+        const lbl = svg('text', { x: xLabel, y: y + 4, 'text-anchor': 'start' }, 'ma-wheel-stat-label');
+        lbl.textContent = st.label;
+        const bg = svg('rect', { x: xBar, y, width: barW, height: barH, rx: 1.5 }, 'ma-wheel-stat-bg');
+        const fill = svg('rect', { x: xBar, y, width: (Math.max(0.06, Math.min(1, st.value)) * barW).toFixed(1), height: barH, rx: 1.5 }, 'ma-wheel-stat-fill');
+        this.statsGroup.append(lbl, bg, fill);
+      });
+    } else {
+      this.centerName.setAttribute('y', '-20');
+      this.centerDetail.setAttribute('y', '24');
+      this.centerDetail.removeAttribute('style');
+      this.centerHint.setAttribute('y', '50');
+    }
     if (!silent) this.sound('hover');
     const a = slotAngle(i, this.slots.length);
     if (Math.hypot(this.acc.x, this.acc.y) <= WHEEL_DEADZONE) {

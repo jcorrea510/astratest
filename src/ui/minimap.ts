@@ -83,9 +83,9 @@ export class Minimap {
     ctx.translate(cx, cy); ctx.scale(1, PITCH); ctx.rotate(-s.heading); ctx.scale(scale, scale); ctx.translate(-s.x, -s.z);
     const bk = this.painter.minimapBake();
     if (bk) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low'; ctx.drawImage(bk.canvas, bk.x0, bk.z0, bk.canvas.width / bk.k, bk.canvas.height / bk.k); }
+    const pa = pageA11y();
     if (s.heatRadius) {
       const hr = s.heatRadius;
-      const pa = pageA11y();
       const pulse = pa.reduceMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 5);
       ctx.beginPath(); ctx.arc(hr.x, hr.z, hr.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 80, 70, ${0.14 + pulse * 0.1})`; ctx.fill();
@@ -93,13 +93,40 @@ export class Minimap {
       if (pa.mode !== 'off') ctx.setLineDash([6 / scale, 4 / scale]); // pattern, not just colour
       ctx.stroke(); ctx.setLineDash([]);
     }
+    // GTA-style sweeping police sight cones for nearby police units & officers
+    const coneHalf = 0.48; // ~55° total field of view
+    const coneLen = 36;
+    const redPhase = pa.reduceMotion ? true : Math.floor(t * 3.2) % 2 === 0;
+    const coneCol = pa.mode === 'deuteranopia' || pa.mode === 'protanopia'
+      ? (redPhase ? '255,176,0' : '74,168,255')
+      : (redPhase ? '255,68,78' : '74,148,255');
+    for (const b of s.blips) {
+      if (b.kind !== 'police' || b.yaw === undefined) continue;
+      const dx = b.x - s.x, dz = b.z - s.z;
+      if (dx * dx + dz * dz > 190 * 190) continue;
+      const ang = Math.atan2(Math.cos(b.yaw), Math.sin(b.yaw));
+      const grad = ctx.createRadialGradient(b.x, b.z, 2, b.x, b.z, coneLen);
+      grad.addColorStop(0, `rgba(${coneCol}, 0.34)`);
+      grad.addColorStop(0.65, `rgba(${coneCol}, 0.14)`);
+      grad.addColorStop(1, `rgba(${coneCol}, 0)`);
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.z);
+      ctx.arc(b.x, b.z, coneLen, ang - coneHalf, ang + coneHalf);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.lineWidth = 1.1 / scale;
+      ctx.strokeStyle = `rgba(${coneCol}, 0.28)`;
+      ctx.stroke();
+    }
     if (s.route && s.route.length > 1) {
       ctx.beginPath();
       ctx.moveTo(s.route[0].x, s.route[0].z);
       for (let i = 1; i < s.route.length; i++) ctx.lineTo(s.route[i].x, s.route[i].z);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.lineWidth = 8 / scale; ctx.strokeStyle = 'rgba(6,18,21,0.85)'; ctx.stroke();
-      ctx.lineWidth = 4.5 / scale; ctx.strokeStyle = '#ffc37e'; ctx.stroke();
+      ctx.lineWidth = 11 / scale; ctx.strokeStyle = 'rgba(255, 195, 126, 0.22)'; ctx.stroke();
+      ctx.lineWidth = 7.5 / scale; ctx.strokeStyle = 'rgba(6, 12, 18, 0.88)'; ctx.stroke();
+      ctx.lineWidth = 4.2 / scale; ctx.strokeStyle = '#ffc37e'; ctx.stroke();
     }
     ctx.restore();
 

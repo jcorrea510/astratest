@@ -16,6 +16,12 @@ export interface HudState {
   crosshair: 'none' | 'dot' | 'aim' | 'scope'; crosshairSpread: number; hitMarker: number; // hitMarker 0..1 fades
   /** COMBAT: reticle over a hittable person (dot turns red); kill marker 0..1 fades; headshot flag for the last hit; scope magnification */
   reticleHot?: boolean; killMarker?: number; headshotMarker?: boolean; scopeZoom?: number;
+  /** 0..1 reload progress bar under the ammo readout when reloading */
+  reloadProgress?: number;
+  /** Live transmission gear ('R'|'N'|'1'..'6') and normalized 0..1 RPM tachometer for vehicles */
+  vehicleGear?: string | null; vehicleRpm?: number | null;
+  /** Straight-line metres to the active GPS waypoint, or null when unset */
+  waypointDistM?: number | null;
   interactPrompt: string | null; // e.g. "E  Enter vehicle"
   radio: string | null; // radio station name when in a vehicle
   missionTimer: number | null; // seconds remaining
@@ -25,9 +31,9 @@ export interface HudState {
   cpuMs?: number;
 }
 export type WeaponIcon = 'fists' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'medkit' | 'armor' | 'knife' | 'bat' | 'revolver' | 'sniper' | 'lmg' | 'launcher' | 'rpg' | 'grenade' | 'molotov';
-export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank'; label?: string; pulse?: boolean }
+export interface MinimapBlip { x: number; z: number; kind: 'mission' | 'shop' | 'garage' | 'safehouse' | 'enemy' | 'police' | 'target' | 'waypoint' | 'collectible' | 'vehicle' | 'checkpoint' | 'arms' | 'barber' | 'clothing' | 'bank'; label?: string; pulse?: boolean; yaw?: number }
 export interface MinimapState { x: number; z: number; heading: number; /* radians, 0 = facing -z (north), positive = clockwise */ zoom: number; blips: MinimapBlip[]; route?: { x: number; z: number }[]; heatRadius?: { x: number; z: number; r: number } | null }
-export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean }
+export interface WheelSlot { id: string; label: string; icon: WeaponIcon; detail: string; /* e.g. "12 / 48" or "x2" */ enabled: boolean; stats?: { label: string; value: number }[] }
 export interface ShopItem { id: string; label: string; description: string; price: number; owned?: boolean; disabled?: boolean;
   /** Read-only row (goals / stats): shows `value` (or a Done / To do tag) instead of a price or lock. */
   info?: { value?: string };

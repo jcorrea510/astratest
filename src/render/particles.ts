@@ -182,8 +182,38 @@ export class Particles {
   fire(x: number, y: number, z: number, size = 1) {
     this.add.emit(this.p(x + (Math.random() - 0.5) * 0.6 * size, y, z + (Math.random() - 0.5) * 0.6 * size, { vy: (1.5 + Math.random() * 1.5) * Math.sqrt(size), max: 0.5 + Math.random() * 0.3, size: 0.7 * size, grow: -0.6, r: 1, g: 0.55 + Math.random() * 0.2, b: 0.2, a: 0.9, drag: 1 }));
   }
-  tireSmoke(x: number, y: number, z: number, vx: number, vz: number) {
-    this.normal.emit(this.p(x, y + 0.2, z, { vx: vx * 0.3 + (Math.random() - 0.5), vy: 0.6 + Math.random() * 0.5, vz: vz * 0.3 + (Math.random() - 0.5), max: 1.2 + Math.random() * 0.6, size: 0.5, grow: 4, r: 0.86, g: 0.86, b: 0.88, a: 0.28, drag: 1.2 }));
+  tireSmoke(x: number, y: number, z: number, vx: number, vz: number, intensity = 1) {
+    const k = Math.max(0.5, Math.min(2, intensity));
+    this.normal.emit(this.p(x, y + 0.2, z, {
+      vx: vx * 0.28 + (Math.random() - 0.5) * (0.9 + 0.35 * k),
+      vy: 0.55 + Math.random() * 0.55 * k,
+      vz: vz * 0.28 + (Math.random() - 0.5) * (0.9 + 0.35 * k),
+      max: 1.15 + Math.random() * 0.75 * k,
+      size: 0.48 + 0.22 * k,
+      grow: 4.2,
+      r: 0.88, g: 0.88, b: 0.9,
+      a: Math.min(0.46, 0.24 + 0.1 * k),
+      drag: 1.15,
+    }));
+  }
+  /** Performance car exhaust backfire pop: blue-white core, orange flame jet, hot embers and light puff. */
+  backfire(x: number, y: number, z: number, dx: number, dy: number, dz: number) {
+    this.add.emit(this.p(x, y, z, { vx: dx * 5, vy: dy * 2, vz: dz * 5, max: 0.075, size: 0.28 * rnd(0.85, 1.2), r: 0.55, g: 0.82, b: 1, a: 1, drag: 6, hold: 0.65 }));
+    for (let i = 0; i < 3; i++) {
+      const k = (i + 1) / 3;
+      this.add.emit(this.p(x + dx * k * 0.36, y + dy * k * 0.12, z + dz * k * 0.36, {
+        vx: dx * rnd(6, 11), vy: rnd(-0.2, 0.5), vz: dz * rnd(6, 11),
+        max: 0.08 + k * 0.03, size: (0.34 - k * 0.09) * rnd(0.85, 1.15),
+        r: 1, g: 0.64 - k * 0.24, b: 0.18, a: 0.95, drag: 7, hold: 0.55,
+      }));
+    }
+    for (let i = 0; i < 4; i++) {
+      this.add.emit(this.p(x, y, z, {
+        vx: dx * rnd(7, 14) + rnd(-1.4, 1.4), vy: rnd(0.2, 1.8), vz: dz * rnd(7, 14) + rnd(-1.4, 1.4),
+        max: rnd(0.12, 0.24), size: 0.05, r: 1, g: 0.72, b: 0.28, a: 0.95, drag: 3.5, grav: 7, hold: 0.4,
+      }));
+    }
+    this.normal.emit(this.p(x + dx * 0.25, y, z + dz * 0.25, { vx: dx * 2.5, vy: 0.3, vz: dz * 2.5, max: 0.45, size: 0.22, grow: 2.5, r: 0.24, g: 0.24, b: 0.26, a: 0.26, drag: 2.5 }));
   }
   dust(x: number, y: number, z: number) {
     this.normal.emit(this.p(x, y, z, { vx: (Math.random() - 0.5) * 1.5, vy: 0.4 + Math.random() * 0.4, vz: (Math.random() - 0.5) * 1.5, max: 0.8, size: 0.35, grow: 2.5, r: 0.78, g: 0.7, b: 0.58, a: 0.35, drag: 2 }));

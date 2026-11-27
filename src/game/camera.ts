@@ -27,7 +27,29 @@ export function isTeleport(prev: THREE.Vector3, next: THREE.Vector3): boolean {
 /** Chase-camera yaw follow rate (1/s): time constant ~0.18 s, so the view swings with a turning car instead of trailing it (was 2.2 = 0.45 s). */
 export const CHASE_YAW_RATE = 5.5;
 
+/**
+ * Pure dynamic chase-camera offsets for vehicles: acceleration pulls the camera back for speed sensation,
+ * hard braking nudges it closer, steering & lateral drift slip angle swing the camera slightly into the apex,
+ * and carving corners adds a subtle banked roll.
+ */
+export function chaseCameraFx(speed: number, steer: number, accel: number, slipAngle: number): { distOffset: number; yawLead: number; roll: number } {
+  const sp = Math.abs(speed);
+  const speedK = clamp((sp - 3) / 22, 0, 1);
+  const distOffset = accel >= 0
+    ? clamp(accel / 18, 0, 1) * 0.52 * (0.35 + 0.65 * speedK)
+    : -clamp(-accel / 22, 0, 1) * 0.34 * speedK;
+  const yawLead = clamp(-steer * 0.13 * speedK + clamp(slipAngle, -0.8, 0.8) * 0.24 * speedK, -0.26, 0.26);
+  const roll = clamp(steer * 0.021 * speedK - clamp(slipAngle, -0.7, 0.7) * 0.015 * speedK, -0.028, 0.028);
+  return { distOffset, yawLead, roll };
+}
+
 export type CamMode = 'foot' | 'aim' | 'vehicle' | 'dead' | 'cinematic';
+
+const _back = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _origin = new THREE.Vector3();
+const _pos = new THREE.Vector3();
+const _look = new THREE.Vector3();
 
 export class CameraRig {
   yaw = 0; pitch = -0.12;
@@ -55,6 +77,7 @@ export class CameraRig {
   private sprintBlend = 0;
   private bobAmp = 0;
   private dipY = 0; private dipV = 0;
+  private dynDist = 0; private dynYaw = 0; private dynRoll = 0; private swayT = 0;
 
   constructor(public camera: THREE.PerspectiveCamera, private physics: Physics) { }
 
@@ -72,12 +95,13 @@ export class CameraRig {
   /** True while the camera is so close to the head that the player's body should be hidden (set each update; PlayerCombat applies it). */
   hideBody = false;
   private lastFocus = new THREE.Vector3(); private haveFocus = false;
-  snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; this.initialized = false; this.hasClear = false; this.dist = 4.2; }
+  snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; this.initialized = false; this.hasClear = false; this.dist = 4.2; this.dynDist = 0; this.dynYaw = 0; this.dynRoll = 0; }
   /** Landing impulse: the camera dips by roughly `amount` metres and springs back. */
   landDip(amount: number) { this.dipV -= Math.min(0.5, Math.max(0, amount)) * 11; }
 
-  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean; free?: boolean } = {}) {
+  update(dt: number, focus: THREE.Vector3, mode: CamMode, opts: { vehicleYaw?: number; speed?: number; vehicleSize?: number; exclude?: RAPIER.RigidBody | null; lookBack?: boolean; free?: boolean; steer?: number; accel?: number; slipAngle?: number } = {}) {
     this.lastInput += dt;
+    this.swayT += dt;
     if (this.preview) {
       const v = this.preview, cp = Math.cos(v.pitch);
       this.camera.position.set(v.focus.x + Math.sin(v.yaw) * cp * v.dist, v.focus.y + Math.sin(v.pitch) * v.dist, v.focus.z + Math.cos(v.yaw) * cp * v.dist);
@@ -91,16 +115,21 @@ export class CameraRig {
       this.camera.lookAt(this.cinematic.look);
       return;
     }
-    if (this.haveFocus && isTeleport(this.lastFocus, focus)) { this.initialized = false; this.hasClear = false; this.dist = mode === 'vehicle' ? 6.6 * (opts.vehicleSize ?? 1) : mode === 'aim' ? 2.0 : 4.2; }
+    if (this.haveFocus && isTeleport(this.lastFocus, focus)) { this.initialized = false; this.hasClear = false; this.dist = mode === 'vehicle' ? 6.6 * (opts.vehicleSize ?? 1) : mode === 'aim' ? 2.0 : 4.2; this.dynDist = 0; this.dynYaw = 0; this.dynRoll = 0; }
     this.lastFocus.copy(focus); this.haveFocus = true;
     const ms = motionScale();
     let targetDist = 4.2, height = 1.55, shoulderT = 0.45, fovT = 0;
+    let wantDynDist = 0, wantDynYaw = 0, wantDynRoll = 0;
     if (mode === 'aim') { targetDist = 2.0; shoulderT = 0.72; height = 1.6; fovT = -12; }
     else if (mode === 'vehicle') {
       const size = opts.vehicleSize ?? 1;
       targetDist = (6.6 + this.zoomLevel * 2.5) * size; height = 1.5 * size + 0.4; shoulderT = 0;
       const sp = Math.abs(opts.speed ?? 0);
       fovT = clamp(sp * 0.35, 0, 14) * ms;
+      const cfx = chaseCameraFx(opts.speed ?? 0, opts.steer ?? 0, opts.accel ?? 0, opts.slipAngle ?? 0);
+      wantDynDist = cfx.distOffset * ms;
+      wantDynYaw = (!opts.free && !opts.lookBack) ? cfx.yawLead * ms : 0;
+      wantDynRoll = (!opts.free && !opts.lookBack) ? cfx.roll * ms : 0;
       // Auto-align behind the car when the player is not steering the camera.
       if (this.lastInput > 1.2 && sp > 3 && opts.vehicleYaw !== undefined && !opts.free) {
         this.yaw = dampAngle(this.yaw, opts.vehicleYaw, CHASE_YAW_RATE, dt);
@@ -108,6 +137,10 @@ export class CameraRig {
       }
     } else if (mode === 'dead') { targetDist = 6; height = 1.0; }
     else targetDist = 4.2 + this.zoomLevel * 1.4;
+    this.dynDist = damp(this.dynDist, wantDynDist, 4.5, dt);
+    this.dynYaw = damp(this.dynYaw, wantDynYaw, 4.2, dt);
+    this.dynRoll = damp(this.dynRoll, wantDynRoll, 5.0, dt);
+    targetDist += this.dynDist;
     // On foot: sprint pulls the camera back a touch, kicks the FOV and adds a subtle step bob; landings dip it.
     const onFoot = mode === 'foot', f = this.foot;
     this.sprintBlend = damp(this.sprintBlend, onFoot ? f.sprint : 0, f.sprint > this.sprintBlend ? 3 : 4, dt);
@@ -135,25 +168,25 @@ export class CameraRig {
     if (this.smoothPivot.distanceTo(this.pivot) > 6) this.smoothPivot.copy(this.pivot);
 
     const cy = Math.cos(this.pitch), sy = Math.sin(this.pitch);
-    const yaw = opts.lookBack && opts.vehicleYaw !== undefined ? opts.vehicleYaw + Math.PI : opts.lookBack ? this.yaw + Math.PI : this.yaw;
-    const back = new THREE.Vector3(Math.sin(yaw) * cy, -sy, Math.cos(yaw) * cy);
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const origin = this.smoothPivot.clone().addScaledVector(right, this.shoulder);
-    origin.y += bobY + this.dipY;
+    const yaw = opts.lookBack && opts.vehicleYaw !== undefined ? opts.vehicleYaw + Math.PI : opts.lookBack ? this.yaw + Math.PI : this.yaw + this.dynYaw;
+    _back.set(Math.sin(yaw) * cy, -sy, Math.cos(yaw) * cy);
+    _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    _origin.copy(this.smoothPivot).addScaledVector(_right, this.shoulder);
+    _origin.y += bobY + this.dipY;
     // keep the shoulder offset itself out of walls
-    const sideHit = this.cast(this.smoothPivot, right, this.shoulder, opts.exclude);
-    if (sideHit !== null) { origin.copy(this.smoothPivot).addScaledVector(right, Math.max(0, sideHit - 0.05)); origin.y += bobY + this.dipY; }
+    const sideHit = this.cast(this.smoothPivot, _right, this.shoulder, opts.exclude);
+    if (sideHit !== null) { _origin.copy(this.smoothPivot).addScaledVector(_right, Math.max(0, sideHit - 0.05)); _origin.y += bobY + this.dipY; }
     // Collision distance is smoothed: it tightens fast (never look through a wall) but eases back out slowly, so a rail,
     // hanger or passing car flicking in and out of the ray no longer makes the view pop between two positions.
-    const hit = this.cast(origin, back, this.dist, opts.exclude);
+    const hit = this.cast(_origin, _back, this.dist, opts.exclude);
     const want = mode === 'vehicle' ? (hit !== null ? Math.max(0.35, hit - 0.08) : this.dist) : boomLength(hit, this.dist);
     if (!this.hasClear || mode !== this.lastMode) this.clear = want;
     else this.clear = want < this.clear ? damp(this.clear, want, 38, dt) : damp(this.clear, want, 2.4, dt);
     this.hasClear = true; this.lastMode = mode;
     const d = Math.min(this.clear, this.dist);
-    const pos = origin.clone().addScaledVector(back, d);
+    _pos.copy(_origin).addScaledVector(_back, d);
     if (mode === 'foot' || mode === 'aim') {
-      const hx = pos.x - focus.x, hy = pos.y - (focus.y + 1.55), hz = pos.z - focus.z;
+      const hx = _pos.x - focus.x, hy = _pos.y - (focus.y + 1.55), hz = _pos.z - focus.z;
       this.hideBody = playerHiddenAt(Math.hypot(hx, hy, hz), this.hideBody);
     } else this.hideBody = false;
     // shake
@@ -161,10 +194,16 @@ export class CameraRig {
     this.shakeT += dt * 30;
     const s = this.trauma * this.trauma * 0.35;
     const n = (k: number) => Math.sin(this.shakeT * (1 + k * 0.37) + k * 12.3) * Math.sin(this.shakeT * 0.71 + k * 3.1);
-    this.camera.position.copy(pos);
-    const look = origin.clone().addScaledVector(back, -10);
-    this.camera.lookAt(look);
+    this.camera.position.copy(_pos);
+    _look.copy(_origin).addScaledVector(_back, -10);
+    this.camera.lookAt(_look);
     if (this.bobAmp > 0.001 && ms > 0.5) this.camera.rotateZ(Math.sin(ph) * this.bobAmp * 0.004 * (1 + this.sprintBlend));
+    if (Math.abs(this.dynRoll) > 1e-4) this.camera.rotateZ(this.dynRoll);
+    if (mode === 'aim' && !this.scopeFov && ms > 0.5) {
+      const still = clamp(1 - f.speed / 3, 0.35, 1);
+      this.camera.rotateX(Math.sin(this.swayT * 1.35) * 0.0014 * still * ms);
+      this.camera.rotateY(Math.sin(this.swayT * 0.92 + 1.1) * 0.0012 * still * ms);
+    }
     this.camera.rotateZ(n(3) * s * 0.12);
     this.camera.rotateX(n(1) * s * 0.08);
     this.camera.rotateY(n(2) * s * 0.08);

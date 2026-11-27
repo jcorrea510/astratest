@@ -5,19 +5,18 @@
  * animations: flashing stars run only while police search (and stop with prefers-reduced-motion).
  */
 .ma-root {
-  --glass: rgba(12, 14, 18, 0.62);
-  --glass-solid: rgba(12, 14, 18, 0.86);
-  --hair: rgba(255, 255, 255, 0.08);
+  --glass: rgba(9, 12, 17, 0.84);
+  --glass-solid: rgba(9, 12, 17, 0.92);
+  --hair: rgba(255, 255, 255, 0.1);
   --heat-red: #ff4d5e;
   --heat-blue: #4d8dff;
-  --txt-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --txt-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
   --r: calc(6 * var(--u));
 }
 .ma-root .ma-weapon, .ma-root .ma-money, .ma-root .ma-heat, .ma-root .ma-radar, .ma-root .ma-speedo, .ma-root .ma-prompt,
 .ma-root .ma-infobar, .ma-root .ma-toast, .ma-root .ma-hint, .ma-root .ma-vehpop, .ma-root .ma-loc, .ma-root .ma-radio {
   background: var(--glass); border: 1px solid var(--hair); border-radius: var(--r);
-  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
-  box-shadow: 0 calc(4 * var(--u)) calc(14 * var(--u)) rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 calc(6 * var(--u)) calc(18 * var(--u)) rgba(0, 0, 0, 0.42);
 }
 
 /* ---------------------------------------------------------------- top right: money, weapon, stars */
@@ -43,27 +42,28 @@
   text-shadow: var(--txt-shadow); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ma-root .ma-heat {
-  margin: 0; gap: calc(3 * var(--u)); padding: calc(5 * var(--u)) calc(9 * var(--u)); opacity: 0; transform: translateY(calc(-6 * var(--u)));
-  transition: opacity 0.2s, transform 0.2s; visibility: hidden;
+  margin: 0; gap: calc(4 * var(--u)); padding: calc(5 * var(--u)) calc(2 * var(--u)); opacity: 0; transform: translateY(calc(-6 * var(--u)));
+  transition: opacity 0.2s, transform 0.2s; visibility: hidden; align-items: center;
+  filter: drop-shadow(0 calc(1.5 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.85));
 }
 .ma-root .ma-heat.is-visible { opacity: 1; transform: none; visibility: visible; }
-.ma-root .ma-heat { align-items: center; }
 .ma-root .ma-heat-seg {
-  width: calc(22 * var(--u)); height: calc(9 * var(--u)); border-radius: calc(2 * var(--u)); box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.14); border: calc(1 * var(--u)) solid rgba(0, 0, 0, 0.55);
-  transition: background-color 0.18s, box-shadow 0.18s;
+  width: calc(21 * var(--u)); height: calc(21 * var(--u)); border: 0; border-radius: 0; box-sizing: border-box;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  background: rgba(255, 255, 255, 0.22);
+  transition: background-color 0.18s, transform 0.18s;
 }
-.ma-root .ma-heat-seg.is-on { background: #ffe27a; box-shadow: 0 0 calc(6 * var(--u)) rgba(255, 226, 122, 0.45); }
-.ma-root .ma-heat-seg.is-pop { animation: ma-pop 0.4s cubic-bezier(.2, .8, .2, 1.4) both; }
-.ma-root .ma-heat.is-rising .ma-heat-seg.is-on { animation: ma-heat-flash 0.5s steps(1) infinite; }
-.ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: ma-heat-pulse 2s ease-in-out infinite; }
+.ma-root .ma-heat-seg.is-on { background: #fff4d2; }
+.ma-root .ma-heat-seg.is-pop { animation: ma-pop 0.42s cubic-bezier(.2, .8, .2, 1.4) both; }
+.ma-root .ma-heat.is-rising .ma-heat-seg.is-on { animation: ma-heat-flash 0.45s steps(1) infinite; }
+.ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: ma-heat-pulse 1.6s ease-in-out infinite; }
 @keyframes ma-heat-flash { 0% { background: var(--heat-red); } 50% { background: var(--heat-blue); } }
-@keyframes ma-heat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes ma-heat-pulse { 0%, 100% { opacity: 1; background: #fff4d2; } 50% { opacity: 0.4; background: var(--heat-blue); } }
 @media (prefers-reduced-motion: reduce) {
   .ma-root .ma-heat.is-rising .ma-heat-seg.is-on, .ma-root .ma-heat.is-search .ma-heat-seg.is-on { animation: none; }
   .ma-root .ma-heat.is-rising .ma-heat-seg.is-on { background: var(--heat-red); }
 }
-.ma-root .ma-heat.is-rising, .ma-root .ma-heat.is-search { border-color: rgba(255, 77, 94, 0.5); }
+.ma-root .ma-heat.is-rising, .ma-root .ma-heat.is-search { border-color: transparent; }
 
 /* ---------------------------------------------------------------- top left: gear, fps */
 .ma-root .ma-gear { left: var(--edge-x); top: calc(16 * var(--u)); width: calc(30 * var(--u)); height: calc(30 * var(--u)); font-size: calc(17 * var(--u)); background: var(--glass); border: 1px solid var(--hair); opacity: 0.8; }
@@ -122,7 +122,6 @@
 .ma-root .ma-radar-clock {
   right: calc(8 * var(--u)); top: calc(-27 * var(--u)); height: calc(23 * var(--u)); padding: 0 calc(10 * var(--u)); border-radius: calc(6 * var(--u)); background: var(--glass); border: 1px solid var(--hair);
   font-size: calc(16 * var(--u)); letter-spacing: 0.04em; color: #fff; text-shadow: var(--txt-shadow);
-  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
 }
 .ma-root .ma-vitals { margin-top: calc(6 * var(--u)); gap: calc(5 * var(--u)); padding: 0 calc(1 * var(--u)); }
 .ma-root .ma-vbar { height: calc(7 * var(--u)); border-radius: calc(4 * var(--u)); background: rgba(255, 255, 255, 0.1); }
@@ -196,9 +195,8 @@
 @keyframes ma-card-out2 { to { opacity: 0; transform: translateY(calc(-10 * var(--u))); } }
 .ma-root .ma-card-band {
   min-width: calc(460 * var(--u)); max-width: min(calc(900 * var(--u)), 92vw); padding: calc(18 * var(--u)) calc(52 * var(--u)) calc(20 * var(--u)); border-radius: calc(8 * var(--u));
-  background: linear-gradient(180deg, rgba(12, 14, 18, 0.8), rgba(12, 14, 18, 0.62)); border: 1px solid var(--hair);
-  border-top: calc(3 * var(--u)) solid var(--card-accent); box-shadow: 0 calc(10 * var(--u)) calc(40 * var(--u)) rgba(0, 0, 0, 0.45);
-  -webkit-backdrop-filter: blur(calc(10 * var(--u))); backdrop-filter: blur(calc(10 * var(--u)));
+  background: linear-gradient(180deg, rgba(9, 12, 17, 0.92), rgba(9, 12, 17, 0.82)); border: 1px solid var(--hair);
+  border-top: calc(3 * var(--u)) solid var(--card-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 calc(10 * var(--u)) calc(40 * var(--u)) rgba(0, 0, 0, 0.52);
 }
 .ma-root .ma-card-band::before, .ma-root .ma-card-band::after { display: none; }
 .ma-root .ma-card-title {
@@ -321,16 +319,16 @@
 /* ---------------------------------------------------------------- heat: steady / colour-blind variants, save indicator */
 :root[data-colorblind='deuteranopia'] .ma-root, :root[data-colorblind='protanopia'] .ma-root { --heat-red: #ffb000; --heat-blue: #4aa8ff; }
 :root[data-colorblind='tritanopia'] .ma-root { --heat-red: #ff4d6a; --heat-blue: #5ff0ff; }
-/* colour-blind modes: the siren alternates solid and outlined segments (pattern), and the count is written out */
+/* colour-blind modes: the siren alternates solid and scaled stars (pattern), and the count is written out */
 :root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: ma-heat-flash 0.8s steps(1) infinite; }
 :root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(even) { animation-delay: -0.4s; }
-:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(odd) { border: calc(2 * var(--u)) dashed #fff; }
+:root:not([data-colorblind='off']) .ma-root .ma-heat.is-flash .ma-heat-seg.is-on:nth-child(odd) { transform: scale(0.82); }
 :root:not([data-colorblind='off']) .ma-root .ma-heat.is-visible::after { content: attr(data-n) '/5'; margin-left: calc(4 * var(--u)); align-self: center; font-size: max(12px, calc(13 * var(--u))); font-weight: 800; color: #fff; letter-spacing: 0.04em; text-shadow: var(--txt-shadow); }
 /* Reduce Motion: no flashing at all, a steady siren colour */
 :root[data-reduce-motion='true'] .ma-root .ma-heat.is-flash .ma-heat-seg.is-on { animation: none !important; background: var(--heat-red); }
 .ma-root .ma-save {
   position: absolute; right: var(--edge-x); bottom: calc(8 * var(--u)); display: flex; align-items: center; gap: calc(7 * var(--u)); padding: calc(3 * var(--u)) calc(10 * var(--u));
-  font-size: max(12px, calc(12 * var(--u))); font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.85); background: rgba(12, 14, 18, 0.55);
+  font-size: max(12px, calc(12 * var(--u))); font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.85); background: rgba(9, 12, 17, 0.82);
   border: 1px solid var(--hair); border-radius: var(--r); opacity: 0; transform: translateY(calc(4 * var(--u))); transition: opacity 0.25s, transform 0.25s; pointer-events: none;
 }
 .ma-root .ma-save.is-visible { opacity: 1; transform: none; }
@@ -341,3 +339,53 @@
 @keyframes ma-save-spin { to { transform: rotate(360deg); } }
 :root[data-reduce-motion='true'] .ma-root .ma-save { transition: none; transform: none; }
 :root[data-reduce-motion='true'] .ma-root .ma-save[data-phase='saving'] .ma-save-icon { animation: none; }
+
+/* ---------------------------------------------------------------- AAA HUD upgrades: reload bar, gear badge, redline, waypoint dist, dynamic reticle, kill flash, wheel stats */
+.ma-root .ma-ammo-reload {
+  width: 100%; height: calc(3 * var(--u)); margin-top: calc(4 * var(--u)); border-radius: calc(2 * var(--u));
+  background: rgba(255, 255, 255, 0.14); overflow: hidden; opacity: 0; transition: opacity 0.14s;
+}
+.ma-root .ma-ammo-reload.is-visible { opacity: 1; }
+.ma-root .ma-ammo-reload-fill { height: 100%; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, var(--hot), var(--apricot)); }
+
+.ma-root .ma-speed-gear {
+  display: inline-flex; align-items: center; justify-content: center; min-width: calc(24 * var(--u)); height: calc(24 * var(--u));
+  padding: 0 calc(5 * var(--u)); margin-right: calc(4 * var(--u)); align-self: center;
+  border-radius: calc(3 * var(--u)); background: rgba(9, 12, 17, 0.78); border: 1px solid rgba(255, 195, 126, 0.45);
+  font-family: var(--display); font-weight: 800; font-size: calc(16 * var(--u)); line-height: 1; color: var(--apricot);
+  text-shadow: none; font-variant-numeric: tabular-nums;
+}
+.ma-root .ma-speedo.is-redline .ma-speed-bar-fill { background: linear-gradient(90deg, #ff7a45, #ff3a3a); box-shadow: 0 0 calc(8 * var(--u)) rgba(255, 64, 58, 0.6); }
+.ma-root .ma-speedo.is-redline .ma-speed-gear { border-color: var(--heat-red); color: #fff; background: rgba(255, 58, 58, 0.72); }
+
+.ma-root .ma-radar-dist {
+  font-family: var(--display); font-weight: 700; font-size: calc(13 * var(--u)); letter-spacing: 0.06em; text-transform: uppercase;
+  color: #ffe3b8; font-variant-numeric: tabular-nums; flex: none;
+}
+
+.ma-root .ma-crosshair { --ma-spread: 0; }
+.ma-root .ma-crosshair.is-aim .ma-ch-tick {
+  display: block; position: absolute; background: rgba(244, 244, 242, 0.72);
+  box-shadow: 0 0 0 calc(0.8 * var(--u)) rgba(0, 0, 0, 0.55); transition: background-color 0.06s;
+}
+.ma-root .ma-crosshair.is-aim.is-hot .ma-ch-tick { background: rgba(255, 72, 60, 0.92); }
+.ma-root .ma-ch-t { left: calc(-0.9 * var(--u)); width: calc(1.8 * var(--u)); height: calc(6 * var(--u)); top: calc((-11 - var(--ma-spread) * 14) * var(--u)); }
+.ma-root .ma-ch-b { left: calc(-0.9 * var(--u)); width: calc(1.8 * var(--u)); height: calc(6 * var(--u)); top: calc((5 + var(--ma-spread) * 14) * var(--u)); }
+.ma-root .ma-ch-l { top: calc(-0.9 * var(--u)); height: calc(1.8 * var(--u)); width: calc(6 * var(--u)); left: calc((-11 - var(--ma-spread) * 14) * var(--u)); }
+.ma-root .ma-ch-r { top: calc(-0.9 * var(--u)); height: calc(1.8 * var(--u)); width: calc(6 * var(--u)); left: calc((5 + var(--ma-spread) * 14) * var(--u)); }
+
+.ma-root .ma-kill-flash {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 58%, rgba(255, 245, 230, 0.16) 100%);
+  transition: opacity 0.08s ease-out;
+}
+.ma-root .ma-kill-flash.is-head {
+  background: radial-gradient(ellipse at center, rgba(255, 195, 126, 0) 52%, rgba(255, 145, 74, 0.24) 100%);
+}
+:root[data-reduce-motion='true'] .ma-root .ma-kill-flash { display: none; }
+
+.ma-root .ma-wheel-stat-label { font-family: var(--display); font-weight: 700; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; fill: rgba(255, 255, 255, 0.62); }
+.ma-root .ma-wheel-stat-bg { fill: rgba(255, 255, 255, 0.14); }
+.ma-root .ma-wheel-stat-fill { fill: var(--apricot); }
+.ma-root .ma-wheel-hub { fill: rgba(9, 12, 17, 0.86); stroke: rgba(255, 255, 255, 0.14); }
+.ma-root .ma-wheel-sector { fill: rgba(9, 12, 17, 0.76); stroke: rgba(255, 255, 255, 0.09); }

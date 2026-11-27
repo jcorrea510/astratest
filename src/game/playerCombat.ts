@@ -66,6 +66,7 @@ export class PlayerCombat {
   /** Current full shot cone (radius, radians-ish). */
   cone = 0;
   hitMarker = 0; killMarker = 0; headshotMarker = false;
+  onKill: ((headshot: boolean) => void) | null = null;
   aimPoint = new THREE.Vector3();
   /** person under the reticle (alive), or null */
   aimTarget: Character | null = null;
@@ -162,12 +163,14 @@ export class PlayerCombat {
     return Math.min(1.5, Math.max(0, (px - 5) / 30));
   }
   /** Reticle / weapon part of the HUD state. */
-  hud(): Pick<HudState, 'crosshair' | 'reticleHot' | 'hitMarker' | 'killMarker' | 'headshotMarker' | 'scopeZoom' | 'ammoClip' | 'ammoReserve'> {
+  hud(): Pick<HudState, 'crosshair' | 'crosshairSpread' | 'reloadProgress' | 'reticleHot' | 'hitMarker' | 'killMarker' | 'headshotMarker' | 'scopeZoom' | 'ammoClip' | 'ammoReserve'> {
     const def = this.inv.def, st = this.inv.state, c = this.player;
     const show = c.alive && (!c.inVehicle || this.driveAim);
     const throwable = def.cat === 'throw';
     return {
       crosshair: !show ? 'none' : this.scoped ? 'scope' : this.armed || this.aiming ? (this.aiming ? 'aim' : 'dot') : 'none',
+      crosshairSpread: show && !def.melee && !throwable ? Math.min(1, Math.max(0, this.cone * 14)) : 0,
+      reloadProgress: this.inv.reloading ? this.inv.reloadProgress : 0,
       reticleHot: !!this.aimTarget && show, hitMarker: this.hitMarker, killMarker: this.killMarker, headshotMarker: this.headshotMarker,
       scopeZoom: this.scoped ? Math.round(62 / this.scopeFov * 10) / 10 : 0,
       ammoClip: def.melee ? -1 : throwable ? this.inv.total() : st.clip, ammoReserve: throwable ? 0 : st.reserve,
@@ -246,7 +249,7 @@ export class PlayerCombat {
     this.meleeWho = targets; this.meleeCars = vehicles; // [PEOPLE] used at the melee strike frame
     if (this.pendingMelee > 0) {
       this.pendingMelee -= dt;
-      if (this.pendingMelee <= 0) { const hit = this.combat.melee(c, def, targets(), vehicles()); if (hit) { this.hitMarker = 1; if (!hit.alive) this.killMarker = 1; this.cam.addShake(def.id === 'bat' ? 0.2 : 0.12); this.kick = 1; } }
+      if (this.pendingMelee <= 0) { const hit = this.combat.melee(c, def, targets(), vehicles()); if (hit) { this.hitMarker = 1; if (!hit.alive) { this.killMarker = 1; this.headshotMarker = false; this.onKill?.(false); } this.cam.addShake(def.id === 'bat' ? 0.2 : 0.12); this.kick = 1; } }
     }
     // reload animation on any reload start (manual, empty click or automatic after the last round)
     if (inv.reloading && !this.wasReloading) { h.playOnce('Pistol_Reload', 'upper', 0.1, { rate: Math.min(1.6, Math.max(0.6, 1.8 / Math.max(0.6, inv.reloadDur))) }); this.reloadStep = 0; this.shellsSeen = inv.shellsLoaded; }
@@ -282,7 +285,7 @@ export class PlayerCombat {
     const dir = shotDirection(o, this.aimPoint, this.tmpD, new THREE.Vector3()) as THREE.Vector3;
     const veh = this.driveAim ? c.inVehicle as Vehicle : null;
     const hits = this.combat.shoot(c, def, o, dir, this.cone + (veh ? Math.min(0.05, Math.abs(veh.speed) * 0.0015) : 0), veh);
-    for (const x of hits) if (x.kind === 'character') { this.hitMarker = 1; if (x.killed) { this.killMarker = 1; this.headshotMarker = !!x.headshot; } }
+    for (const x of hits) if (x.kind === 'character') { this.hitMarker = 1; if (x.killed) { this.killMarker = 1; this.headshotMarker = !!x.headshot; this.onKill?.(!!x.headshot); } }
     if (def.mode === 'pump' || def.mode === 'bolt') { this.cycleKind = def.mode; setCycle(this, def); }
     // bloom / accuracy
     const fresh = this.time - this.lastShot > Math.max(0.35, def.interval * 2.5);
@@ -351,7 +354,7 @@ export class PlayerCombat {
       const near = meleeTargets(c, this.meleeWho?.() ?? [], reach);
       const hit = this.combat.melee(c, def, near.slice(0, 1), near.length ? [] : this.meleeCars?.() ?? []);
       if (!hit) return;
-      this.hitMarker = 1; if (!hit.alive) this.killMarker = 1;
+      this.hitMarker = 1; if (!hit.alive) { this.killMarker = 1; this.headshotMarker = false; this.onKill?.(false); }
       this.cam.addShake(def.id === 'bat' ? 0.2 : kind === 'hook' ? 0.16 : 0.1); this.kick = 1;
       hit.vel.x = 0; hit.vel.z = 0; // the reaction below sets the push (a punch moves people a step, not metres)
       if (hit.alive) hit.hitReact(hit.pos.x - c.pos.x, hit.pos.z - c.pos.z, MELEE_POWER[kind]);
