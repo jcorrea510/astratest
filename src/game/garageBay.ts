@@ -1,8 +1,7 @@
 /**
- * Round 9 garage visit: drive into the hall, stop, the roll-up door comes down behind you, the camera frames the car and the whole
- * game pauses (game.paused: the same switch the pause menu uses, so traffic, police, peds and timers are frozen). The menu
- * (repair / respray with a live preview / sell / leave) runs over the frozen scene; leaving rolls the door up, then the game resumes.
- * The state machine is driven in real time by tick(raw) from main's frame (activities.update does not run while paused).
+ * Drive-in custom garage session: stop inside any bay, the roll-up door seals behind you, studio showroom lights
+ * fade up (added to the scene ONLY while inside the bay — zero runtime cost during free-roam), and a cinematic
+ * hero camera orbits your car on the left while the workshop UI docks cleanly on the right.
  */
 import * as THREE from 'three';
 import type { Game } from './game';
@@ -19,8 +18,9 @@ export interface GarageHost {
   /** Pays out and forgets the car; returns the vehicle to remove (null: refused). */
   sell(bay: number): Vehicle | null;
 }
+
 type State = 'idle' | 'closing' | 'menu' | 'opening';
-export const DOOR_TIME = 1.5;
+export const DOOR_TIME = 1.35;
 const ease = (k: number) => k * k * (3 - 2 * k);
 
 export class GarageBays {
@@ -35,6 +35,8 @@ export class GarageBays {
   private origPaint = new THREE.Color();
   private tmpCam = new THREE.PerspectiveCamera();
   private _a = new THREE.Vector3(); private _b = new THREE.Vector3();
+  /** Dedicated showroom studio lights mounted ONLY while a bay session is active. */
+  private rig: { group: THREE.Group; key: THREE.PointLight; fill: THREE.PointLight; rim: THREE.PointLight } | null = null;
   /** called when a visit ends (after the game resumed) */
   onDone: (() => void) | null = null;
 
@@ -46,6 +48,28 @@ export class GarageBays {
 
   /** The bay the player's car is parked in, ready to start a visit (-1: none). */
   bayFor(v: Vehicle): number { return Math.abs(v.speed) < 2.5 ? bayAt(v.position.x, v.position.z) : -1; }
+
+  private mountStudioRig(bayIdx: number) {
+    this.unmountStudioRig();
+    const b = BAYS[bayIdx]; if (!b) return;
+    const y0 = 0.18, pz = b.zf + 6.6;
+    const group = new THREE.Group();
+    const key = new THREE.PointLight('#fff6e8', 0, 18, 1.5);
+    key.position.set(b.cx - 2.2, y0 + 4.3, pz - 2.3);
+    const fill = new THREE.PointLight('#dceeff', 0, 16, 1.6);
+    fill.position.set(b.cx + 2.4, y0 + 3.6, pz - 1.2);
+    const rim = new THREE.PointLight(b.accent, 0, 14, 1.7);
+    rim.position.set(b.cx + 0.4, y0 + 2.9, pz + 3.4);
+    group.add(key, fill, rim);
+    this.game.renderer.scene.add(group);
+    this.rig = { group, key, fill, rim };
+  }
+
+  private unmountStudioRig() {
+    if (!this.rig) return;
+    this.rig.group.removeFromParent();
+    this.rig = null;
+  }
 
   /** Starts a visit: freezes the world and begins the door sequence. */
   begin(bay: number): boolean {
@@ -59,6 +83,7 @@ export class GarageBays {
     v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = true;
     g.paused = true; g.menuOpen = true; g.input.exitLock();
     g.audio.setPausedMuffle(true); this.ui.setHudVisible(false);
+    this.mountStudioRig(bay);
     g.audio.play('doorClose', { pos: v.position });
     return true;
   }
@@ -78,10 +103,18 @@ export class GarageBays {
       if (k >= 1) this.finish();
     }
     if (door) { door.scale.y = Math.max(0.04, 1 - this.open * 0.96); door.visible = this.open < 0.995; }
-    // the shop-floor fill light: no runtime lights, so lift the ambient terms for the frame (updateEnvironment resets them every frame)
-    const r = this.game.renderer, boost = 1 + 1.3 * (1 - this.open);
-    r.hemi.intensity *= boost; r.scene.environmentIntensity *= boost;
+    // Balanced showroom lighting: real directional studio lights + subtle IBL lift for rich clearcoat reflections
+    const closed = 1 - this.open;
+    const r = this.game.renderer;
+    r.hemi.intensity *= 1 + 0.42 * closed;
+    r.scene.environmentIntensity *= 1 + 0.55 * closed;
+    if (this.rig) {
+      this.rig.key.intensity = 28 * closed;
+      this.rig.fill.intensity = 16 * closed;
+      this.rig.rim.intensity = 13 * closed;
+    }
   }
+
   /** Moves the car to the middle of the bay, nose to the back wall (kinematic glide while the world is frozen). */
   private glide(k: number) {
     const v = this.car; if (!v) return;
@@ -113,7 +146,6 @@ export class GarageBays {
     const sold = this.host.sell(this.bay);
     if (!sold) { this.refresh(); return; }
     this.ui.closeGarage();
-    // the player walks out of the sold car, to the front of the hall
     g.exitVehicle(true);
     const b = BAYS[this.bay];
     g.player.place(b.cx - 1.2, g.player.pos.y, b.zf + 2.0, Math.PI);
@@ -130,41 +162,46 @@ export class GarageBays {
   }
   private finish() {
     const g = this.game, v = this.car;
+    this.unmountStudioRig();
     this.state = 'idle'; this.car = null;
     if (v) { v.input.handbrake = false; }
     g.paused = false; g.menuOpen = false; g.audio.setPausedMuffle(false); this.ui.setHudVisible(true);
     g.input.clearAll(); g.input.requestLock();
     const door = BAY_DOORS[this.bay]; if (door) door.visible = false;
-    const b = BAYS[this.bay];
     g.cam.snapBehind(g.playerVehicle ? g.playerVehicle.yaw + Math.PI : Math.PI);
-    this.bay = -1; void b;
+    this.bay = -1;
     this.onDone?.();
   }
   /** Drops a visit in progress without any animation (death, teleport, new game). */
   abort() {
     if (this.state === 'idle') return;
     const g = this.game;
+    this.unmountStudioRig();
     this.revertPaint(); this.ui.closeGarage();
     const door = BAY_DOORS[this.bay]; if (door) { door.scale.y = 0.04; door.visible = false; }
     this.state = 'idle'; this.car = null; this.bay = -1;
     g.paused = false; g.menuOpen = false; g.audio.setPausedMuffle(false); this.ui.setHudVisible(true);
   }
 
-  /** The garage shot: the camera glides from the chase cam to a corner inside the hall, then sways slowly across the bay. */
+  /** Low-angle cinematic showroom 3/4 sweep keeping the vehicle prominently framed on the left of the docked panel. */
   private shot(_raw: number): boolean {
     if (this.state === 'idle' || this.bay < 0) return false;
     const g = this.game, cam = g.renderer.camera, b = BAYS[this.bay], y0 = 0.18;
-    const sway = Math.cos(this.clock * 0.32);
-    const anchor = this._a.set(b.cx + 3.2 * sway, y0 + 1.55 + 0.12 * Math.sin(this.clock * 0.5), b.zf + 1.3);
-    const target = this._b.set(b.cx, y0 + 0.75, b.zf + 6.4);
-    // shift the car towards the left of the frame (the menu is docked right): aim a little to the right of it
+    const sweep = Math.sin(this.clock * 0.28);
+    const anchor = this._a.set(
+      b.cx - 2.35 + sweep * 1.45,
+      y0 + 1.42 + 0.08 * Math.sin(this.clock * 0.45),
+      b.zf + 1.55 + Math.abs(sweep) * 0.55,
+    );
+    const target = this._b.set(b.cx, y0 + 0.78, b.zf + 6.6);
+    // Shift aim slightly right so the car sits cleanly in the left ~58% showroom hero window
     const dx = target.x - anchor.x, dz = target.z - anchor.z, len = Math.hypot(dx, dz) || 1;
-    target.x += (-dz / len) * 1.1; target.z += (dx / len) * 1.1;
+    target.x += (-dz / len) * 1.25; target.z += (dx / len) * 1.25;
     this.tmpCam.position.copy(anchor); this.tmpCam.lookAt(target); this.tmpCam.updateMatrixWorld();
     const k = this.state === 'closing' ? ease(Math.min(1, this.t / DOOR_TIME)) : 1;
     cam.position.copy(this.camFrom.pos).lerp(anchor, k);
     cam.quaternion.copy(this.camFrom.quat).slerp(this.tmpCam.quaternion, k);
-    cam.fov = this.camFrom.fov + (56 - this.camFrom.fov) * k; cam.updateProjectionMatrix();
+    cam.fov = this.camFrom.fov + (50 - this.camFrom.fov) * k; cam.updateProjectionMatrix();
     cam.updateMatrixWorld(true);
     return true;
   }

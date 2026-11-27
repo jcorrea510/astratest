@@ -133,7 +133,7 @@ function rotBone(bone: THREE.Object3D, q: THREE.Quaternion, chain?: THREE.Object
 /** Round 11: culling sphere for a person's skinned meshes (body space, metres; bind-pose sphere r 1.08 m at hip height). */
 export const PERSON_SPHERE = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 2.2);
 /** Beyond this distance (m) a person's hair and beard use the two-layer solid LOD (strands are sub-pixel there anyway). */
-const HAIR_LOD_DIST = 20;
+const HAIR_LOD_DIST = 34;
 /**
  * Round 7 perf: builds (and caches) the hair / hat / garment extras a look needs, ahead of the person turning real, so the
  * first close-up of a style never builds geometry mid-drive (100 ms - 1 s hitches). Returns the build time in ms.
@@ -271,11 +271,11 @@ export class Human {
   private showExtras() {
     for (const e of this.extras) { const k = e.userData.lod; e.visible = this.detail && (k === 'hair' ? !this.lodFar : k === 'hairFar' ? this.lodFar : true); }
   }
-  /** Round 14: one call drives body LOD, extras LOD and hair swap from the camera distance (with hysteresis). Replaces setBodyLod/setDetail calls. */
+  /** Drives body LOD, extras LOD and hair swap from camera distance (scaled so nearby street people keep full meshes & 3D hair). */
   setLodDistance(dist: number, inView: boolean) {
     this.lodDriven = true;
-    this.setBodyLod(bodyLodFor(dist, this.bodyLod));
-    const x = extrasLodFor(dist, inView, this.extrasLod);
+    this.setBodyLod(bodyLodFor(dist * 0.48, this.bodyLod));
+    const x = extrasLodFor(dist * 0.52, inView, this.extrasLod);
     if (x === this.extrasLod) return; this.extrasLod = x;
     this.detail = x < 2; this.lodFar = x === 1; this.showExtras();
   }

@@ -71,7 +71,7 @@ export class Activities {
   guns: GunStore;
   salon: Salon;
   constructor(private game: Game, private ui: GameUI, private ctx: MissionCtx) {
-    this.bayMk = BAYS.map((b, i) => ctx.marker(bayPark(b), 2.6, '#7ff3ff', i === 0 ? 'GLOW GARAGE  ·  REPAIR, PAINT, SELL' : 'SERVICE BAY  ·  REPAIR, PAINT, SELL'));
+    this.bayMk = BAYS.map(b => ctx.marker(bayPark(b), 2.7, b.accent, `${b.name.toUpperCase()}  ·  REPAIR, PAINT, SELL`));
     this.garage = new GarageBays(game, ui, { view: i => this.garageView(i), repair: () => this.garageRepair(), paint: hex => this.garagePaint(hex), sell: i => this.garageSell(i) });
     this.garage.onDone = () => { this.garageArmed = false; this.onSaveRequested?.(); }; // not again until you drive out and back in
     this.dealerMk = ctx.marker(PLACES.dealer, 1.4, '#ff6b5e', 'REDLINE MOTORS');
@@ -214,13 +214,17 @@ export class Activities {
     const frac = v.health / v.spec.health, rep = repairPrice(frac, v.lightsBroken), seen = g.police.heat > 0 && g.police.state.seen;
     const q = this.sellOffer(bay, v);
     const need = (n: number) => `Need $${(n - g.money).toLocaleString('en-US')} more.`;
+    const curHex = '#' + v.paint.getHexString(THREE.SRGBColorSpace);
+    const baySpec = BAYS[bay];
     return {
-      title: BAYS[bay]?.name ?? 'Garage', money: g.money, car: v.spec.name, healthPct: Math.max(0, Math.min(1, frac)) * 100,
-      paintName: GARAGE_PAINTS.find(p => p[0].toLowerCase() === '#' + v.paint.getHexString(THREE.SRGBColorSpace))?.[1] ?? 'Factory paint',
-      repair: { price: rep, enabled: rep > 0 && g.money >= rep, note: !rep ? 'Nothing to fix.' : g.money < rep ? need(rep) : 'Engine, body panels, glass and lights back to new.' },
+      title: baySpec?.name ?? 'Garage', accent: baySpec?.accent ?? '#f5a855', money: g.money,
+      car: v.spec.name, carClass: v.spec.cls.toUpperCase(), healthPct: Math.max(0, Math.min(1, frac)) * 100,
+      currentHex: curHex,
+      paintName: GARAGE_PAINTS.find(p => p[0].toLowerCase() === curHex.toLowerCase())?.[1] ?? 'Factory Finish',
+      repair: { price: rep, enabled: rep > 0 && g.money >= rep, note: !rep ? 'Vehicle is in pristine condition.' : g.money < rep ? need(rep) : 'Full chassis, bodywork, glazing & lighting restoration.' },
       paints: GARAGE_PAINTS.map(([hex, name]) => ({ hex, name })), paintPrice: RESPRAY,
       paintEnabled: !seen && g.money >= RESPRAY,
-      paintNote: seen ? 'Not while the police are watching.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'New color, and the heat is off.' : 'Hover a color to see it on the car.',
+      paintNote: seen ? 'Cannot respray while police have visual.' : g.money < RESPRAY ? need(RESPRAY) : g.police.heat > 0 ? 'Respray clears active wanted level immediately.' : 'Preview any finish live in the bay before purchasing.',
       sell: { price: q.price, ok: q.ok, note: q.reason },
     };
   }

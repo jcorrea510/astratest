@@ -21,7 +21,7 @@ import type { BreakableDef, BreakKind } from '../game/breakables';
 import { buildPedSignals, type PedSignals } from './pedsignals';
 import { buildPrecinct, precinctFootprint } from './precinct';
 import { buildGarages } from './garageBuild';
-import { BAYS, bayRect } from '../game/bays';
+import { BAYS, bayRect, nearBayDriveway } from '../game/bays';
 import type { Physics } from '../core/physics';
 import type { Assets } from './assets';
 import {
@@ -364,10 +364,11 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const padNames = ['Meridian Tower helipad', 'Heights Plaza helipad', 'Cobalt Center helipad'];
   const pf = precinctFootprint();
   const policeLot = (l: Lot) => { const sw = Math.abs(Math.sin(l.rot)) > 0.7, hw = (sw ? l.d : l.w) / 2, hd = (sw ? l.w : l.d) / 2; return l.x + hw > pf.x0 && l.x - hw < pf.x1 && l.z + hd > pf.z0 && l.z - hd < pf.z1; };
+  const bayLot = (l: Lot) => { const sw = Math.abs(Math.sin(l.rot)) > 0.7, hw = (sw ? l.d : l.w) / 2, hd = (sw ? l.w : l.d) / 2; return BAYS.some(b => { const r = bayRect(b, 4.5); return l.x + hw > r.x0 && l.x - hw < r.x1 && l.z + hd > r.z0 - 7 && l.z - hd < r.z1; }); };
   for (const lot of merged) {
     const b = lot.blockId >= 0 ? city.blocks[lot.blockId] : { district: lot.district ?? 'oldtown' };
     const r = new Rng(lot.seed);
-    if (policeLot(lot)) continue;
+    if (policeLot(lot) || bayLot(lot)) continue;
     if (lot.kind === 'tower') {
       const rank = towerLots.indexOf(lot);
       tower(ctx, { cx: lot.x, cz: lot.z, w: lot.w, d: lot.d, base: CURB_HEIGHT, height: lot.height * 1.45, seed: lot.seed, helipad: rank >= 0 && rank < 3 ? padNames[rank] : null, yaw: lot.blockId >= 0 && city.blocks[lot.blockId].district !== 'heights' ? lot.rot + Math.PI : 0 });
@@ -415,7 +416,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   for (const b of city.blocks.filter(bb => bb.kind === 'docks')) {
     const r = new Rng(b.id * 77);
     const ix0 = b.x0 + SIDEWALK + 2, ix1 = b.x1 - SIDEWALK - 2, iz0 = b.z0 + SIDEWALK + 2, iz1 = b.z1 - SIDEWALK - 2;
-    const wh = r.chance(0.6);
+    const hasBay = BAYS.some(gb => { const br = bayRect(gb, 5); return br.x1 > ix0 && br.x0 < ix1 && br.z1 > iz0 && br.z0 < iz1; });
+    const wh = !hasBay && r.chance(0.6);
     if (wh) {
       const w = ix1 - ix0, d = (iz1 - iz0) * 0.5, h = r.range(9, 12);
       warehouse(ctx, { cx: (ix0 + ix1) / 2, cz: iz0 + d / 2, w, d, base: CURB_HEIGHT, h, seed: b.id * 31 + 5, yaw: Math.PI });
@@ -424,6 +426,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     let row = 0;
     for (let z = startZ + 2; z < iz1 - 3; z += (row++ % 2 === 0 ? 2.75 : 7.5)) for (let x = ix0 + 7; x < ix1 - 6; x += 17) {
       if (r.chance(0.3)) continue;
+      if (BAYS.some(gb => { const br = bayRect(gb, 7.5); return x + 7 > br.x0 && x - 7 < br.x1 && z + 2.5 > br.z0 - 8 && z - 2.5 < br.z1; })) continue;
       const stack = r.int(1, 3);
       const fb = fac.at(x, z), tb = trim.at(x, z);
       for (let k = 0; k < stack; k++) {
@@ -539,12 +542,17 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       for (let k = 0; k < nL; k++) {
         const s = e.from + (len / nL) * (k + 0.5);
         const p = P(s, 0.75);
+        if (nearBayDriveway(p.x, p.z, 1.5)) continue;
         const hl = props.add('streetlight', p.x, CURB_HEIGHT, p.z, yawRoad);
         brk('lamp', p.x, p.z, yawRoad, hl, () => physics.addStaticCylinder(p.x, 2.5, p.z, 2.5, 0.14), lampHeads.length);
         lampHeads.push(new THREE.Vector3(p.x + e.nx * LAMP.reach, LAMP.height + CURB_HEIGHT - 0.1, p.z + e.nz * LAMP.reach));
         used.push(s);
       }
-      const free = (s: number, m = 3) => s > e.from + 8 && s < e.to - 8 && used.every(u => Math.abs(u - s) > m);
+      const free = (s: number, m = 3) => {
+        if (!(s > e.from + 8 && s < e.to - 8 && used.every(u => Math.abs(u - s) > m))) return false;
+        const pp = P(s, 1.2);
+        return !nearBayDriveway(pp.x, pp.z, 2.2);
+      };
       // trees / palms in pits
       if (b.district !== 'cannery' && b.kind !== 'park') {
         for (let s = e.from + 10; s < e.to - 10; s += r.range(9, 14)) {

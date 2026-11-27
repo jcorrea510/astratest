@@ -103,9 +103,8 @@ export function titleArtSvg(prefix = 'maT'): string {
 let logoSeq = 0;
 
 /**
- * The MERIDIAN AFTERGLOW lockup: a flat, left-aligned stack. MERIDIAN in heavy condensed capitals with a stencil slice
- * through the lower third and a faint worn-print grain; AFTERGLOW tracked out to the same width in a single burnt orange.
- * No outline, glow or gradient: it reads as printed signage. SVG so it stays crisp at any size.
+ * The MERIDIAN AFTERGLOW lockup: crisp architectural heavy condensed wordmark with a precision horizon slice
+ * and wide-tracked Meridian Sunset Amber subtitle. Vector SVG so it renders razor-sharp at any resolution.
  */
 export function logo(cls = ''): HTMLElement {
   const id = `maLogo${++logoSeq}`;
@@ -114,16 +113,16 @@ export function logo(cls = ''): HTMLElement {
   w.setAttribute('aria-label', 'Meridian Afterglow');
   w.innerHTML = `<svg viewBox="0 0 900 330" aria-hidden="true">
 <defs>
-<filter id="${id}Wear" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="n"/>
-<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 9 -7.3" result="m"/>
-<feComposite in="SourceGraphic" in2="m" operator="out"/></filter>
+<linearGradient id="${id}Top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.72" stop-color="#f2eee4"/><stop offset="1" stop-color="#dfd7c6"/></linearGradient>
+<linearGradient id="${id}Sub" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffba6b"/><stop offset="0.55" stop-color="#f5a04b"/><stop offset="1" stop-color="#e57d44"/></linearGradient>
 <mask id="${id}Cut" maskUnits="userSpaceOnUse" x="0" y="0" width="900" height="330"><rect width="900" height="330" fill="#fff"/>
-<rect x="0" y="188" width="900" height="6" fill="#000"/></mask>
+<rect x="0" y="186" width="900" height="5" fill="#000"/></mask>
 </defs>
-<g class="ma-logo-main" mask="url(#${id}Cut)" filter="url(#${id}Wear)">
-<text class="ma-logo-a" x="-6" y="238" font-size="286" textLength="912" lengthAdjust="spacingAndGlyphs" fill="#ece6d6">MERIDIAN</text>
+<g class="ma-logo-main" mask="url(#${id}Cut)">
+<text class="ma-logo-a" x="-6" y="238" font-size="286" textLength="912" lengthAdjust="spacingAndGlyphs" fill="url(#${id}Top)">MERIDIAN</text>
 </g>
-<text class="ma-logo-b" x="2" y="322" font-size="66" textLength="896" lengthAdjust="spacing" fill="#d9824f">AFTERGLOW</text>
+<rect x="2" y="254" width="896" height="2" fill="url(#${id}Sub)" opacity="0.55"/>
+<text class="ma-logo-b" x="2" y="320" font-size="64" textLength="896" lengthAdjust="spacing" fill="url(#${id}Sub)">AFTERGLOW</text>
 </svg>`;
   return w;
 }

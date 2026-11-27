@@ -1,27 +1,345 @@
-/* Round 9 garage panel (docked right so the car in the bay stays visible). Scoped under .ma-root like ui.css. */
-.ma-garage.is-open { display: flex; align-items: center; justify-content: flex-end; pointer-events: none; padding-right: calc(28 * var(--u)); background: linear-gradient(270deg, rgba(4, 14, 16, 0.6), rgba(4, 14, 16, 0) 55%); }
-.ma-garage-panel { width: min(calc(420 * var(--u)), 94vw); max-height: 94vh; border-top: calc(5 * var(--u)) solid #7ff3ff; pointer-events: auto; }
-.ma-garage-head { align-items: center; padding-bottom: calc(10 * var(--u)); }
-.ma-garage-title { font-size: calc(32 * var(--u)); }
-.ma-garage-body { display: flex; flex-direction: column; gap: calc(4 * var(--u)); padding-bottom: calc(12 * var(--u)); }
-.ma-garage-cond { display: flex; align-items: center; gap: calc(10 * var(--u)); margin-bottom: calc(6 * var(--u)); }
-.ma-garage-bar { flex: 1; height: calc(8 * var(--u)); background: rgba(255, 243, 220, 0.14); border-radius: calc(4 * var(--u)); overflow: hidden; }
-.ma-garage-barfill { height: 100%; background: var(--health); transition: width 0.4s ease; }
-.ma-garage-barfill[data-level="mid"] { background: var(--apricot); }
-.ma-garage-barfill[data-level="bad"] { background: var(--coral); }
-.ma-garage-condtxt { font-family: var(--display); font-weight: 800; font-size: calc(18 * var(--u)); min-width: calc(40 * var(--u)); text-align: right; }
-.ma-garage-sec { display: flex; align-items: baseline; justify-content: space-between; gap: calc(10 * var(--u)); margin-top: calc(10 * var(--u)); }
-.ma-garage-pick { font-family: var(--display); font-weight: 800; font-size: calc(17 * var(--u)); text-transform: uppercase; color: var(--apricot); }
-.ma-root .ma-garage-row { display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); min-height: calc(46 * var(--u)); padding: calc(6 * var(--u)) calc(14 * var(--u)); border-radius: calc(3 * var(--u)); background: var(--panel-2); }
-.ma-root .ma-garage-row.is-off { opacity: 0.55; }
+/* AAA Port Meridian Customs garage overlay: docked right over a soft studio vignette so the hero car stays framed. */
+.ma-garage.is-open {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  padding: calc(18 * var(--u)) calc(28 * var(--u)) calc(18 * var(--u)) 0;
+  background: linear-gradient(270deg, rgba(5, 7, 11, 0.78) 0%, rgba(5, 7, 11, 0.34) 36%, rgba(5, 7, 11, 0) 64%);
+}
+
+.ma-root .ma-garage-panel {
+  --bay-accent: #f5a855;
+  width: min(calc(444 * var(--u)), 94vw);
+  max-height: 92vh;
+  pointer-events: auto;
+  background: linear-gradient(180deg, rgba(10, 13, 19, 0.95), rgba(7, 9, 14, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-top: calc(3 * var(--u)) solid var(--bay-accent);
+  border-radius: calc(4 * var(--u));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 calc(26 * var(--u)) calc(72 * var(--u)) rgba(0, 0, 0, 0.68);
+}
+
+/* Header */
+.ma-root .ma-garage-head {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(16 * var(--u));
+  padding: calc(18 * var(--u)) calc(22 * var(--u)) calc(14 * var(--u));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+}
+.ma-garage-brand { display: flex; flex-direction: column; min-width: 0; }
+.ma-garage-eyebrow {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: max(10px, calc(11 * var(--u)));
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--bay-accent);
+  line-height: 1.1;
+}
+.ma-root .ma-garage-title {
+  margin-top: calc(3 * var(--u));
+  font-size: calc(34 * var(--u));
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 0.96;
+  color: #f6f4ee;
+}
+.ma-garage-vehicle {
+  margin-top: calc(6 * var(--u));
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: calc(14 * var(--u));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.66);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-garage-wallet { flex: none; text-align: right; }
+.ma-garage-wallet .ma-label { color: rgba(255, 255, 255, 0.5); font-size: max(10px, calc(11 * var(--u))); letter-spacing: 0.18em; }
+.ma-garage-wallet .ma-wallet-value {
+  font-size: calc(30 * var(--u));
+  line-height: 1.05;
+  color: #7ef2ad;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Body & sections */
+.ma-root .ma-garage-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12 * var(--u));
+  padding: calc(14 * var(--u)) calc(18 * var(--u)) calc(14 * var(--u));
+}
+
+/* Diagnostics integrity card */
+.ma-garage-diag {
+  padding: calc(11 * var(--u)) calc(14 * var(--u)) calc(12 * var(--u));
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(3 * var(--u));
+}
+.ma-garage-diag-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(10 * var(--u));
+  margin-bottom: calc(8 * var(--u));
+}
+.ma-garage-diag-right { display: flex; align-items: baseline; gap: calc(8 * var(--u)); }
+.ma-garage-condtag {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: max(11px, calc(12 * var(--u)));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6ce89c;
+}
+.ma-garage-condtag[data-level='mid'] { color: #f5b45e; }
+.ma-garage-condtag[data-level='bad'] { color: #ff5d6c; }
+.ma-garage-condtxt {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: calc(18 * var(--u));
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  min-width: calc(36 * var(--u));
+  text-align: right;
+}
+.ma-garage-bar {
+  position: relative;
+  width: 100%;
+  height: calc(6 * var(--u));
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: calc(2 * var(--u));
+  overflow: hidden;
+}
+.ma-garage-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 1.5 * var(--u)), rgba(8, 11, 16, 0.85) calc(20% - 1.5 * var(--u)) 20%);
+  pointer-events: none;
+}
+.ma-garage-barfill {
+  height: 100%;
+  background: linear-gradient(90deg, #32d67c, #7cf5b2);
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ma-garage-barfill[data-level='mid'] { background: linear-gradient(90deg, #e88e3d, #ffd089); }
+.ma-garage-barfill[data-level='bad'] { background: linear-gradient(90deg, #e63946, #ff6b78); }
+
+/* Section groups */
+.ma-garage-section {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6 * var(--u));
+}
+.ma-garage-sec {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(10 * var(--u));
+  padding: 0 calc(2 * var(--u));
+}
+.ma-garage-sec-label {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: max(11px, calc(12 * var(--u)));
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.56);
+}
+.ma-garage-pickstate {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: max(10px, calc(11.5 * var(--u)));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.ma-garage-pickstate.is-preview { color: var(--bay-accent); }
+
+/* Active finish preview strip */
+.ma-garage-active {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+  padding: calc(7 * var(--u)) calc(12 * var(--u));
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(3 * var(--u));
+}
+.ma-garage-chip {
+  flex: none;
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  border-radius: 50%;
+  box-shadow:
+    inset 0 calc(2 * var(--u)) calc(3 * var(--u)) rgba(255, 255, 255, 0.45),
+    inset 0 calc(-2 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+.ma-garage-pick {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: calc(17 * var(--u));
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f4f1ea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Action rows */
+.ma-root .ma-garage-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(12 * var(--u));
+  min-height: calc(46 * var(--u));
+  padding: calc(8 * var(--u)) calc(14 * var(--u)) calc(8 * var(--u)) calc(16 * var(--u));
+  border-radius: calc(3 * var(--u));
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #f4f1ea;
+  transition: background 0.14s, border-color 0.14s, box-shadow 0.14s, transform 0.1s;
+}
+.ma-root .ma-garage-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: calc(2.5 * var(--u));
+  border-radius: 2px;
+  background: var(--bay-accent);
+  opacity: 0;
+  transform: scaleY(0.35);
+  transition: opacity 0.14s, transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ma-root .ma-garage-row:hover,
+.ma-root .ma-garage-row:focus {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.ma-root .ma-garage-row:hover::before,
+.ma-root .ma-garage-row:focus::before {
+  opacity: 1;
+  transform: none;
+}
+.ma-root .ma-garage-row.is-off {
+  opacity: 0.46;
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(255, 255, 255, 0.05);
+}
 .ma-root .ma-garage-row.is-denied { animation: ma-shake 0.25s linear; }
-.ma-garage-name { font-family: var(--display); font-weight: 800; font-size: calc(22 * var(--u)); text-transform: uppercase; }
-.ma-garage-price { font-family: var(--display); font-weight: 800; font-size: calc(24 * var(--u)); color: var(--money); font-variant-numeric: tabular-nums; }
-.ma-garage-note { min-height: calc(18 * var(--u)); padding: 0 calc(4 * var(--u)); font-size: calc(13 * var(--u)); color: var(--muted); }
-.ma-garage-note.is-bad { color: #ff9a8a; }
-.ma-garage-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: calc(8 * var(--u)); padding: calc(4 * var(--u)) 0 calc(6 * var(--u)); }
-.ma-root .ma-garage-sw { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 50%; padding: calc(3 * var(--u)); background: rgba(255, 243, 220, 0.08); }
-.ma-root .ma-garage-sw:hover, .ma-root .ma-garage-sw:focus { background: var(--cream); outline: none; }
-.ma-root .ma-garage-sw.is-picked { box-shadow: 0 0 0 calc(3 * var(--u)) #7ff3ff; }
-.ma-garage-dot { display: block; width: 100%; height: 100%; border-radius: 50%; box-shadow: inset 0 0 0 calc(1 * var(--u)) rgba(255, 255, 255, 0.35), inset 0 calc(-4 * var(--u)) calc(6 * var(--u)) rgba(0, 0, 0, 0.3); }
-.ma-garage-foot { justify-content: space-between; }
+
+.ma-garage-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: calc(20 * var(--u));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ma-garage-price {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: calc(22 * var(--u));
+  color: #7ef2ad;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+.ma-root .ma-garage-row.is-off .ma-garage-price {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: calc(16 * var(--u));
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ma-garage-note {
+  min-height: calc(16 * var(--u));
+  padding: 0 calc(2 * var(--u));
+  font-size: calc(13 * var(--u));
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.58);
+}
+.ma-garage-note:empty { display: none; }
+.ma-garage-note.is-bad { color: #ff8e84; }
+
+/* 18 glossy automotive paint swatches (6 x 3) */
+.ma-garage-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: calc(8 * var(--u));
+  padding: calc(4 * var(--u)) calc(2 * var(--u)) calc(6 * var(--u));
+}
+.ma-root .ma-garage-sw {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  padding: calc(3.5 * var(--u));
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transition: transform 0.12s, box-shadow 0.14s, background 0.14s;
+}
+.ma-root .ma-garage-sw:hover,
+.ma-root .ma-garage-sw:focus {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 calc(1.5 * var(--u)) rgba(255, 255, 255, 0.85);
+  transform: scale(1.07);
+  outline: none;
+}
+.ma-root .ma-garage-sw.is-picked {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 0 0 calc(2 * var(--u)) var(--bay-accent),
+    0 0 calc(14 * var(--u)) rgba(245, 168, 85, 0.34);
+  transform: scale(1.08);
+}
+.ma-garage-dot {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 calc(3 * var(--u)) calc(5 * var(--u)) rgba(255, 255, 255, 0.32),
+    inset 0 calc(-5 * var(--u)) calc(7 * var(--u)) rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+.ma-garage-dot::after {
+  content: '';
+  position: absolute;
+  left: 20%;
+  top: 14%;
+  width: 34%;
+  height: 18%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0));
+  transform: rotate(-24deg);
+  pointer-events: none;
+}
+
+/* Footer */
+.ma-root .ma-garage-foot {
+  justify-content: space-between;
+  padding: calc(12 * var(--u)) calc(18 * var(--u));
+  background: rgba(3, 5, 8, 0.58);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+.ma-garage-foot .ma-foot-hints { flex-wrap: nowrap; gap: calc(4 * var(--u)) calc(12 * var(--u)); }
+.ma-garage-foot .ma-foot-hint { font-size: calc(12 * var(--u)); letter-spacing: 0.06em; gap: calc(5 * var(--u)); white-space: nowrap; }
+.ma-root .ma-garage-exit { min-width: calc(108 * var(--u)); }

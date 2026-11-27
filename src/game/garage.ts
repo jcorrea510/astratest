@@ -1,14 +1,34 @@
-/** Round 7 garages (pure pricing / palette, used by Activities and tests). Round 9: selling cars. */
+/** Garages: pricing, curated automotive paint palette, and vehicle trade-in / fence logic. */
 import { VEHICLES, type VehicleKind } from '../vehicles/specs';
 import { CAR_PRICES, carValue } from './modes';
+import { BAYS } from './bays';
+
 export const RESPRAY = 150;
-/** Paint colours a garage offers (hex, name). Original names. */
+
+/** Curated automotive finishes a garage offers (hex, name). */
 export const GARAGE_PAINTS: [string, string][] = [
-  ['#1f2a44', 'Midnight Navy'], ['#e8e2d0', 'Bone White'], ['#3d3d42', 'Graphite'], ['#8a1c1c', 'Brick Red'],
-  ['#2fa39a', 'Harbor Teal'], ['#f26b3a', 'Sunset Orange'], ['#ffcc4d', 'Taxi Yellow'], ['#7b2cbf', 'Neon Violet'],
-  ['#15171a', 'Gloss Black'], ['#9aa3ab', 'Silver Fog'], ['#2f5d34', 'Racing Green'], ['#c9a227', 'Old Gold'],
+  ['#131518', 'Obsidian Black'],
+  ['#2a2d33', 'Carbon Graphite'],
+  ['#8d959e', 'Titanium Silver'],
+  ['#ebe7dc', 'Alabaster Pearl'],
+  ['#192844', 'Midnight Sapphire'],
+  ['#1e56a0', 'Pacific Cobalt'],
+  ['#2196a8', 'Meridian Teal'],
+  ['#1f5136', 'British Racing Green'],
+  ['#566b43', 'Olive Tactical'],
+  ['#8e1920', 'Crimson Lacquer'],
+  ['#c92924', 'Rosso Corsa'],
+  ['#e85d2a', 'Sunset Tangerine'],
+  ['#f2b729', 'Solar Gold'],
+  ['#a88742', 'Champagne Bronze'],
+  ['#5c2d91', 'Ultraviolet'],
+  ['#b83b6e', 'Vice Magenta'],
+  ['#4e3328', 'Espresso Metallic'],
+  ['#5c7c99', 'Slate Ice'],
 ];
-export const GARAGE_NAMES = ['Glow Garage', 'Fuel Stop service bay'];
+
+export const GARAGE_NAMES = BAYS.map(b => b.name);
+
 /** Repair price from the health fraction (1 = perfect): $0 when nothing to fix, else $60 + up to $440 by the damage. */
 export function repairPrice(healthFrac: number, lightsBroken = false): number {
   const dmg = Math.max(0, Math.min(1, 1 - healthFrac));
@@ -16,11 +36,11 @@ export function repairPrice(healthFrac: number, lightsBroken = false): number {
   return Math.round(60 + dmg * 440 + (lightsBroken ? 40 : 0));
 }
 
-// ---------------------------------------------------------------- Round 9: selling cars at the garage
+// ---------------------------------------------------------------- Selling cars at the garage
 
 /** A garage never buys these: emergency / military / public-transport kinds (and taxis, which carry a fare meter and a licence). */
 export const SELL_REFUSED: ReadonlySet<VehicleKind> = new Set<VehicleKind>(['police', 'fbi', 'swat', 'army', 'tank', 'bus', 'taxi']);
-/** Seconds between two sales at the same garage. Round 14 (owner): was 180 s, now a short breather so you can sell car after car. */
+/** Seconds between two sales at the same garage. */
 export const SELL_COOLDOWN = 15;
 /** Fence rates on the car's resale value (carValue): a hot street car is a fraction of a legit one, cars you bought pay far more. */
 export const FENCE_STOLEN = 0.05, FENCE_OWNED = 0.575;
@@ -40,6 +60,7 @@ export interface SellCtx {
   recentSameKind: number;
 }
 export interface SellQuote { ok: boolean; price: number; reason: string }
+
 /** Pure quote: price = car value x condition x fence rate x repeat-sale discount, with the refusals. */
 export function sellQuote(c: SellCtx): SellQuote {
   const no = (reason: string): SellQuote => ({ ok: false, price: 0, reason });
@@ -49,19 +70,25 @@ export function sellQuote(c: SellCtx): SellQuote {
   if (!c.owned && c.sinceHeat < HOT_WINDOW) return { ok: false, price, reason: 'Too hot. Somebody saw you take it: come back later.' };
   if (c.cooldownLeft > 0) return { ok: false, price, reason: `The buyer is busy. Next sale in ${fmtWait(c.cooldownLeft)}.` };
   if (price < 1) return { ok: false, price: 0, reason: 'Too wrecked to be worth anything.' };
-  return { ok: true, price, reason: c.owned ? 'Your own car: a fair offer.' : 'No papers, no questions. A fence price.' };
+  return { ok: true, price, reason: c.owned ? 'Registered title: full dealership trade-in.' : 'No papers, no questions. Cash fence buyout.' };
 }
+
 /** Offer without the refusal checks (used for the label): value x condition (a wreck pays a quarter at most) x rate x repeat discount. */
 export function sellPrice(kind: VehicleKind, healthFrac: number, owned: boolean, recentSameKind = 0): number {
   const cond = Math.max(0, Math.min(1, healthFrac)), condF = 0.25 + 0.75 * cond;
   const v = carValue(kind) * (owned ? FENCE_OWNED : FENCE_STOLEN) * condF * Math.pow(REPEAT_FACTOR, Math.max(0, recentSameKind));
   return Math.round(v / 5) * 5;
 }
-export function fmtWait(s: number): string { const m = Math.floor(s / 60), r = Math.ceil(s % 60); return m > 0 ? `${m}:${String(r === 60 ? 59 : r).padStart(2, '0')}` : `${Math.ceil(s)} s`; }
+
+export function fmtWait(s: number): string {
+  const m = Math.floor(s / 60), r = Math.ceil(s % 60);
+  return m > 0 ? `${m}:${String(r === 60 ? 59 : r).padStart(2, '0')}` : `${Math.ceil(s)} s`;
+}
 
 /** Per-garage sale bookkeeping (in-game seconds; persisted in the save as remaining time / age). */
 export interface SaleLog { cool: number[]; sold: { kind: VehicleKind; age: number }[] }
-export function newSaleLog(garages = 2): SaleLog { return { cool: Array.from({ length: garages }, () => 0), sold: [] }; }
+export function newSaleLog(garages = BAYS.length): SaleLog { return { cool: Array.from({ length: garages }, () => 0), sold: [] }; }
+
 /** Advances the clock (cooldowns count down, sales older than one in-game day drop out). */
 export function tickSales(log: SaleLog, dt: number, day = 1440): void {
   log.cool = log.cool.map(c => Math.max(0, c - dt));

@@ -160,9 +160,9 @@ diffuseColor.rgb *= col;`)
       .replace('#include <opaque_fragment>', `
 {
   float pNdv = clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
-  float pRim = pow(1.0 - pNdv, 3.4) * smoothstep(-0.25, 0.7, normal.y);
-  vec3 pRimTint = mix(vec3(0.08, 0.095, 0.115), vec3(0.09, 0.075, 0.06), uNight);
-  outgoingLight += (diffuseColor.rgb * 0.42 + pRimTint) * pRim * mix(0.22, 0.16, uNight);
+  float pRim = pow(1.0 - pNdv, 4.0) * smoothstep(-0.15, 0.78, normal.y);
+  vec3 pRimTint = mix(vec3(0.055, 0.068, 0.085), vec3(0.06, 0.05, 0.04), uNight);
+  outgoingLight += (diffuseColor.rgb * 0.26 + pRimTint) * pRim * mix(0.14, 0.11, uNight);
 }
 #include <opaque_fragment>`);
 }

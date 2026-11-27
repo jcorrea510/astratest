@@ -10,6 +10,7 @@ import type { Physics } from '../core/physics';
 import { type CityMap, type Block, type Road, CURB_HEIGHT, STREETS, AVENUES } from './citymap';
 import { utilityBoxGeo } from './props';
 import { type Chunked, type TrimBuilder, T_STONE, T_METAL, T_IRON, T_ROUGH, T_FABRIC, T_PAINT } from './builders';
+import { nearBayDriveway } from '../game/bays';
 
 export type PieceKind = 'bikerack' | 'bags' | 'planter' | 'kiosk' | 'shed' | 'guard' | 'plate' | 'manhole' | 'patch' | 'crack' | 'utilbox' | 'drain' | 'signpost';
 export interface Piece {
@@ -78,7 +79,7 @@ function planBlock(b: Block, city: CityMap, density: number, grid: Grid, out: Pi
       for (let attempt = 0; attempt < 8 && shedBudget > 0; attempt++) {
         const s0 = r.range(e.from + 14, e.to - 14 - L);
         let clear = true;
-        for (let s = s0 - 1; s <= s0 + L + 1 && clear; s += 1) for (const inset of [0.6, 1.5, 2.5, 3.5, 4.3]) { const p = P(s, inset); if (grid.near(p.x, p.z, 1.1)) { clear = false; break; } }
+        for (let s = s0 - 1; s <= s0 + L + 1 && clear; s += 1) for (const inset of [0.6, 1.5, 2.5, 3.5, 4.3]) { const p = P(s, inset); if (grid.near(p.x, p.z, 1.1) || nearBayDriveway(p.x, p.z, 2.5)) { clear = false; break; } }
         if (!clear) continue;
         const c = P(s0 + L / 2, 0); out.push({ kind: 'shed', x: c.x, z: c.z, ax: e.ax, nx: e.nx, nz: e.nz, len: L, seed: r.int(1, 9999), solid: true });
         for (let s = s0 - 1; s <= s0 + L + 1; s += 1) for (const inset of [0.6, 2.5, 4.3]) grid.add(P(s, inset));
@@ -92,7 +93,7 @@ function planBlock(b: Block, city: CityMap, density: number, grid: Grid, out: Pi
       const roll = r.next();
       const inset = r.range(0.8, 1.2);
       const p = P(s, inset);
-      if (grid.near(p.x, p.z, 2.4)) continue;
+      if (grid.near(p.x, p.z, 2.4) || nearBayDriveway(p.x, p.z, 2.4)) continue;
       let piece: Piece | null = null;
       if (!busy) { if (roll < 0.2 * density) piece = mk('bags', s, 0.9, 1, false); }
       else if (downtown) {

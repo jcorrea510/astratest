@@ -15,7 +15,7 @@ import type { FullLook, Sex } from './look';
 
 /** Walk frames baked per cycle (+ 1 idle frame after them). */
 export const VAT_FRAMES = 16;
-const LOW_TRIS = 600; // = real lod 3 (same geometry: the hand-over at the promote radius is seamless)
+const LOW_TRIS = 1200; // = real lod 2 silhouette (crisp heads, arms, and clothing even at mid-far distance)
 
 /** Per-person instance data: 6 x vec4 (see the shader). */
 export type CrowdLook = Float32Array;
@@ -114,27 +114,94 @@ vRegion = region; vCloth = cloth; vHn = hpos; vBind = position; vC0 = aC0; vC1 =
       .replace('#include <common>', `#include <common>
 uniform vec4 uNeck; uniform float uGround;
 flat varying float vRegion; varying float vCloth; varying vec3 vHn; varying vec3 vBind;
-flat varying vec4 vC0; flat varying vec4 vC1; flat varying vec4 vC2; flat varying vec4 vC3; flat varying vec4 vC4; flat varying float vWaist;`)
+flat varying vec4 vC0; flat varying vec4 vC1; flat varying vec4 vC2; flat varying vec4 vC3; flat varying vec4 vC4; flat varying float vWaist;
+bool gCrowdSkin = false;
+float chsh(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float cnoise(vec3 p) {
+  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(chsh(i), chsh(i + vec3(1,0,0)), f.x), mix(chsh(i + vec3(0,1,0)), chsh(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(chsh(i + vec3(0,0,1)), chsh(i + vec3(1,0,1)), f.x), mix(chsh(i + vec3(0,1,1)), chsh(i + vec3(1,1,1)), f.x), f.y), f.z);
+}`)
+      .replace('#include <lights_physical_pars_fragment>', `#include <lights_physical_pars_fragment>
+void RE_Direct_Crowd( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
+  if ( !gCrowdSkin ) {
+    RE_Direct_Physical( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+    return;
+  }
+  float ndl = dot( geometryNormal, directLight.direction );
+  vec3 wr = vec3( 0.48, 0.22, 0.11 );
+  vec3 wd = clamp( ( vec3( ndl ) + wr ) / ( vec3( 1.0 ) + wr ), vec3( 0.0 ), vec3( 1.0 ) );
+  reflectedLight.directDiffuse += directLight.color * wd * BRDF_Lambert( material.diffuseContribution );
+}
+#undef RE_Direct
+#define RE_Direct RE_Direct_Crowd`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 int ri = int(vRegion + 0.5);
 vec3 skinC = vC0.rgb, topC = vC1.rgb, botC = vC2.rgb, shoeC = vC3.rgb, hairC = vC4.rgb;
 vec3 col = skinC;
+bool isSkin = true;
 if (ri == 1) {
   float nd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2));
-  if (vCloth > 0.97 && nd < uNeck.z) col = skinC;
-  else if (vCloth >= vC4.w) col = topC;
-  else if (vCloth < vWaist) col = botC;
-} else if (ri == 2) { col = (vCloth < vC1.w && vCloth < 1.05) ? topC : skinC; }
-else if (ri == 3) { col = vCloth > vC3.w ? shoeC : (vCloth < vC2.w ? botC : skinC); if (vCloth > vC3.w && vBind.y < uGround + 0.028) col = vec3(0.85); }
-else if (ri == 4 || ri == 5 || ri == 8) col = hairC;
-else if (ri == 6) col = topC; else if (ri == 7) col = botC; else if (ri == 9) col = vec3(0.05); else if (ri == 12) col = vec3(0.8);
-if (ri == 0 && vHn.y > -1.5 && vC0.w > 0.5) {
-  float front = smoothstep(0.15, 0.8, vHn.z); float h = -0.42 + 0.84 * front;
-  col = mix(col, hairC, smoothstep(h - 0.04, h + 0.05, vHn.y));
+  if (vCloth > 0.97 && nd < uNeck.z) { col = skinC; isSkin = true; }
+  else if (vCloth >= vC4.w) {
+    col = topC; isSkin = false;
+    // Collar shadow & waist tuck AO + subtle fabric fold shading
+    float fold = cnoise(vBind * 9.0);
+    col *= (0.91 + 0.14 * fold) * (0.86 + 0.14 * smoothstep(vC4.w, vC4.w + 0.06, vCloth));
+    col *= 1.0 - 0.18 * smoothstep(0.92, 1.0, vCloth);
+  } else if (vCloth < vWaist) {
+    col = botC; isSkin = false;
+    // Dark belt line at waist + denim/trouser fold variation
+    if (vCloth > vWaist - 0.04) col = mix(col, vec3(0.06, 0.05, 0.045), 0.78);
+    col *= 0.92 + 0.12 * cnoise(vBind * 10.0);
+  }
+} else if (ri == 2) {
+  if (vCloth < vC1.w && vCloth < 1.05) { col = topC * (0.92 + 0.12 * cnoise(vBind * 11.0)); isSkin = false; }
+  else { col = skinC; isSkin = true; }
+} else if (ri == 3) {
+  if (vCloth > vC3.w) {
+    col = shoeC; isSkin = false;
+    if (vBind.y < uGround + 0.032) col = vec3(0.76, 0.75, 0.72);
+  } else if (vCloth < vC2.w) {
+    col = botC * (0.92 + 0.12 * cnoise(vBind * 10.0)); isSkin = false;
+  } else { col = skinC; isSkin = true; }
+} else if (ri == 4 || ri == 5 || ri == 8) {
+  col = hairC * (0.84 + 0.26 * cnoise(vBind * 28.0)); isSkin = false;
+} else if (ri == 6) { col = topC * 0.92; isSkin = false; }
+else if (ri == 7) { col = botC * 0.92; isSkin = false; }
+else if (ri == 9) { col = vec3(0.08, 0.08, 0.08); isSkin = false; }
+else if (ri == 12) { col = vec3(0.76); isSkin = false; }
+
+if (ri == 0 && vHn.y > -1.5) {
+  // Facial sculpting on mid-far pedestrians so they never read as featureless mannequins
+  float ax = abs(vHn.x);
+  float fz = smoothstep(0.32, 0.65, vHn.z);
+  if (fz > 0.0) {
+    // Eye sockets + iris hint + brows
+    float eye = exp(-pow((ax - 0.37) / 0.14, 2.0)) * exp(-pow((vHn.y - 0.02) / 0.065, 2.0)) * fz;
+    float iris = exp(-pow((ax - 0.37) / 0.065, 2.0)) * exp(-pow((vHn.y - 0.025) / 0.038, 2.0)) * fz;
+    float brow = exp(-pow((ax - 0.42) / 0.18, 2.0)) * exp(-pow((vHn.y - 0.16) / 0.035, 2.0)) * fz;
+    float noseSh = exp(-pow(ax / 0.14, 2.0)) * exp(-pow((vHn.y + 0.39) / 0.045, 2.0)) * fz;
+    float lip = exp(-pow(ax / 0.22, 2.0)) * exp(-pow((vHn.y + 0.58) / 0.055, 2.0)) * fz;
+    col *= 1.0 - 0.24 * eye - 0.20 * noseSh;
+    col = mix(col, vec3(0.12, 0.10, 0.09), iris * 0.65);
+    col = mix(col, hairC * 0.72, brow * 0.48);
+    col = mix(col, col * vec3(1.12, 0.72, 0.72), lip * 0.45);
+  }
+  // Jawline & neck shadow
+  float jawAo = smoothstep(-0.75, -1.02, vHn.y) * (1.0 - smoothstep(0.6, 0.92, vHn.z));
+  col *= 1.0 - 0.22 * jawAo;
+  if (vC0.w > 0.5) {
+    float frontH = smoothstep(0.15, 0.8, vHn.z); float h = -0.42 + 0.86 * frontH;
+    float hm = smoothstep(h - 0.04, h + 0.06, vHn.y);
+    col = mix(col, hairC * (0.82 + 0.28 * cnoise(vHn * 32.0)), hm);
+    if (hm > 0.5) isSkin = false;
+  }
 }
+gCrowdSkin = isSkin;
 diffuseColor.rgb = col;`);
   };
-  m.customProgramCacheKey = () => 'crowd-body-v1';
+  m.customProgramCacheKey = () => 'crowd-body-v2';
   return m;
 }
 

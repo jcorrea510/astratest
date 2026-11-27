@@ -296,12 +296,16 @@ export function addMacroVariation(m: THREE.MeshStandardMaterial, strength = 0.18
         if (mvd < 70.0) { float gd = mn(vMW.xz * 24.0) * 0.55 + mn(vMW.xz * 63.0) * 0.45;
           float gf = 1.0 - smoothstep(18.0, 70.0, mvd);
           diffuseColor.rgb *= 1.0 + (gd - 0.5) * ${(grain * 2).toFixed(3)} * gf; }` : ''}${road ? `
-        if (mvd < 110.0) { float ov = mn(vMW.xz * vec2(0.9, 0.32) + vec2(3.0, 9.0)) * 0.7 + mn(vMW.xz * 2.3) * 0.3;
-          mOil = smoothstep(0.60, 0.80, ov) * (1.0 - smoothstep(30.0, 110.0, mvd));
-          diffuseColor.rgb *= 1.0 - 0.28 * mOil; }` : ''} }`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, mix(0.42, 0.24, uNight), mOil * 0.72);' : ''}`);
+        if (mvd < 125.0) {
+          float ov = mn(vMW.xz * vec2(0.85, 0.30) + vec2(3.0, 9.0)) * 0.65 + mn(vMW.xz * 2.2) * 0.35;
+          float damp = mn(vMW.xz * 0.055 + vec2(11.4, 2.7)) * 0.62 + mn(vMW.xz * 0.19 + vec2(5.1, 8.3)) * 0.38;
+          float distFade = 1.0 - smoothstep(38.0, 125.0, mvd);
+          mOil = clamp(smoothstep(0.58, 0.80, ov) * 0.85 + smoothstep(0.56, 0.82, damp) * mix(0.28, 0.78, uNight), 0.0, 1.0) * distFade;
+          diffuseColor.rgb *= 1.0 - mix(0.18, 0.30, uNight) * mOil;
+        }` : ''} }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${road ? '\nroughnessFactor = mix(roughnessFactor, mix(0.38, 0.19, uNight), mOil * 0.78);' : ''}`);
   };
-  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r16';
+  m.customProgramCacheKey = () => key + (grain > 0 ? '-g' : '') + '-r17';
   return m;
 }
 
@@ -407,41 +411,84 @@ export function signAtlas(): THREE.Texture {
 function shade(hex: string, k: number) { const c = new THREE.Color(hex); if (k > 0) c.lerp(new THREE.Color(1, 1, 1), k); else c.multiplyScalar(1 + k); return `#${c.getHexString()}`; }
 
 export const BILLBOARD_COUNT = 8;
-/** Billboard posters (2 x 4 atlas) for invented products. */
+/** Billboard posters (2 x 4 atlas) for invented Port Meridian brands — AAA editorial typography and lighting. */
 export function billboardAtlas(): THREE.Texture {
   const { c, g } = canvas(2048, 1024);
   const ads = [
-    { t: 'FIZZWELL', s: 'Taste the tide.', a: '#ff6b4a', b: '#ffd166', shape: 'can' },
-    { t: 'COASTLINE FM', s: '98.6 · Afterglow hits all night', a: '#2b1b6b', b: '#ff7ab6', shape: 'wave' },
-    { t: 'HALYARD HOTEL', s: 'Rooms with a view of everything', a: '#14535c', b: '#f6e7c8', shape: 'tower' },
-    { t: 'ORBITAL', s: 'Phones that listen less.', a: '#121212', b: '#7ff3ff', shape: 'phone' },
-    { t: 'VANTA MOTORS', s: 'The new Stallion GT. Unreasonable.', a: '#0c0c0c', b: '#d62828', shape: 'car' },
-    { t: 'CLUCK SHACK', s: 'Fried. Fast. Forgiven.', a: '#f77f00', b: '#fcbf49', shape: 'bucket' },
-    { t: 'BLUE MARLIN', s: 'Island rum for city nights', a: '#003049', b: '#2a9d8f', shape: 'bottle' },
-    { t: 'SECOND CHANCE LAW', s: 'Arrested? Call 555-0199', a: '#e9ecef', b: '#adb5bd', shape: 'scale' },
+    { eye: 'PORT MERIDIAN COASTAL', t: 'FIZZWELL', s: 'COLD-PRESSED CITRUS · TASTE THE TIDE', a: '#1a0c0a', b: '#a82c1e', ac: '#ffb35c', dark: false, shape: 'can' },
+    { eye: '98.6 FM · LIVE FROM MIDTOWN', t: 'COASTLINE', s: 'AFTERGLOW SYNTH & LATE-NIGHT CRUISERS', a: '#0b0a1c', b: '#3d1757', ac: '#ff6ba8', dark: false, shape: 'wave' },
+    { eye: 'BAYSHORE WATERFRONT', t: 'HALYARD HOTEL', s: 'PENTHOUSE SUITES · ROOFTOP POOL', a: '#09181f', b: '#1c404b', ac: '#f2c985', dark: false, shape: 'tower' },
+    { eye: 'NEW SERIES IX', t: 'ORBITAL', s: 'TITANIUM FRAME. ZERO DISTRACTIONS.', a: '#090b10', b: '#1d2633', ac: '#6ee7ff', dark: false, shape: 'phone' },
+    { eye: 'VANTA PERFORMANCE DIVISION', t: 'STALLION GT', s: 'TWIN-TURBO V8 · BUILT FOR THE CAUSEWAY', a: '#090a0d', b: '#2b0d12', ac: '#ff3b4f', dark: false, shape: 'car' },
+    { eye: 'OPEN 24 HOURS · DRIVE-THRU', t: 'CLUCK SHACK', s: 'CRISP. SPICY. UNAPOLOGETICALLY FAST.', a: '#210e05', b: '#b84b0c', ac: '#ffd166', dark: false, shape: 'bucket' },
+    { eye: 'SMALL-BATCH HARBOR RESERVE', t: 'BLUE MARLIN', s: 'AGED IN OAK · POURED AFTER DARK', a: '#051521', b: '#0d3b4c', ac: '#e8b96a', dark: false, shape: 'bottle' },
+    { eye: 'MERIDIAN DEFENSE GROUP', t: 'SECOND CHANCE', s: 'ARRESTED? CALL 555-0199 · NO FEE UNTIL FREE', a: '#ece9e2', b: '#d5d0c5', ac: '#9e1c24', dark: true, shape: 'scale' },
   ];
   ads.forEach((ad, i) => {
     const x = (i % 4) * 512, y = Math.floor(i / 4) * 512, W = 512, H = 256, oy = y + 128;
-    const gr = g.createLinearGradient(x, oy, x + W, oy + H); gr.addColorStop(0, ad.a); gr.addColorStop(1, ad.b);
+    const gr = g.createLinearGradient(x, oy, x + W, oy + H);
+    gr.addColorStop(0, ad.a); gr.addColorStop(1, ad.b);
     g.fillStyle = gr; g.fillRect(x, oy, W, H);
-    const dark = ad.shape === 'scale';
-    g.fillStyle = dark ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + 410, oy + 90, 120, 0, Math.PI * 2); g.fill();
-    // product glyph
-    g.save(); g.translate(x + 400, oy + 140); g.fillStyle = dark ? '#343a40' : 'rgba(255,255,255,0.9)';
-    if (ad.shape === 'can') { g.fillRect(-35, -70, 70, 130); g.fillStyle = ad.a; g.fillRect(-35, -20, 70, 30); }
-    else if (ad.shape === 'car') { g.beginPath(); g.moveTo(-110, 30); g.lineTo(-90, -5); g.lineTo(-30, -25); g.lineTo(40, -25); g.lineTo(90, 0); g.lineTo(110, 30); g.closePath(); g.fill(); g.fillStyle = '#222'; g.beginPath(); g.arc(-60, 32, 18, 0, 7); g.arc(60, 32, 18, 0, 7); g.fill(); }
-    else if (ad.shape === 'phone') { g.fillRect(-40, -80, 80, 150); g.fillStyle = ad.b; g.fillRect(-32, -66, 64, 116); }
-    else if (ad.shape === 'tower') { g.fillRect(-30, -90, 60, 170); g.fillRect(-55, 10, 110, 70); }
-    else if (ad.shape === 'bottle') { g.fillRect(-14, -90, 28, 40); g.beginPath(); g.moveTo(-14, -50); g.lineTo(-40, -10); g.lineTo(-40, 80); g.lineTo(40, 80); g.lineTo(40, -10); g.lineTo(14, -50); g.fill(); }
-    else if (ad.shape === 'bucket') { g.beginPath(); g.moveTo(-60, -50); g.lineTo(60, -50); g.lineTo(45, 70); g.lineTo(-45, 70); g.closePath(); g.fill(); g.fillStyle = ad.a; g.fillRect(-55, -20, 110, 22); }
-    else if (ad.shape === 'scale') { g.fillRect(-4, -80, 8, 150); g.fillRect(-70, -70, 140, 8); g.beginPath(); g.arc(-60, -20, 26, 0, Math.PI); g.arc(60, -20, 26, 0, Math.PI); g.fill(); }
-    else { for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(0, 40 + k * 10, 90 - k * 14, Math.PI, 0); g.lineWidth = 8; g.strokeStyle = 'rgba(255,255,255,0.8)'; g.stroke(); } }
+    // Atmospheric radial studio spotlight behind product silhouette
+    const spot = g.createRadialGradient(x + 402, oy + 126, 12, x + 402, oy + 126, 155);
+    spot.addColorStop(0, ad.dark ? 'rgba(158,28,36,0.16)' : `${ad.ac}44`);
+    spot.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = spot; g.fillRect(x, oy, W, H);
+    // Subtle architectural framing border & top accent rule
+    g.fillStyle = ad.ac; g.fillRect(x, oy, W, 5);
+    g.strokeStyle = ad.dark ? 'rgba(15,18,24,0.14)' : 'rgba(255,255,255,0.12)';
+    g.lineWidth = 1.5; g.strokeRect(x + 12, oy + 14, W - 24, H - 28);
+    // Crisp bespoke graphic silhouette on right side
+    g.save(); g.translate(x + 402, oy + 132);
+    g.fillStyle = ad.dark ? '#1c2028' : 'rgba(255,255,255,0.92)';
+    if (ad.shape === 'can') {
+      g.fillRect(-32, -70, 64, 134);
+      g.fillStyle = ad.ac; g.fillRect(-32, -22, 64, 34);
+      g.fillStyle = 'rgba(255,255,255,0.28)'; g.fillRect(-24, -68, 10, 130);
+    } else if (ad.shape === 'car') {
+      g.beginPath(); g.moveTo(-104, 24); g.lineTo(-84, -4); g.lineTo(-26, -24); g.lineTo(38, -24); g.lineTo(88, -2); g.lineTo(104, 24); g.closePath(); g.fill();
+      g.fillStyle = ad.ac; g.fillRect(-98, 4, 22, 5); g.fillRect(72, 2, 26, 5);
+      g.fillStyle = '#11141a'; g.beginPath(); g.arc(-58, 26, 17, 0, Math.PI * 2); g.arc(58, 26, 17, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#9aa3b2'; g.lineWidth = 3; g.beginPath(); g.arc(-58, 26, 10, 0, Math.PI * 2); g.arc(58, 26, 10, 0, Math.PI * 2); g.stroke();
+    } else if (ad.shape === 'phone') {
+      g.fillRect(-38, -78, 76, 152);
+      const sg = g.createLinearGradient(-32, -68, 32, 68); sg.addColorStop(0, '#0f1b2b'); sg.addColorStop(1, ad.ac);
+      g.fillStyle = sg; g.fillRect(-32, -68, 64, 132);
+    } else if (ad.shape === 'tower') {
+      g.fillRect(-26, -86, 52, 166); g.fillRect(-52, 6, 104, 74);
+      g.fillStyle = ad.ac;
+      for (let wy = -74; wy < 68; wy += 16) g.fillRect(-18, wy, 36, 4);
+    } else if (ad.shape === 'bottle') {
+      g.fillRect(-13, -86, 26, 38);
+      g.beginPath(); g.moveTo(-13, -48); g.lineTo(-36, -10); g.lineTo(-36, 78); g.lineTo(36, 78); g.lineTo(36, -10); g.lineTo(13, -48); g.fill();
+      g.fillStyle = ad.ac; g.fillRect(-30, 8, 60, 40);
+    } else if (ad.shape === 'bucket') {
+      g.beginPath(); g.moveTo(-54, -44); g.lineTo(54, -44); g.lineTo(42, 72); g.lineTo(-42, 72); g.closePath(); g.fill();
+      g.fillStyle = ad.ac; g.fillRect(-48, -14, 96, 22);
+    } else if (ad.shape === 'scale') {
+      g.fillRect(-4, -76, 8, 146); g.fillRect(-66, -66, 132, 7); g.fillRect(-34, 66, 68, 8);
+      g.fillStyle = ad.ac; g.beginPath(); g.arc(-56, -18, 24, 0, Math.PI); g.arc(56, -18, 24, 0, Math.PI); g.fill();
+    } else {
+      for (let k = 0; k < 4; k++) {
+        g.beginPath(); g.arc(0, 38 + k * 10, 86 - k * 15, Math.PI, 0);
+        g.lineWidth = 7; g.strokeStyle = k % 2 === 0 ? ad.ac : 'rgba(255,255,255,0.82)'; g.stroke();
+      }
+    }
     g.restore();
-    g.fillStyle = dark ? '#1d1d1d' : '#fff'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-    let size = 62; g.font = `900 ${size}px Arial, sans-serif`; while (g.measureText(ad.t).width > 300 && size > 30) { size--; g.font = `900 ${size}px Arial, sans-serif`; }
-    g.fillText(ad.t, x + 28, oy + 120);
-    g.font = '600 24px Arial, sans-serif'; g.fillText(ad.s, x + 30, oy + 170, 330);
-    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, oy + H - 6, W, 6);
+    // Editorial condensed typography lockup
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = ad.ac;
+    g.font = '800 17px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+    g.fillText(ad.eye, x + 28, oy + 62);
+    g.fillStyle = ad.dark ? '#14171f' : '#f7f5f0';
+    let size = 70; g.font = `900 ${size}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`;
+    while (g.measureText(ad.t).width > 296 && size > 36) { size -= 2; g.font = `900 ${size}px "Barlow Condensed", "Arial Narrow", Arial, sans-serif`; }
+    g.fillText(ad.t, x + 26, oy + 136);
+    g.fillStyle = ad.dark ? 'rgba(20,23,31,0.74)' : 'rgba(244,242,236,0.78)';
+    g.font = '700 20px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+    g.fillText(ad.s, x + 28, oy + 178, 305);
+    // Subtle bottom shadow & print vignette
+    g.fillStyle = 'rgba(0,0,0,0.34)'; g.fillRect(x, oy + H - 8, W, 8);
   });
   const t = tex(c, false); t.anisotropy = 8; return t;
 }

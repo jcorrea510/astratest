@@ -30,17 +30,17 @@ float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453
 // primary white and sharp, shifted towards the root; secondary tinted, broader, shifted towards the tip. Both sparkle per strand.
 void RE_Direct_Hair(const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
   float nl = dot(geometryNormal, directLight.direction);
-  reflectedLight.directDiffuse += clamp((nl + 0.35) / 1.35, 0.0, 1.0) * directLight.color * BRDF_Lambert(material.diffuseColor);
-  float back = pow(clamp(dot(-directLight.direction, geometryViewDir) * 0.5 + 0.5, 0.0, 1.0), 4.0);
-  reflectedLight.directDiffuse += directLight.color * material.diffuseColor * (back * hairLight * hairDepth * 0.4 * (1.0 - 0.5 * clamp(nl, 0.0, 1.0)));
+  reflectedLight.directDiffuse += clamp((nl + 0.42) / 1.42, 0.0, 1.0) * directLight.color * BRDF_Lambert(material.diffuseColor);
+  float back = pow(clamp(dot(-directLight.direction, geometryViewDir) * 0.5 + 0.5, 0.0, 1.0), 3.6);
+  reflectedLight.directDiffuse += directLight.color * material.diffuseColor * (back * hairLight * hairDepth * 0.46 * (1.0 - 0.45 * clamp(nl, 0.0, 1.0)));
   vec3 T = normalize(vHairT), H = normalize(directLight.direction + geometryViewDir);
-  float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.2), H);
-  float s1 = pow(max(0.0, 1.0 - d1 * d1), 110.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 14.0);
-  float d3 = dot(normalize(T + geometryNormal * 0.45), H), s3 = pow(max(0.0, 1.0 - d3 * d3), 4.0); // broad soft anisotropic sheen
+  float d1 = dot(normalize(T - geometryNormal * 0.1), H), d2 = dot(normalize(T + geometryNormal * 0.22), H);
+  float s1 = pow(max(0.0, 1.0 - d1 * d1), 130.0), s2 = pow(max(0.0, 1.0 - d2 * d2), 18.0);
+  float d3 = dot(normalize(T + geometryNormal * 0.44), H), s3 = pow(max(0.0, 1.0 - d3 * d3), 5.0);
   vec3 tint = material.diffuseColor / max(max(material.diffuseColor.r, material.diffuseColor.g), max(material.diffuseColor.b, 0.03));
-  tint = mix(tint, vec3(1.0, 0.9, 0.8), 0.25);
-  float spark = mix(0.55, 1.6, hairSpark);
-  reflectedLight.directSpecular += directLight.color * smoothstep(-0.1, 0.35, nl) * hairSpec * (0.1 * s1 * spark + 0.07 * s2 * tint * (0.7 + 0.6 * hairSpark) + 0.02 * s3 * tint);
+  tint = mix(tint, vec3(1.0, 0.92, 0.84), 0.28);
+  float spark = mix(0.55, 1.45, hairSpark);
+  reflectedLight.directSpecular += directLight.color * smoothstep(-0.12, 0.34, nl) * hairSpec * (0.085 * s1 * spark + 0.065 * s2 * tint * (0.7 + 0.55 * hairSpark) + 0.018 * s3 * tint);
 }
 #undef RE_Direct
 #define RE_Direct RE_Direct_Hair`)
