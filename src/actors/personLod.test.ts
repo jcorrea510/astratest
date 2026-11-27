@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodyLodFor, extrasLodFor, BODY_LOD_TRIS } from './animLod';
+import { bodyLodFor, extrasLodFor, personExtrasLod, EXTRAS_NONE_M, BODY_LOD_TRIS } from './animLod';
 
 describe('person detail LOD', () => {
   it('steps down with distance and has hysteresis', () => {
@@ -24,5 +24,12 @@ describe('person detail LOD', () => {
     expect(extrasLodFor(33, true, 2)).toBe(2);
     expect(extrasLodFor(5, false, 0)).toBe(2);
     expect(extrasLodFor(5, true, 2)).toBe(0);
+  });
+  it('street people: full extras up close, none past the draw-call edge (27 Nov: 453 calls at a busy corner)', () => {
+    expect(personExtrasLod(20, true, 0)).toBe(0);
+    expect(personExtrasLod(30, true, 0)).toBe(1);
+    expect(personExtrasLod(EXTRAS_NONE_M * 1.2, true, 1)).toBe(2);
+    expect(personExtrasLod(50, true, 0)).toBe(2);
+    expect(personExtrasLod(5, false, 0)).toBe(2);
   });
 });
