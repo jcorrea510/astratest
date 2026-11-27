@@ -1,7 +1,7 @@
 /** LOD selection (pure) and per-kind triangle / draw-call budgets. */
 import { describe, it, expect } from 'vitest';
 import type { BufferGeometry } from 'three';
-import { pickLod, LOD_MID } from './vehicle';
+import { pickLod, LOD_MID, underShadowShown } from './vehicle';
 import { getTemplate } from './models/build';
 import { VEHICLES, type VehicleKind } from './specs';
 
@@ -31,4 +31,14 @@ describe('vehicle budgets', () => {
       if (kind !== 'tank') { expect(l[1].tris).toBeLessThan(l[0].tris / 4); expect(l[2].tris).toBeLessThan(l[0].tris / 15); }
     });
   }
+});
+
+describe('contact shadow under a car (27 Nov busy-corner budget)', () => {
+  it('near and mid cars keep it, far cars and flipped or airborne cars drop it', () => {
+    expect(underShadowShown(true, 1, 0)).toBe(true);
+    expect(underShadowShown(true, 1, 1)).toBe(true);
+    expect(underShadowShown(true, 1, 2)).toBe(false);
+    expect(underShadowShown(false, 1, 0)).toBe(false);
+    expect(underShadowShown(true, 0.2, 0)).toBe(false);
+  });
 });
