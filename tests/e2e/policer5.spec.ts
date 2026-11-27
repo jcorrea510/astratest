@@ -82,8 +82,19 @@ test.describe('police R5', () => {
     await page.evaluate(() => { const g = (window as any).__game; g.police.holdT = 9999; for (let i = 0; i < 90; i++) g.frame(1 / 30, false); });
     const hasHeli = await page.evaluate(() => !!(window as any).__game.police.dispatch.heli);
     expect(hasHeli).toBe(true);
-    await step(page, 45); // far longer than the 19 s search timer
-    expect(await heat(page)).toBe(4);
+    // far longer than the search timer; sampled every 5 s so a failure says why the heat went (it once read 0 on CI)
+    const trace = await page.evaluate(() => {
+      const g = (window as any).__game, P = g.police, out: any[] = [];
+      for (let i = 0; i < 45 * 30; i++) {
+        g.frame(1 / 30, false);
+        if (i % 150 === 149) {
+          const h = P.dispatch.heli, pp = g.player.pos;
+          out.push({ t: (i + 1) / 30, heat: P.heat, un: +P.state.unseenT.toFixed(1), seen: P.seenNow, hs: +(P.heliSeeT ?? 0).toFixed(2), heli: h ? { d: +Math.hypot(h.position.x - pp.x, h.position.z - pp.z).toFixed(0), y: +h.position.y.toFixed(0), dead: !!h.destroyed } : null, alive: g.player.alive, hp: Math.round(g.player.health), p: [+pp.x.toFixed(1), +pp.y.toFixed(1), +pp.z.toFixed(1)], ls: +pp.distanceTo(P.state.lastSeen).toFixed(0), death: g.deathT });
+        }
+      }
+      return out;
+    });
+    expect(await heat(page), JSON.stringify(trace)).toBe(4);
     expect(await page.evaluate(() => (window as any).__game.police.state.unseenT)).toBeLessThan(8); // the spotlight keeps resetting the search timer
     // put a solid roof between heli and player: LOS breaks and the search timer starts
     const lost = await page.evaluate(() => {
