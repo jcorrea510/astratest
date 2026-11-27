@@ -119,7 +119,10 @@ export function buildExpansion(
           tb.beam(a.x + nx * sg * (p.half + 0.35), a.y + 0.45, a.z + nz * sg * (p.half + 0.35), b.x + nx * sg * (p.half + 0.35), b.y + 0.45, b.z + nz * sg * (p.half + 0.35), 0.4, 0.9, C('#c4c0b8'), T_STONE);
           orientedBox(physics, a, b, 0.22, 1.0, 0.5, sg * (p.half + 0.35));
         }
-        if (p.lanes === 2) tb.beam(a.x, a.y + 0.4, a.z, b.x, b.y + 0.4, b.z, 0.5, 0.8, C('#c4c0b8'), T_STONE);
+        if (p.lanes === 2) {
+          tb.beam(a.x, a.y + 0.4, a.z, b.x, b.y + 0.4, b.z, 0.5, 0.8, C('#c4c0b8'), T_STONE);
+          orientedBox(physics, a, b, 0.32, 0.9, 0.45, 0);
+        }
         since += segLen;
         if (since > 28 && top > 3) {
           const gy = groundAt(b.x, b.z);
@@ -219,7 +222,17 @@ export function buildExpansion(
     const y = city.paths.find(p => p.kind === 'hill')!.pts.slice(-1)[0].y;
     const cx = LOOKOUT.x, cz = LOOKOUT.z - 8;
     // railing on the far side of the turning circle, telescope, radio mast, helipad
-    for (let k = 0; k <= 18; k++) { const a = Math.PI + (k / 18) * Math.PI; const x = cx + Math.cos(a) * (CUL_DE_SAC_R - 4), z = cz + Math.sin(a) * (CUL_DE_SAC_R - 4); tb.box(x, y + 0.5, z, 0.12, 1.0, 0.12, 0, C('#3a3d40'), T_METAL); if (k > 0) { const a0 = Math.PI + ((k - 1) / 18) * Math.PI; tb.beam(cx + Math.cos(a0) * (CUL_DE_SAC_R - 4), y + 1.0, cz + Math.sin(a0) * (CUL_DE_SAC_R - 4), x, y + 1.0, z, 0.08, 0.08, C('#3a3d40'), T_METAL); } }
+    for (let k = 0; k <= 18; k++) {
+      const a = Math.PI + (k / 18) * Math.PI;
+      const x = cx + Math.cos(a) * (CUL_DE_SAC_R - 4), z = cz + Math.sin(a) * (CUL_DE_SAC_R - 4);
+      tb.box(x, y + 0.5, z, 0.12, 1.0, 0.12, 0, C('#3a3d40'), T_METAL);
+      if (k > 0) {
+        const a0 = Math.PI + ((k - 1) / 18) * Math.PI;
+        const x0 = cx + Math.cos(a0) * (CUL_DE_SAC_R - 4), z0 = cz + Math.sin(a0) * (CUL_DE_SAC_R - 4);
+        tb.beam(x0, y + 1.0, z0, x, y + 1.0, z, 0.08, 0.08, C('#3a3d40'), T_METAL);
+        orientedBox(physics, { x: x0, y, z: z0 }, { x, y, z }, 0.18, 1.1, 0.55, 0);
+      }
+    }
     tb.cyl(cx + 6, y, cz - 10, 0.08, 0.08, 1.1, 6, C('#333'), T_METAL); tb.cyl(cx + 6, y + 1.1, cz - 10, 0.12, 0.08, 0.6, 8, C('#b8a060'), [0.3, 0.8, 0, 0], 0, 1.2);
     const L = lookoutSpots(city);
     const mx = L.mast.x, mz = L.mast.z, my = L.y - 0.05;

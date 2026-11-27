@@ -90,10 +90,16 @@ export class Npc {
   bench: Bench | null = null;
   /** delayed reaction to danger: seconds until it registers, and where from */
   alertT = 0; alertFrom = new THREE.Vector3(); alertFar = false;
+  /** tactical cover-peek cadence for officers */
+  peekT = 0; peeking = false;
+  /** organic pedestrian reactivity: cooldown between soft flinches/gestures, lateral yield step, personal-space crowd timer, and gaze target */
+  reactCool = 0; yieldX = 0; yieldZ = 0; yieldT = 0; crowdT = 0;
+  lookAtPos = new THREE.Vector3(); lookAtT = 0;
   constructor(physics: Physics, tpl: HumanTemplate, look: Look, public role: Role, x: number, z: number, y = 0.2) {
     this.char = new Character(physics, tpl, look, role === 'police' ? 'police' : role === 'gang' ? 'gang' : 'civilian', x, z, y);
     this.home.set(x, y, z);
     this.laneOffset = (Math.random() - 0.5) * 1.6;
+    this.speedMul = role === 'civilian' ? 0.86 + Math.random() * 0.28 : 1;
     this.lastPos.set(x, y, z);
   }
   arm(id: WeaponId, scene: THREE.Scene) {
@@ -166,6 +172,10 @@ export class NpcBrainRunner {
     const c = n.char, env = this.env, t = env.time();
     if (!c.alive) { n.brain = 'dead'; return; }
     n.think -= dt; n.cooldown -= dt; n.stateT += dt; n.actCool -= dt;
+    if (n.reactCool > 0) n.reactCool -= dt;
+    if (n.yieldT > 0) n.yieldT -= dt;
+    if (n.lookAtT > 0) n.lookAtT -= dt;
+    if (n.crowdT > 0) n.crowdT = Math.max(0, n.crowdT - dt * 0.55);
     if (n.activity && (n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender' || n.brain === 'fight')) this.endAct(n);
     if (c.blockT > 0) c.blockT -= dt;
     // poses belong to their brain: hands go down when the person runs / cowers / is hit, the guard drops when the fight is over
@@ -209,11 +219,27 @@ export class NpcBrainRunner {
     if (n.think <= 0 && !deferThink) n.think = 0.25 + Math.random() * 0.25;
 
     switch (n.brain) {
-      case 'wander': speed = this.wander(n, desired, dt) * n.speedMul; break;
+      case 'wander': {
+        speed = this.wander(n, desired, dt) * n.speedMul;
+        if (n.yieldT > 0) {
+          const onFootpath = !n.onCross && !n.pend?.crossing && !walksToVehicle(n);
+          const safe = !onFootpath || surfaceAt(env.city, c.pos.x + n.yieldX * 1.15, c.pos.z + n.yieldZ * 1.15) !== 'road';
+          if (safe) {
+            desired.x += n.yieldX * 1.35; desired.z += n.yieldZ * 1.35;
+            if (desired.lengthSq() > 1e-4) desired.normalize();
+            speed = Math.max(speed, 1.95 * n.speedMul);
+          }
+        }
+        break;
+      }
       case 'idle': {
         speed = 0;
         if (n.role !== 'civilian') break;
         if (n.idleFace !== null) faceYaw = n.idleFace;
+        if (n.yieldT > 0 && n.activity !== 'sitting' && surfaceAt(env.city, c.pos.x + n.yieldX * 1.1, c.pos.z + n.yieldZ * 1.1) !== 'road') {
+          desired.set(n.yieldX, 0, n.yieldZ);
+          if (desired.lengthSq() > 1e-4) { desired.normalize(); speed = 1.65; }
+        }
         if (n.activity && !n.actOn) { n.actOn = true; const a = ACT_ANIM[n.activity]; if (a && !c.human.busy) c.human.playAction(a); }
         const mate = n.buddy;
         const gone = n.activity === 'wait' && (!mate || (mate.brain !== 'idle' && mate.brain !== 'inside'));
@@ -309,15 +335,15 @@ export class NpcBrainRunner {
           if (w.melee) n.goal = tgt.pos.clone();
           else if (lowHealth && !n.coverPoint) { n.coverPoint = this.findCover(n, tgt.pos); n.goal = n.coverPoint ?? c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(6)); }
           else if (!seeing) n.goal = n.lastSeen.clone(); // push to last known position (flank)
-          else if (d > ideal * 1.4) { // close to firing range, each officer from a different angle (flanking)
+          else if (d > ideal * 1.4) { // close to firing range, each officer from a different angle (5-lane flanking spread)
             const away = tv.copy(c.pos).sub(tgt.pos).setY(0).normalize();
-            const flank = ((n.id % 3) - 1) * 0.6;
+            const flank = (((n.id % 5) - 2) * 0.48);
             const ca = Math.cos(flank), sa = Math.sin(flank);
             n.goal = tgt.pos.clone().add(new THREE.Vector3(away.x * ca - away.z * sa, 0, away.x * sa + away.z * ca).multiplyScalar(ideal));
           }
-          else if (n.stateT > 2.5 && Math.random() < (n.role === 'police' ? 0.5 : 0.35)) { // strafe or take cover between bursts
-            const cover = Math.random() < 0.6 ? this.findCover(n, tgt.pos) : null;
-            if (cover && cover.distanceTo(tgt.pos) < ideal * 2) n.goal = cover;
+          else if (n.stateT > 2.5 && Math.random() < (n.role === 'police' ? 0.55 : 0.35)) { // strafe or take cover between bursts
+            const cover = Math.random() < 0.65 ? this.findCover(n, tgt.pos) : null;
+            if (cover && cover.distanceTo(tgt.pos) < ideal * 2) { n.coverPoint = cover; n.goal = cover; }
             else { const side = tv.copy(tgt.pos).sub(c.pos).setY(0).normalize(); n.goal = c.pos.clone().add(new THREE.Vector3(-side.z, 0, side.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * this.rng.range(2, 5))); }
             n.stateT = 0;
           } else if (d < ideal * 0.5 && !w.melee) n.goal = c.pos.clone().add(tv.copy(c.pos).sub(tgt.pos).setY(0).normalize().multiplyScalar(3));
@@ -325,17 +351,29 @@ export class NpcBrainRunner {
         }
         if (n.goal) {
           tv.copy(n.goal).sub(c.pos); tv.y = 0; const gd = tv.length();
-          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : gd > 14 ? 5 : seeing ? (gd > 4 ? 3.6 : 2) : 4.2; } else { if (n.goal === n.coverPoint || (n.role === 'police' && seeing)) n.crouching = true; n.goal = null; }
+          if (gd > 0.8) { desired.copy(tv.normalize()); speed = w.melee ? 5.5 : gd > 14 ? 5 : seeing ? (gd > 4 ? 3.6 : 2) : 4.2; } else { if (n.goal === n.coverPoint || (n.role === 'police' && seeing)) { n.crouching = true; n.peeking = false; n.peekT = 0.65 + Math.random() * 0.5; } n.goal = null; }
         }
-        if (speed > 0) n.crouching = false;
+        if (speed > 0) { n.crouching = false; n.peeking = false; }
+        else if (n.role === 'police' && !w.melee) {
+          // Tactical cover-peek & crouch-reload: officers duck when reloading and cycle between crouched cover and standing bursts
+          if (n.reloadT > 0) { n.crouching = true; n.peeking = false; }
+          else {
+            n.peekT -= dt;
+            if (n.peekT <= 0) {
+              if (n.crouching && seeing) { n.crouching = false; n.peeking = true; n.peekT = 1.5 + Math.random() * 1.1; }
+              else if (n.peeking || n.coverPoint) { n.crouching = true; n.peeking = false; n.peekT = 0.8 + Math.random() * 0.7; }
+            }
+          }
+        }
         if (w.melee) { if (d < 1.6) this.meleeAttack(n, tgt); faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z); break; }
         // Shooting (nobody fires while a colleague is arresting the suspect: the bullets would hit the officer)
-        if (seeing && d < w.range && !(n.role === 'police' && env.copsHoldFire?.(n))) {
+        const tuckedInCover = n.role === 'police' && n.crouching && !!n.coverPoint && !n.peeking && d > 9;
+        if (seeing && d < w.range && !tuckedInCover && !(n.role === 'police' && env.copsHoldFire?.(n))) {
           aiming = true;
           faceYaw = Math.atan2(tgt.pos.x - c.pos.x, tgt.pos.z - c.pos.z);
           const facingOk = Math.abs(wrapAngle(faceYaw - c.yaw)) < 0.35;
-          if (n.clip <= 0 && n.reloadT <= 0) { n.reloadT = w.reload * 1.3; c.human.playOnce('Pistol_Reload', 'upper', 0.1); }
-          else if (facingOk && n.cooldown <= 0 && n.reloadT <= 0 && n.aimT > (n.role === 'police' ? 0.45 : 0.8) && tgt.alive) {
+          if (n.clip <= 0 && n.reloadT <= 0) { n.reloadT = w.reload * 1.3; if (n.role === 'police') n.crouching = true; c.human.playOnce('Pistol_Reload', 'upper', 0.1); }
+          else if (facingOk && n.cooldown <= 0 && n.reloadT <= 0 && n.aimT > (n.role === 'police' ? 0.42 : 0.8) && tgt.alive) {
             const t = npcFireTiming(n.role === 'police', w.auto, w.interval, n.burst, Math.random());
             if (n.burst <= 0) n.burst = t.burst;
             this.fire(n, tgt, d);
@@ -372,12 +410,22 @@ export class NpcBrainRunner {
       }
       case 'scripted': case 'passenger': case 'dead': break;
     }
-    // fighters ease their heading and speed (no jitter, no teleport-turns)
+    // Smooth steering for both fighters and civilians so nobody snaps direction robotically
     if ((n.role !== 'civilian' && (n.brain === 'combat' || n.brain === 'chase')) || n.brain === 'fight') {
-      const k = 1 - Math.exp(-dt * 5);
+      const k = 1 - Math.exp(-dt * 5.5);
       if (speed > 0) { if (n.mspeed < 0.2) n.mdir.copy(desired); else n.mdir.lerp(desired, k).normalize(); }
-      n.mspeed += (speed - n.mspeed) * (1 - Math.exp(-dt * 4));
+      n.mspeed += (speed - n.mspeed) * (1 - Math.exp(-dt * 4.5));
       if (n.mspeed < 0.15) { n.mspeed = 0; speed = 0; } else { desired.copy(n.mdir); speed = n.mspeed; }
+    } else if (n.brain === 'wander' || n.brain === 'idle' || n.brain === 'flee' || n.brain === 'ordered') {
+      const turnRate = n.brain === 'flee' ? 11 : 7.5;
+      const accelRate = n.brain === 'flee' ? 10 : 6.5;
+      if (speed > 0 && desired.lengthSq() > 1e-4) {
+        if (n.mspeed < 0.12 || n.mdir.lengthSq() < 1e-4) n.mdir.copy(desired);
+        else n.mdir.lerp(desired, 1 - Math.exp(-dt * turnRate)).normalize();
+      }
+      n.mspeed += (speed - n.mspeed) * (1 - Math.exp(-dt * accelRate));
+      if (n.mspeed < 0.08 && speed === 0) { n.mspeed = 0; speed = 0; }
+      else if (n.mdir.lengthSq() > 1e-4) { desired.copy(n.mdir); speed = n.mspeed; }
     } else n.mspeed = speed;
     // Movement with simple stuck recovery
     if (speed > 0) {
@@ -432,6 +480,26 @@ export class NpcBrainRunner {
       else if (!panicking && h.actionName === 'panic') h.stopAction('panic');
     }
     h.setUpperMode(n.weapon !== 'fists' && (aiming || n.brain === 'combat') ? 'pistol' : n.weapon !== 'fists' && n.brain === 'chase' ? (WEAPONS[n.weapon].twoHanded ? 'carry' : 'loco') : 'loco'); // one-hand guns leave the free arm swinging
+    // Organic head/neck gaze tracking: fighters lock eyes on their target, civilians glance at nearby movement or scan crosswalks
+    if (!n.far) {
+      let gx = 0, gy = 0, gz = 0, hasGaze = false;
+      if ((n.brain === 'combat' || n.brain === 'chase' || n.brain === 'fight') && n.target?.alive) {
+        gx = n.target.pos.x; gy = n.target.pos.y + 1.45; gz = n.target.pos.z; hasGaze = true;
+      } else if (n.lookAtT > 0) {
+        gx = n.lookAtPos.x; gy = n.lookAtPos.y; gz = n.lookAtPos.z; hasGaze = true;
+      }
+      if (hasGaze) {
+        const dx = gx - c.pos.x, dz = gz - c.pos.z, hd = Math.hypot(dx, dz);
+        const rel = wrapAngle(Math.atan2(dx, dz) - c.yaw);
+        if (hd > 0.35 && Math.abs(rel) < 1.35) {
+          h.lookYaw = THREE.MathUtils.clamp(rel, -0.88, 0.88);
+          h.lookPitch = THREE.MathUtils.clamp(Math.atan2(gy - (c.pos.y + 1.55), Math.max(0.8, hd)), -0.35, 0.35);
+        } else { h.lookYaw = 0; h.lookPitch = 0; }
+      } else if (n.brain === 'wander' && n.pend?.crossing) {
+        h.lookYaw = Math.sin(t * 1.35 + n.id * 1.7) * 0.42;
+        h.lookPitch = -0.04;
+      } else { h.lookYaw = 0; h.lookPitch = 0; }
+    }
     h.aimPitch = 0;
   }
   /**
@@ -488,12 +556,15 @@ export class NpcBrainRunner {
     // the round starts from the shooter's shoulder then, so the wall stops it
     { const sh = tvS.set(n.pos.x, n.pos.y + 1.35 * n.char.human.look.height, n.pos.z); if (!this.clearPath(sh, origin)) origin = tvO.copy(sh); }
     const aimAt = this.chest(tgt, tvA);
+    const lead = copLeadAimOffset(tgt.vel.x, tgt.vel.z, dist, n.role === 'police' ? 0.65 : 0.25);
+    aimAt.x += lead.dx; aimAt.z += lead.dz;
     // Accuracy: distance, target speed, own movement, time aiming; police/gang skill via n.accuracy
     const err = (0.045 + dist * 0.0016 + tgt.speed * 0.012 + n.char.speed * 0.01) * n.accuracy * (n.aimT > 2 ? 0.75 : 1.2) * (tgt.inVehicle ? 1.4 : 1);
     const dir = aimAt.sub(origin).normalize();
     dir.x += (Math.random() - 0.5) * err * 2; dir.y += (Math.random() - 0.5) * err; dir.z += (Math.random() - 0.5) * err * 2; dir.normalize();
     n.clip--;
     n.char.human.playOnce('Pistol_Shoot', 'upper', 0.04);
+    n.char.human.kickRecoil(w.twoHanded ? 1.05 : 0.72);
     this.env.combat.shoot(n.char, w, origin, dir, w.aimSpread);
   }
   muzzle(n: Npc, out: THREE.Vector3) {
@@ -787,4 +858,41 @@ export function fleeHeading(away: number, roadAt: (a: number, r: number) => bool
   if (!inRoad) { if (!roadAt(away, 2.5)) return null; for (const k of steps) { const a = away + k * Math.PI / 6; if (!roadAt(a, 2.5) && !roadAt(a, 1.2)) return a; } return null; }
   for (const r of [2.5, 5, 9]) for (const k of steps) { const a = away + k * Math.PI / 6; if (!roadAt(a, r)) return a; }
   return null;
+}
+
+/**
+ * Classifies how a calm civilian reacts to the player's proximity, speed, approach angle, gun aim, or fast vehicle pass.
+ * Pure helper (used by Population.reactToPlayer and unit tests).
+ */
+export function playerProximityReaction(
+  dist: number,
+  playerSpeed: number,
+  approachDot: number,
+  aimingAt: boolean,
+  inVehicle: boolean,
+): 'none' | 'glance' | 'yield' | 'startle' | 'shove' | 'surrender' | 'dive' {
+  if (aimingAt && dist < 28) return 'surrender';
+  if (inVehicle) {
+    if (playerSpeed > 8.5 && dist < 5.5 && approachDot > 0.25) return 'dive';
+    if (playerSpeed > 5.5 && dist < 11) return 'glance';
+    return 'none';
+  }
+  if (dist < 0.85 && playerSpeed > 3.6 && approachDot > 0.45) return 'shove';
+  if (dist < 6.5 && playerSpeed > 4.2 && approachDot > 0.5) return 'startle';
+  if ((dist < 3.6 && playerSpeed > 1.4 && approachDot > 0.35) || dist < 1.55) return 'yield';
+  if (dist < 8.5) return 'glance';
+  return 'none';
+}
+
+/**
+ * Computes horizontal lead aim offset for an armed NPC shooting at a moving target.
+ * Scales smoothly with distance and officer skill while clamping max lead to prevent overshoot on sudden jukes. Pure (tests).
+ */
+export function copLeadAimOffset(targetVx: number, targetVz: number, dist: number, skill: number): { dx: number; dz: number } {
+  const s = Math.max(0, Math.min(1, skill));
+  const flightT = Math.min(0.45, Math.max(0, dist) / 75);
+  const k = flightT * s;
+  const dx = Math.max(-2.2, Math.min(2.2, targetVx * k));
+  const dz = Math.max(-2.2, Math.min(2.2, targetVz * k));
+  return { dx, dz };
 }

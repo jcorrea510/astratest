@@ -2,6 +2,22 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Round 16 (Collision fixes, green-box render fix, realistic people/NPCs & AAA UI)
+- World Collisions: added static colliders for hillside trees, north treeline, beach palms, promenade/plaza planters, roadside
+  guardrails, elevated freeway center jersey barriers, Heights bollards, Vista Lookout railing, West/East seawall railings, quay
+  chain-link fences, hillside front-yard fences/hedges, sidewalk bike racks, and construction hoarding; widened tree trunk colliders.
+- Green-Box Render Fix (Medium/High): eliminated WebGL2/Metal framebuffer feedback loop in AOPass (unbinds depth texture units +
+  resets renderer state before bloom); switched composer DepthTexture from FloatType to UnsignedIntType; sanitized HDR inputs in
+  UnrealBloom high-pass and OUTPUT_GRADE_FRAG; hardened AO_FRAG/AO_BLUR_FRAG/CAS_GLSL against NaN/Inf/div-by-zero; fixed resize
+  double-reallocation and cleared FBOs after resize.
+- People Graphics, Non-Robotic NPCs & Tactical Cops: upgraded skin subsurface back-scatter, jaw/collar AO, facial lashline/corneal
+  catchlights, and fabric drape/crease shading; added procedural breathing, idle weight shift, turn bank, smooth head/neck gaze
+  tracking, and firearm recoil kick; smoothed civilian steering & cadence; added responsive multi-tier civilian reactions to player
+  movement and fast cars (glance, yield, crowd annoyance, flinch, shove, kerb dive); upgraded police gunplay with 5-lane flanking,
+  crouch-reload, cover-peek cadence, and target leading.
+- AAA UI: tightened obsidian surfaces, daylight-legible bars, precision circular radar bezel, crisp tabular typography, and studio
+  title/pause/toast/objective styling (zero runtime `backdrop-filter` on live HUD).
+
 ## Round 15 (AAA open-world graphics, driving/combat feel & UI overhaul)
 - World & Lighting: dual-cone headlight ground projections + soft underbody AO contact shadows per vehicle; instanced atmospheric
   streetlamp light halos (1 draw call); organic coastal chaparral grass + world-space hillside variation; architectural walnut/stone

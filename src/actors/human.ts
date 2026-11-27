@@ -184,6 +184,19 @@ export class Human {
   private deathClip = 'Death01'; private deathLock = false;
   private fingers: { bone: THREE.Object3D; rest: THREE.Quaternion }[] = [];
   private relax = 1;
+  /** Organic life & gaze targets (rad, relative to body forward; driven by NPC brain or player). */
+  private lifePhase = Math.random() * Math.PI * 2;
+  lookYaw = 0;
+  lookPitch = 0;
+  private curLookYaw = 0;
+  private curLookPitch = 0;
+  private curLean = 0;
+  private recoil = 0;
+  private lifePose: Record<'spine' | 'chest' | 'neck' | 'head' | 'armR' | 'armL', Euler> = {
+    spine: [0, 0, 0], chest: [0, 0, 0], neck: [0, 0, 0], head: [0, 0, 0], armR: [0, 0, 0], armL: [0, 0, 0],
+  };
+  /** Adds a short procedural shoulder/chest recoil impulse on gunfire. */
+  kickRecoil(amount = 0.85) { this.recoil = Math.min(1.4, this.recoil + amount); }
 
   constructor(private tpl: HumanTemplate, look: Look) {
     this.look = resolveLook(look);
@@ -476,6 +489,36 @@ export class Human {
       this.applyPose(samplePose(a.def.poses, u, this.poseTmp), actK);
     }
     if (this.state === 'cower' && (!this.act || this.act.name !== 'cower')) this.applyPose(samplePose(ACTIONS.cower.poses!, 0, this.poseTmp), Math.min(1, this.stateTime * 4));
+    // Organic life layer: subtle breathing, idle weight shift, turning bank, head/neck look-at tracking, and weapon recoil.
+    if (this.state !== 'dead' && this.state !== 'drive') {
+      const lk = dt === 0 ? 1 : 1 - Math.exp(-dt * 8.5);
+      this.curLookYaw += (THREE.MathUtils.clamp(this.lookYaw, -0.95, 0.95) - this.curLookYaw) * lk;
+      this.curLookPitch += (THREE.MathUtils.clamp(this.lookPitch, -0.42, 0.42) - this.curLookPitch) * lk;
+      const wantLean = this.state === 'loco' ? THREE.MathUtils.clamp(this.turnRate * Math.min(v, 5.5) * 1.45, -8.5, 8.5) : 0;
+      this.curLean += (wantLean - this.curLean) * (dt === 0 ? 1 : 1 - Math.exp(-dt * 7));
+      this.recoil = dt === 0 ? 0 : this.recoil * Math.exp(-dt * 17);
+      const bFreq = v > 3.5 ? 4.2 : v > 0.5 ? 2.4 : 1.45;
+      const bAmp = v > 3.5 ? 1.55 : v > 0.5 ? 0.95 : 0.72;
+      const breath = Math.sin(this.stateTime * bFreq + this.lifePhase) * bAmp;
+      const idleW = this.state === 'loco' && v < 0.25 && this.upperMode === 'loco' && !a ? 1 : 0;
+      const idleSway = idleW * Math.sin(this.stateTime * 0.62 + this.lifePhase * 1.7);
+      const idleGlance = idleW * Math.sin(this.stateTime * 0.41 + this.lifePhase * 2.3) * 6.5;
+      const lookYDeg = this.curLookYaw * (180 / Math.PI) + idleGlance;
+      const lookPDeg = -this.curLookPitch * (180 / Math.PI);
+      const lp = this.lifePose;
+      lp.spine[0] = breath * 0.45; lp.spine[1] = idleSway * 1.6; lp.spine[2] = this.curLean * 0.45 + idleSway * 1.1;
+      lp.chest[0] = breath * 0.75 - this.recoil * 6.5; lp.chest[1] = lookYDeg * 0.12 - idleSway * 0.8; lp.chest[2] = this.curLean * 0.55;
+      lp.neck[0] = lookPDeg * 0.35 - breath * 0.25; lp.neck[1] = lookYDeg * 0.34; lp.neck[2] = -this.curLean * 0.2;
+      lp.head[0] = lookPDeg * 0.65 - breath * 0.15; lp.head[1] = lookYDeg * 0.54; lp.head[2] = -this.curLean * 0.25 + idleSway * 1.2;
+      if (this.recoil > 0.015) {
+        lp.armR[0] = -this.recoil * 11; lp.armR[1] = 0; lp.armR[2] = this.recoil * 4;
+        lp.armL[0] = -this.recoil * 7; lp.armL[1] = 0; lp.armL[2] = -this.recoil * 3;
+      } else {
+        lp.armR[0] = 0; lp.armR[1] = 0; lp.armR[2] = 0;
+        lp.armL[0] = 0; lp.armL[1] = 0; lp.armL[2] = 0;
+      }
+      this.applyPose(lp, 1);
+    }
     if (this.reach.w > 0.001) {
       this.root.updateMatrixWorld(true);
       if (this.reach.L) this.solveArm('L', this.reach.L, this.reach.w);

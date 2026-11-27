@@ -3,10 +3,13 @@ import * as THREE from 'three';
 import { vehicleGearRpm } from '../vehicles/vehicle';
 import { chaseCameraFx } from './camera';
 import { addMacroVariation } from '../render/materials';
-import { OUTPUT_GRADE_FRAG } from '../render/renderer';
+import { OUTPUT_GRADE_FRAG, composerTargetOptions } from '../render/renderer';
+import { AO_FRAG, AO_BLUR_FRAG, CAS_GLSL } from '../render/post';
 import { FACADE_FRAG_PARS } from '../world/facadeShader';
 import { Inventory } from '../combat/weapons';
 import { wheelSlots } from '../combat/wheelSlots';
+import { playerProximityReaction, copLeadAimOffset } from '../actors/npc';
+import { QUALITY } from '../core/settings';
 
 describe('AAA driving, camera, shader & UI polish', () => {
   it('vehicleGearRpm computes reverse, neutral, progressive gears and clamped RPM', () => {
@@ -93,5 +96,42 @@ describe('AAA driving, camera, shader & UI polish', () => {
       expect(st.value).toBeGreaterThanOrEqual(0);
       expect(st.value).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('post-processing & depth targets harden against NaN/Inf full-screen green flashes on Medium/High', () => {
+    expect(OUTPUT_GRADE_FRAG).toContain('sanitizeHdr(');
+    expect(AO_FRAG).toContain('cross(dx, dy)');
+    expect(AO_FRAG).toContain('!(ao >= 0.0 && ao <= 1.0)');
+    expect(AO_BLUR_FRAG).toContain('max(wsum, 1e-4)');
+    expect(CAS_GLSL).toContain('clamp(max(m, vec3(0.0)), vec3(0.0), vec3(64.0))');
+    const medTarget = composerTargetOptions(1280, 720, 0, QUALITY.medium.ao > 0);
+    expect(medTarget.depthTexture).toBeDefined();
+    expect(medTarget.depthTexture!.type).toBe(THREE.UnsignedIntType);
+  });
+
+  it('playerProximityReaction classifies civilian reactions across glance, yield, startle, shove, surrender, and fast car dive', () => {
+    expect(playerProximityReaction(12, 1.5, 0.8, false, false)).toBe('none');
+    expect(playerProximityReaction(7.0, 1.2, 0.2, false, false)).toBe('glance');
+    expect(playerProximityReaction(2.8, 2.2, 0.8, false, false)).toBe('yield');
+    expect(playerProximityReaction(1.2, 0.0, 0.0, false, false)).toBe('yield');
+    expect(playerProximityReaction(4.5, 5.4, 0.85, false, false)).toBe('startle');
+    expect(playerProximityReaction(0.7, 5.2, 0.9, false, false)).toBe('shove');
+    expect(playerProximityReaction(14, 0, 0.9, true, false)).toBe('surrender');
+    expect(playerProximityReaction(4.0, 12, 0.8, false, true)).toBe('dive');
+    expect(playerProximityReaction(8.5, 8.0, 0.1, false, true)).toBe('glance');
+  });
+
+  it('copLeadAimOffset leads moving targets proportionally to velocity and skill without overshooting', () => {
+    const still = copLeadAimOffset(0, 0, 20, 0.65);
+    expect(still.dx).toBe(0);
+    expect(still.dz).toBe(0);
+
+    const moving = copLeadAimOffset(6, -3, 30, 0.65);
+    expect(moving.dx).toBeGreaterThan(0.5);
+    expect(moving.dz).toBeLessThan(-0.25);
+
+    const fastFar = copLeadAimOffset(40, -40, 90, 1);
+    expect(Math.abs(fastFar.dx)).toBeLessThanOrEqual(2.2);
+    expect(Math.abs(fastFar.dz)).toBeLessThanOrEqual(2.2);
   });
 });

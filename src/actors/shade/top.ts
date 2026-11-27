@@ -373,9 +373,15 @@ export const TOP_GLSL = /* glsl */ `  // fabric coordinates in metres: tq.x runs
   // printed ink sits on top of the weave: smoother, slightly glossy
   rough = mix(rough, 0.52, pInk);
   hgt = hgt * (1.0 - 0.75 * pInk) + 0.0002 * pInk;
-  col *= 0.97 + 0.06 * grain;
-  rough = clamp(rough, 0.25, 1.0);
+  // subtle natural macro drape & ambient self-shadowing (waist tuck + underarm crease) so garments have volumetric depth
+  float drape = vnoise(vBind * 7.5 + vec3(0.0, 2.3, 0.0));
+  col *= (0.94 + 0.09 * drape) * (0.97 + 0.06 * grain);
+  if (ri == 1) {
+    float armpitAo = smoothstep(0.58, 0.92, abs(bn.x)) * smoothstep(0.55, 0.72, vCloth) * (1.0 - smoothstep(0.84, 0.96, vCloth));
+    col *= 1.0 - 0.16 * armpitAo;
+  }
+  rough = clamp(rough, 0.24, 0.98);
   // fabric sheen: cotton jersey matte, shirting and fleece fuzz a little, shell/suit/dress cloth most
-  gSheen = (kJersey ? 0.03 : kFleece ? 0.2 : kPolo ? 0.08 : kJacket ? 0.22 : kSuit ? 0.3 : (kShirt || kBlouse || kUni) ? 0.14 : 0.26) * (1.0 - pInk);
+  gSheen = (kJersey ? 0.06 : kFleece ? 0.24 : kPolo ? 0.11 : kJacket ? 0.26 : kSuit ? 0.34 : (kShirt || kBlouse || kUni) ? 0.18 : 0.28) * (1.0 - pInk);
   bumpH = hgt;
 `;

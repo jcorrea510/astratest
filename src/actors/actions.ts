@@ -69,17 +69,46 @@ export const ACTIONS: Record<string, ActionDef> = {
   stagger: { clip: 'Hit_Chest', layer: 'full', rate: 0.9, fade: 0.06, poses: [[0, {}], [0.3, { spine: [-14, 0, 6], chest: [-10, 0, 0], head: [-12, 0, 0], armL: [-20, 0, 25], armR: [-20, 0, -25] }], [1, {}]] },
   knockdown: { clip: 'Death01', layer: 'full', rate: 1.35, fade: 0.06, hold: true },
   get_up: { clip: 'Death01', layer: 'full', reverse: true, rate: 1.1, fade: 0.12 },
-  // --- reactions / civilians
-  cower: { clip: 'Crouch_Idle_Loop', layer: 'full', loop: true, hold: true, fade: 0.2, poses: [[0, sym({ chest: [18, 0, 0], neck: [15, 0, 0], head: [20, 0, 0], armL: [-120, 0, 30], foreL: [-110, 0, 0] })]] },
-  // Round 7: hands lead (forearms come up in front of the chest first, then open out beside the head), not the elbows
-  // Round 9 (owner: people "put their hands up weirdly" - it read as a shrug): upper arms out level with the shoulders, forearms
-  // straight up, open hands by the head
-  hands_up: { layer: 'upper', hold: true, dur: 0.5, fade: 0.15, poses: [[0, {}], [0.45, sym({ armL: [-20, 0, 55], foreL: [-30, 0, 60], handL: [-10, 0, 0], head: [-2, 0, 0] })], [1, sym({ armL: [-14, 0, 84], foreL: [-6, 0, 92], handL: [-6, 0, 0], head: [-4, 0, 0], chest: [-3, 0, 0] })]] },
-  // fist-fight stance: fists up by the chin, elbows tucked, slight forward lean
-  guard: { layer: 'upper', hold: true, dur: 0.25, fade: 0.15, poses: [[0, {}], [1, sym({ armL: [-38, 0, 12], foreL: [-118, 0, 0], head: [6, 0, 0], chest: [8, 0, 0] })]] },
+  // --- reactions / civilians (asymmetric, organic weight & breathing loops — never mirrored statues)
+  cower: { clip: 'Crouch_Idle_Loop', layer: 'full', loop: true, hold: true, dur: 1.4, fade: 0.2, poses: [
+    [0, { spine: [10, -4, 3], chest: [20, -6, 4], neck: [14, 4, 0], head: [18, 8, -5], armL: [-112, 12, 34], foreL: [-116, 0, -14], armR: [-94, -10, -24], foreR: [-102, 0, 18] }],
+    [0.5, { spine: [12, -2, 2], chest: [23, -4, 3], neck: [16, 2, 0], head: [21, 5, -3], armL: [-116, 14, 38], foreL: [-120, 0, -16], armR: [-98, -12, -26], foreR: [-108, 0, 20] }],
+    [1, { spine: [10, -4, 3], chest: [20, -6, 4], neck: [14, 4, 0], head: [18, 8, -5], armL: [-112, 12, 34], foreL: [-116, 0, -14], armR: [-94, -10, -24], foreR: [-102, 0, 18] }],
+  ] },
+  // Round 7 / Round 16: natural nervous surrender (hands lead elbows on the way up, asymmetric shoulders & head at top)
+  hands_up: { layer: 'upper', hold: true, dur: 0.48, fade: 0.06, poses: [
+    [0, {}],
+    [0.45, { chest: [-1, -2, 0], head: [-2, 3, -1], shL: [3, 0, 0], shR: [4, 0, 0], armL: [-14, 2, 26], foreL: [-10, 0, 128], handL: [-8, 0, 0], armR: [-12, -3, -24], foreR: [-8, 0, -124], handR: [-6, 0, 0] }],
+    [1, { chest: [-3, -4, 1], head: [-3, 5, -2], shL: [4, 0, 0], shR: [6, 0, 0], armL: [-16, 4, 82], foreL: [-8, 0, 90], handL: [-8, 0, 0], armR: [-12, -5, -86], foreR: [-4, 0, -94], handR: [-6, 0, 0] }],
+  ] },
+  // authentic bladed street-fighter guard: lead left hand higher, rear right hand cocked near chin, torso angled
+  guard: { layer: 'upper', loop: true, hold: true, dur: 1.2, fade: 0.15, poses: [
+    [0, { spine: [4, -12, 0], chest: [10, -16, 2], neck: [0, 14, 0], head: [6, 14, -2], armL: [-46, 10, 14], foreL: [-106, 0, -8], armR: [-30, -8, -14], foreR: [-126, 0, 12] }],
+    [0.5, { spine: [6, -10, -1], chest: [13, -14, 1], neck: [0, 12, 0], head: [8, 12, 0], armL: [-50, 12, 16], foreL: [-110, 0, -6], armR: [-33, -6, -12], foreR: [-128, 0, 10] }],
+    [1, { spine: [4, -12, 0], chest: [10, -16, 2], neck: [0, 14, 0], head: [6, 14, -2], armL: [-46, 10, 14], foreL: [-106, 0, -8], armR: [-30, -8, -14], foreR: [-126, 0, 12] }],
+  ] },
   // covering up: forearms in front of the face
   block: { layer: 'upper', dur: 0.6, fade: 0.08, soft: true, poses: [[0, {}], [0.2, sym({ armL: [-62, 0, -6], foreL: [-135, 0, 8], head: [12, 0, 0], chest: [12, 0, 0] })], [0.8, sym({ armL: [-62, 0, -6], foreL: [-135, 0, 8], head: [12, 0, 0], chest: [12, 0, 0] })], [1, {}]] },
-  panic: { layer: 'upper', loop: true, hold: true, dur: 0.5, fade: 0.15, poses: [[0, sym({ armL: [-40, 0, 50], foreL: [-60, 0, 0], head: [-8, 0, 0] })], [0.5, sym({ armL: [-70, 0, 35], foreL: [-90, 0, 0], head: [-4, 0, 0] })], [1, sym({ armL: [-40, 0, 50], foreL: [-60, 0, 0], head: [-8, 0, 0] })]] },
+  // panicked flee: frantic asymmetric arms + quick glances back over the shoulder
+  panic: { layer: 'upper', loop: true, hold: true, dur: 0.65, fade: 0.14, poses: [
+    [0, { chest: [10, -6, 3], neck: [-4, 10, 0], head: [-6, 18, -3], armL: [-46, 8, 52], foreL: [-68, 0, -8], armR: [-28, -6, -34], foreR: [-76, 0, 6] }],
+    [0.5, { chest: [12, 6, -3], neck: [-2, -8, 0], head: [-4, -14, 3], armL: [-32, 6, 34], foreL: [-78, 0, -6], armR: [-58, -8, -46], foreR: [-84, 0, 8] }],
+    [1, { chest: [10, -6, 3], neck: [-4, 10, 0], head: [-6, 18, -3], armL: [-46, 8, 52], foreL: [-68, 0, -8], armR: [-28, -6, -34], foreR: [-76, 0, 6] }],
+  ] },
+  // startled flinch when player sprints at them, swerves a car near the kerb, or brandishes a weapon
+  flinch: { layer: 'upper', dur: 0.68, fade: 0.08, soft: true, poses: [
+    [0, {}],
+    [0.24, { spine: [-6, 8, 4], chest: [-8, 12, 5], neck: [6, -6, 0], head: [8, -10, -6], shL: [12, 0, 0], shR: [10, 0, 0], armL: [-44, 10, 32], foreL: [-82, 0, -14], armR: [-36, -8, -28], foreR: [-74, 0, 10] }],
+    [0.65, { spine: [-3, 4, 2], chest: [-4, 6, 2], head: [4, -5, -2], armL: [-20, 4, 14], foreL: [-40, 0, -6], armR: [-16, -4, -12], foreR: [-34, 0, 4] }],
+    [1, {}],
+  ] },
+  // annoyed / "watch it!" gesture when bumped or crowded by the player
+  annoyed: { layer: 'upper', dur: 1.05, fade: 0.12, soft: true, poses: [
+    [0, {}],
+    [0.28, { chest: [-4, -10, -3], head: [-4, 8, 6], armR: [-34, -12, -32], foreR: [-52, 0, 18], handR: [0, 0, -18], armL: [-8, 4, 12], foreL: [-24, 0, 0] }],
+    [0.68, { chest: [-2, -8, -2], head: [-3, 6, 4], armR: [-38, -14, -42], foreR: [-44, 0, 22], handR: [0, 0, -24], armL: [-6, 4, 10], foreL: [-20, 0, 0] }],
+    [1, {}],
+  ] },
   point: { layer: 'upper', dur: 1.4, fade: 0.15, poses: [[0, {}], [0.2, { armR: [-85, 0, 0], foreR: [-5, 0, 0], head: [0, -8, 0] }], [0.8, { armR: [-85, 0, 0], foreR: [-5, 0, 0] }], [1, {}]] },
   wave: { layer: 'upper', dur: 1.6, fade: 0.15, poses: [[0, {}], [0.2, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.4, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [0.6, { armR: [0, 0, -150], foreR: [0, 0, 30] }], [0.8, { armR: [0, 0, -150], foreR: [0, 0, -10] }], [1, {}]] },
   // --- arrests

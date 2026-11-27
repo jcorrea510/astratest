@@ -51,29 +51,38 @@ export const OUTPUT_GRADE_FRAG = `
   uniform sampler2D tDiffuse, tAO; uniform float uNight, uVignette, uTime, uFlash, uSlow, uSat, uSplit, uFxaa, uAO, uSpeed, uSharp, uChroma; uniform vec2 uRes; uniform vec3 uFlashColor; varying vec2 vUv;
   #include <tonemapping_pars_fragment>
   #include <colorspace_pars_fragment>
+  vec3 sanitizeHdr(vec3 v){
+    float r = (v.r >= 0.0 && v.r <= 64.0) ? v.r : 0.0;
+    float g = (v.g >= 0.0 && v.g <= 64.0) ? v.g : 0.0;
+    float b = (v.b >= 0.0 && v.b <= 64.0) ? v.b : 0.0;
+    return vec3(r, g, b);
+  }
   ${FXAA_PLUS_GLSL}
   ${CAS_GLSL}
   ${GradeShader.fragmentShader.replace(/uniform sampler2D tDiffuse;[^\n]*\n/, '').replace('vec4 c = texture2D(tDiffuse, vUv);', `vec4 c = texture2D(tDiffuse, vUv);
-      if (uFxaa > 0.5) c.rgb = fxaaPlus(vUv, c.rgb);
+      c.rgb = sanitizeHdr(c.rgb);
+      if (uFxaa > 0.5) c.rgb = sanitizeHdr(fxaaPlus(vUv, c.rgb));
       // Round 12: speed blur at high speed, radial from just above the centre (5 taps, skipped when still)
       if (uSpeed > 0.01) {
         vec2 rd = (vUv - vec2(0.5, 0.55)) * uSpeed * 0.035 * smoothstep(0.12, 0.6, length(vUv - vec2(0.5, 0.55)));
         vec3 acc = c.rgb;
-        for (int i = 1; i <= 4; i++) acc += texture2D(tDiffuse, vUv - rd * float(i)).rgb;
+        for (int i = 1; i <= 4; i++) acc += sanitizeHdr(texture2D(tDiffuse, clamp(vUv - rd * float(i), vec2(0.0), vec2(1.0))).rgb);
         c.rgb = acc / 5.0;
       }
       // Dynamic impact chromatic aberration on explosions, heavy crashes, and gunshots (zero cost when idle)
       if (uChroma > 0.001) {
         vec2 cd = (vUv - 0.5) * uChroma * 0.014;
-        c.r = texture2D(tDiffuse, vUv + cd).r;
-        c.b = texture2D(tDiffuse, vUv - cd).b;
+        c.r = sanitizeHdr(texture2D(tDiffuse, clamp(vUv + cd, vec2(0.0), vec2(1.0))).rgb).r;
+        c.b = sanitizeHdr(texture2D(tDiffuse, clamp(vUv - cd, vec2(0.0), vec2(1.0))).rgb).b;
       }
-      if (uSharp > 0.0) c.rgb = casSharpen(tDiffuse, vUv, c.rgb, uSharp);
+      if (uSharp > 0.0) c.rgb = sanitizeHdr(casSharpen(tDiffuse, vUv, c.rgb, uSharp));
       // ambient occlusion (half-res, blurred) darkens creases and contact areas cleanly after sharpening
-      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, min(uAO, 1.0));
-      if (uAO > 1.5) c.rgb = vec3(texture2D(tAO, vUv).r) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
-      c.rgb = TONE_MAP(c.rgb);
-      c = sRGBTransferOETF(c);`)}`;
+      float aoTap = texture2D(tAO, vUv).r;
+      aoTap = (aoTap >= 0.0 && aoTap <= 1.0) ? clamp(aoTap, 0.22, 1.0) : 1.0;
+      c.rgb *= mix(1.0, aoTap, min(uAO, 1.0));
+      if (uAO > 1.5) c.rgb = vec3(aoTap) * 0.6; // debug view (window.__game.renderer.grade.uniforms.uAO.value = 2)
+      c.rgb = TONE_MAP(sanitizeHdr(c.rgb));
+      c = sRGBTransferOETF(vec4(clamp(c.rgb, 0.0, 1.0), 1.0));`)}`;
 /** Round 12: the tone curve (three's GLSL function name). AgX rolls highlights off like film: headlights and lamps keep their colour instead of clipping to flat white. */
 export const TONE_MAP_FN = 'AgXToneMapping';
 export class OutputGradePass extends Pass {
@@ -139,7 +148,8 @@ export function viewportSize(): { w: number; h: number; full: boolean } {
  *  dereferences an explicit `undefined` and the game never finished loading on Low. */
 export function composerTargetOptions(w: number, h: number, samples: number, ao: boolean): THREE.RenderTargetOptions {
   const o: THREE.RenderTargetOptions = { type: THREE.HalfFloatType, samples };
-  if (ao) o.depthTexture = new THREE.DepthTexture(w, h, THREE.FloatType);
+  // UnsignedIntType (DEPTH_COMPONENT24) avoids Metal/ANGLE HalfFloat+FloatDepth tiler hazards that flash green boxes
+  if (ao) o.depthTexture = new THREE.DepthTexture(Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h)), THREE.UnsignedIntType);
   return o;
 }
 
@@ -282,7 +292,7 @@ export class Renderer {
   private buildComposer() {
     this.composer?.dispose();
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const w = Math.max(1, size.x), h = Math.max(1, size.y);
+    const w = Math.max(1, Math.floor(size.x)), h = Math.max(1, Math.floor(size.y));
     const ao = this.quality.ao > 0;
     // Round 12: the frame keeps its depth as a texture so the AO pass can read it
     const rt = new THREE.WebGLRenderTarget(w, h, composerTargetOptions(w, h, safeMsaa(this.quality.msaa), ao));
@@ -290,7 +300,18 @@ export class Renderer {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.ao?.dispose(); this.ao = null;
     if (ao) { this.ao = new AOPass(this.camera, { samples: this.quality.ao }); this.composer.addPass(this.ao); }
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.4, 0.9);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(Math.max(1, Math.floor(w / 2)), Math.max(1, Math.floor(h / 2))), 0.2, 0.4, 0.9);
+    // Guard Bloom's high-pass shader against NaN/Inf/negative HDR pixels so a single bad specular sample can never bloom into a full-screen box
+    if (this.bloom.materialHighPassFilter?.fragmentShader) {
+      this.bloom.materialHighPassFilter.fragmentShader = this.bloom.materialHighPassFilter.fragmentShader.replace(
+        'vec4 texel = texture2D( tDiffuse, vUv );',
+        `vec4 texel = texture2D( tDiffuse, vUv );
+        texel.r = (texel.r >= 0.0 && texel.r <= 16.0) ? texel.r : 0.0;
+        texel.g = (texel.g >= 0.0 && texel.g <= 16.0) ? texel.g : 0.0;
+        texel.b = (texel.b >= 0.0 && texel.b <= 16.0) ? texel.b : 0.0;`,
+      );
+      this.bloom.materialHighPassFilter.needsUpdate = true;
+    }
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
     this.grade = new OutputGradePass();
@@ -303,9 +324,25 @@ export class Renderer {
     const { w, h, full } = viewportSize();
     this.renderer.setSize(w, h, full); // home-screen app: size the canvas element itself to the whole screen (no bars)
     this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix();
-    this.composer.setSize(w, h);
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
-    if (this.grade) this.grade.uniforms.uSharp.value = this.renderer.getPixelRatio() < (window.devicePixelRatio || 1) - 0.05 ? 0.5 : 0.3; // upscaled (e.g. iPad at 1.5 of 2): sharpen more
+    const pr = this.renderer.getPixelRatio();
+    // Avoid double reallocation: update pixel ratio first, then setSize once
+    (this.composer as unknown as { _pixelRatio: number })._pixelRatio = pr;
+    this.composer.setSize(Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h)));
+    // Keep DepthTexture metadata in sync with resized render targets and clear fresh GPU memory so Metal never flashes garbage
+    const dw = Math.max(1, Math.floor(w * pr)), dh = Math.max(1, Math.floor(h * pr));
+    for (const buf of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (buf?.depthTexture && (buf.depthTexture.image.width !== dw || buf.depthTexture.image.height !== dh)) {
+        buf.depthTexture.image.width = dw;
+        buf.depthTexture.image.height = dh;
+        buf.depthTexture.needsUpdate = true;
+      }
+      if (buf) {
+        this.renderer.setRenderTarget(buf);
+        this.renderer.clear(true, true, false);
+      }
+    }
+    this.renderer.setRenderTarget(null);
+    if (this.grade) this.grade.uniforms.uSharp.value = pr < (window.devicePixelRatio || 1) - 0.05 ? 0.5 : 0.3; // upscaled (e.g. iPad at 1.5 of 2): sharpen more
   }
   /** Updates lighting for a given hour and keeps the shadow frustum centred on the focus point. */
   updateEnvironment(hour: number, time: number, focus: THREE.Vector3) {

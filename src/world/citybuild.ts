@@ -249,8 +249,9 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       const tb = trim.at(x, maxZ + 1.7);
       if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 12 && x < r.x + 82) || (x + 9 > -68 && x - 3 < -32)) continue; // keep the pier approach (x -50, 16 wide) and ramps clear
       tb.box(x, CURB_HEIGHT + 0.4, maxZ + 1.9, 1.5, 0.8, 0.9, 0, potC, T_STONE); tb.sphere(x, CURB_HEIGHT + 1.0, maxZ + 1.9, 0.55, C('#3d6a3c'), [0.9, 0, 1, 0], 0.8);
+      physics.addStaticBox(x, CURB_HEIGHT + 0.4, maxZ + 1.9, 0.78, 0.45, 0.48);
       tb.cyl(x + 7.5, CURB_HEIGHT, maxZ + 1.5, 0.07, 0.05, 4.2, 8, lampC, T_METAL); tb.sphere(x + 7.5, CURB_HEIGHT + 4.3, maxZ + 1.5, 0.22, C('#fff1d6'), T_NIGHTGLOW(5));
-      physics.addStaticCylinder(x + 7.5, CURB_HEIGHT + 2, maxZ + 1.5, 2, 0.1);
+      physics.addStaticCylinder(x + 7.5, CURB_HEIGHT + 2, maxZ + 1.5, 2, 0.14);
     }
   }
   physics.addStaticBox((tipX + maxX) / 2, CURB_HEIGHT / 2, maxZ + 3.5, (maxX - tipX) / 2, CURB_HEIGHT / 2, 3.5);
@@ -516,8 +517,8 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
   const trees = new TreeLodField([0, 1, 2, 3].map(t => treeGeos(100 + t)), treeFarGeos(150), tmat, leafMat); // R14 W2b: near / far tree LOD per 40 m cell
   for (let t = 0; t < 3; t++) { const g = palmGeos(200 + t); props.register(`palm${t}`, g.trunk, tmat); props.register(`frond${t}`, g.leaves, palmMat); }
   for (let t = 0; t < 2; t++) props.register(`shrub${t}`, shrubGeos(300 + t).leaves, leafMat, false);
-  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); trees.add(k, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2, z, 2, 0.22 * s); };
-  const addPalm = (x: number, y: number, z: number, yaw: number, rr: Rng, collide = true) => { const k = rr.int(0, 2); props.add(`palm${k}`, x, y, z, yaw); props.add(`frond${k}`, x, y, z, yaw); if (collide) physics.addStaticCylinder(x, y + 2, z, 2, 0.25); };
+  const addTree = (x: number, y: number, z: number, yaw: number, s: number, rr: Rng) => { treeSink?.push({ x, z }); const k = rr.int(0, 3); trees.add(k, x, y, z, yaw, s); physics.addStaticCylinder(x, y + 2.4, z, 2.4, Math.max(0.32, 0.36 * s)); };
+  const addPalm = (x: number, y: number, z: number, yaw: number, rr: Rng, collide = true) => { const k = rr.int(0, 2); props.add(`palm${k}`, x, y, z, yaw); props.add(`frond${k}`, x, y, z, yaw); if (collide) physics.addStaticCylinder(x, y + 2.4, z, 2.4, 0.34); };
 
   // Kerbside furniture along each block edge: street lights, trees, hydrants, meters, benches, bins, bus stops...
   const lampHeads: THREE.Vector3[] = [];
@@ -568,7 +569,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         else if (major && free(s, 5)) { const p = P(s, 1.4); props.add('busstop', p.x, CURB_HEIGHT, p.z, yawRoad); physics.addStaticBox(p.x - e.nx * 0.62, 1.3, p.z - e.nz * 0.62, e.ax === 'x' ? 1.9 : 0.1, 1.3, e.ax === 'x' ? 0.1 : 1.9); }
       }
       // bollards at plaza / tower frontage
-      if (b.district === 'heights') for (let s = e.from + 12; s < e.to - 12; s += 2.2) { if (!free(s, 1.5)) continue; const p = P(s, 0.45); props.add('bollard', p.x, CURB_HEIGHT, p.z, 0); }
+      if (b.district === 'heights') for (let s = e.from + 12; s < e.to - 12; s += 2.2) { if (!free(s, 1.5)) continue; const p = P(s, 0.45); props.add('bollard', p.x, CURB_HEIGHT, p.z, 0); physics.addStaticCylinder(p.x, CURB_HEIGHT + 0.48, p.z, 0.48, 0.16); }
       // power poles + overhead wires on residential hill streets
       if (b.district === 'hillside') {
         let prev: { x: number; z: number } | null = null;
@@ -669,6 +670,7 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
         if (BAYS.some(b => { const r = bayRect(b, 5); return x > r.x0 && x < r.x1 && z > r.z0 - 3 && z < r.z1; })) continue; // garage halls (Round 9)
         addTree(x, CURB_HEIGHT, z, r.range(0, 6.28), 1.1, r);
         trim.at(x, z).box(x, CURB_HEIGHT + 0.25, z, 2.6, 0.5, 2.6, 0, C('#a8a296'), T_STONE);
+        physics.addStaticBox(x, CURB_HEIGHT + 0.28, z, 1.32, 0.28, 1.32);
         { // R9-W pocket plaza: round paver inlay around the planter, two facing benches and a bin
           const tb2 = trim.at(x, z);
           tb2.cyl(x, CURB_HEIGHT, z, 4.6, 4.6, 0.02, 20, C('#c7c0b2'), T_STONE); tb2.cyl(x, CURB_HEIGHT, z, 3.9, 3.9, 0.03, 20, C('#aaa395'), T_STONE);
@@ -694,10 +696,12 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
       if (nearPath(x, z, 10) || Math.hypot(x - (-40), z - (-868)) < 45) continue;
       const y = terrainH(x, z); if (y < 1) continue;
       const k2 = hr.int(0, 3), sc = hr.range(1.0, 1.6), yaw = hr.range(0, 6.28);
-      trees.add(k2, x, y - 0.2, z, yaw, sc); placed++;
+      trees.add(k2, x, y - 0.2, z, yaw, sc);
+      physics.addStaticCylinder(x, y + 2.2, z, 2.4, Math.max(0.32, 0.36 * sc));
+      placed++;
     } }
   // beach palms (kept clear of the landing strip in front of each beach ramp)
-  { const pr = new Rng(91); for (let x = tipX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, false); } }
+  { const pr = new Rng(91); for (let x = tipX + 12; x < maxX - 8; x += 26) { if (RAMPS.some(r => r.z < maxZ + 10 && x > r.x - 9 && x < r.x + 80)) continue; const z = maxZ + 12 + Math.sin(x) * 3; addPalm(x, CURB_HEIGHT - 0.3 - (z - maxZ - 7) * 0.058, z, x, pr, true); } }
   // billboards on poles along the edge of the city
   { const br = new Rng(5); for (let k = 0; k < 6; k++) { const x = -380 + k * 150 + br.range(-20, 20); if (nearPath(x, minZ - 14, 14)) continue; addBillboard({ x, y: 0, z: minZ - 14, yaw: 0, idx: k % 8, w: 12 }); } }
 
@@ -714,10 +718,30 @@ export function buildCity(scene: THREE.Scene, physics: Physics, _assets: Assets,
     const railC = C('#c8c2b4'), postC = C('#5e5a55');
     const edgeX = minX - 5.2, edgeZ = minZ - 5.2;
     for (let x = edgeX; x < maxX + 2; x += 3) if (!nearPath(x, edgeZ, 2)) trim.at(x, edgeZ).box(x, 0.45, edgeZ, 0.16, 0.9, 0.16, 0, postC, T_METAL);
-    for (let x = edgeX; x < maxX + 2; x += 6) if (!nearPath(x, edgeZ, 4) && !nearPath(x + 6, edgeZ, 4)) trim.at(x, edgeZ).box(x + 3, 0.7, edgeZ + 0.1, 6, 0.3, 0.08, 0, railC, T_METAL);
+    let runStart: number | null = null;
+    for (let x = edgeX; x < maxX + 2; x += 6) {
+      const solid = !nearPath(x, edgeZ, 4) && !nearPath(x + 6, edgeZ, 4);
+      if (solid) {
+        trim.at(x, edgeZ).box(x + 3, 0.7, edgeZ + 0.1, 6, 0.3, 0.08, 0, railC, T_METAL);
+        if (runStart === null) runStart = x;
+      } else if (runStart !== null) {
+        const len = x - runStart;
+        physics.addStaticBox(runStart + len / 2, 0.55, edgeZ + 0.06, len / 2, 0.55, 0.22);
+        runStart = null;
+      }
+    }
+    if (runStart !== null) {
+      const len = maxX + 2 - runStart;
+      physics.addStaticBox(runStart + len / 2, 0.55, edgeZ + 0.06, len / 2, 0.55, 0.22);
+    }
     void tb;
     const tr = new Rng(77);
-    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) { const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7); if (nearPath(x, z, 7)) continue; trees.add(k, x, 0, z, 0, s); }
+    for (let x = edgeX + 4; x < maxX; x += tr.range(5, 9)) {
+      const k = tr.int(0, 3), z = edgeZ - tr.range(6, 22), s = tr.range(1.1, 1.7);
+      if (nearPath(x, z, 7)) continue;
+      trees.add(k, x, 0, z, 0, s);
+      physics.addStaticCylinder(x, 2.4, z, 2.4, Math.max(0.34, 0.36 * s));
+    }
   }
 
   // ---------- Elevated rail along Tidewell Ave (x=250) and subway entrances ----------

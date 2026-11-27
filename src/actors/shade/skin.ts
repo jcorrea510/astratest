@@ -49,8 +49,11 @@ void RE_Direct_Person( const in IncidentLight directLight, const in vec3 geometr
   float aB = rB * rB;
   float lobeS = D_GGX( aS, dotNH ) * V_GGX_SmithCorrelated( aS, dotNL, dotNV );
   float lobeB = D_GGX( aB, dotNH ) * V_GGX_SmithCorrelated( aB, dotNL, dotNV );
-  float spec = F * ( 0.22 * gSkinShine * lobeS + 0.6 * lobeB ); // lower than before: less plastic sheen
+  float spec = F * ( 0.22 * gSkinShine * lobeS + 0.58 * lobeB );
   reflectedLight.directSpecular += directLight.color * dotNL * spec;
+  // Subtle warm subsurface back-scatter along grazing edges (ears, nose wings, cheeks, fingers)
+  float backRim = pow( 1.0 - dotNV, 3.0 ) * pow( saturate( dot( -L, geometryViewDir ) * 0.5 + 0.5 ), 2.0 );
+  reflectedLight.directDiffuse += directLight.color * vec3( 0.95, 0.34, 0.16 ) * ( 0.16 * gSkinSss * backRim ) * material.diffuseContribution;
 }
 #undef RE_Direct
 #define RE_Direct RE_Direct_Person
@@ -99,10 +102,13 @@ export const SKIN_GLSL = /* glsl */ `  // keep the texture's local detail (lips,
   bumpH = -0.00011 * smoothstep(0.55, 0.85, skPn) * skPoreF - 0.00025 * skRidge * skFineF;
   col *= 1.0 - 0.09 * skRidge * skFineF - 0.04 * smoothstep(0.55, 0.85, skPn) * skPoreF; // creases and pores read darker
   rough += 0.08 * skRidge * skFineF;
-  // contact shade where skin meets the neckline: soft, hides the pale fringe next to the collar
+  // contact shade where skin meets the neckline + subtle under-jaw shadow on head
   if (ri == 1) {
     float skNd = length((vBind.xz - uNeck.xy) * vec2(1.0, 1.2)) - uNeck.z;
-    col *= 1.0 - 0.2 * smoothstep(-0.03, 0.0, skNd);
+    col *= 1.0 - 0.24 * smoothstep(-0.035, 0.0, skNd);
+  } else if (ri == 0) {
+    float jawAo = smoothstep(-0.76, -1.02, vHn.y) * (1.0 - smoothstep(0.65, 0.95, vHn.z));
+    col *= mix(vec3(1.0), vec3(0.84, 0.77, 0.74), jawAo * 0.55);
   }
   // fingernails: texels that are not skin-toned (dark grey/blue) become a natural pink nail, or polish where uNeck.w is set
   float nlM = ri == 2 ? smoothstep(0.5, 0.85, tx.b / max(tx.r, 0.03)) : 0.0;

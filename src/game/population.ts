@@ -1,7 +1,7 @@
 /** Keeps the streets alive: spawns/despawns civilians, runs every NPC brain, and resolves danger and vehicle hits. */
 import { pedImpact } from './impact';
 import * as THREE from 'three';
-import { Npc, NpcBrainRunner, streetClock, type NpcEnv, type Role } from '../actors/npc';
+import { Npc, NpcBrainRunner, playerProximityReaction, streetClock, type NpcEnv, type Role } from '../actors/npc';
 import { pedActivity, districtNightFactor } from './schedule';
 import { randomLook, warmLookExtras, type HumanTemplate, type Look } from '../actors/human';
 import type { FullLook } from '../actors/look';
@@ -45,31 +45,92 @@ export class Population {
   /** Round 8: a pedestrian struck hard by a car (the game adds blood on the road and on the car) */
   onCarHit: ((ch: Character, v: Vehicle, speed: number) => void) | null = null;
   private reactT = 0;
-  /** Civilians react to the player: brushing past ("Watch it!"), running into them, aiming a gun at them. */
+  /** Civilians organically react to player movement: head glances, yielding space, flinching at sprints/fast cars, crowding annoyance, shoulder shoves, and gunpoint surrender. */
   private reactToPlayer(dt: number) {
     this.reactT -= dt; if (this.reactT > 0) return;
-    this.reactT = 0.1;
-    const p = this.env.player; if (!p.alive || p.inVehicle) return;
-    const aim = this.aimProvider?.() ?? null;
-    for (const n of this.npcs) {
-      if (!n.alive || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.far) continue;
-      const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
-      if (n.role === 'civilian' && d < 1.05 && p.speed > 3.2 && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender' && n.brain !== 'fight') {
-        // only a runner heading straight at them gets the shoulder-check; a near miss (passing alongside) is not contact, just a glance
-        const into = (-dx * p.vel.x - dz * p.vel.z) / (d * p.speed || 1);
-        if (d < 0.62 && p.speed > 5 && into > 0.6 && c.knockT <= 0) c.hitReact(dx, dz, 0.55);
-        else if (into > 0.3) c.faceTowards(Math.atan2(-dx, -dz), 7, 0.1);
+    this.reactT = 0.08;
+    const p = this.env.player; if (!p.alive) return;
+    const pv = p.inVehicle as Vehicle | null;
+    if (pv) {
+      const lv = pv.phys.body.linvel(), sp = Math.hypot(lv.x, lv.z);
+      if (sp < 5.5) return;
+      const vx = lv.x / sp, vz = lv.z / sp, vp = pv.position;
+      for (const n of this.npcs) {
+        if (!n.alive || n.role !== 'civilian' || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.far) continue;
+        const c = n.char, dx = c.pos.x - vp.x, dz = c.pos.z - vp.z, d = Math.hypot(dx, dz);
+        if (d > 11.5 || d < 0.05) continue;
+        const approach = (dx * vx + dz * vz) / d;
+        const react = playerProximityReaction(d, sp, approach, false, true);
+        if (react === 'none') continue;
+        n.lookAtPos.set(vp.x, vp.y + 1.1, vp.z); n.lookAtT = 1.1;
+        if (react === 'dive' && n.brain !== 'flee' && n.brain !== 'cower' && n.brain !== 'surrender') {
+          const side = dx * vz - dz * vx >= 0 ? 1 : -1;
+          let sx = vz * side, sz = -vx * side;
+          if (surfaceAt(this.city, c.pos.x + sx * 1.4, c.pos.z + sz * 1.4) === 'road') { sx = -sx; sz = -sz; }
+          n.yieldX = sx; n.yieldZ = sz; n.yieldT = 0.9;
+          if (n.reactCool <= 0 && !c.human.busy) { c.human.playAction('flinch', { weight: 0.9 }); n.reactCool = 2.0; }
+          if (d < 3.4) { n.brain = 'flee'; n.stateT = 5.4; n.fleeFrom.copy(vp); }
+        }
       }
-      if (aim && n.role === 'civilian' && d < 28 && n.brain !== 'cower' && n.brain !== 'ordered' && n.brain !== 'hostage') {
+      return;
+    }
+    const aim = this.aimProvider?.() ?? null;
+    const pMoving = p.speed > 0.35;
+    const pDirX = pMoving ? p.vel.x / p.speed : Math.sin(p.yaw);
+    const pDirZ = pMoving ? p.vel.z / p.speed : Math.cos(p.yaw);
+    for (const n of this.npcs) {
+      if (!n.alive || n.role !== 'civilian' || n.char.inVehicle || n.brain === 'scripted' || n.brain === 'passenger' || n.brain === 'inside' || n.far) continue;
+      const c = n.char, dx = c.pos.x - p.pos.x, dz = c.pos.z - p.pos.z, d = Math.hypot(dx, dz);
+      if (d > 28 || d < 0.01) continue;
+      let aimingAt = false;
+      if (aim && n.brain !== 'cower' && n.brain !== 'ordered' && n.brain !== 'hostage') {
         const cx = c.pos.x - aim.from.x, cy = c.pos.y + 1.2 - aim.from.y, cz = c.pos.z - aim.from.z;
         const along = cx * aim.dir.x + cy * aim.dir.y + cz * aim.dir.z;
         if (along > 0) {
           const off = Math.hypot(cx - aim.dir.x * along, cy - aim.dir.y * along, cz - aim.dir.z * along);
-          if (off < 0.9 + along * 0.02) {
-            // Round 7: frozen with hands up for as long as the gun stays on them (they used to bolt after 2-4 s, before an order could land)
-            if (n.brain === 'surrender') n.stateT = Math.min(n.stateT, 0.35);
-            else if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
-          }
+          aimingAt = off < 0.9 + along * 0.02;
+        }
+      }
+      const approach = (dx * pDirX + dz * pDirZ) / d;
+      const react = playerProximityReaction(d, p.speed, approach, aimingAt, false);
+      if (react === 'none') continue;
+      if (react === 'surrender') {
+        n.lookAtPos.set(p.pos.x, p.pos.y + 1.55, p.pos.z); n.lookAtT = 1.6;
+        // Round 7: frozen with hands up for as long as the gun stays on them (they used to bolt after 2-4 s, before an order could land)
+        if (n.brain === 'surrender') n.stateT = Math.min(n.stateT, 0.35);
+        else if (n.brain !== 'flee' || d < 6) { n.brain = 'surrender'; n.stateT = 0; n.waitT = 2 + Math.random() * 2.5; }
+        continue;
+      }
+      if (n.brain === 'flee' || n.brain === 'cower' || n.brain === 'surrender' || n.brain === 'fight' || n.brain === 'ordered' || n.brain === 'hostage') continue;
+      n.lookAtPos.set(p.pos.x, p.pos.y + 1.55, p.pos.z);
+      if (react === 'glance') {
+        n.lookAtT = Math.max(n.lookAtT, 0.85);
+        continue;
+      }
+      // Compute safe lateral yield vector perpendicular to player's path (preferring the non-road side)
+      const side = dx * pDirZ - dz * pDirX >= 0 ? 1 : -1;
+      let sx = pDirZ * side, sz = -pDirX * side;
+      if (surfaceAt(this.city, c.pos.x + sx * 1.25, c.pos.z + sz * 1.25) === 'road') { sx = -sx; sz = -sz; }
+      if (react === 'shove') {
+        n.lookAtT = 2.6;
+        if (c.knockT <= 0) c.hitReact(dx, dz, p.speed > 5 ? 0.62 : 0.42);
+        c.faceTowards(Math.atan2(-dx, -dz), 10, 0.12);
+        n.yieldX = dx / d; n.yieldZ = dz / d; n.yieldT = 0.85;
+        n.crowdT += 1.1;
+        if (n.reactCool <= 0 && !c.human.busy) { c.human.playAction('annoyed', { weight: 0.95 }); n.reactCool = 2.5; }
+        if (n.nerve > 0.72 && n.crowdT > 1.8) this.runner.provoke(n, p, true, false);
+      } else if (react === 'startle') {
+        n.lookAtT = 2.2;
+        n.yieldX = sx; n.yieldZ = sz; n.yieldT = 0.95;
+        c.faceTowards(Math.atan2(-dx, -dz), 7, 0.08);
+        if (n.reactCool <= 0 && !c.human.busy) { c.human.playAction('flinch', { weight: 0.85 }); n.reactCool = 2.4; }
+      } else if (react === 'yield') {
+        n.lookAtT = 1.5;
+        n.yieldX = sx; n.yieldZ = sz; n.yieldT = 0.65;
+        if (d < 1.55) {
+          n.crowdT += 0.22;
+          c.faceTowards(Math.atan2(-dx, -dz), 6, 0.08);
+          if (n.crowdT > 0.95 && n.reactCool <= 0 && !c.human.busy) { c.human.playAction('annoyed', { weight: 0.85 }); n.reactCool = 3.2; }
         }
       }
     }

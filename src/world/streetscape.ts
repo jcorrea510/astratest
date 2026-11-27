@@ -166,6 +166,8 @@ export function emitStreetscape(plan: StreetscapePlan, trim: Chunked<TrimBuilder
           tb.beam(bx - along.x * 0.45, y0 + 0.35, bz - along.z * 0.45, bx + along.x * 0.45, y0 + 0.55, bz + along.z * 0.45, 0.04, 0.04, c, T_METAL);
           tb.cyl(bx - along.x * 0.45, y0 + 0.02, bz - along.z * 0.45, 0.33, 0.33, 0.03, 10, col('#1b1b1c'), T_ROUGH);
         }
+        const [bx2, bz2] = sz(1.5, 0.65);
+        physics.addStaticBox(p.x, y0 + 0.4, p.z, bx2 / 2, 0.4, bz2 / 2);
         break;
       }
       case 'bags': {
@@ -259,6 +261,7 @@ export function emitStreetscape(plan: StreetscapePlan, trim: Chunked<TrimBuilder
         }
         // plywood hoarding panels between the posts on the kerb side (lower half only, open above for the lamp-lit look)
         for (let s = -L / 2 + L / 10; s < L / 2; s += L / 5) { const a = at(s, inset0 + 0.02); const [qx, qz] = sz(L / 5 - 0.2, 0.04); tb.box(a.x, y0 + 0.55, a.z, qx, 1.1, qz, 0, ply, T_ROUGH); }
+        { const hf = at(0, inset0 + 0.02); const [hx, hz] = sz(L, 0.24); physics.addStaticBox(hf.x, y0 + 0.55, hf.z, hx / 2, 0.55, hz / 2); }
         // scaffold tower above the shed: standards, ledgers, planks and netting
         for (let s = -L / 2; s <= L / 2 + 0.01; s += L / 5) { const q = at(s, inset0 + depth - 0.2); tb.box(q.x, y0 + 3.4 + 4.2, q.z, 0.09, 8.4, 0.09, 0, steel, T_METAL); }
         for (let h = 5.6; h < 11.6; h += 2.2) { const a = at(0, inset0 + depth - 0.2); const [lx, lz] = sz(L, 0.07); tb.box(a.x, y0 + h, a.z, lx, 0.07, lz, 0, steel, T_METAL); const b = at(0, inset0 + depth - 0.6); const [px, pz] = sz(L, 0.8); tb.box(b.x, y0 + h + 0.05, b.z, px, 0.06, pz, 0, ply, T_ROUGH); }

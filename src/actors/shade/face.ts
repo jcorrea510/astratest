@@ -22,23 +22,28 @@ void faceDetail(inout vec3 col, inout float rough, vec3 hn, vec3 atlas) {
     float bs = vnoise(vec3(hn.x * 34.0 - hn.y * 22.0, hn.y * 150.0, 1.7));
     col = mix(col, uC[6] * 0.85, bm * (0.14 + 0.32 * bs));
   }
-  // eye sockets: under-eye shadow, upper-lid crease
+  // eye sockets: under-eye shadow, upper-lid crease, and subtle upper lashline depth
   if (fz > 0.0 && hn.y > -0.2 && hn.y < 0.2) {
     float ue = fcG(ax - 0.36, 0.2) * fcG(hn.y + 0.085, 0.045);
-    col *= mix(vec3(1.0), vec3(0.9, 0.86, 0.9), ue * 0.55 * fz);
+    col *= mix(vec3(1.0), vec3(0.88, 0.84, 0.88), ue * 0.6 * fz);
     float cq = (ax - 0.4) / 0.24;
     float yc = 0.108 + 0.035 * (1.0 - min(1.0, cq * cq));
     float cl = fcG(hn.y - yc, 0.011) * smoothstep(0.16, 0.24, ax) * (1.0 - smoothstep(0.52, 0.6, ax)) * fz;
-    col = mix(col, col * vec3(0.62, 0.5, 0.46), cl * 0.55);
+    col = mix(col, col * vec3(0.58, 0.46, 0.43), cl * 0.6);
+    float lashY = 0.056 + 0.02 * (1.0 - min(1.0, cq * cq));
+    float lash = fcG(hn.y - lashY, 0.008) * smoothstep(0.15, 0.24, ax) * (1.0 - smoothstep(0.51, 0.59, ax)) * fz;
+    col = mix(col, col * vec3(0.32, 0.27, 0.26), lash * 0.55);
   }
-  // cheeks blush, nose tip warmth, oily T-zone
+  // cheeks blush, nose tip warmth, nose-wing shadow depth, oily T-zone
   if (fz > 0.0 && hn.y > -0.5 && hn.y < 0.5) {
     float ch = fcG(ax - 0.5, 0.2) * fcG(hn.y + 0.27, 0.16);
-    col *= mix(vec3(1.0), vec3(1.06, 0.93, 0.92), ch * 0.45 * fz);
+    col *= mix(vec3(1.0), vec3(1.07, 0.92, 0.91), ch * 0.48 * fz);
     float ns = fcG(hn.x, 0.11) * fcG(hn.y + 0.33, 0.085) * fz;
-    col *= mix(vec3(1.0), vec3(1.05, 0.92, 0.9), ns * 0.4);
+    col *= mix(vec3(1.0), vec3(1.06, 0.91, 0.89), ns * 0.42);
+    float nSide = fcG(ax - 0.16, 0.055) * fcG(hn.y + 0.36, 0.06) * fz;
+    col *= mix(vec3(1.0), vec3(0.82, 0.72, 0.7), nSide * 0.42);
     float tz = fcG(hn.x, 0.25) * fcG(hn.y - 0.35, 0.2) * fz;
-    rough = rough - 0.05 * tz - 0.1 * ns;
+    rough = rough - 0.06 * tz - 0.12 * ns;
   }
   // lips: colour, wet sheen, fine vertical lines, a darker line between the lips (pinched at the corners)
   if (fz > 0.0 && hn.y > -0.8 && hn.y < -0.38) {
@@ -86,9 +91,11 @@ export const EYES_GLSL = /* glsl */ `
   esc = mix(esc, vec3(0.55, 0.2, 0.17), (1.0 - smoothstep(0.2, 0.3, abs(vHn.x))) * 0.8);
   vec3 ecol = mix(esc, eiris, eir);
   ecol = mix(ecol, vec3(0.004), (1.0 - smoothstep(0.34, 0.4, et)) * eir);
-  float elid = 1.0 - 0.55 * smoothstep(0.015, 0.07, vHn.y) - 0.12 * (1.0 - smoothstep(-0.05, -0.01, vHn.y));
-  col = ecol * elid;
-  rough = mix(0.16, 0.05, eir);
+  float elid = 1.0 - 0.58 * smoothstep(0.012, 0.068, vHn.y) - 0.14 * (1.0 - smoothstep(-0.05, -0.01, vHn.y));
+  // Subtle wet corneal catchlight glint on the upper iris edge so eyes read alive from mid-range
+  float egl = 1.0 - smoothstep(0.0, 0.022, length(euv - vec2(0.024, 0.028)));
+  col = ecol * elid + vec3(0.55, 0.58, 0.62) * (egl * egl * eir);
+  rough = mix(0.14, 0.04, eir);
   flatN = 1.0;
   bumpH = 0.0009 * (1.0 - min(et * et, 1.0));
 `;

@@ -99,8 +99,15 @@ export function buildQuay(o: QuayCtx) {
   for (let z0 = QUAY.z0 + 10; z0 < QUAY.z1 - 60; z0 += 90) {
     const z1 = z0 + 56; if ([z0, (z0 + z1) / 2, z1].some(zz => nearRamp(zz, 4) || !clear(465, zz, 0.5))) continue;
     const tb = trim.at(470, (z0 + z1) / 2), fc = C('#9aa0a4');
-    for (const fx of [464.5, 478.5]) { tb.box(fx, CURB_HEIGHT + 1.1, (z0 + z1) / 2, 0.05, 2.2, z1 - z0, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]); for (let zz = z0; zz <= z1; zz += 4) tb.cyl(fx, CURB_HEIGHT, zz, 0.05, 0.05, 2.3, 6, fc, T_METAL); }
-    for (const zz of [z0, z1]) tb.box(471.5, CURB_HEIGHT + 1.1, zz, 14, 2.2, 0.05, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]);
+    for (const fx of [464.5, 478.5]) {
+      tb.box(fx, CURB_HEIGHT + 1.1, (z0 + z1) / 2, 0.05, 2.2, z1 - z0, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]);
+      for (let zz = z0; zz <= z1; zz += 4) tb.cyl(fx, CURB_HEIGHT, zz, 0.05, 0.05, 2.3, 6, fc, T_METAL);
+      physics.addStaticBox(fx, CURB_HEIGHT + 1.1, (z0 + z1) / 2, 0.16, 1.1, (z1 - z0) / 2);
+    }
+    for (const zz of [z0, z1]) {
+      tb.box(471.5, CURB_HEIGHT + 1.1, zz, 14, 2.2, 0.05, 0, C('#b8bcbe'), [0.5, 0.3, 5, 0]);
+      physics.addStaticBox(471.5, CURB_HEIGHT + 1.1, zz, 7, 1.1, 0.16);
+    }
   }
   // more gantry cranes down the quay (the first three are in citybuild)
   for (const cz of [470, 640, 800]) {

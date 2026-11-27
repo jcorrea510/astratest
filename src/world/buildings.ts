@@ -470,6 +470,7 @@ export function house(ctx: BuildCtx, h: HouseSpec) {
     const p = L(cxl, yz);
     if (fence) { tf.box(p.x, h.base + 0.45, p.z, len, 0.08, 0.05, h.yaw, tc, T_PAINT); tf.box(p.x, h.base + 0.85, p.z, len, 0.08, 0.05, h.yaw, tc, T_PAINT); for (let k = 0; k < len / 0.5; k++) { const q = L(sx * (0.8 + k * 0.5 + 0.25), yz); tf.box(q.x, h.base + 0.5, q.z, 0.08, 1.0, 0.04, h.yaw, tc, T_PAINT); } }
     else tf.box(p.x, h.base + 0.5, p.z, len, 1.0, 0.7, h.yaw, C('#3f5d2f'), [0.95, 0, 2, 0]);
+    if (len > 0.3) ctx.physics.addStaticBox(p.x, h.base + 0.5, p.z, len / 2, 0.5, fence ? 0.14 : 0.36, h.yaw);
   }
   { const p = L(0, (hd / 2 + 2.2 + yz) / 2); tf.box(p.x, h.base + 0.02, p.z, 1.2, 0.04, Math.max(0.1, yz - hd / 2 - 2.2), h.yaw, C('#a49e94'), T_STONE); }
   ctx.physics.addStaticBox(h.cx, (h.base + top) / 2, h.cz, hw / 2, (top - h.base) / 2, hd / 2, h.yaw);

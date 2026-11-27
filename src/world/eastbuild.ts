@@ -31,11 +31,44 @@ export function buildEast(o: EastCtx) {
       t.box(x + face * 0.4, -1.6, c, 0.8, 3.2, l, 0, stone, T_STONE); t.box(x + face * 0.25, 0.1, c, 1.4, 0.3, l, 0, cap, T_STONE);
       if (esplanade) t.box(x + face * 3, 0.0, c, 6, 0.1, l, 0, walk, T_STONE);
     }
-    for (let z = z0 + 3; z < z1; z += 6) if (!nearRoad(x, z, 4)) { const t = trim.at(x, z); t.box(x + face * 0.3, 0.55, z, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + face * 0.3, 1.0, z + 3, 0.1, 0.1, 6, 0, steel, T_METAL); }
+    let runStart: number | null = null;
+    for (let z = z0 + 3; z < z1; z += 6) {
+      const onPier = esplanade && EAST_PIERS.some(pz => Math.abs(pz - z) < 7);
+      if (!nearRoad(x, z, 4) && !onPier) {
+        const t = trim.at(x, z);
+        t.box(x + face * 0.3, 0.55, z, 0.12, 1.1, 0.12, 0, steel, T_METAL);
+        t.box(x + face * 0.3, 1.0, z + 3, 0.1, 0.1, 6, 0, steel, T_METAL);
+        if (runStart === null) runStart = z;
+      } else if (runStart !== null) {
+        const len = z - runStart;
+        physics.addStaticBox(x + face * 0.3, 0.6, runStart + len / 2, 0.22, 0.65, len / 2);
+        runStart = null;
+      }
+    }
+    if (runStart !== null) {
+      const len = z1 - runStart;
+      physics.addStaticBox(x + face * 0.3, 0.6, runStart + len / 2, 0.22, 0.65, len / 2);
+    }
   };
   const wallX = (z: number, x0: number, x1: number, face: 1 | -1) => {
     for (let x = x0; x < x1; x += 40) { const l = Math.min(40, x1 - x), c = x + l / 2, t = trim.at(c, z); t.box(c, -1.6, z + face * 0.4, l, 3.2, 0.8, 0, stone, T_STONE); t.box(c, 0.1, z + face * 0.25, l, 0.3, 1.4, 0, cap, T_STONE); }
-    for (let x = x0 + 3; x < x1; x += 6) if (!nearRoad(x, z, 4)) { const t = trim.at(x, z); t.box(x, 0.55, z + face * 0.3, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + 3, 1.0, z + face * 0.3, 6, 0.1, 0.1, 0, steel, T_METAL); }
+    let runStart: number | null = null;
+    for (let x = x0 + 3; x < x1; x += 6) {
+      if (!nearRoad(x, z, 4)) {
+        const t = trim.at(x, z);
+        t.box(x, 0.55, z + face * 0.3, 0.12, 1.1, 0.12, 0, steel, T_METAL);
+        t.box(x + 3, 1.0, z + face * 0.3, 6, 0.1, 0.1, 0, steel, T_METAL);
+        if (runStart === null) runStart = x;
+      } else if (runStart !== null) {
+        const len = x - runStart;
+        physics.addStaticBox(runStart + len / 2, 0.6, z + face * 0.3, len / 2, 0.65, 0.22);
+        runStart = null;
+      }
+    }
+    if (runStart !== null) {
+      const len = x1 - runStart;
+      physics.addStaticBox(runStart + len / 2, 0.6, z + face * 0.3, len / 2, 0.65, 0.22);
+    }
   };
   wallZ(EAST_SHORE.x0, EAST_SHORE.z0, EAST_SHORE.z1, 1, true); // river bank
   wallZ(EAST_SHORE.x1, EAST_SHORE.z0, EAST_SHORE.z1, -1, false); // far (sea) edge
@@ -51,6 +84,7 @@ export function buildEast(o: EastCtx) {
     physics.addStaticBox(cx, -0.25, z, len / 2, 0.25, w / 2);
     for (let x = x0 - 4; x > x0 - len; x -= 8) for (const dz of [-w / 2 + 0.5, w / 2 - 0.5]) t.cyl(x, -6, z + dz, 0.3, 0.3, 5.7, 8, C('#3f2f22'), T_ROUGH);
     t.box(x0 - len + 0.2, 0.55, z, 0.12, 1.1, w, 0, steel, T_METAL);
+    physics.addStaticBox(x0 - len + 0.2, 0.55, z, 0.18, 0.58, w / 2);
     // a few crates and bollards on the pier
     if (k % 2 === 0) { t.box(cx + 4, 0.7, z - 2, 2.2, 1.4, 2.2, 0.3, C('#8a5a32'), T_ROUGH); physics.addStaticBox(cx + 4, 0.7, z - 2, 1.1, 0.7, 1.1, 0.3); }
     for (const dz of [-w / 2 + 0.6, w / 2 - 0.6]) t.cyl(x0 - len + 1.5, 0.05, z + dz, 0.22, 0.28, 0.6, 8, C('#2f3236'), T_METAL);

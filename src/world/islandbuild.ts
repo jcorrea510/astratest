@@ -28,14 +28,30 @@ export function buildIsland(o: { physics: Physics; city: CityMap; trim: Chunked<
   const nearBridge = (x: number, z: number) => city.paths.some(p => p.kind === 'street' && p.pts.some(q => Math.hypot(q.x - x, q.z - z) < p.half + SIDEWALK + 6));
   // ---- seawalls + esplanade along the stepped coast
   const wall = (x: number, z0: number, z1: number, face: 1 | -1) => { // vertical wall along z at x; face = side where the water is
-    const len = z1 - z0, cz = (z0 + z1) / 2;
     for (let z = z0; z < z1; z += 40) { const l = Math.min(40, z1 - z), c = z + l / 2; trim.at(x, c).box(x + face * 0.4, -1.6, c, 0.8, 3.2, l, 0, stone, T_STONE); trim.at(x, c).box(x + face * 0.25, 0.1, c, 1.4, 0.3, l, 0, cap, T_STONE); }
-    void len; void cz;
-    for (let z = z0 + 3; z < z1; z += 6) if (!nearBridge(x, z)) { const t = trim.at(x, z); t.box(x + face * 0.3, 0.55, z, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + face * 0.3, 1.0, z + 3, 0.1, 0.1, 6, 0, steel, T_METAL); }
+    let runStart: number | null = null;
+    for (let z = z0 + 3; z < z1; z += 6) {
+      if (!nearBridge(x, z)) {
+        const t = trim.at(x, z);
+        t.box(x + face * 0.3, 0.55, z, 0.12, 1.1, 0.12, 0, steel, T_METAL);
+        t.box(x + face * 0.3, 1.0, z + 3, 0.1, 0.1, 6, 0, steel, T_METAL);
+        if (runStart === null) runStart = z;
+      } else if (runStart !== null) {
+        const len = z - runStart;
+        physics.addStaticBox(x + face * 0.3, 0.6, runStart + len / 2, 0.22, 0.65, len / 2);
+        runStart = null;
+      }
+    }
+    if (runStart !== null) {
+      const len = z1 - runStart;
+      physics.addStaticBox(x + face * 0.3, 0.6, runStart + len / 2, 0.22, 0.65, len / 2);
+    }
   };
   const hwall = (z: number, x0: number, x1: number, face: 1 | -1) => {
-    for (let x = Math.min(x0, x1); x < Math.max(x0, x1); x += 40) { const l = Math.min(40, Math.max(x0, x1) - x), c = x + l / 2; trim.at(c, z).box(c, -1.6, z + face * 0.4, l, 3.2, 0.8, 0, stone, T_STONE); trim.at(c, z).box(c, 0.1, z + face * 0.25, l, 0.3, 1.4, 0, cap, T_STONE); }
-    for (let x = Math.min(x0, x1) + 3; x < Math.max(x0, x1); x += 6) { const t = trim.at(x, z); t.box(x, 0.55, z + face * 0.3, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + 3, 1.0, z + face * 0.3, 6, 0.1, 0.1, 0, steel, T_METAL); }
+    const a = Math.min(x0, x1), b = Math.max(x0, x1);
+    for (let x = a; x < b; x += 40) { const l = Math.min(40, b - x), c = x + l / 2; trim.at(c, z).box(c, -1.6, z + face * 0.4, l, 3.2, 0.8, 0, stone, T_STONE); trim.at(c, z).box(c, 0.1, z + face * 0.25, l, 0.3, 1.4, 0, cap, T_STONE); }
+    for (let x = a + 3; x < b; x += 6) { const t = trim.at(x, z); t.box(x, 0.55, z + face * 0.3, 0.12, 1.1, 0.12, 0, steel, T_METAL); t.box(x + 3, 1.0, z + face * 0.3, 6, 0.1, 0.1, 0, steel, T_METAL); }
+    if (b > a + 3) physics.addStaticBox((a + 3 + b) / 2, 0.6, z + face * 0.3, (b - a - 3) / 2, 0.65, 0.22);
   };
   for (const s of islandShore(o.northEdge, o.southEdge)) {
     if (s.x0 === s.x1) { wall(s.x0, s.z0, s.z1, -1); for (let z = s.z0; z < s.z1; z += 40) { const l = Math.min(40, s.z1 - z); trim.at(s.x0, z).box(s.x0 + 3, 0.0, z + l / 2, 6, 0.1, l, 0, walk, T_STONE); } }
@@ -51,6 +67,7 @@ export function buildIsland(o: { physics: Physics; city: CityMap; trim: Chunked<
     physics.addStaticBox(cx, -0.25, z, len / 2, 0.25, w / 2);
     for (let x = x0 - 4; x > x0 - len; x -= 8) for (const dz of [-w / 2 + 0.5, w / 2 - 0.5]) trim.at(x, z).cyl(x, -6, z + dz, 0.3, 0.3, 5.7, 8, C('#3f2f22'), T_ROUGH);
     trim.at(cx, z).box(x0 - len + 0.2, 0.55, z, 0.12, 1.1, w, 0, steel, T_METAL);
+    physics.addStaticBox(x0 - len + 0.2, 0.55, z, 0.18, 0.58, w / 2);
   }
   // ---- bridges
   const segs = bridgeSegments(city);

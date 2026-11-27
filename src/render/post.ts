@@ -25,37 +25,45 @@ export const AO_FRAG = /* glsl */`
   float viewZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
   vec3 viewPos(vec2 uv, float z){
     vec4 c = uProjInv * vec4(uv * 2.0 - 1.0, 0.0, 1.0); // ray through the pixel on the near plane
-    return c.xyz / c.w * (z / (c.z / c.w));
+    float cw = abs(c.w) > 1e-5 ? c.w : 1.0;
+    vec3 ray = c.xyz / cw;
+    float rz = abs(ray.z) > 1e-5 ? ray.z : -1.0;
+    return ray * (z / rz);
   }
   void main(){
     // snap to a full-resolution depth texel centre: half-res pixel centres fall between texels, and nearest sampling then
     // flips between rows, which drew horizontal stripes across flat ground
-    vec2 vUv = (floor(vUv0 / uTexel) + 0.5) * uTexel;
+    vec2 vUv = clamp((floor(vUv0 / uTexel) + 0.5) * uTexel, uTexel, 1.0 - uTexel);
     float d = texture2D(tDepth, vUv).x;
-    if (d >= 0.99999) { gl_FragColor = vec4(1.0); return; }
+    if (d >= 0.99999 || !(d >= 0.0)) { gl_FragColor = vec4(1.0); return; }
     float z = perspectiveDepthToViewZ(d, uNear, uFar);
+    if (!(z < -1e-4)) { gl_FragColor = vec4(1.0); return; }
     float fade = 1.0 - smoothstep(uFadeNear, uFadeFar, -z);
     if (fade <= 0.0) { gl_FragColor = vec4(1.0); return; }
     vec3 P = viewPos(vUv, z);
     // normal from depth: pick the smaller difference on each axis so silhouettes don't smear
     vec2 ox = vec2(uTexel.x, 0.0), oy = vec2(0.0, uTexel.y);
-    vec3 Px1 = viewPos(vUv + ox, viewZ(vUv + ox)), Px0 = viewPos(vUv - ox, viewZ(vUv - ox));
-    vec3 Py1 = viewPos(vUv + oy, viewZ(vUv + oy)), Py0 = viewPos(vUv - oy, viewZ(vUv - oy));
+    vec2 uvX1 = min(vUv + ox, 1.0 - uTexel), uvX0 = max(vUv - ox, uTexel);
+    vec2 uvY1 = min(vUv + oy, 1.0 - uTexel), uvY0 = max(vUv - oy, uTexel);
+    vec3 Px1 = viewPos(uvX1, viewZ(uvX1)), Px0 = viewPos(uvX0, viewZ(uvX0));
+    vec3 Py1 = viewPos(uvY1, viewZ(uvY1)), Py0 = viewPos(uvY0, viewZ(uvY0));
     vec3 dx = abs(Px1.z - P.z) < abs(P.z - Px0.z) ? Px1 - P : P - Px0;
     vec3 dy = abs(Py1.z - P.z) < abs(P.z - Py0.z) ? Py1 - P : P - Py0;
-    vec3 N = normalize(cross(dx, dy));
-    float rPx = uRadius * uProjScale / -z; // radius in UV units (height-normalised)
+    vec3 cr = cross(dx, dy);
+    float cl = length(cr);
+    vec3 N = cl > 1e-6 ? cr / cl : vec3(0.0, 0.0, 1.0);
+    float rPx = uRadius * uProjScale / max(-z, 0.05); // radius in UV units (height-normalised)
     rPx = min(rPx, 0.085);
     // per-pixel rotation (interleaved gradient noise) hides the low sample count; the blur pass removes the pattern
     float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     float sum = 0.0;
-    float r2 = uRadius * uRadius;
+    float r2 = max(uRadius * uRadius, 1e-4);
     float bias = 0.028 + 0.005 * -z;
     for (int i = 0; i < AO_SAMPLES; i++) {
       float a = (float(i) + 0.5) / float(AO_SAMPLES);
       float ang = a * 6.2831853 * 2.618 + rot; // golden-angle-ish spiral (several turns)
       vec2 off = vec2(cos(ang), sin(ang)) * rPx * a;
-      off.x *= uTexel.x / uTexel.y; // keep the disc round on screen (UV x spans the wider side)
+      off.x *= uTexel.x / max(uTexel.y, 1e-6); // keep the disc round on screen (UV x spans the wider side)
       vec2 suv = clamp(vUv + off, uTexel, 1.0 - uTexel);
       vec3 Q = viewPos(suv, viewZ(suv));
       vec3 v = Q - P;
@@ -66,7 +74,8 @@ export const AO_FRAG = /* glsl */`
       float f = max(r2 - vv, 0.0);
       sum += f * f * f * rangeW * max((vn - bias) / (vv + 0.02), 0.0);
     }
-    float ao = max(0.22, 1.0 - sum * uIntensity * 4.4 / (r2 * r2 * r2 * float(AO_SAMPLES)));
+    float ao = clamp(1.0 - sum * uIntensity * 4.4 / (r2 * r2 * r2 * float(AO_SAMPLES)), 0.22, 1.0);
+    if (!(ao >= 0.0 && ao <= 1.0)) ao = 1.0;
     ao = mix(1.0, ao, fade);
     gl_FragColor = vec4(ao, ao, ao, 1.0);
   }`;
@@ -84,11 +93,13 @@ export const AO_BLUR_FRAG = /* glsl */`
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.7853982;
       vec2 o = vec2(cos(a), sin(a)) * uTexel * 1.5;
-      vec2 uv = vUv + o;
+      vec2 uv = clamp(vUv + o, uTexel, 1.0 - uTexel);
       float w = 1.0 / (1.0 + abs(lin(uv) - zc) * k);
       sum += texture2D(tAO, uv).r * w; wsum += w;
     }
-    float ao = sum / wsum;
+    float ao = sum / max(wsum, 1e-4);
+    if (!(ao >= 0.0 && ao <= 1.0)) ao = 1.0;
+    ao = clamp(ao, 0.22, 1.0);
     gl_FragColor = vec4(ao, ao, ao, 1.0);
   }`;
 
@@ -140,6 +151,16 @@ export class AOPass extends Pass {
     const prev = renderer.getRenderTarget();
     this.quad.material = this.aoMat; renderer.setRenderTarget(this.rt); this.quad.render(renderer);
     this.quad.material = this.blurMat; renderer.setRenderTarget(this.blurRT); this.quad.render(renderer);
+    // Unbind read.depthTexture from texture units before subsequent passes (e.g. UnrealBloomPass)
+    // bind readBuffer as a draw FBO, preventing WebGL2/ANGLE Metal framebuffer feedback loops.
+    u.tDepth.value = null;
+    b.tDepth.value = null;
+    const gl = renderer.getContext();
+    for (let unit = 0; unit < 4; unit++) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    renderer.state.reset();
     renderer.setRenderTarget(prev);
   }
   dispose() { this.rt.dispose(); this.blurRT.dispose(); this.aoMat.dispose(); this.blurMat.dispose(); this.quad.dispose(); }
@@ -154,7 +175,7 @@ export const WHITE_TEX = (() => { const t = new THREE.DataTexture(new Uint8Array
  * Expects `tDiffuse`, `uRes` (1/size) and a `hdrLuma` helper in scope.
  */
 export const FXAA_GLSL = /* glsl */`
-  float hdrLuma(vec3 c){ float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); return l / (1.0 + l); }
+  float hdrLuma(vec3 c){ float l = max(0.0, dot(max(c, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722))); return l / (1.0 + l); }
   vec3 fxaa(vec2 uv, vec3 rgbM){
     vec3 rgbNW = texture2D(tDiffuse, uv + vec2(-1.0, -1.0) * uRes).rgb;
     vec3 rgbNE = texture2D(tDiffuse, uv + vec2( 1.0, -1.0) * uRes).rgb;
@@ -192,16 +213,18 @@ export function aoTargetSize(w: number, h: number): [number, number] {
  */
 export const CAS_GLSL = /* glsl */`
   vec3 casSharpen(sampler2D tex, vec2 uv, vec3 m, float sharp){
-    vec3 n = texture2D(tex, uv + vec2(0.0, -uRes.y)).rgb;
-    vec3 s = texture2D(tex, uv + vec2(0.0,  uRes.y)).rgb;
-    vec3 w = texture2D(tex, uv + vec2(-uRes.x, 0.0)).rgb;
-    vec3 e = texture2D(tex, uv + vec2( uRes.x, 0.0)).rgb;
-    vec3 mn = min(min(min(n, s), min(w, e)), m), mx = max(max(max(n, s), max(w, e)), m);
+    vec3 mc = clamp(max(m, vec3(0.0)), vec3(0.0), vec3(64.0));
+    vec3 n = clamp(max(texture2D(tex, uv + vec2(0.0, -uRes.y)).rgb, vec3(0.0)), vec3(0.0), vec3(64.0));
+    vec3 s = clamp(max(texture2D(tex, uv + vec2(0.0,  uRes.y)).rgb, vec3(0.0)), vec3(0.0), vec3(64.0));
+    vec3 w = clamp(max(texture2D(tex, uv + vec2(-uRes.x, 0.0)).rgb, vec3(0.0)), vec3(0.0), vec3(64.0));
+    vec3 e = clamp(max(texture2D(tex, uv + vec2( uRes.x, 0.0)).rgb, vec3(0.0)), vec3(0.0), vec3(64.0));
+    vec3 mn = max(min(min(min(n, s), min(w, e)), mc), vec3(0.0));
+    vec3 mx = max(max(max(max(n, s), max(w, e)), mc), vec3(0.0));
     mx = mx / (1.0 + mx); mn = mn / (1.0 + mn);
     vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
     float peak = -1.0 / mix(8.0, 5.0, clamp(sharp, 0.0, 1.0));
     vec3 wgt = amp * peak;
-    return max((m + (n + s + w + e) * wgt) / (1.0 + 4.0 * wgt), vec3(0.0));
+    return max((mc + (n + s + w + e) * wgt) / max(1.0 + 4.0 * wgt, vec3(1e-3)), vec3(0.0));
   }`;
 
 /**
