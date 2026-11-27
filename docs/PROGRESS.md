@@ -2,6 +2,11 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Green checks (27 Nov)
+- Browser suite had been red since Round 13: wheel ExtrudeGeometry.toNonIndexed() warned on every build and failed every
+  clean-console check. core/geom flatCopy() guards it (+ body/eyes/brows/hair). Wired shoulder swap (T), ADS aim assist
+  (combat/aimAssist), mixed police squad roles (chooseSquadRole). CHANGELOG.md holds player-facing notes.
+
 ## Round 16 (Collision fixes, green-box render fix, realistic people/NPCs & AAA UI)
 - World Collisions: added static colliders for hillside trees, north treeline, beach palms, promenade/plaza planters, roadside
   guardrails, elevated freeway center jersey barriers, Heights bollards, Vista Lookout railing, West/East seawall railings, quay

@@ -3,7 +3,7 @@
 ## 2026-11-27: Firefights, landmarks and the full-screen map
 
 - Foot movement, shooting and large firefights overhauled: tighter sprinting and turning, a tactical combat roll with evasion
-  (crouch while moving), shoulder camera swapping while aiming (Q), subtle ADS aim assist, color-coded tracers, near-miss
+  (crouch while moving), shoulder camera swapping while aiming (T, or B while aiming), subtle ADS aim assist, color-coded tracers, near-miss
   suppression effects, chain-reacting fuel drums and gas pumps, and coordinated police squad roles (flankers, suppressors,
   breachers) with anti-camping grenades.
 - New landmarks: Meridian Harbor Lighthouse, Juniper Grand Fountain, the illuminated Pier 9 gateway arch and overhead
