@@ -1,7 +1,7 @@
 /** Keeps the streets alive: spawns/despawns civilians, runs every NPC brain, and resolves danger and vehicle hits. */
 import { pedImpact } from './impact';
 import * as THREE from 'three';
-import { Npc, NpcBrainRunner, playerProximityReaction, streetClock, type NpcEnv, type Role } from '../actors/npc';
+import { Npc, NpcBrainRunner, playerProximityReaction, yieldStep, streetClock, type NpcEnv, type Role } from '../actors/npc';
 import { pedActivity, districtNightFactor } from './schedule';
 import { randomLook, warmLookExtras, type HumanTemplate, type Look } from '../actors/human';
 import type { FullLook } from '../actors/look';
@@ -108,8 +108,11 @@ export class Population {
         continue;
       }
       // Compute safe lateral yield vector perpendicular to player's path (preferring the non-road side)
-      const side = dx * pDirZ - dz * pDirX >= 0 ? 1 : -1;
-      let sx = pDirZ * side, sz = -pDirX * side;
+      // the walker's own line: its path leg when it has one (its velocity turns while it steps aside)
+      const PN = this.city.pedNodes, la = PN[n.node], lb = PN[n.nextNode];
+      const legOk = !!la && !!lb && la !== lb;
+      const ys = yieldStep(dx, dz, pMoving, pDirX, pDirZ, legOk ? lb.x - la.x : c.vel.x, legOk ? lb.z - la.z : c.vel.z);
+      let sx = ys.x, sz = ys.z;
       if (surfaceAt(this.city, c.pos.x + sx * 1.25, c.pos.z + sz * 1.25) === 'road') { sx = -sx; sz = -sz; }
       if (react === 'shove') {
         n.lookAtT = 2.6;

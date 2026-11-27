@@ -42,7 +42,12 @@ test('hud: mission card + death title are visible with text; toasts do not overl
         u.showDeath(k, 'Medical bill -$250');
         for (let i = 0; i < 14; i++) u.advanceDeath(0.1);
       }, [kind]);
-      await page.waitForTimeout(1000);
+      // the title slams in with a 0.8 s CSS animation that starts on the next rendered frame; under software GL a heavy
+      // game frame can hold that frame back, so wait for the animation to land (up to 15 s) instead of a fixed second
+      await page.waitForFunction(() => {
+        let o = 1; for (let e: HTMLElement | null = document.querySelector<HTMLElement>('.ma-death-word'); e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+        return o > 0.5;
+      }, null, { timeout: 15_000, polling: 200 }).catch(() => { /* the expect below reports the opacity */ });
       const d = await page.evaluate(() => {
         const t = document.querySelector<HTMLElement>('.ma-death-word')!, r = t.getBoundingClientRect();
         let o = 1; for (let e: HTMLElement | null = t; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);

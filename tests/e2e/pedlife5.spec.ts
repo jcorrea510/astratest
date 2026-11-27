@@ -20,7 +20,10 @@ test('pedestrians walk across the bridge walkway at deck height', async () => {
     for (let k = 0; k < 3; k++) { const n = g.pop.spawn('civilian', start.x + k, start.z, start.y + 0.3); n.node = start.id; n.nextNode = east ? east.id : start.id; n.persistent = true; /* far-crowd hand-over would swap walkers out beyond ~110 m */ peds.push(n); }
     g.player.place(start.x + 8, start.y + 0.3, start.z, 0);
     let minY = 99, maxY = -99, maxX = 0, alive = 0;
-    for (let i = 0; i < 90 * 30; i++) { g.frame(1 / 30, i === 90 * 30 - 1); for (const n of peds) { if (!n.alive || n.disposed) continue; if (n.pos.x > 560 && n.pos.x < 710) minY = Math.min(minY, n.pos.y); maxY = Math.max(maxY, n.pos.y); maxX = Math.max(maxX, n.pos.x); } }
+    // keep them heading east along the span: at each bridge node a walker may pick the leg back west (random), which only
+    // tests the coin, not the walkway
+    const eastOf = (id) => { const a = N[id]; if (!a || a.y === undefined) return -1; const b = a.edges.map(e => N[e.to]).filter(m => m && m.y !== undefined && m.x > a.x + 1).sort((p, q) => q.x - p.x)[0]; return b ? b.id : -1; };
+    for (let i = 0; i < 90 * 30; i++) { for (const n of peds) { if (n.node >= 0 && n.nextNode >= 0 && N[n.nextNode] && N[n.node] && N[n.nextNode].x < N[n.node].x - 1) { const e = eastOf(n.node); if (e >= 0) { n.nextNode = e; n.pend = null; } } } g.frame(1 / 30, i === 90 * 30 - 1); for (const n of peds) { if (!n.alive || n.disposed) continue; if (n.pos.x > 560 && n.pos.x < 710) minY = Math.min(minY, n.pos.y); maxY = Math.max(maxY, n.pos.y); maxX = Math.max(maxX, n.pos.x); } }
     for (const n of peds) if (n.alive && !n.disposed) alive++;
     return { minY, maxY, maxX, alive, startY: start.y };
   })()`) as any;
