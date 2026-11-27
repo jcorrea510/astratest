@@ -34,15 +34,16 @@ jobs:
           path: dist/
           retention-days: 3
 
-  # The browser suite takes ~1 h on one software-GL runner, past the old single-job limit, so it runs in parallel shards.
+  # The browser suite takes ~5 h on one software-GL runner, so it runs in parallel shards (8 since Round 16: 6 shards
+  # reached ~58 of their 60 minutes once the heavier Round 15/16 rendering landed).
   e2e:
     needs: checks
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,8 +53,8 @@ jobs:
       - run: npm ci
       - name: Install browser
         run: npx playwright install --with-deps chromium
-      - name: Browser tests (production build at /astratest/), shard ${{ matrix.shard }}/6
-        run: npx playwright test --shard=${{ matrix.shard }}/6
+      - name: Browser tests (production build at /astratest/), shard ${{ matrix.shard }}/8
+        run: npx playwright test --shard=${{ matrix.shard }}/8
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v4

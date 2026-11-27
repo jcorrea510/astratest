@@ -379,7 +379,7 @@ test('the respray prompt goes away once the car has been resprayed', async ({ pa
     const menu = A.garage.state;
     (document.querySelectorAll('.ma-garage-sw')[2] as HTMLElement).focus();
     (document.querySelector('[data-act="paint"]') as HTMLElement).click();
-    const leave = Array.from(document.querySelectorAll('.ma-garage button')).find(b => b.textContent === 'Leave') as HTMLElement;
+    const leave = document.querySelector('.ma-garage .ma-garage-exit') as HTMLElement; // the leave button (reads "Exit Bay" since Round 16)
     leave.click();
     n = 0; while (A.garage.state !== 'idle' && n++ < 200) g.frame(1 / 30, false);
     for (let i = 0; i < 30; i++) g.frame(1 / 30, false);
