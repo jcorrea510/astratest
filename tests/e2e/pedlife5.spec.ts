@@ -87,6 +87,9 @@ test('people wait at a bus stop, board when the bus kneels, and riders step off'
     for (const c of [...g.traffic.cars]) { g.traffic.cars.splice(g.traffic.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     if (g.playerVehicle) { const o = g.playerVehicle; g.exitVehicle(true); g.vehicles.remove(o); }
     const st = g.buses.routes[0].stops[0]; g.player.place(st.x - st.dz * 6 + st.dx * 60, 0.4, st.z + st.dx * 6 + st.dz * 60, 0);
+    // look down the road away from the stop: buses only appear out of view, and the camera kept whatever way the last test
+    // had it facing (towards the bench), which could cover the stop's approach for the whole run (no bus in 400 s on CI)
+    g.cam.yaw = Math.atan2(st.dx, st.dz) + Math.PI;
     window.__bus0 = { boarded0: g.buses.stats.boarded, st, shot: false };
   })()`);
   const poll = () => page.evaluate(`(() => {
