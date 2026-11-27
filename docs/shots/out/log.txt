@@ -1,6 +1,6 @@
 gun-rifle ok {"calls":5,"tris":3088}
 people-face ok {"calls":13,"tris":92616}
-signal-day ok {"calls":139,"triangles":605952,"textures":88,"geometries":2846,"programs":142}
-street-people-day ok {"calls":164,"triangles":707749,"textures":94,"geometries":2855,"programs":143}
-night-street ok {"calls":255,"triangles":789328,"textures":112,"geometries":2862,"programs":153}
-skyline-day ok {"calls":184,"triangles":729435,"textures":112,"geometries":2862,"programs":153}
+signal-day ok {"calls":138,"triangles":604259,"textures":89,"geometries":2845,"programs":144}
+street-people-day ok {"calls":164,"triangles":711568,"textures":95,"geometries":2855,"programs":144}
+night-street ok {"calls":253,"triangles":788741,"textures":112,"geometries":2862,"programs":154}
+skyline-day ok {"calls":187,"triangles":729647,"textures":113,"geometries":2863,"programs":154}
