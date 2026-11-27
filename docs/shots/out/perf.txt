@@ -1,113 +1,212 @@
 
 === medium / density-corner-draws (hour 17.6) ===
-{"infoCalls":263,"c0":382,"total":267,"people":1,"npcs":60,"cars":53}
+npcs 54 cars 48
+
+-- yaw null: calls 374 (hooked 378), people in view 0
 by pass:
-266  rt
+261  main
+116  shadow
 1  screen
 by group:
-143  rt | city
-71  rt | Group
-29  rt | Mesh
-3  rt | Points
-1  rt | crowdPeople:m
-1  rt | crowdPeople:f
-1  rt | armyBaseLod
-1  rt | farCars:fullsize
-1  rt | farCars:sedan
-1  rt | farCars:luxury
-1  rt | farCars:sportsedan
-1  rt | farCars:hatch
-1  rt | farCars:pickup
-1  rt | farCars:crossover
-1  rt | farCars:wagon
-1  rt | farCars:van
-1  rt | farCars:coupe
-1  rt | farCars:convertible
-1  rt | farCars:muscle
-1  rt | farCars:suv
-1  rt | farCars:citycar
-1  rt | farCars:minivan
-1  rt | farCars:taxi
-1  rt | LineSegments
-1  screen | Mesh
+143  main | city
+59  shadow | city
+46  main | Group
+34  shadow | body
+29  main | Mesh
+13  main | Armature
+8  shadow | Group
+7  shadow | SuperHero_Male
+7  main | SuperHero_Male
+4  shadow | Armature
+3  shadow | Mesh
+3  main | Points
+1  shadow | Superhero_Female
+1  main | crowdPeople:m
+1  main | crowdPeople:f
+1  main | armyBaseLod
+1  main | farCars:sedan
+1  main | farCars:fullsize
+1  main | farCars:muscle
+1  main | farCars:sportsedan
+1  main | farCars:hatch
+1  main | farCars:pickup
+1  main | farCars:luxury
+1  main | farCars:crossover
+1  main | farCars:wagon
+1  main | farCars:van
+1  main | farCars:coupe
+1  main | farCars:convertible
+1  main | farCars:suv
+1  main | farCars:citycar
 detail:
-23  rt | city | city | MeshStandardMaterial
-20  rt | Group | [skin] | MeshStandardMaterial
-15  rt | Group |  | MeshBasicMaterial
-14  rt | Mesh |  | MeshStandardMaterial
-13  rt | Group | Armature[skin] | MeshStandardMaterial
-10  rt | Group | [skin] | MeshPhysicalMaterial
-6  rt | Group | SuperHero_Male[skin] | MeshStandardMaterial
-6  rt | Mesh | [inst] | MeshStandardMaterial
-4  rt | Mesh | [inst] | MeshBasicMaterial
-3  rt | Mesh |  | ShaderMaterial
-3  rt | Group |  | MeshStandardMaterial
-3  rt | Points |  | ShaderMaterial
-2  rt | city | streetlight@-1,-1[inst] | MeshStandardMaterial
-2  rt | city | pedSignals[inst] | MeshBasicMaterial
-2  rt | city | storeGlass[inst] | MeshBasicMaterial
-2  rt | Group | Superhero_Female[skin] | MeshStandardMaterial
-1  rt | city | terrain@4,3 | MeshStandardMaterial
-1  rt | city | terrain@1,3 | MeshStandardMaterial
-1  rt | city | terrain@3,3 | MeshStandardMaterial
-1  rt | city | terrain@2,3 | MeshStandardMaterial
-1  rt | city | terrain@5,3 | MeshStandardMaterial
-1  rt | city | terrain@6,3 | MeshStandardMaterial
-1  rt | city | terrain@1,2 | MeshStandardMaterial
-1  rt | city | terrain@0,2 | MeshStandardMaterial
-1  rt | city | terrain@3,2 | MeshStandardMaterial
-1  rt | city | terrain@4,2 | MeshStandardMaterial
-1  rt | city | terrain@6,2 | MeshStandardMaterial
-1  rt | city | terrain@5,2 | MeshStandardMaterial
-1  rt | city | terrain@2,2 | MeshStandardMaterial
-1  rt | city | terrain@2,1 | MeshStandardMaterial
-1  rt | city | terrain@1,1 | MeshStandardMaterial
-1  rt | city | terrain@5,1 | MeshStandardMaterial
-1  rt | city | terrain@4,1 | MeshStandardMaterial
-1  rt | city | terrain@3,1 | MeshStandardMaterial
-1  rt | city | terrain@4,0 | MeshStandardMaterial
-1  rt | city | terrain@2,0 | MeshStandardMaterial
-1  rt | city | terrain@3,0 | MeshStandardMaterial
-1  rt | city | worldUnderlay | MeshLambertMaterial
-1  rt | city | garage-blade | MeshStandardMaterial
-1  rt | city | bayDoor:Brickline Customs | MeshStandardMaterial
-1  rt | city | streetlight@-1,0[inst] | MeshStandardMaterial
-1  rt | city | streetlight@0,0[inst] | MeshStandardMaterial
-1  rt | city | signal8@0,0[inst] | MeshStandardMaterial
-1  rt | city | signal8@-1,0[inst] | MeshStandardMaterial
-1  rt | city | dumpster0@-1,0[inst] | MeshStandardMaterial
-1  rt | city | bbframe@-1,0[inst] | MeshStandardMaterial
-1  rt | city | hydrant@-1,0[inst] | MeshStandardMaterial
-1  rt | city | trimfine@-1,0 | MeshStandardMaterial
-1  rt | city | trim@-1,0 | MeshStandardMaterial
-1  rt | city | trim@0,0 | MeshStandardMaterial
-1  rt | city | bollard@-1,0[inst] | MeshStandardMaterial
-1  rt | city | bollard@0,0[inst] | MeshStandardMaterial
-1  rt | city | tree3@-2,-1[inst] | MeshStandardMaterial
-1  rt | city | trimfine@-2,-1 | MeshStandardMaterial
-1  rt | city | trim@1,-1 | MeshStandardMaterial
-1  rt | city | trim@0,-1 | MeshStandardMaterial
-1  rt | city | trimfine@0,-1 | MeshStandardMaterial
-1  rt | city | trim@-1,-1 | MeshStandardMaterial
-1  rt | city | trim@-2,-1 | MeshStandardMaterial
-1  rt | city | trimfine@-1,-1 | MeshStandardMaterial
-1  rt | city | bollard@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | ftrunk@-2,-2[inst] | MeshStandardMaterial
-1  rt | city | ftrunk@1,-2[inst] | MeshStandardMaterial
-1  rt | city | bollard@0,-1[inst] | MeshStandardMaterial
-1  rt | city | news1@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | ftrunk@-1,-3[inst] | MeshStandardMaterial
-1  rt | city | ftrunk@-3,-3[inst] | MeshStandardMaterial
-1  rt | city | mailbox@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | phone@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | news2@0,-1[inst] | MeshStandardMaterial
-1  rt | city | trimfine@-2,-2 | MeshStandardMaterial
-1  rt | city | trim@-1,-2 | MeshStandardMaterial
-1  rt | city | bbframe@0,-1[inst] | MeshStandardMaterial
-1  rt | city | bench@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | trim@-2,-2 | MeshStandardMaterial
-1  rt | city | trim@-3,-2 | MeshStandardMaterial
-1  rt | city | ftrunk@-1,-4[inst] | MeshStandardMaterial
-1  rt | city | hydrant@-1,-1[inst] | MeshStandardMaterial
-1  rt | city | trim@0,-2 | MeshStandardMaterial
-1  rt | city | trim@1,-2 | MeshStandardMaterial
+23  main | city | city | MeshStandardMaterial
+18  main | Group | [skin] | MeshStandardMaterial
+14  main | Mesh |  | MeshStandardMaterial
+14  main | Group |  | MeshBasicMaterial
+13  main | Armature | Armature[skin] | MeshStandardMaterial
+10  shadow | body | body:steel | MeshDepthMaterial
+10  shadow | body | body:polymer | MeshDepthMaterial
+10  shadow | body | mag:polymer | MeshDepthMaterial
+9  main | Group | [skin] | MeshPhysicalMaterial
+8  shadow | Group | [skin] | MeshDepthMaterial
+7  shadow | SuperHero_Male | SuperHero_Male[skin] | MeshDepthMaterial
+7  main | SuperHero_Male | SuperHero_Male[skin] | MeshStandardMaterial
+6  main | Mesh | [inst] | MeshStandardMaterial
+4  shadow | Armature | Armature[skin] | MeshDepthMaterial
+4  shadow | body | mag:steel | MeshDepthMaterial
+4  main | Mesh | [inst] | MeshBasicMaterial
+3  main | Mesh |  | ShaderMaterial
+3  main | Group |  | MeshStandardMaterial
+3  main | Points |  | ShaderMaterial
+2  shadow | Mesh |  | MeshDepthMaterial
+2  main | city | streetlight@-1,-1[inst] | MeshStandardMaterial
+2  main | city | pedSignals[inst] | MeshBasicMaterial
+2  main | city | storeGlass[inst] | MeshBasicMaterial
+1  shadow | city | [inst] | MeshDepthMaterial
+1  shadow | city | facade@-1,-1 | MeshDepthMaterial
+1  shadow | city | facade@-1,0 | MeshDepthMaterial
+1  shadow | city | facade@0,-1 | MeshDepthMaterial
+1  shadow | city | facade@0,0 | MeshDepthMaterial
+1  shadow | city | trim@-1,-1 | MeshDepthMaterial
+1  shadow | city | trim@-2,-1 | MeshDepthMaterial
+1  shadow | city | trim@-2,0 | MeshDepthMaterial
+1  shadow | city | trim@0,-1 | MeshDepthMaterial
+1  shadow | city | trim@0,0 | MeshDepthMaterial
+1  shadow | city | trim@-1,0 | MeshDepthMaterial
+1  shadow | city | trimfine@-1,-1 | MeshDepthMaterial
+1  shadow | city | trimfine@-2,0 | MeshDepthMaterial
+1  shadow | city | trimfine@-1,0 | MeshDepthMaterial
+1  shadow | city | bbframe@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | bbframe@0,-1[inst] | MeshDepthMaterial
+1  shadow | city | streetlight@-1,-1[inst] | MeshDepthMaterial
+1  shadow | city | streetlight@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | streetlight@0,-1[inst] | MeshDepthMaterial
+1  shadow | city | streetlight@0,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster0@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster0@0,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster1@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | dumpster1@0,0[inst] | MeshDepthMaterial
+1  shadow | city | signal8@-1,-1[inst] | MeshDepthMaterial
+1  shadow | city | signal8@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | signal8@0,-1[inst] | MeshDepthMaterial
+1  shadow | city | signal8@0,0[inst] | MeshDepthMaterial
+1  shadow | city | signal4@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | tree0@-2,1[inst] | MeshDepthMaterial
+1  shadow | city | tree0@-2,0[inst] | MeshDepthMaterial
+1  shadow | city | leaf0@-2,1[inst] | MeshDepthMaterial
+1  shadow | city | leaf0@-2,0[inst] | MeshDepthMaterial
+1  shadow | city | tree1@-2,-1[inst] | MeshDepthMaterial
+1  shadow | city | tree1@-1,0[inst] | MeshDepthMaterial
+1  shadow | city | tree1@-1,1[inst] | MeshDepthMaterial
+1  shadow | city | leaf1@-2,-1[inst] | MeshDepthMaterial
+
+-- yaw 1.5708: calls 357 (hooked 361), people in view 8
+by pass:
+281  main
+79  shadow
+1  screen
+by group:
+130  main | city
+84  main | Group
+55  shadow | city
+19  main | Mesh
+11  main | SuperHero_Male
+11  main | Armature
+8  shadow | SuperHero_Male
+8  shadow | Group
+7  main | Superhero_Female
+4  shadow | Armature
+3  shadow | Mesh
+3  main | Points
+1  shadow | Superhero_Female
+1  main | crowdPeople:m
+1  main | crowdPeople:f
+1  main | farCars:sedan
+1  main | farCars:muscle
+1  main | farCars:sportsedan
+1  main | farCars:hatch
+1  main | farCars:pickup
+1  main | farCars:luxury
+1  main | farCars:crossover
+1  main | farCars:wagon
+1  main | farCars:van
+1  main | farCars:coupe
+1  main | farCars:convertible
+1  main | farCars:suv
+1  main | farCars:minivan
+1  main | LineSegments
+1  screen | Mesh
+
+-- yaw 3.1416: calls 477 (hooked 481), people in view 8
+by pass:
+363  main
+117  shadow
+1  screen
+by group:
+138  main | city
+117  main | Group
+65  main | Mesh
+59  shadow | city
+34  shadow | body
+8  shadow | Group
+8  main | Armature
+8  main | Superhero_Female
+7  shadow | SuperHero_Male
+6  main | SuperHero_Male
+4  shadow | Armature
+3  shadow | Mesh
+3  main | Points
+2  shadow | Superhero_Female
+1  main | crowdPeople:m
+1  main | crowdPeople:f
+1  main | farCars:sedan
+1  main | farCars:fullsize
+1  main | farCars:muscle
+1  main | farCars:sportsedan
+1  main | farCars:hatch
+1  main | farCars:pickup
+1  main | farCars:luxury
+1  main | farCars:crossover
+1  main | farCars:wagon
+1  main | farCars:coupe
+1  main | farCars:convertible
+1  main | farCars:suv
+1  main | farCars:citycar
+1  main | farCars:minivan
+
+-- yaw -1.5708: calls 452 (hooked 456), people in view 7
+by pass:
+347  main
+108  shadow
+1  screen
+by group:
+133  main | city
+67  main | Mesh
+53  shadow | city
+51  main | Group
+48  main | body
+34  shadow | body
+9  main | SuperHero_Male
+9  main | Armature
+8  shadow | Group
+7  main | Superhero_Female
+6  shadow | SuperHero_Male
+3  shadow | Armature
+3  shadow | Mesh
+3  main | Points
+1  shadow | Superhero_Female
+1  main | crowdPeople:m
+1  main | crowdPeople:f
+1  main | armyBaseLod
+1  main | farCars:sedan
+1  main | farCars:fullsize
+1  main | farCars:muscle
+1  main | farCars:sportsedan
+1  main | farCars:hatch
+1  main | farCars:pickup
+1  main | farCars:luxury
+1  main | farCars:crossover
+1  main | farCars:wagon
+1  main | farCars:van
+1  main | farCars:coupe
+1  main | farCars:suv
