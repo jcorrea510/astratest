@@ -1,48 +1,35 @@
 import { test, type Page } from '@playwright/test';
 import { boot, quietStreets } from './helpers';
 
-// Temporary CI probe (removed before merge): what the AI car does in traffic5's honk scenario.
+// Temporary CI probe (removed before merge): traffic5's "boxed in while panicking" scenario.
 let page: Page;
 test.beforeAll(async ({ browser }) => { page = await browser.newPage(); await boot(page); });
 test.afterAll(async () => { await page.close(); });
 
-test('probe honk scenario', async () => {
+test('probe bail scenario', async () => {
   await quietStreets(page);
   const r = await page.evaluate(`(() => {
     const g = window.__game; const T = g.traffic; const out = { log: [] };
     const L = g.city.lanes.filter(l => !l.connector && l.points.length === 2).sort((a, b) => b.length - a.length);
     const l = L[3]; const a = l.points[0], b = l.points[1]; const len = Math.hypot(b.x - a.x, b.z - a.z);
     const info = { lane: l, ax: a.x, az: a.z, dx: (b.x - a.x) / len, dz: (b.z - a.z) / len, len, k: (len - 30) / 130 };
-    out.laneSpeed = l.speed; out.len = len;
     const at = (s) => { s = 10 + s * info.k; return { x: info.ax + info.dx * s, z: info.az + info.dz * s }; };
     for (const c of [...T.cars]) { T.cars.splice(T.cars.indexOf(c), 1); g.pop.remove(c.driver); g.vehicles.remove(c.v); }
     for (const v of [...g.vehicles.list]) if (!v.persistent && v !== g.playerVehicle) g.vehicles.remove(v);
     g.trafficCap = 0;
-    const crashes = []; g.vehicles.crashListeners.push(e => crashes.push({ id: e.vehicle.id, imp: +e.impact.toFixed(2), t: +g.time.toFixed(2) }));
-    const p0 = at(60); g.player.place(p0.x, 0.4, p0.z, 0);
-    const pv = g.vehicles.spawn('sedan', p0.x + info.dx * 20, p0.z + info.dz * 20, Math.atan2(info.dx, info.dz)); g.seatPlayer(pv);
-    pv.phys.teleport(p0.x + info.dx * 20, 0.8, p0.z + info.dz * 20, Math.atan2(info.dx, info.dz));
-    const c = T.spawnOnLane('sedan', info.lane, 10 + (60 - 0.001) * info.k);
-    out.v0 = +Math.hypot(c.v.phys.lastVel.x, c.v.phys.lastVel.z).toFixed(2);
-    c.v.phys.body.setLinvel({ x: info.dx * 11, y: 0, z: info.dz * 11 }, true);
-    out.aiId = c.v.id; out.pvId = pv.id;
-    const h0 = T.stats.honks;
-    for (let i = 0; i < 120; i++) {
+    const crashes = []; g.vehicles.crashListeners.push(e => crashes.push({ id: e.vehicle.id, imp: +e.impact.toFixed(2), pre: +(e.preSpeed ?? 0).toFixed(2), fd: +(e.frontDot ?? 0).toFixed(2), t: +g.time.toFixed(2) }));
+    const v4 = T.spawnOnLane('sedan', info.lane, 10 + 70 * info.k); v4.v.phys.body.setLinvel({ x: info.dx * 11, y: 0, z: info.dz * 11 }, true);
+    v4.v.phys.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    const f = at(70 + 4.6); const wall = g.vehicles.spawn('sedan', f.x, f.z, Math.atan2(info.dx, info.dz)); wall.phys.teleport(f.x, 0.8, f.z, Math.atan2(info.dx, info.dz)); wall.ignition = false; wall.parked = false;
+    const driver = v4.driver; T.panic(v4.v);
+    out.ids = [v4.v.id, wall.id]; out.gap0 = +v4.v.position.distanceTo(wall.position).toFixed(2);
+    for (let i = 0; i < 180; i++) {
       g.frame(1 / 30, false);
-      if (i < 4 || i % 8 === 0) out.log.push([i, +c.v.speed.toFixed(2), +c.v.position.distanceTo(pv.position).toFixed(2), c.mode, !!c.v.hazard, +(c.v.phys.impact || 0).toFixed(2), +(c.v.phys.impactNormal || 0).toFixed(2), c.v.phys.wallContact, c.blockedBy === pv, T.stats.honks - h0].join(' '));
+      if (i < 6 || i % 10 === 0) out.log.push([i, +v4.v.speed.toFixed(2), +v4.v.position.distanceTo(wall.position).toFixed(2), v4.mode, +(v4.boxedT ?? 0).toFixed(2), +(v4.reverseT ?? 0).toFixed(2), +(v4.stuckT ?? 0).toFixed(2), +v4.v.input.throttle.toFixed(2), +v4.v.input.steer.toFixed(2), driver.alive, !!driver.char.inVehicle, T.cars.includes(v4), +v4.v.health.toFixed(0), !!v4.avoid, +(v4.shift ?? 0).toFixed(2), v4.v.phys.wallContact].join(' '));
     }
-    // which static does the AI car "touch" while wallContact is set? (shape type, normal, solver contacts, distance)
-    const P = g.physics ?? g.vehicles.physics; const ph = c.v.phys; const wall = [];
-    for (let i = 0; i < 90 && wall.length < 12; i++) {
-      g.frame(1 / 30, false);
-      if (!ph.wallContact) continue;
-      P.world.contactPairsWith(ph.collider, (o) => { const tg = P.tagOf(o); if (tg && tg.kind !== 'static' && tg.kind !== 'prop') return;
-        P.world.contactPair(ph.collider, o, (m, fl) => { const n = m.normal(); const sc = m.numSolverContacts(); let d = null; try { d = m.contactDist(0); } catch (e) {}
-          wall.push({ i, kind: tg ? tg.kind : '?', shape: o.shape.type, n: [n.x, n.y, n.z].map(x => +x.toFixed(2)), fl, sc, nc: m.numContacts(), d: d == null ? null : +d.toFixed(3), y: +ph.body.translation().y.toFixed(2), spd: +c.v.speed.toFixed(2) }); }); });
-    }
-    out.wall = wall;
-    out.crashes = crashes; out.honked = T.stats.honks - h0;
+    out.crashes = crashes.slice(0, 12);
+    out.bailed = !T.cars.includes(v4) && driver.alive && driver.char.inVehicle === null;
     return out;
   })()`);
-  console.log('HONKPROBE', JSON.stringify(r));
+  console.log('BAILPROBE', JSON.stringify(r));
 });

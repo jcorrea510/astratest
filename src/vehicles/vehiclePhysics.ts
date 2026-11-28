@@ -143,11 +143,11 @@ export class VehiclePhysics {
     // Lateral wall/barrier contact: predominantly horizontal normal (excludes road deck / flat terrain).
     if (hLen < 0.72 || Math.abs(ny) > 0.65) return;
     nx /= hLen; nz /= hLen;
-    let px = this._scanX - nx * this.layout.half[0], py = this._scanY, pz = this._scanZ - nz * this.layout.half[2];
-    if (m.numSolverContacts() > 0) {
-      const sp = m.solverContactPoint(0);
-      px = sp.x; py = sp.y; pz = sp.z;
-    }
+    // Only a real touch counts: Rapier also lists pairs whose bounding boxes merely overlap, with no contact point (a
+    // slanted building block or the ground mesh beside the lane); their normal is no wall and trimmed the drive to 24 %.
+    if (m.numSolverContacts() === 0) return;
+    const sp = m.solverContactPoint(0);
+    const px = sp.x, py = sp.y, pz = sp.z;
     // Orient normal from the wall towards the vehicle centre.
     const toCar = (this._scanX - px) * nx + (this._scanZ - pz) * nz;
     if (toCar < 0) { nx = -nx; nz = -nz; }
