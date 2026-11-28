@@ -8,7 +8,7 @@ import type { VehicleKind } from '../vehicles/specs';
 import { WATER_LEVEL } from '../world/citymap';
 import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
-import { vehicleCrashDamage, CRASH_SEVERE_SPEED } from './impact';
+import { vehicleCrashDamage, CRASH_SEVERE_SPEED, crashRegistered } from './impact';
 
 export interface CrashEvent {
   vehicle: Vehicle;
@@ -100,7 +100,7 @@ export class VehicleManager {
       const normalImp = v.phys.impactNormal;
       const angleDeg = v.phys.impactAngleDeg;
       const preSpeed = v.phys.impactPreSpeed;
-      if ((normalImp > 3.5 || (!v.phys.wallContact && imp > 4)) && !v.destroyed) {
+      if (crashRegistered(imp, normalImp, v.phys.wallContact) && !v.destroyed) {
         const d = v.phys.impactDir;
         const fwd = v.phys.forward();
         const frontDot = d.x * fwd.x + d.z * fwd.z;

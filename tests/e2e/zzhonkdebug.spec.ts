@@ -31,6 +31,16 @@ test('probe honk scenario', async () => {
       g.frame(1 / 30, false);
       if (i < 4 || i % 8 === 0) out.log.push([i, +c.v.speed.toFixed(2), +c.v.position.distanceTo(pv.position).toFixed(2), c.mode, !!c.v.hazard, +(c.v.phys.impact || 0).toFixed(2), +(c.v.phys.impactNormal || 0).toFixed(2), c.v.phys.wallContact, c.blockedBy === pv, T.stats.honks - h0].join(' '));
     }
+    // which static does the AI car "touch" while wallContact is set? (shape type, normal, solver contacts, distance)
+    const P = g.physics ?? g.vehicles.physics; const ph = c.v.phys; const wall = [];
+    for (let i = 0; i < 90 && wall.length < 12; i++) {
+      g.frame(1 / 30, false);
+      if (!ph.wallContact) continue;
+      P.world.contactPairsWith(ph.collider, (o) => { const tg = P.tagOf(o); if (tg && tg.kind !== 'static' && tg.kind !== 'prop') return;
+        P.world.contactPair(ph.collider, o, (m, fl) => { const n = m.normal(); const sc = m.numSolverContacts(); let d = null; try { d = m.contactDist(0); } catch (e) {}
+          wall.push({ i, kind: tg ? tg.kind : '?', shape: o.shape.type, n: [n.x, n.y, n.z].map(x => +x.toFixed(2)), fl, sc, nc: m.numContacts(), d: d == null ? null : +d.toFixed(3), y: +ph.body.translation().y.toFixed(2), spd: +c.v.speed.toFixed(2) }); }); });
+    }
+    out.wall = wall;
     out.crashes = crashes; out.honked = T.stats.honks - h0;
     return out;
   })()`);

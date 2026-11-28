@@ -47,6 +47,15 @@ export function vehicleCrashDamage(normalSpeed: number, angleDeg: number, maxHea
   return base;
 }
 
+/**
+ * Whether a sudden velocity change counts as a crash. Against a wall or barrier the normal component decides (> 3.5 m/s);
+ * any other knock keeps the old 4 m/s total threshold. (The normal-impact rewrite let 3.5-4 m/s nudges count everywhere,
+ * so a car given a small speed kick stopped with its hazards on as if it had crashed, and traffic behind it waited.)
+ */
+export function crashRegistered(impact: number, normalImpact: number, wallContact: boolean): boolean {
+  return wallContact ? normalImpact > 3.5 : impact > 4;
+}
+
 export interface CrashEffects {
   /** >= 45 mph (~20.1 m/s) head-on into a solid obstacle */
   severe: boolean;
