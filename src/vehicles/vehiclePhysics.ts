@@ -10,7 +10,7 @@ import type { VehicleSpec } from './specs';
 
 export interface WheelDef { x: number; y: number; z: number; front: boolean; left: boolean }
 export interface VehicleLayout { half: [number, number, number]; centerY: number; wheels: WheelDef[]; radius: number; zCenter?: number }
-export interface DriveInput { throttle: number; steer: number; handbrake: boolean; brake?: number }
+export interface DriveInput { throttle: number; steer: number; handbrake: boolean; brake?: number; /** true for gamepad/touch analog stick or AI (1:1 steer response, no keyboard ramp lag) */ analogSteer?: boolean }
 
 type V3 = { x: number; y: number; z: number };
 const UP = { x: 0, y: 1, z: 0 };
@@ -30,6 +30,46 @@ export function loadTransfer(longAcc: number, front: boolean, comH = 0.55, wheel
 }
 const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+/**
+ * Progressive steering-input filter (D2).
+ * - Analog stick (`analog = true`): 1:1 with the stick (no added lag).
+ * - Keyboard (`analog = false`): gentle near-centre ramp so a 0.1 s tap at 60 mph gives a small lane correction
+ *   (~15% lock), holding reaches full lock in ~0.35-0.42 s, and return-to-centre / unwinding stays crisp (~0.1 s).
+ */
+export function stepSteerInput(cur: number, target: number, absV: number, dt: number, analog: boolean): number {
+  const sIn = clamp(target, -1, 1);
+  if (analog || dt <= 0) return sIn;
+  const sameSide = cur === 0 || (sIn !== 0 && Math.sign(sIn) === Math.sign(cur));
+  const rampingIn = sameSide && Math.abs(sIn) > Math.abs(cur);
+  if (!rampingIn) {
+    // Quick return to centre or quick unwind across zero for crisp countersteering.
+    const ret = 9.5 * dt;
+    return cur + clamp(sIn - cur, -ret, ret);
+  }
+  const hi = smooth(8, 32, absV);
+  const r0 = 1.65 - 0.40 * hi;
+  const r1 = 3.4 - 0.4 * hi;
+  const step = (r0 + r1 * Math.abs(cur)) * dt;
+  return cur + clamp(sIn - cur, -step, step);
+}
+/**
+ * Pure normal-impact decomposition for wall / barrier contacts (D1).
+ * `nx, nz`: unit horizontal normal pointing out of the wall towards the car.
+ */
+export function normalImpactMetrics(preVx: number, preVz: number, postVx: number, postVz: number, nx: number, nz: number): { normalSpeed: number; angleDeg: number; preSpeed: number } {
+  const preSpeed = Math.hypot(preVx, preVz);
+  const vInto = Math.max(0, -(preVx * nx + preVz * nz));
+  const dvOut = Math.max(0, (postVx - preVx) * nx + (postVz - preVz) * nz);
+  const normalSpeed = Math.max(vInto, dvOut);
+  const sinA = preSpeed > 0.5 ? clamp(vInto / preSpeed, 0, 1) : 1;
+  const angleDeg = Math.asin(sinA) * (180 / Math.PI);
+  return { normalSpeed, angleDeg, preSpeed };
+}
+/** Tangential deceleration (m/s²) applied while scraping a solid wall/barrier (sheds ~20-25% speed/s). */
+export function wallScrapeDecel(absTanSpeed: number): number {
+  if (absTanSpeed <= 1.2) return 0;
+  return 0.25 * absTanSpeed + 1.9;
+}
 function rotate(q: { x: number; y: number; z: number; w: number }, v: V3, out: V3): V3 {
   // v' = v + 2w(q×v) + 2q×(q×v)
   const tx = 2 * (q.y * v.z - q.z * v.y), ty = 2 * (q.z * v.x - q.x * v.z), tz = 2 * (q.x * v.y - q.y * v.x);
@@ -58,6 +98,18 @@ export class VehiclePhysics {
   lastVel = { x: 0, y: 0, z: 0 };
   impact = 0; // magnitude of the last sudden velocity change (m/s)
   impactDir = { x: 0, y: 0, z: 0 };
+  /** Normal-component impact speed (m/s), impact angle relative to wall tangent (deg), and pre-impact horizontal speed (m/s). */
+  impactNormal = 0;
+  impactAngleDeg = 90;
+  impactPreSpeed = 0;
+  /** True during sustained wall/barrier scraping (for sparks, grind audio and climb suppression). */
+  wallContact = false;
+  scrapeActive = false;
+  scrapeIntensity = 0;
+  scrapePoint = { x: 0, y: 0, z: 0 };
+  scrapeNormal = { x: 0, y: 0, z: 0 };
+  /** True when the current glancing wall impact should be suppressed by sustained-scrape cooldown. */
+  scrapeDamageSuppressed = false;
   grounded = true;
   /** >0 while a handbrake-initiated drift is being held */
   drift = 0;
@@ -78,7 +130,41 @@ export class VehiclePhysics {
   private driftDir = 0; private prevBeta = 0;
   private wheelBase: number;
   private comLocalY: number;
+  private wallNx = 0; private wallNz = 0; private wallScore = 0;
+  private wallContactT = 0; private scrapeDmgCool = 0; private lastRoadY = 0; private hasRoadY = false;
   private v: V3 = { x: 0, y: 0, z: 0 }; private t1: V3 = { x: 0, y: 0, z: 0 }; private t2: V3 = { x: 0, y: 0, z: 0 };
+  private _scanX = 0; private _scanY = 0; private _scanZ = 0;
+  private readonly _onManifold = (m: RAPIER.TempContactManifold, flipped: boolean) => {
+    const n = m.normal();
+    const s = flipped ? -1 : 1;
+    const ny = n.y * s;
+    let nx = n.x * s, nz = n.z * s;
+    const hLen = Math.hypot(nx, nz);
+    // Lateral wall/barrier contact: predominantly horizontal normal (excludes road deck / flat terrain).
+    if (hLen < 0.72 || Math.abs(ny) > 0.65) return;
+    nx /= hLen; nz /= hLen;
+    let px = this._scanX - nx * this.layout.half[0], py = this._scanY, pz = this._scanZ - nz * this.layout.half[2];
+    if (m.numSolverContacts() > 0) {
+      const sp = m.solverContactPoint(0);
+      px = sp.x; py = sp.y; pz = sp.z;
+    }
+    // Orient normal from the wall towards the vehicle centre.
+    const toCar = (this._scanX - px) * nx + (this._scanZ - pz) * nz;
+    if (toCar < 0) { nx = -nx; nz = -nz; }
+    // Prefer the most horizontal (vertical-wall) contact.
+    if (hLen > this.wallScore) {
+      this.wallScore = hLen;
+      this.wallContact = true;
+      this.wallNx = nx; this.wallNz = nz;
+      this.scrapeNormal.x = nx; this.scrapeNormal.y = 0; this.scrapeNormal.z = nz;
+      this.scrapePoint.x = px; this.scrapePoint.y = py; this.scrapePoint.z = pz;
+    }
+  };
+  private readonly _onPair = (other: RAPIER.Collider) => {
+    const meta = this.physics.tagOf(other);
+    if (meta && meta.kind !== 'static' && meta.kind !== 'prop') return;
+    this.physics.world.contactPair(this.collider, other, this._onManifold);
+  };
 
   constructor(public physics: Physics, public spec: VehicleSpec, public layout: VehicleLayout, x: number, y: number, z: number, yaw: number) {
     const w = physics.world;
@@ -206,15 +292,16 @@ export class VehiclePhysics {
     const drifting = this.drift > 0;
     if (drifting && Math.abs(sInRaw) < 0.12 && this.hb < 0.05) this.driftLazy += dt * 2; else this.driftLazy = Math.max(0, this.driftLazy - dt * 2);
 
-    // Steering: rate-limited input with faster return-to-centre, speed-sensitive lock, countersteer help.
+    // Steering: progressive keyboard ramp (or 1:1 analog stick), quick return-to-centre, speed-sensitive lock.
     const sIn = clamp(input.steer, -1, 1);
-    const toward = Math.abs(sIn) > Math.abs(this.steerIn) && Math.sign(sIn) === Math.sign(this.steerIn || sIn);
-    const rate = (toward ? 9.5 - 3.4 * smooth(8, 38, absV) : 9) * dt; // keyboard: full lock in ~0.1-0.15 s
-    this.steerIn += clamp(sIn - this.steerIn, -rate, rate);
+    this.steerIn = stepSteerInput(this.steerIn, sIn, absV, dt, !!input.analogSteer);
     let steerAngle = this.steerIn * (drifting ? spec.maxSteer * 0.9 : this.steerLimit(absV));
     if (fwdSpeed > 4) {
-      const b = this.beta, dead = drifting ? 0.02 : 0.07;
-      if (Math.abs(b) > dead) steerAngle += (b - Math.sign(b) * dead) * (drifting ? 0.55 : 0.7); // R6-D: stronger automatic countersteer outside a held drift
+      const b = this.beta, dead = drifting ? 0.02 : 0.14;
+      if (Math.abs(b) > dead) {
+        const gain = drifting ? 0.52 : 0.38 * (1 - 0.65 * Math.abs(sIn));
+        steerAngle += (b - Math.sign(b) * dead) * gain;
+      }
     }
     steerAngle = clamp(steerAngle, -spec.maxSteer, spec.maxSteer);
     this.steer = steerAngle;
@@ -229,6 +316,8 @@ export class VehiclePhysics {
       if (fwdSpeed > 0.8) brakeForce = spec.mass * spec.brake * -thr;
       else drive = spec.engine * 0.6 * thr * power * Math.max(0, 1 - (-fwdSpeed / spec.reverseSpeed) ** 2);
     }
+    // D1: while grinding a wall or median barrier, trim engine drive so the car cannot accelerate along the barrier.
+    if (this.wallContact && drive > 0 && absV > 2) drive *= 0.24;
     // R6-D stability control: when the tail steps out (sideslip > ~0.15 rad) outside a deliberate drift, trim the throttle
     if (!drifting && this.hb < 0.1 && drive > 0) drive *= 1 - 0.9 * smooth(0.15, 0.4, Math.abs(this.beta));
     if (input.brake) brakeForce = Math.max(brakeForce, spec.mass * spec.brake * input.brake);
@@ -290,14 +379,17 @@ export class VehiclePhysics {
             else { spinning = true; Fx = Math.sign(Fx) * cap * 0.85; spinSum += 1; }
           }
         }
+        let brakeApply = 0;
         if (brakeForce > 0) {
           const share = brakeForce * (wd.front ? 0.6 : 0.4) / 2;
-          Fx -= Math.sign(vLong) * Math.min(share, capLong * 1.05, (mEff * Math.abs(vLong)) / dt);
+          brakeApply = Math.min(share, capLong * 1.05, (mEff * Math.abs(vLong)) / dt);
         }
         if (rear && this.hb > 0.05) {
           const lockF = Math.min(capLong * 0.8, (mEff * Math.abs(vLong)) / dt) * this.hb;
-          Fx -= Math.sign(vLong) * lockF; locked = Math.abs(vLong) > 1;
+          if (lockF > brakeApply) brakeApply = lockF;
+          locked = Math.abs(vLong) > 1;
         }
+        if (brakeApply > 0) Fx -= Math.sign(vLong) * brakeApply;
         if (hold && !driven) Fx -= Math.sign(vLong) * Math.min(capLong, (mEff * Math.abs(vLong)) / dt);
         if (hold && driven && drive === 0) Fx -= Math.sign(vLong) * Math.min(capLong, (mEff * Math.abs(vLong)) / dt);
         if (coasting && !hold) Fx -= Math.sign(vLong) * Math.min(spec.mass * (0.55 + 0.0011 * vLong * vLong) / this.wheelLocal.length, (mEff * Math.abs(vLong)) / dt);
@@ -334,6 +426,43 @@ export class VehiclePhysics {
     for (let i = 0; i < this.wheelLocal.length; i++) if (!c.wheelIsInContact(i)) this.wheelRot[i] += (Math.max(-30, Math.min(30, fwdSpeed)) / this.layout.radius) * dt * 0.8;
     this.curbAssist(dt, thr, lv);
     this.wheelspin += ((spinSum > 0 ? 1 : 0) - this.wheelspin) * Math.min(1, dt * 8);
+    // D1: sustained wall/barrier scraping drag + anti-climb clamping
+    if (this.scrapeDmgCool > 0) this.scrapeDmgCool = Math.max(0, this.scrapeDmgCool - dt);
+    if (this.grounded && !this.wallContact && up.y > 0.9) {
+      this.lastRoadY = this.cPos.y;
+      this.hasRoadY = true;
+    }
+    if (this.wallContact) {
+      this.wallContactT += dt;
+      const nx = this.wallNx, nz = this.wallNz;
+      const tx = -nz, tz = nx;
+      const vTan = lv.x * tx + lv.z * tz;
+      const absTan = Math.abs(vTan);
+      const decel = wallScrapeDecel(absTan);
+      if (decel > 0) {
+        const sgn = Math.sign(vTan);
+        const dvMax = Math.min(decel * dt, absTan * 0.5);
+        const imp = spec.mass * dvMax;
+        body.applyImpulse({ x: -tx * sgn * imp, y: 0, z: -tz * sgn * imp }, true);
+      }
+      // Keep the car on its side of the barrier and at road height (prevents wedging / climbing barrier lips).
+      const vInto = -(lv.x * nx + lv.z * nz);
+      if (vInto > 0.1) {
+        const dampInto = spec.mass * Math.min(vInto, 6 * dt);
+        body.applyImpulse({ x: nx * dampInto, y: 0, z: nz * dampInto }, true);
+      }
+      const rise = this.hasRoadY ? this.cPos.y - this.lastRoadY : 0;
+      if (up.y > 0.8 && f.y < 0.08 && (lv.y > 0.06 || rise > 0.03)) {
+        const curV = body.linvel();
+        const targetVy = rise > 0.03 ? Math.min(curV.y, -Math.min(2.5, rise * 14)) : Math.min(curV.y, 0.05);
+        body.setLinvel({ x: curV.x, y: targetVy, z: curV.z }, true);
+        // Suppress roll torque that tries to tilt the wall-side wheels up onto the barrier.
+        const curW = body.angvel();
+        body.setAngvel({ x: curW.x * 0.65, y: curW.y, z: curW.z * 0.65 }, true);
+      }
+    } else {
+      this.wallContactT = 0;
+    }
 
     if (this.grounded) {
       if (!wasGrounded) this.landing = Math.min(1, this.airTime * 1.2);
@@ -436,7 +565,7 @@ export class VehiclePhysics {
    */
   private curbAssist(dt: number, thr: number, lv: V3) {
     const planar = Math.hypot(lv.x, lv.z);
-    if (Math.abs(thr) < 0.05 || planar > 9 || !this.grounded && this.airTime > 0.3) return;
+    if (this.wallContact || Math.abs(thr) < 0.05 || planar > 9 || !this.grounded && this.airTime > 0.3) return;
     const sgn = thr > 0 ? 1 : -1, f = this.forward(this.t1);
     // direction of travel: the velocity when rolling, else where the throttle pushes
     let dx = f.x * sgn, dz = f.z * sgn;
@@ -481,18 +610,73 @@ export class VehiclePhysics {
     this.upsideTime = Math.max(this.upsideTime, 1.6); this.righting = 0.01;
     return true;
   }
-  /** Call after the world step: detects sudden velocity changes (crashes). */
+  /** Call after the world step: detects wall scraping and sudden velocity changes (crashes). */
   postStep() {
     const v = this.body.linvel();
     const dx = v.x - this.lastVel.x, dy = v.y - this.lastVel.y, dz = v.z - this.lastVel.z;
     const dv = Math.hypot(dx, dy * 0.5, dz);
+    const prevWall = this.wallContact;
+    this.wallContact = false; this.wallScore = 0;
+    const preSpeed = Math.hypot(this.lastVel.x, this.lastVel.z);
+    const curSpeed = Math.hypot(v.x, v.z);
+    if (!this.body.isSleeping() && (preSpeed > 1 || curSpeed > 1 || prevWall || dv > 1.5)) {
+      const p = this.body.translation();
+      this._scanX = p.x; this._scanY = p.y; this._scanZ = p.z;
+      this.physics.world.contactPairsWith(this.collider, this._onPair);
+    }
+    if (this.wallContact) {
+      const tx = -this.wallNz, tz = this.wallNx;
+      const tanSpeed = Math.abs(v.x * tx + v.z * tz);
+      this.scrapeActive = tanSpeed > 2.0;
+      this.scrapeIntensity = this.scrapeActive ? clamp((tanSpeed - 2.0) / 22, 0.12, 1) : 0;
+      // Post-step climb guard: keep chassis at road level when wedging into a vertical barrier.
+      if (this.hasRoadY && this.grounded) {
+        const p = this.body.translation();
+        const up = this.upVec();
+        const f = this.forward(this.t1);
+        const rise = p.y - this.lastRoadY;
+        if (up.y > 0.8 && f.y < 0.08 && rise > 0.045) {
+          this.body.setTranslation({ x: p.x, y: this.lastRoadY + 0.045, z: p.z }, true);
+          if (v.y > 0) this.body.setLinvel({ x: v.x, y: 0, z: v.z }, true);
+        }
+      }
+    } else {
+      this.scrapeActive = false;
+      this.scrapeIntensity = 0;
+    }
+
     this.impact = dv > 2.2 ? dv : 0;
+    this.impactNormal = 0;
+    this.impactAngleDeg = 90;
+    this.impactPreSpeed = preSpeed;
+    this.scrapeDamageSuppressed = false;
     if (this.impact) {
       this.impactDir.x = -dx / dv; this.impactDir.y = -dy / dv; this.impactDir.z = -dz / dv;
+      if (this.wallContact) {
+        const m = normalImpactMetrics(this.lastVel.x, this.lastVel.z, v.x, v.z, this.wallNx, this.wallNz);
+        this.impactNormal = m.normalSpeed;
+        this.impactAngleDeg = m.angleDeg;
+        if (m.angleDeg < 20) {
+          if (this.scrapeDmgCool > 0) this.scrapeDamageSuppressed = true;
+          else if (m.normalSpeed > 3.5) this.scrapeDmgCool = 0.75;
+        }
+      } else {
+        const hd = Math.hypot(dx, dz);
+        if (hd > 1e-3 && preSpeed > 1) {
+          const nx = dx / hd, nz = dz / hd; // points from obstacle towards car (same as velocity change)
+          const m = normalImpactMetrics(this.lastVel.x, this.lastVel.z, v.x, v.z, nx, nz);
+          this.impactNormal = Math.max(m.normalSpeed, dv);
+          this.impactAngleDeg = m.angleDeg;
+        } else {
+          this.impactNormal = dv;
+          this.impactAngleDeg = 90;
+        }
+      }
       // heavy crashes: kill most of the spin a glancing hit would add (cars shouldn't pirouette like tops)
-      if (this.impact > 6) { const av = this.body.angvel(); const k = Math.max(0.45, 1 - this.impact * 0.04); this.body.setAngvel({ x: av.x * k, y: av.y * k, z: av.z * k }, true); }
+      if (this.impactNormal > 6) { const av = this.body.angvel(); const k = Math.max(0.45, 1 - this.impactNormal * 0.04); this.body.setAngvel({ x: av.x * k, y: av.y * k, z: av.z * k }, true); }
     }
-    this.lastVel.x = v.x; this.lastVel.y = v.y; this.lastVel.z = v.z;
+    const lvNow = this.body.linvel();
+    this.lastVel.x = lvNow.x; this.lastVel.y = lvNow.y; this.lastVel.z = lvNow.z;
   }
   /** Body height at which the tyres just touch flat ground at `groundY` with the suspension at its static load (parked cars spawn settled, no drop). */
   static restBodyY(spec: VehicleSpec, layout: VehicleLayout, groundY: number): number {
@@ -526,6 +710,7 @@ export class VehiclePhysics {
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true); this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.lastVel = { x: 0, y: 0, z: 0 };
     this.drift = 0; this.hb = 0; this.hbRelease = 0; this.steerIn = 0; this.steer = 0;
+    this.wallContact = false; this.scrapeActive = false; this.scrapeIntensity = 0; this.wallContactT = 0; this.scrapeDmgCool = 0; this.hasRoadY = false;
     this.capturePrev();
   }
   /** Zero-mass convex proxies shaped like the hood / cabin that only ragdolls touch (the plain box would make people ride on the roof line). */

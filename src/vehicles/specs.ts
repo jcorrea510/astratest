@@ -35,7 +35,7 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     ['#c8ccd0', '#1d1f22', '#f1f0ec', '#3d5a6e', '#7a1f24', '#5d6b4c', '#9c9fa3', '#b06a2e']),
   citycar: spec('Pipit Dot', 'compact', t({ mass: 880, engine: 5200, brake: 11, topSpeed: 35, maxSteer: 0.74, highSteer: 0.2, grip: 0.84, rearGrip: 0.84, stability: 0.5, suspRest: 0.28, suspTravel: 0.22, stiffness: 34, comY: -0.3, downforce: 1.6, drive: 'front', health: 700 }),
     ['#e6c34a', '#6fb7c9', '#f1efe9', '#d4544a', '#8fb36a', '#2b2e33', '#c98bb0']),
-  sportsedan: spec('Brandt Vireo GT', 'sports', t({ mass: 1520, engine: 13200, brake: 12.5, topSpeed: 55, maxSteer: 0.66, highSteer: 0.16, grip: 0.9, rearGrip: 0.88, traction: 0.9, stability: 0.6, stiffness: 36, comY: -0.38, downforce: 2.6, drive: 'rear', health: 1050 }),
+  sportsedan: spec('Brandt Vireo GT', 'sports', t({ mass: 1520, engine: 13200, brake: 11.2, topSpeed: 55, maxSteer: 0.66, highSteer: 0.16, grip: 0.9, rearGrip: 0.88, traction: 0.9, stability: 0.6, stiffness: 36, comY: -0.38, downforce: 2.6, drive: 'rear', health: 1050 }),
     ['#15171a', '#e9e7e1', '#2b4a7a', '#8a1c1c', '#5c6670', '#c9a227']),
   hatch: spec('Pipit Hopper', 'compact', t({ mass: 1020, engine: 6300, brake: 11, topSpeed: 39, maxSteer: 0.7, highSteer: 0.18, grip: 0.84, rearGrip: 0.84, stability: 0.5, suspRest: 0.3, suspTravel: 0.24, stiffness: 34, comY: -0.32, downforce: 1.8, drive: 'front', health: 800 }),
     ['#c43a31', '#f1efe9', '#2f6f9a', '#e0a33b', '#6f8f4e', '#9a9da1', '#1f2226', '#7c4a8a']),
@@ -45,11 +45,11 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     ['#101114', '#efece4', '#5e1620', '#20304d', '#b9b4a8', '#3d3f43', '#4d5a4b']),
   wagon: spec('Solano Estero', 'sedan', t({ mass: 1600, engine: 9400, brake: 10, topSpeed: 41, grip: 0.77, rearGrip: 0.78, stability: 0.65, suspRest: 0.34, suspTravel: 0.28, stiffness: 26, compression: 2.3, relaxation: 2.6, comY: -0.28, downforce: 1.8, health: 1150 }),
     ['#3f6a52', '#8b6b4a', '#5b6e8c', '#c9c3b5', '#2e3b3f', '#6e2a2a', '#a8abaf']),
-  coupe: spec('Vantor 360 GT', 'sports', t({ mass: 1280, engine: 13800, brake: 13, topSpeed: 62, maxSteer: 0.66, highSteer: 0.15, grip: 0.95, rearGrip: 0.9, traction: 0.85, peakSlip: 0.11, slide: 0.7, handbrakeGrip: 0.28, driftGrip: 0.74, tc: false, stability: 0.35, suspRest: 0.27, suspTravel: 0.17, stiffness: 46, compression: 3.4, relaxation: 3.8, comY: -0.42, downforce: 4, health: 850 }),
+  coupe: spec('Vantor 360 GT', 'sports', t({ mass: 1280, engine: 13800, brake: 11.8, topSpeed: 62, maxSteer: 0.66, highSteer: 0.15, grip: 0.95, rearGrip: 0.9, traction: 0.85, peakSlip: 0.11, slide: 0.7, handbrakeGrip: 0.28, driftGrip: 0.74, tc: false, stability: 0.35, suspRest: 0.27, suspTravel: 0.17, stiffness: 46, compression: 3.4, relaxation: 3.8, comY: -0.42, downforce: 4, health: 850 }),
     ['#c21f1f', '#e8e6e1', '#1d2a44', '#f0b429', '#1b1c1f', '#7d8288', '#2e7d6f']),
-  muscle: spec('Ardent Vortex 440', 'muscle', t({ mass: 1650, engine: 15500, brake: 11.5, topSpeed: 60, maxSteer: 0.64, highSteer: 0.15, grip: 0.86, rearGrip: 0.82, traction: 0.78, peakSlip: 0.12, slide: 0.7, handbrakeGrip: 0.27, driftGrip: 0.74, tc: false, stability: 0.3, suspRest: 0.3, suspTravel: 0.2, stiffness: 36, compression: 2.8, relaxation: 3.2, comY: -0.38, downforce: 2.5, health: 1150 }),
+  muscle: spec('Ardent Vortex 440', 'muscle', t({ mass: 1650, engine: 15500, brake: 10.8, topSpeed: 60, maxSteer: 0.64, highSteer: 0.15, grip: 0.86, rearGrip: 0.82, traction: 0.78, peakSlip: 0.12, slide: 0.7, handbrakeGrip: 0.27, driftGrip: 0.74, tc: false, stability: 0.3, suspRest: 0.3, suspTravel: 0.2, stiffness: 36, compression: 2.8, relaxation: 3.2, comY: -0.38, downforce: 2.5, health: 1150 }),
     ['#d0661d', '#1a1b1e', '#b8152a', '#f2c230', '#2a4f8a', '#e9e6df', '#3c6e3a']),
-  super: spec('Vantor Zephyra', 'super', t({ mass: 1450, engine: 19500, brake: 14, topSpeed: 75, maxSteer: 0.62, highSteer: 0.14, grip: 1.04, rearGrip: 1.0, traction: 0.95, peakSlip: 0.1, slide: 0.72, handbrakeGrip: 0.3, driftGrip: 0.76, tc: true, stability: 0.4, suspRest: 0.24, suspTravel: 0.14, stiffness: 52, compression: 3.6, relaxation: 4.0, comY: -0.45, downforce: 5.5, drive: 'all', health: 800 }),
+  super: spec('Vantor Zephyra', 'super', t({ mass: 1450, engine: 19500, brake: 11.6, topSpeed: 75, maxSteer: 0.62, highSteer: 0.14, grip: 1.04, rearGrip: 1.0, traction: 0.95, peakSlip: 0.1, slide: 0.72, handbrakeGrip: 0.3, driftGrip: 0.76, tc: true, stability: 0.4, suspRest: 0.24, suspTravel: 0.14, stiffness: 52, compression: 3.6, relaxation: 4.0, comY: -0.45, downforce: 5.5, drive: 'all', health: 800 }),
     ['#f2c40f', '#d1291c', '#ff7a00', '#e8e8e8', '#151517', '#3fa34d', '#2e5bd8']),
   convertible: spec('Solano Seaspray', 'sports', t({ mass: 1450, engine: 11000, topSpeed: 52, grip: 0.86, rearGrip: 0.86, stability: 0.5, comY: -0.38, health: 950 }),
     ['#e9e6df', '#b5121b', '#244a7a', '#151619', '#c9b38a', '#4f8a9b']),
@@ -61,11 +61,11 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
     ['#a7abb0', '#3b4f6b', '#6d1f23', '#e7e5df', '#4b5e4a', '#c2b59b']),
   van: spec('Dray Box Van', 'service', t({ ...truckT, mass: 2900, engine: 14500, brake: 8.5, topSpeed: 34, reverseSpeed: 7, maxSteer: 0.6, health: 1800 }),
     ['#f1efe9', '#e9e5d8', '#3f6f8f', '#c4553a', '#5a7a4a']),
-  race: spec('Vantor Apex R', 'sports', t({ mass: 1180, engine: 17500, brake: 15, topSpeed: 70, maxSteer: 0.64, highSteer: 0.15, grip: 1.1, rearGrip: 1.05, traction: 1.0, peakSlip: 0.1, slide: 0.74, handbrakeGrip: 0.28, driftGrip: 0.76, tc: false, stability: 0.4, suspRest: 0.22, suspTravel: 0.12, stiffness: 58, compression: 3.8, relaxation: 4.2, comY: -0.45, downforce: 7, health: 900 }),
+  race: spec('Vantor Apex R', 'sports', t({ mass: 1180, engine: 17500, brake: 12.2, topSpeed: 70, maxSteer: 0.64, highSteer: 0.15, grip: 1.1, rearGrip: 1.05, traction: 1.0, peakSlip: 0.1, slide: 0.74, handbrakeGrip: 0.28, driftGrip: 0.76, tc: false, stability: 0.4, suspRest: 0.22, suspTravel: 0.12, stiffness: 58, compression: 3.8, relaxation: 4.2, comY: -0.45, downforce: 7, health: 900 }),
     ['#0f5fd8', '#e33b1f', '#f4f2ee', '#1a1a1c', '#18a058']),
   taxi: spec('Corvalis Cab', 'service', { ...bigT, topSpeed: 44, engine: 11000 }, ['#f2b90f']),
-  police: spec('Corvalis Interceptor', 'emergency', t({ ...bigT, mass: 1800, engine: 15500, brake: 12.5, topSpeed: 58, grip: 0.88, rearGrip: 0.88, traction: 1.05, peakSlip: 0.12, slide: 0.74, handbrakeGrip: 0.3, driftGrip: 0.8, stability: 0.55, stiffness: 38, compression: 3.0, relaxation: 3.4, comY: -0.4, downforce: 3, health: 1400 }), ['#111214']),
-  fbi: spec('Outrider Federal', 'emergency', t({ ...truckT, mass: 2300, engine: 17500, brake: 11, topSpeed: 53, grip: 0.84, rearGrip: 0.84, drive: 'all', health: 1900 }), ['#0c0d0f']),
+  police: spec('Corvalis Interceptor', 'emergency', t({ ...bigT, mass: 1800, engine: 15500, brake: 11.4, topSpeed: 58, grip: 0.88, rearGrip: 0.88, traction: 1.05, peakSlip: 0.12, slide: 0.74, handbrakeGrip: 0.3, driftGrip: 0.8, stability: 0.55, stiffness: 38, compression: 3.0, relaxation: 3.4, comY: -0.4, downforce: 3, health: 1400 }), ['#111214']),
+  fbi: spec('Outrider Federal', 'emergency', t({ ...truckT, mass: 2300, engine: 17500, brake: 10.6, topSpeed: 53, grip: 0.84, rearGrip: 0.84, drive: 'all', health: 1900 }), ['#0c0d0f']),
   swat: spec('Dray Bastion', 'emergency', t({ ...truckT, mass: 4200, engine: 23000, brake: 9, topSpeed: 40, reverseSpeed: 7, maxSteer: 0.58, grip: 0.78, rearGrip: 0.78, stability: 0.85, suspRest: 0.42, stiffness: 30, comY: -0.35, drive: 'all', health: 3800 }), ['#1d2430']),
   army: spec('Gorman Mule 6x6', 'military', t({ ...truckT, mass: 6200, engine: 30000, brake: 8, topSpeed: 30, reverseSpeed: 6, maxSteer: 0.56, highSteer: 0.14, grip: 0.8, rearGrip: 0.8, stability: 0.9, suspRest: 0.45, suspTravel: 0.32, stiffness: 30, comY: -0.4, drive: 'all', health: 4200 }), ['#6a7050']),
   bus: spec('Meridian Metroliner', 'service', t({ ...truckT, mass: 11000, engine: 52000, brake: 8.5, topSpeed: 31, reverseSpeed: 8, maxSteer: 0.7, highSteer: 0.22, grip: 0.88, rearGrip: 0.88, traction: 0.9, stability: 0.7, suspRest: 0.44, suspTravel: 0.3, stiffness: 24, comY: -0.55, drive: 'rear', health: 3400 }), ['#2a5f9e', '#3d7a4a', '#c9a227']),
@@ -73,11 +73,11 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
 };
 /**
  * Real-world acceleration: everyday cars take 7-10 s to 100 km/h (the raw tunes did it in 5-6 s, which feels like a go-kart).
- * Multipliers on engine force; sports/super/race cars stay quick, top speeds are untouched.
+ * Multipliers on engine force; super/sports preserve believable 0-60 times and strict class ordering (super > coupe > muscle > sportsedan > sedan > van).
  */
 export const ENGINE_REALISM: Partial<Record<VehicleKind, number>> = {
   hatch: 0.68, sedan: 0.64, fullsize: 0.63, luxury: 0.74, wagon: 0.7, minivan: 0.73, pickup: 0.65, suv: 0.64, taxi: 0.66,
-  convertible: 0.72, coupe: 0.8, muscle: 0.78, police: 0.86, fbi: 0.88,
+  convertible: 0.72, sportsedan: 0.74, coupe: 0.8, muscle: 0.78, super: 0.78, race: 0.94, police: 0.86, fbi: 0.88,
 };
 for (const [k, f] of Object.entries(ENGINE_REALISM)) VEHICLES[k as VehicleKind].engine *= f!;
 /** Civilian traffic: realistic share of everyday cars, a few trucks, rare exotics. */

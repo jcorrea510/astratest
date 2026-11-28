@@ -20,7 +20,7 @@ import { PlayerController } from './player';
 import { nightUniform, timeUniform, glowTexture } from '../render/materials';
 import { Particles, SkidMarks } from '../render/particles';
 import { VehicleManager } from './vehicles';
-import { pedImpact } from './impact';
+import { pedImpact, crashEffects } from './impact';
 import { setRealisticDriving } from '../vehicles/vehiclePhysics';
 import { Vehicle } from '../vehicles/vehicle';
 import type { GameAudio, HudState, MinimapBlip } from '../ui/contracts';
@@ -320,10 +320,29 @@ export class Game {
     this.pop.onKilled = (n, by) => { if (by === this.player) { this.police.report(n.role === 'police' ? 'copKill' : 'kill', this.player.pos); this.stats.kills++; } this.onNpcKilled(n, by); };
     this.pcombat.onKill = (headshot) => { this.renderer.pulseImpact(headshot ? 0.36 : 0.18); };
     this.vehicles.onCrash = e => {
-      if (e.vehicle === this.playerVehicle) {
-        this.cam.addShake(Math.min(0.8, e.impact / 18));
-        if (e.impact > 7) this.renderer.pulseImpact(Math.min(0.75, (e.impact - 6) / 14));
+      const v = e.vehicle;
+      const isPlayerCar = v === this.playerVehicle;
+      const isNpcDriver = !!v.driver && v.driver !== this.player;
+      const fx = crashEffects(e.normalImpact, e.frontDot, isNpcDriver, this.settings.blood, e.preSpeed);
+      if (isPlayerCar) {
+        if (fx.severe) {
+          this.cam.crashKick(fx.shake, fx.pullBack);
+          this.renderer.pulseImpact(Math.min(0.95, 0.55 + Math.max(0, e.normalImpact - 20) * 0.03));
+        } else {
+          this.cam.addShake(fx.shake);
+          if (e.normalImpact > 7) this.renderer.pulseImpact(Math.min(0.75, (e.normalImpact - 6) / 14));
+        }
         this.stats.crashes++; this.pop.danger(e.point, 15, this.player);
+        if (fx.ejectDriver) this.ejectDriverThroughWindscreen(v, this.player, null, fx.ejectSpeed);
+      } else if (isNpcDriver && fx.killNpcDriver) {
+        const npc = this.pop.npcs.find(n => n.char === v.driver);
+        if (npc && npc.alive) {
+          const killer = v.lastDamagedBy instanceof Character ? v.lastDamagedBy : null;
+          npc.char.damage(999, killer, this.time);
+          this.onNpcKilled(npc, killer);
+          if (fx.ejectDriver) this.ejectDriverThroughWindscreen(v, npc.char, npc, fx.ejectSpeed);
+          else { v.hornStuck = true; v.hornStuckT = 0; }
+        }
       }
     };
     this.vehicles.onExplode = (v, at) => this.explosion(at, v.lastDamagedBy === this.player ? this.player : null);
@@ -451,6 +470,7 @@ export class Game {
       const mv = this.input.moveAxes();
       pv.input.throttle = pv.destroyed || blocked || !pv.ignition || this.carEntry.blocksDriving ? 0 : this.input.throttle();
       pv.input.steer = blocked ? 0 : -mv.x;
+      pv.input.analogSteer = !blocked && this.input.isAnalogSteer();
       pv.input.handbrake = !blocked && this.input.held('handbrake');
     }
     const ph = this.playerHeli;
@@ -592,6 +612,7 @@ export class Game {
       return;
     }
     const car = v as Vehicle;
+    car.hornStuck = false;
     this.playerVehicle = car; this.traffic.unpark(car);
     this.audio.setRadioActive(car.ignition);
     this.events.onVehicleEntered(car);
@@ -621,7 +642,7 @@ export class Game {
   seatPlayer(v: Vehicle) {
     this.carEntry?.cancel();
     if (this.playerHeli) this.exitVehicle(true);
-    v.playerUsed = true; v.doorsLocked = false; v.ignition = true;
+    v.playerUsed = true; v.doorsLocked = false; v.ignition = true; v.hornStuck = false;
     this.playerVehicle = v; v.driver = this.player; this.player.inVehicle = v;
     this.traffic.unpark(v);
     this.player.setCollision(false);
@@ -664,6 +685,39 @@ export class Game {
     this.audio.play('doorClose', { pos: v.position });
     this.audio.setRadioActive(false);
     this.events.onVehicleExited(v);
+  }
+  /** D5: launches an unbelted driver through the shattered windscreen into the existing ragdoll system (Blood & gore only). */
+  private ejectDriverThroughWindscreen(v: Vehicle, ch: Character, npc: Npc | null, launchSpeed: number) {
+    v.shatterFrontGlass(true);
+    v.hornStuck = false;
+    const fwd = v.phys.forward();
+    const origin = v.seatWorldPos(0, new THREE.Vector3());
+    origin.set(origin.x + fwd.x * 1.15, origin.y + fwd.y * 1.15 + 0.25, origin.z + fwd.z * 1.15);
+    this.renderer.scene.add(ch.human.root);
+    ch.inVehicle = null;
+    if (v.driver === ch) v.driver = null;
+    if (ch === this.player) {
+      this.playerVehicle = null; this.lastPlayerVehicle = v; this.traffic.protect = v;
+      v.input.throttle = 0; v.input.steer = 0; v.input.handbrake = false;
+      this.audio.setRadioActive(false);
+      this.events.onVehicleExited(v);
+      if (this.player.damage(Math.min(75, launchSpeed * 2.6), null, this.time)) this.playerDown('down');
+    }
+    ch.place(origin.x, origin.y, origin.z, v.yaw);
+    ch.setCollision(true);
+    this.ragdolls.launch(ch, {
+      vx: fwd.x * launchSpeed,
+      vy: 2.6 + launchSpeed * 0.12,
+      vz: fwd.z * launchSpeed,
+      spin: (Math.random() - 0.5) * 6,
+      getUp: ch.alive,
+      lying: false,
+      car: v,
+    });
+    if (this.blood.enabled) {
+      this.particles.blood(origin.x, origin.y, origin.z, fwd.x * 3, 1.2, fwd.z * 3, 1.5);
+    }
+    void npc;
   }
   /**
    * A door-side spot the player can stand on: a clear path from the seat at knee, waist and head height,

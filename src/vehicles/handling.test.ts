@@ -166,13 +166,13 @@ describe('handling benchmark', () => {
       expect(m.hbRecover).toBe(true);
       const mil = VEHICLES[kind].cls === 'military' || kind === 'bus'; // a 12 m bus is heavy and long: judged like the trucks
       if (!mil) expect(m.driftHold).toBeGreaterThan(0.6);
-      // easy steering: quick turn-in, tight city turning circle, no plough at moderate speed
-      expect(m.steerT90).toBeLessThan(mil ? 0.4 : 0.25);
+      // progressive keyboard steering (D2): smooth lane corrections, full lock in ~0.3-0.45 s, tight city turning circle
+      expect(m.steerT90).toBeLessThan(mil ? 0.55 : 0.45);
       if (!mil) expect(m.turnR8).toBeLessThan(6.5);
       if (!mil) expect(m.turnR15).toBeLessThan(18);
       expect(m.yaw05).toBeGreaterThan(0.95);
-      // keyboard feel: the wheel is on full lock within ~0.1 s, and a handbrake flick left alone self-aligns (before: sedan 174 deg, i.e. a donut)
-      if (!mil) expect(m.turnIn50).toBeLessThan(0.15);
+      // keyboard feel: progressive turn-in (half yaw rate within ~0.25 s), and a handbrake flick left alone self-aligns
+      if (!mil) expect(m.turnIn50).toBeLessThan(0.28);
       if (['hatch', 'sedan', 'suv', 'pickup', 'police', 'taxi', 'fbi'].includes(kind)) expect(m.hbLazyYaw).toBeLessThan(125);
       expect(m.smallInputSlipDeg).toBeLessThan(6);
       expect(m.brake100).toBeLessThan(45);

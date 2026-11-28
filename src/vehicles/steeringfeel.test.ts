@@ -63,7 +63,7 @@ describe('steering feel', () => {
 
   // R6-D round 2: keyboard ramp, lateral grip at speed, 35 mph corner on lift-off. g here is a/9.81 (world gravity is 20, so 1.2 g = ~0.6 of the tyre budget).
   for (const kind of ['sedan', 'coupe', 'muscle', 'pickup', 'van'] as VehicleKind[]) {
-    it(`${kind}: wheel at full lock <= 0.15 s, pulls >= 0.9 g (0.75 truck) at 35/50 mph with full lock, stays straight-ish`, () => {
+    it(`${kind}: keyboard wheel reaches full lock in 0.25-0.45 s (D2), pulls >= 0.9 g (0.75 truck) at 35/50 mph, stays straight-ish`, () => {
       for (const mph of [20, 35, 50]) {
         const v0 = mph * MPH, { car, step } = setup(kind);
         for (let i = 0; i < 6000 && car.speed < v0; i++) step({ throttle: 1, steer: 0, handbrake: false });
@@ -75,7 +75,7 @@ describe('steering feel', () => {
           mb = Math.max(mb, Math.abs(car.beta));
         }
         process.stdout.write(`FEEL ${kind} ${mph}mph ramp ${tfull.toFixed(2)}s latG ${(g / n).toFixed(2)} maxBeta ${mb.toFixed(2)}\n`);
-        expect(tfull).toBeGreaterThan(0); expect(tfull).toBeLessThanOrEqual(0.15);
+        expect(tfull).toBeGreaterThanOrEqual(0.25); expect(tfull).toBeLessThanOrEqual(0.45);
         if (mph >= 35) expect(g / n).toBeGreaterThan(['pickup', 'van'].includes(kind) ? 0.75 : 0.9);
         if (mph >= 35) expect(mb).toBeLessThan(0.35);
       }

@@ -525,7 +525,7 @@ export class Traffic {
       let throttle: number;
       if (car.reverseT > 0) { car.reverseT -= dt; throttle = -0.8; steer = -steer; }
       else throttle = aiPedal(targetSpeed - speed, speed, targetSpeed);
-      v.input.throttle = throttle; v.input.steer = steer; v.input.handbrake = targetSpeed < 0.3 && Math.abs(speed) < 0.5;
+      v.input.throttle = throttle; v.input.steer = steer; v.input.analogSteer = true; v.input.handbrake = targetSpeed < 0.3 && Math.abs(speed) < 0.5;
       v.siren = car.mode === 'pursuit' || (car.driver.role === 'police' && car.mode === 'goto');
     }
   }

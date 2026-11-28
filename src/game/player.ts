@@ -97,7 +97,7 @@ export class PlayerController {
   fixedUpdate(dt: number, opts: { canAim: boolean; blocked: boolean }) {
     const c = this.char, h = c.human;
     this.blocked = opts.blocked;
-    if (!c.alive || c.inVehicle) { c.leanRoll = 0; c.leanPitch = 0; this.jumping = false; this.airTime = 0; this.pivoting = false; this.jumpBuffer = 0; this.rollT = 0; this.mantle = null; this.lastX = c.pos.x; this.lastZ = c.pos.z; return; }
+    if (!c.alive || c.inVehicle || c.ragdoll) { c.leanRoll = 0; c.leanPitch = 0; this.jumping = false; this.airTime = 0; this.pivoting = false; this.jumpBuffer = 0; this.rollT = 0; this.mantle = null; this.lastX = c.pos.x; this.lastZ = c.pos.z; return; }
     // Teleports (respawn, scripted placement) reset the air state.
     if (Math.hypot(c.pos.x - this.lastX, c.pos.z - this.lastZ) > 3) { this.jumping = false; this.airTime = 0; this.pivoting = false; this.rollT = 0; this.mantle = null; }
     // Latch presses so none are lost when a render frame runs zero or several fixed steps.

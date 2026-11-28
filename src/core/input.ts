@@ -121,6 +121,18 @@ export class Input {
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
     return { x, y };
   }
+  /** True when steering is driven by an analog stick (gamepad or touch) rather than digital keyboard keys. */
+  isAnalogSteer(): boolean {
+    if (!this.enabled) return false;
+    const kbSteer = this.codes('left').some(c => this.isCodeDown(c)) || this.codes('right').some(c => this.isCodeDown(c));
+    if (kbSteer) return false;
+    if (this.touchMove.x !== 0) return true;
+    if (this.pad.connected) {
+      const m = radialDeadzone(this.pad.lx, this.pad.ly, this.padDz(), this._mv);
+      if (m.x !== 0 || this.lastSource === 'pad') return true;
+    }
+    return false;
+  }
   /** True while the right stick is pushed past the deadzone (aim assist pulls only then). */
   lookStickActive(): boolean { return Math.abs(this.pad.rx) + Math.abs(this.pad.ry) > this.padDz(); }
   /** Look delta in "mouse pixel" units for this frame. */

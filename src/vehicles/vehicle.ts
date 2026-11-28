@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import { VehiclePhysics, type DriveInput, type VehicleLayout } from './vehiclePhysics';
-import { VEHICLES, type VehicleKind, type VehicleSpec } from './specs';
+import { VEHICLES, type VehicleClass, type VehicleKind, type VehicleSpec } from './specs';
 import type { Character } from '../actors/character';
 import { getTemplate, type CarTemplate } from './models/build';
 import { carMaterial, glassMaterial, type CarUniforms } from './models/carMaterial';
@@ -50,6 +50,57 @@ export function barStrobe(time: number): [number, number] {
   return [flash && slot < 6 ? 1 : 0, flash && slot >= 9 && slot < 15 ? 1 : 0];
 }
 export interface PaneState { id: number; name: string; broken: boolean; door: number; /** 0 intact, 1 star crack, 2 heavy web */ crack: number }
+
+/** Per-class sprung body parameters (D3): visual pitch/roll/heave without changing the physics collider. */
+export interface BodySpringParams {
+  rollGain: number;
+  pitchGain: number;
+  maxRoll: number;
+  maxPitch: number;
+  /** Spring stiffness (1/s²) and damping (1/s); zeta = c / (2*sqrt(k)) ~ 0.45 gives one soft overshoot. */
+  k: number;
+  c: number;
+}
+export interface BodySpringState {
+  roll: number; rollV: number;
+  pitch: number; pitchV: number;
+  heave: number; heaveV: number;
+}
+
+/**
+ * Class-differentiated visual suspension softness (D3):
+ * SUVs, vans, trucks and luxury land-yachts lean and dive noticeably; sedans have comfortable street travel
+ * (>= 2.5 deg nose-down braking from 60 mph with one soft overshoot, >= 3 deg roll at 0.8 g); super & race stay flat and taut.
+ */
+export function bodySpringParams(cls: VehicleClass, kind: VehicleKind): BodySpringParams {
+  if (kind === 'tank') return { rollGain: 0.0022, pitchGain: 0.0028, maxRoll: 0.032, maxPitch: 0.035, k: 68, c: 11.5 };
+  if (kind === 'race' || cls === 'super') return { rollGain: 0.0046, pitchGain: 0.0036, maxRoll: 0.056, maxPitch: 0.048, k: 84, c: 11.2 };
+  if (kind === 'coupe' || kind === 'sportsedan') return { rollGain: 0.0066, pitchGain: 0.0048, maxRoll: 0.082, maxPitch: 0.068, k: 60, c: 8.2 };
+  if (cls === 'luxury') return { rollGain: 0.0124, pitchGain: 0.0086, maxRoll: 0.145, maxPitch: 0.105, k: 34, c: 5.2 };
+  if (cls === 'utility' || cls === 'service') return { rollGain: 0.0132, pitchGain: 0.0088, maxRoll: 0.155, maxPitch: 0.108, k: 32, c: 5.0 };
+  if (cls === 'military') return { rollGain: 0.0082, pitchGain: 0.0062, maxRoll: 0.105, maxPitch: 0.082, k: 40, c: 6.4 };
+  if (cls === 'muscle') return { rollGain: 0.0094, pitchGain: 0.0076, maxRoll: 0.12, maxPitch: 0.095, k: 42, c: 5.9 };
+  // sedan, compact, sports (convertible), emergency
+  return { rollGain: 0.0092, pitchGain: 0.0064, maxRoll: 0.118, maxPitch: 0.092, k: 42, c: 5.9 };
+}
+
+/**
+ * Pure, allocation-free visual body spring integrator (D3).
+ * Mutates `s` in place. Positive pitch tilts the nose down (+z towards -y); positive roll leans right (+x towards +y).
+ */
+export function stepBodySpring(s: BodySpringState, lon: number, lat: number, ay: number, grounded: boolean, kneel: number, p: BodySpringParams, dt: number): void {
+  const g = grounded ? 1 : 0.2;
+  const tRoll = THREE.MathUtils.clamp(lat * p.rollGain, -p.maxRoll, p.maxRoll) * g - kneel * 0.022;
+  const tPitch = THREE.MathUtils.clamp(-lon * p.pitchGain, -p.maxPitch, p.maxPitch) * g;
+  const h = Math.min(Math.max(0, dt), 1 / 30);
+  s.rollV += ((tRoll - s.roll) * p.k - s.rollV * p.c) * h;
+  s.roll += s.rollV * h;
+  s.pitchV += ((tPitch - s.pitch) * p.k - s.pitchV * p.c) * h;
+  s.pitch += s.pitchV * h;
+  const tHeave = (grounded ? THREE.MathUtils.clamp(-ay * 0.004, -0.08, 0.05) : 0) - kneel * 0.07;
+  s.heaveV += ((tHeave - s.heave) * 90 - s.heaveV * 10) * h;
+  s.heave += s.heaveV * h;
+}
 
 const beamTex = (() => {
   if (typeof document === 'undefined') return null;
@@ -181,11 +232,19 @@ export class Vehicle {
   private ownGeo = false; private ownG: THREE.BufferGeometry | null = null;
   /** 0..1: a city bus kneels at the kerb (body lowered and leaning to the pavement) */
   kneel = 0;
-  private roll = 0; private pitch = 0; private rollV = 0; private pitchV = 0; private heave = 0; private heaveV = 0;
+  /** Visual body spring state (roll/pitch/heave) and class-tuned parameters (D3). */
+  readonly bodySpring: BodySpringState = { roll: 0, rollV: 0, pitch: 0, pitchV: 0, heave: 0, heaveV: 0 };
+  readonly bodySpringP: BodySpringParams;
+  private smoothLon = 0; private smoothLat = 0;
   private baseDirt = 0;
   private lastVel = new THREE.Vector3();
   private brokenMask = 0;
   private trackL = 0; private trackR = 0;
+  /** True when a dead NPC driver is slumped on the wheel (D5: continuous stuck horn until destroyed or entered). */
+  hornStuck = false;
+  hornStuckT = 0;
+  /** Cadence timer for metallic wall-scrape grind audio (D1). */
+  scrapeAudioT = 0;
   /** Live estimated gear ('R'|'N'|'1'..'6') and normalized engine RPM (0..1) for HUD & exhaust pops. */
   gear = 'N';
   gearNum = 0;
@@ -197,6 +256,7 @@ export class Vehicle {
 
   constructor(physics: Physics, public kind: VehicleKind, _tpl: unknown, x: number, y: number, z: number, yaw: number, _atlas: unknown = null, paintIndex = -1) {
     this.spec = VEHICLES[kind];
+    this.bodySpringP = bodySpringParams(this.spec.cls, kind);
     const t = getTemplate(kind);
     this.tpl = Object.assign(Object.create(t), { model: kind, body: t.lods[0].body }) as VehicleTemplate;
     this.health = this.spec.health;
@@ -346,6 +406,17 @@ export class Vehicle {
     c.applyMatrix4(this.boneMatrix(tp.bone, _m));
     Vehicle.onGlassBreak?.(this, id, c);
     return true;
+  }
+  /** Shatters the windshield (and front side windows on extreme hits) for severe head-on crashes (D5). */
+  shatterFrontGlass(includeSides = false): number {
+    let broke = 0;
+    for (const p of this.panes) {
+      if (p.broken) continue;
+      if (p.name === 'windshield' || (includeSides && (p.name === 'front-left' || p.name === 'front-right'))) {
+        if (this.breakGlass(p.id)) broke++;
+      }
+    }
+    return broke;
   }
   /** A hit that does not shatter yet: the pane cracks (spiderweb at `at`), a second hit makes it a heavy web, a third shatters it. */
   hitGlass(id: number, at?: THREE.Vector3, hits = 1): boolean {
@@ -510,18 +581,14 @@ export class Vehicle {
         const sg = d.side === 'left' ? 1 : -1;
         d.bone.rotation.set(0, -sg * d.amount * DOOR_MAX, d.hanging ? sg * 0.06 : 0);
       }
-      // Body roll / pitch / heave from acceleration: a sprung, slightly underdamped body reads as weight transfer.
+      // Body roll / pitch / heave from acceleration: class-differentiated sprung body weight (D3).
       this.lastVel.set(v.x, v.y, v.z);
-      const g = this.phys.grounded ? 1 : 0.2;
-      const soft = t.shape.type === 'tank' ? 0.3 : 1;
-      const tRoll = THREE.MathUtils.clamp(lat * 0.0085, -0.085, 0.085) * g * soft - this.kneel * 0.022, tPitch = THREE.MathUtils.clamp(-lon * 0.0065, -0.06, 0.06) * g * soft;
-      const k = 70, cc = 9, h = Math.min(dt, 1 / 30);
-      this.rollV += ((tRoll - this.roll) * k - this.rollV * cc) * h; this.roll += this.rollV * h;
-      this.pitchV += ((tPitch - this.pitch) * k - this.pitchV * cc) * h; this.pitch += this.pitchV * h;
-      const tHeave = (this.phys.grounded ? THREE.MathUtils.clamp(-ay * 0.004, -0.08, 0.05) : 0) - this.kneel * 0.07;
-      this.heaveV += ((tHeave - this.heave) * 90 - this.heaveV * 10) * h; this.heave += this.heaveV * h;
-      this.visual.rotation.set(this.pitch, 0, this.roll);
-      this.visual.position.y = this.heave;
+      const aFilt = Math.min(1, dt * 18);
+      this.smoothLon += (lon - this.smoothLon) * aFilt;
+      this.smoothLat += (lat - this.smoothLat) * aFilt;
+      stepBodySpring(this.bodySpring, this.smoothLon, this.smoothLat, ay, this.phys.grounded, this.kneel, this.bodySpringP, dt);
+      this.visual.rotation.set(this.bodySpring.pitch, 0, this.bodySpring.roll);
+      this.visual.position.y = this.bodySpring.heave;
     }
     // Lights: lenses glow (bloom does the halo); brake lights flare, night tail lights glow softly.
     const u = this.material.userData.u;
@@ -590,7 +657,7 @@ export class Vehicle {
     const frac = this.health / this.spec.health;
     this.phys.enginePower = frac < 0.25 ? 0.6 : 1;
     if (this.health <= 0) {
-      this.health = 0; this.destroyed = true; this.burnTime = 0.001; this.siren = false; this.sirenTone = 0; this.lightBar = false;
+      this.health = 0; this.destroyed = true; this.burnTime = 0.001; this.siren = false; this.sirenTone = 0; this.lightBar = false; this.hornStuck = false;
       const u = this.material.userData.u; u.uBurn.value = 0.85;
       for (const p of this.panes) this.breakGlass(p.id);
       return true;

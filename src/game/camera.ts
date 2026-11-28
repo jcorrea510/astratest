@@ -81,6 +81,7 @@ export class CameraRig {
   private bobAmp = 0;
   private dipY = 0; private dipV = 0;
   private dynDist = 0; private dynYaw = 0; private dynRoll = 0; private swayT = 0;
+  private crashPull = 0;
 
   constructor(public camera: THREE.PerspectiveCamera, private physics: Physics) { }
 
@@ -98,7 +99,16 @@ export class CameraRig {
   /** True while the camera is so close to the head that the player's body should be hidden (set each update; PlayerCombat applies it). */
   hideBody = false;
   private lastFocus = new THREE.Vector3(); private haveFocus = false;
-  snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; this.initialized = false; this.hasClear = false; this.dist = 4.2; this.dynDist = 0; this.dynYaw = 0; this.dynRoll = 0; }
+  snapBehind(yaw: number) { this.yaw = yaw; this.pitch = -0.12; this.initialized = false; this.hasClear = false; this.dist = 4.2; this.dynDist = 0; this.dynYaw = 0; this.dynRoll = 0; this.crashPull = 0; }
+  /** Severe crash feedback: heavy trauma plus a short slow camera pull-back (both scale with settings.cameraShake). */
+  crashKick(shake: number, pullBack: number) {
+    this.addShake(shake);
+    const s = this.shakeScale * motionScale();
+    if (s <= 0) return;
+    this.crashPull = Math.min(2.2, Math.max(this.crashPull, Math.max(0, pullBack) * s));
+  }
+  /** Current crash pull-back offset (metres), exposed for tests. */
+  get crashPullOffset() { return this.crashPull; }
   /** Landing impulse: the camera dips by roughly `amount` metres and springs back. */
   landDip(amount: number) { this.dipV -= Math.min(0.5, Math.max(0, amount)) * 11; }
 
@@ -143,7 +153,8 @@ export class CameraRig {
     this.dynDist = damp(this.dynDist, wantDynDist, 4.5, dt);
     this.dynYaw = damp(this.dynYaw, wantDynYaw, 4.2, dt);
     this.dynRoll = damp(this.dynRoll, wantDynRoll, 5.0, dt);
-    targetDist += this.dynDist;
+    this.crashPull = damp(this.crashPull, 0, 2.2, dt);
+    targetDist += this.dynDist + this.crashPull;
     // On foot: sprint pulls the camera back a touch, kicks the FOV and adds a subtle step bob; landings dip it.
     const onFoot = mode === 'foot', f = this.foot;
     this.sprintBlend = damp(this.sprintBlend, onFoot ? f.sprint : 0, f.sprint > this.sprintBlend ? 3.8 : 4.6, dt);

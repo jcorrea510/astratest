@@ -8,8 +8,18 @@ import type { VehicleKind } from '../vehicles/specs';
 import { WATER_LEVEL } from '../world/citymap';
 import type { Particles, SkidMarks } from '../render/particles';
 import type { GameAudio, EngineVoice, LoopVoice } from '../ui/contracts';
+import { vehicleCrashDamage, CRASH_SEVERE_SPEED } from './impact';
 
-export interface CrashEvent { vehicle: Vehicle; impact: number; point: THREE.Vector3 }
+export interface CrashEvent {
+  vehicle: Vehicle;
+  impact: number;
+  point: THREE.Vector3;
+  /** Impact speed normal to the surface (m/s), angle to tangent (deg), pre-impact speed (m/s), and nose alignment (-1..1). */
+  normalImpact: number;
+  angleDeg: number;
+  preSpeed: number;
+  frontDot: number;
+}
 /**
  * Headlight spot intensity and fall-off. Round 13 (owner, on an iPad: "headlights shine too bright when reflecting, it's hard
  * to see"): 420 cd with decay 1.1 lit the road 5-15x brighter than the street lights around it, and the glare off asphalt,
@@ -87,8 +97,13 @@ export class VehicleManager {
     for (const v of this.list) {
       v.phys.postStep();
       const imp = v.phys.impact;
-      if (imp > 4 && !v.destroyed) {
+      const normalImp = v.phys.impactNormal;
+      const angleDeg = v.phys.impactAngleDeg;
+      const preSpeed = v.phys.impactPreSpeed;
+      if ((normalImp > 3.5 || (!v.phys.wallContact && imp > 4)) && !v.destroyed) {
         const d = v.phys.impactDir;
+        const fwd = v.phys.forward();
+        const frontDot = d.x * fwd.x + d.z * fwd.z;
         // contact: where the line from the centre towards the obstacle leaves the body box; metal moves the opposite way (into the car)
         const L = v.tpl.layout, zc = L.zCenter ?? 0, qi = this.qInv.copy(v.group.quaternion).invert();
         const dl = this.tmp2.set(d.x, 0, d.z).applyQuaternion(qi); if (dl.lengthSq() < 1e-4) dl.set(0, 0, 1);
@@ -98,15 +113,23 @@ export class VehicleManager {
         v.group.updateMatrixWorld(true);
         const pt = v.group.localToWorld(lp.clone());
         const into = new THREE.Vector3(-d.x, 0, -d.z).normalize();
-        // sub-linear: ordinary knocks dent, only big hits wreck a car
-        const dmg = Math.pow(imp - 3, 0.85) * 26;
-        const destroyed = v.damage(dmg, pt.clone(), into, v.driver ?? v.lastDamagedBy, false);
-        v.crumple(pt, into, Math.min(1.4, (imp - 2.5) / 8));
-        v.flashT = 0.15;
-        this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(imp * 3)), 4 + imp);
-        if (imp > 6) this.audio.play('glass', { pos: pt, volume: Math.min(1, imp / 14) });
-        const au = this.audio as unknown as { crash?: (i: number, p?: THREE.Vector3) => void }; if (au.crash) au.crash(imp / 12, pt); else this.audio.play('crash', { pos: pt, volume: Math.min(1, imp / 12), pitch: 0.9 + Math.random() * 0.2 }); // R6-A: one path per impact
-        const ev: CrashEvent = { vehicle: v, impact: imp, point: pt.clone() };
+        // D1: damage scales with speed normal to the surface; glancing scrapes (< 20 deg) stay <= 10% health.
+        const dmg = vehicleCrashDamage(normalImp, angleDeg, v.spec.health, v.phys.scrapeDamageSuppressed);
+        const destroyed = dmg > 0 ? v.damage(dmg, pt.clone(), into, v.driver ?? v.lastDamagedBy, false) : false;
+        const crumpleEnergy = angleDeg < 20 ? Math.min(0.22, Math.max(0, (normalImp - 3) / 22)) : Math.min(1.4, (normalImp - 2.5) / 8);
+        if (crumpleEnergy > 0.04) v.crumple(pt, into, crumpleEnergy);
+        if (dmg > 8) v.flashT = 0.15;
+        // D5: severe head-on crashes (>= 45 mph) shatter the windscreen (and side panes on extreme hits).
+        const effHeadOn = Math.max(normalImp, preSpeed * Math.max(0, frontDot) * 0.95);
+        if (frontDot > 0.55 && normalImp >= CRASH_SEVERE_SPEED * 0.85 && effHeadOn >= CRASH_SEVERE_SPEED) {
+          v.shatterFrontGlass(effHeadOn >= CRASH_SEVERE_SPEED * 1.25);
+        }
+        this.particles.sparks(pt.x, pt.y, pt.z, Math.min(40, Math.floor(Math.max(normalImp, imp * 0.5) * 3)), 4 + normalImp);
+        if (normalImp > 7 && angleDeg >= 20) this.audio.play('glass', { pos: pt, volume: Math.min(1, normalImp / 14) });
+        const au = this.audio as unknown as { crash?: (i: number, p?: THREE.Vector3) => void };
+        if (au.crash) au.crash(normalImp / 12, pt);
+        else this.audio.play('crash', { pos: pt, volume: Math.min(1, normalImp / 12), pitch: 0.9 + Math.random() * 0.2 }); // R6-A: one path per impact
+        const ev: CrashEvent = { vehicle: v, impact: normalImp, normalImpact: normalImp, angleDeg, preSpeed, frontDot, point: pt.clone() };
         this.onCrash?.(ev); for (const l of this.crashListeners) l(ev);
         void destroyed;
       }
@@ -253,6 +276,28 @@ export class VehicleManager {
             if (Math.random() < (slip > 5.5 ? 0.62 : 0.35) && dist < 68) this.particles.tireSmoke(cp.x, cp.y, cp.z, v.phys.body.linvel().x, v.phys.body.linvel().z, driftIntensity);
           }
         } else this.skids.end(id);
+      }
+      // D1: continuous wall/barrier scrape sparks and metallic grind audio for as long as contact lasts
+      if (v.phys.scrapeActive && !v.destroyed && dist < 120) {
+        const sp = v.phys.scrapePoint, si = v.phys.scrapeIntensity;
+        if (v.group.visible) this.particles.sparks(sp.x, sp.y, sp.z, Math.ceil(2 + si * 6), 3 + si * 5);
+        v.scrapeAudioT -= dt;
+        if (v.scrapeAudioT <= 0) {
+          v.scrapeAudioT = 0.095;
+          const au = this.audio as unknown as { crash?: (i: number, p?: { x: number; y: number; z: number }) => void };
+          if (au.crash) au.crash(0.14 + si * 0.22, sp);
+          else this.audio.play('crash', { pos: sp, volume: 0.16 + si * 0.24, pitch: 1.45 + si * 0.35 });
+        }
+      } else {
+        v.scrapeAudioT = 0;
+      }
+      // D5: stuck horn when an NPC driver dies slumped over the steering wheel
+      if (v.hornStuck && !v.destroyed) {
+        v.hornStuckT -= dt;
+        if (v.hornStuckT <= 0 && dist < 85) {
+          v.hornStuckT = 0.34;
+          this.audio.play('horn', { pos: v.position, volume: 0.72, pitch: 0.96 });
+        }
       }
       // Performance exhaust backfire on high-RPM upshifts / rapid throttle lifts
       if (v.backfireTriggered) {
