@@ -2,6 +2,11 @@
 
 Resume: read CLAUDE.md, this file. Continue unfinished items. Owner rules in CLAUDE.md.
 
+## Crash update fix (28 Nov)
+- e70cf4a (crash/impact system, pushed to main) failed traffic5 honk/bail. Two causes: the crash gate let 3.5-4 m/s nudges count
+  off walls (game/impact crashRegistered keeps 4 m/s there), and wall contact used Rapier pairs with no contact point
+  (box-only overlaps beside the lane), trimming drive to 24 % (vehiclePhysics needs a solver contact). Tests: vehicles/wallGhost.test.
+
 ## Green checks (27 Nov)
 - Browser suite had been red since Round 13: wheel ExtrudeGeometry.toNonIndexed() warned on every build and failed every
   clean-console check. core/geom flatCopy() guards it (+ body/eyes/brows/hair). Wired shoulder swap (T), ADS aim assist

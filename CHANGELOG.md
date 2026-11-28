@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-28: Crash and impact system
+- Refined crash physics with damage by impact angle, wall scraping with sparks, camera kick on severe crashes, shattering
+  windscreens and stuck horns.
+- Fixes: a light nudge no longer counts as a crash (cars stopped with hazards on after small bumps), and cars no longer
+  lose most of their power next to walls and buildings they are not touching.
+
 ## 2026-11-27: Firefights, landmarks and the full-screen map
 
 - Foot movement, shooting and large firefights overhauled: tighter sprinting and turning, a tactical combat roll with evasion
